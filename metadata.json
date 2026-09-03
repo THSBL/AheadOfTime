@@ -1,0 +1,6 @@
+{
+  "name": "T-Minus Calendar Intelligence Agent",
+  "description": "AI Agent that automatically reverse-engineers target lead times, preparation milestones, and calendar sync for upcoming events.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
