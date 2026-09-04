@@ -418,16 +418,19 @@ export default function App() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const response = await fetch('/api/agent/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          currentReferenceDate,
-          activeEvents: events,
-          targetEventId: selectedEventId || undefined,
+      const [response] = await Promise.all([
+        fetch('/api/agent/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            currentReferenceDate,
+            activeEvents: events,
+            targetEventId: undefined,
+          }),
         }),
-      });
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]);
 
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);

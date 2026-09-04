@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, EventCategory, TMinusMilestone } from '../types';
-import { generateHeuristicMilestones, formatDisplayDate } from '../utils/tminusRules';
+import { generateHeuristicMilestones, formatDisplayDate, detectEventCategory } from '../utils/tminusRules';
 
 interface EventRefineModalProps {
   isOpen: boolean;
@@ -412,19 +412,34 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                   type="text"
                   required
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTitle(val);
+                    if (val.trim()) {
+                      const guessed = detectEventCategory(val);
+                      if (guessed && guessed !== 'custom') {
+                        setCategory(guessed);
+                      }
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Category Preset Form</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">Category Preset Form</label>
+                  <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 border border-sky-200">
+                    <Sparkles className="w-2.5 h-2.5 text-sky-500 animate-pulse" />
+                    Auto-guessed
+                  </span>
+                </div>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as EventCategory)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800 cursor-pointer"
                 >
-                  <option value="birthday_party">🎂 Birthday / Party Celebration</option>
+                  <option value="birthday_party">🎂 Wedding / Party / Celebration</option>
                   <option value="hosting_visitors">🏡 Hosting Visitors / Weekend Guests</option>
                   <option value="travel_trip">✈️ Trip / Holiday Travel</option>
                   <option value="project_deadline">🚀 Project / Business Deadline</option>

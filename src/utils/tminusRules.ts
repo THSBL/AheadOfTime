@@ -6,7 +6,7 @@ import { CalendarEvent, TMinusMilestone, MilestoneCategory, IntakeQuestion, Even
 export function detectEventCategory(title: string, description?: string): EventCategory {
   const combined = `${title || ''} ${description || ''}`.toLowerCase();
   
-  if (/birthday|bday|b-day|turning \d+|sweet 16|bar mitzvah|bat mitzvah|\bparty\b/i.test(combined)) {
+  if (/wedding|marriage|matrimony|ceremony|reception|anniversary|celebration|gala|graduation|baptism|christening|shower|party|birthday|bday|b-day|turning \d+|sweet 16|bar mitzvah|bat mitzvah|\bparty\b/i.test(combined)) {
     return 'birthday_party';
   }
   if (/flight|trip|vacation|holiday|travel|hotel|airbnb|luggage|camping|campsite|getaway|resort/i.test(combined)) {

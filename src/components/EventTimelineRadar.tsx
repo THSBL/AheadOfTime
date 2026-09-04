@@ -532,7 +532,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     onChange={(e) => setClarifyCategory(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800 cursor-pointer"
                   >
-                    <option value="birthday_party">🎉 Birthday / Celebration</option>
+                    <option value="birthday_party">🎉 Wedding / Party / Celebration</option>
                     <option value="travel_trip">✈️ Trip / Travel</option>
                     <option value="hosting_visitors">🏡 Hosting / Visitors</option>
                     <option value="dinner_social">🍽️ Dinner / Dining</option>

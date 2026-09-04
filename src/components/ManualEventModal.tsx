@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, MapPin, Sparkles, Plus, Trash2 } from 'lucide-react';
 import { CalendarEvent, EventCategory } from '../types';
-import { generateHeuristicMilestones } from '../utils/tminusRules';
+import { generateHeuristicMilestones, detectEventCategory } from '../utils/tminusRules';
 
 interface ManualEventModalProps {
   isOpen: boolean;
@@ -141,7 +141,16 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
               type="text"
               required
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setTitle(val);
+                if (val.trim()) {
+                  const guessed = detectEventCategory(val);
+                  if (guessed && guessed !== 'custom') {
+                    setCategory(guessed);
+                  }
+                }
+              }}
               placeholder="E.g., Maya's 30th Birthday, Trip to Kyoto, Dinner Party..."
               className="w-full bg-slate-50/60 text-slate-900 text-sm px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white placeholder:text-slate-400"
             />
@@ -149,15 +158,21 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
 
           {/* Category */}
           <div>
-            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
-              Category
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                Category
+              </label>
+              <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full flex items-center gap-1 border border-sky-200">
+                <Sparkles className="w-3 h-3 text-sky-500 animate-pulse" />
+                Auto-guessed from title
+              </span>
+            </div>
             <select
               value={category}
               onChange={(e: any) => setCategory(e.target.value)}
               className="w-full bg-slate-50/60 text-slate-900 text-sm px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white cursor-pointer"
             >
-              <option value="birthday_party">🎂 Birthday / Party (Gifts, Themes, Rides)</option>
+              <option value="birthday_party">🎂 Wedding / Party / Celebration (Gifts, Themes, Rides)</option>
               <option value="hosting_visitors">🏡 Hosting Visitors (Dinners, Room Prep, Groceries)</option>
               <option value="festival_concert">🎪 Festival & Concert (Camping, Gear, Tickets)</option>
               <option value="travel_trip">✈️ Travel Trip (Passports, Packing, Passes)</option>
