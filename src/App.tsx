@@ -87,11 +87,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Filter out old demo/sample events if user hasn't added custom ones
-          const filtered = parsed.filter(
-            (e: any) => e.id !== 'evt-maya-birthday' && e.id !== 'evt-alex-sarah'
-          );
-          return filtered;
+          return parsed;
         }
       } catch (e) {
         console.error('Failed to parse saved events', e);
@@ -827,6 +823,9 @@ export default function App() {
   const handleSaveManualEvent = (newEvent: CalendarEvent) => {
     setEvents((prev) => [newEvent, ...prev]);
     setSelectedEventId(newEvent.id);
+    setActiveTab('tasks');
+    setFocusMode('adjust-event');
+    setMobileDashboardView('detail');
 
     const agentMsg: AgentMessage = {
       id: `agt-manual-${Date.now()}`,
@@ -853,6 +852,9 @@ export default function App() {
 
     if (newEvents.length > 0) {
       setSelectedEventId(newEvents[0].id);
+      setActiveTab('tasks');
+      setFocusMode('adjust-event');
+      setMobileDashboardView('detail');
       setCurrentView('dashboard');
       setSyncToast({
         id: Date.now(),

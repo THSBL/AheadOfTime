@@ -1601,8 +1601,9 @@ const InitialPresetsAndFreeform = ({
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-slate-200/80" />
         </div>
-        <div className="relative bg-[#f1f5f9] px-4 text-xs font-bold text-slate-500 uppercase tracking-wider rounded-full">
-          Choose an event preset
+        <div className="relative bg-white border border-slate-200/90 px-4 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider rounded-full shadow-2xs flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+          <span>Choose an event preset</span>
         </div>
       </div>
 
@@ -1671,8 +1672,8 @@ const InitialPresetsAndFreeform = ({
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-slate-200/80" />
         </div>
-        <div className="relative bg-[#f1f5f9] px-4 text-xs font-bold text-slate-500 uppercase tracking-wider rounded-full">
-          Or describe your event below
+        <div className="relative bg-white border border-slate-200/90 px-4 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider rounded-full shadow-2xs flex items-center gap-1.5">
+          <span>Or describe your event below</span>
         </div>
       </div>
 
