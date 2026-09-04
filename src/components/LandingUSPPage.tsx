@@ -20,7 +20,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       
       {/* Top Header Navigation */}
       <div className="max-w-6xl mx-auto w-full flex items-center justify-between p-4 sm:p-6 lg:px-10">
-        <Logo variant="small" />
+        <Logo variant="large" size="normal" />
 
         <div className="flex items-center gap-3 sm:gap-4">
           {onGoToDashboard && (
@@ -60,10 +60,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       {/* Hero Section featuring Big Logo */}
       <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 text-center space-y-6">
         
-        {/* Big Logo Featured Prominently */}
+        {/* Big Logo Featured Prominently - Flat border with no shading */}
         <div className="flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="bg-white/90 backdrop-blur-md border border-slate-200/80 p-5 sm:p-6 rounded-3xl shadow-xl shadow-slate-200/50 inline-flex flex-col items-center">
-            <Logo variant="large" size="xl" />
+          <div className="bg-white border border-slate-200/90 p-6 sm:p-8 md:p-10 rounded-3xl inline-flex flex-col items-center">
+            <Logo variant="large" size="2xl" />
           </div>
         </div>
 
