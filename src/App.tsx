@@ -14,6 +14,7 @@ import { PreferencesModal } from './components/PreferencesModal';
 import { CookieBanner } from './components/CookieBanner';
 import { CookiePreferencesModal } from './components/CookiePreferencesModal';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { PrivacyPage } from './components/PrivacyPage';
 import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings } from './types';
 import { INITIAL_EVENTS } from './data/samplePresets';
 import { 
@@ -49,6 +50,16 @@ const INITIAL_MESSAGES: AgentMessage[] = [
 ];
 
 export default function App() {
+  // Helper to detect if user requested the /privacy route directly
+  const checkPathForPrivacy = (): boolean => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      return path === '/privacy' || path === '/privacy/' || hash === '#privacy';
+    }
+    return false;
+  };
+
   // 1. State & Storage Initialization: Check storage before mounting view
   const hasCompleted = typeof window !== 'undefined' && (
     localStorage.getItem('aot_onboarding_completed') === 'true' ||
@@ -59,9 +70,12 @@ export default function App() {
     Boolean(getStoredAccessToken() && !isTokenExpired())
   );
 
-  const [currentView, setCurrentView] = useState<'dashboard' | 'landing' | 'onboarding'>(
-    (hasCompleted || isConnected) ? 'dashboard' : 'landing'
-  );
+  const [currentView, setCurrentView] = useState<'dashboard' | 'landing' | 'onboarding' | 'privacy'>(() => {
+    if (checkPathForPrivacy()) {
+      return 'privacy';
+    }
+    return (hasCompleted || isConnected) ? 'dashboard' : 'landing';
+  });
 
   // 2. Prevent Layout Flash: loading state during verification
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
@@ -132,21 +146,58 @@ export default function App() {
     }
   });
 
-  // Verify auth / storage on initial mount without flashing landing
+  // Verify auth / storage on initial mount & handle browser back/forward buttons
   useEffect(() => {
-    try {
+    const handlePopState = () => {
+      if (checkPathForPrivacy()) {
+        setCurrentView('privacy');
+        return;
+      }
       const completed = localStorage.getItem('aot_onboarding_completed') === 'true' || localStorage.getItem('has_completed_onboarding') === 'true';
       const connected = localStorage.getItem('aot_calendar_connected') === 'true' || Boolean(getStoredAccessToken() && !isTokenExpired());
-      
-      if (completed || connected) {
-        setCurrentView('dashboard');
+      setCurrentView((completed || connected) ? 'dashboard' : 'landing');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    try {
+      if (checkPathForPrivacy()) {
+        setCurrentView('privacy');
+      } else {
+        const completed = localStorage.getItem('aot_onboarding_completed') === 'true' || localStorage.getItem('has_completed_onboarding') === 'true';
+        const connected = localStorage.getItem('aot_calendar_connected') === 'true' || Boolean(getStoredAccessToken() && !isTokenExpired());
+        
+        if (completed || connected) {
+          setCurrentView('dashboard');
+        }
       }
     } catch (e) {
       console.error('Initial storage verification error:', e);
     } finally {
       setIsInitializing(false);
     }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
+
+  // Navigation handlers between views and privacy URL
+  const navigateToPrivacyPage = () => {
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState(null, '', '/privacy');
+    }
+    setCurrentView('privacy');
+  };
+
+  const navigateToHome = () => {
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState(null, '', '/');
+    }
+    const completed = localStorage.getItem('aot_onboarding_completed') === 'true' || localStorage.getItem('has_completed_onboarding') === 'true';
+    const connected = localStorage.getItem('aot_calendar_connected') === 'true' || Boolean(getStoredAccessToken() && !isTokenExpired());
+    setCurrentView((completed || connected) ? 'dashboard' : 'landing');
+  };
 
   // 3. Onboarding & Connection Completion Handlers
   const handleCompleteOnboarding = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => {
@@ -853,13 +904,17 @@ export default function App() {
         <div className="absolute top-2/3 right-1/4 w-[450px] h-[450px] bg-indigo-200/25 rounded-full blur-3xl" />
       </div>
 
-      {currentView === 'landing' ? (
+      {currentView === 'privacy' ? (
+        <div className="relative z-10 w-full min-h-screen">
+          <PrivacyPage onNavigateHome={navigateToHome} />
+        </div>
+      ) : currentView === 'landing' ? (
         <div className="relative z-10 w-full h-screen overflow-y-auto">
           <LandingUSPPage
             onGetStarted={() => setCurrentView('onboarding')}
             onExploreDashboard={handleLandingConnectCalendar}
             onGoToDashboard={() => setCurrentView('dashboard')}
-            onOpenPrivacyPolicy={() => setIsPrivacyModalOpen(true)}
+            onOpenPrivacyPolicy={navigateToPrivacyPage}
           />
         </div>
       ) : currentView === 'onboarding' ? (
@@ -867,7 +922,7 @@ export default function App() {
           <OnboardingPage
             initialProfile={onboardingProfile || undefined}
             onComplete={handleCompleteOnboarding}
-            onOpenPrivacyPolicy={() => setIsPrivacyModalOpen(true)}
+            onOpenPrivacyPolicy={navigateToPrivacyPage}
           />
         </div>
       ) : (
@@ -1233,6 +1288,7 @@ export default function App() {
       <PrivacyPolicyModal
         isOpen={isPrivacyModalOpen}
         onClose={() => setIsPrivacyModalOpen(false)}
+        onOpenFullPage={navigateToPrivacyPage}
       />
 
     </div>

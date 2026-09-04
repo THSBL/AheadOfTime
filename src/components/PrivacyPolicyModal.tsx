@@ -1,13 +1,28 @@
 import React from 'react';
-import { ShieldCheck, X, Calendar, Lock, Database, Trash2, Eye } from 'lucide-react';
+import { ShieldCheck, X, Calendar, Lock, Database, Trash2, Eye, ExternalLink } from 'lucide-react';
 
 interface PrivacyPolicyModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenFullPage?: () => void;
 }
 
-export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, onClose }) => {
+export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ 
+  isOpen, 
+  onClose,
+  onOpenFullPage 
+}) => {
   if (!isOpen) return null;
+
+  const handleOpenPage = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onClose();
+    if (onOpenFullPage) {
+      onOpenFullPage();
+    } else {
+      window.location.href = '/privacy';
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
@@ -38,13 +53,29 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
         {/* Policy Body */}
         <div className="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-600 leading-relaxed">
+          
+          {/* Quick link to standalone /privacy page */}
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs">
+            <span className="text-emerald-950 font-medium">
+              Looking for our dedicated public legal disclosure page?
+            </span>
+            <button
+              type="button"
+              onClick={handleOpenPage}
+              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl transition-colors shrink-0 inline-flex items-center gap-1 cursor-pointer"
+            >
+              <span>Open /privacy</span>
+              <ExternalLink className="w-3 h-3" />
+            </button>
+          </div>
+
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Calendar className="w-4 h-4 text-sky-600" />
-              <span>1. Purpose of Calendar Metadata Processing</span>
+              <span>1. Google Calendar &amp; Tasks Limited Use</span>
             </div>
             <p>
-              When you connect or scan your Google Calendar, Ahead Of Time accesses read-only metadata (event title, start date/time, and general location) strictly to build backward preparation milestones, breathing room, and timely reminders. We do not inspect private attendee notes or body attachments beyond what is required to categorize events.
+              When you connect or scan your Google Calendar, Ahead Of Time accesses read-only metadata (event title, start date/time, and general location) strictly to build backward preparation milestones, breathing room, and timely reminders. Ahead Of Time&rsquo;s use and transfer of information received from Google APIs will adhere to the Google API Services User Data Policy, including Limited Use requirements.
             </p>
           </section>
 
@@ -66,10 +97,10 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Lock className="w-4 h-4 text-sky-600" />
-              <span>3. Zero Commercialization &amp; No Third-Party Reselling</span>
+              <span>3. Zero Commercialization &amp; No AI Training</span>
             </div>
             <p>
-              We never sell, rent, monetize, or transfer your personal preferences or calendar metadata to third-party advertisers, data aggregators, or brokers. Processing is purely functional for your calendar planning assistant.
+              We never sell, rent, monetize, or transfer your personal preferences or calendar metadata to third-party advertisers, data aggregators, or brokers. We never use your event data to train generalized AI models.
             </p>
           </section>
 
@@ -95,7 +126,14 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={handleOpenPage}
+            className="text-xs text-slate-600 hover:text-slate-900 font-medium underline cursor-pointer"
+          >
+            View dedicated /privacy page
+          </button>
           <button
             onClick={onClose}
             className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
