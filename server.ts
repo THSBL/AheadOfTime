@@ -43,8 +43,8 @@ function getGeminiClient(): GoogleGenAI {
 // Multi-model fast execution with low thinking latency and strict timeout
 async function generateContentFast(
   requestConfig: (modelName: string) => any,
-  modelsToTry: string[] = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-  timeoutMs: number = 5500
+  modelsToTry: string[] = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+  timeoutMs: number = 10000
 ): Promise<{ text: string; usedModel: string }> {
   const ai = getGeminiClient();
   let lastError: any = null;
@@ -52,12 +52,6 @@ async function generateContentFast(
   for (const modelName of modelsToTry) {
     try {
       const config = requestConfig(modelName);
-      
-      // Enforce fast thinking level for minimum latency
-      if (!config.config) config.config = {};
-      if (!config.config.thinkingConfig) {
-        config.config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
-      }
 
       // Race with timeout so API never hangs user
       const apiPromise = ai.models.generateContent({
@@ -115,7 +109,7 @@ app.post("/api/agent/transcribe", async (req: Request, res: Response): Promise<v
       },
     };
 
-    const transcribeModels = ["gemini-3.5-transcribe", "gemini-3.8-flash", "gemini-3.1-flash-lite"];
+    const transcribeModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
     const result = await generateContentFast(
       () => ({
         contents: { 
@@ -196,8 +190,8 @@ Output ONLY the JSON object.`;
           temperature: 0.15,
         },
       }),
-      ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-      5000
+      ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      8000
     );
 
     const parsed = JSON.parse(result.text.trim());
@@ -286,8 +280,8 @@ Output ONLY the raw JSON object.`;
           temperature: 0.15,
         },
       }),
-      ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-      5500
+      ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      8000
     );
 
     const parsed = JSON.parse(result.text.trim());
@@ -373,7 +367,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
             data: audioBase64,
           },
         };
-        const transcribeModels = ["gemini-3.5-transcribe", "gemini-3.7-flash"];
+        const transcribeModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
         const transcribeRes = await generateContentFast(
           () => ({
             contents: { 
@@ -651,11 +645,10 @@ ADDITION: <1-2 questions or confirmation>`;
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       },
     }),
-    ["gemini-3.7-flash", "gemini-3.1-flash-lite"],
-    3200
+    ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+    8000
   );
 
   let rawText = response.text || "{}";
