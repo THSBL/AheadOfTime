@@ -423,7 +423,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
   const handleConfirmCustomClarification = (e: React.FormEvent) => {
     e.preventDefault();
-    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}. Please build the AheadOfTime preparation plan!`;
+    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}. Please build the Ahead Of Time preparation plan!`;
     setLastSubmittedPrompt(customEventTitle || detailsMsg);
     setCustomClarificationStep('none');
     onSendMessage(detailsMsg, false);
@@ -1394,13 +1394,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
           </div>
 
-          {/* Primary CTA: Generate AheadOfTime Schedule */}
+          {/* Primary CTA: Generate Ahead Of Time Schedule */}
           <div className="pt-4">
             <button
               onClick={handleGeneratePresetSchedule}
               className="w-full py-4 sm:py-5 rounded-3xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-base sm:text-lg shadow-xl shadow-slate-900/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 cursor-pointer group"
             >
-              <span>Build AheadOfTime Milestones</span>
+              <span>Build Ahead Of Time Milestones</span>
               <Target className="w-5 h-5 group-hover:rotate-12 transition-transform" />
             </button>
           </div>
@@ -1476,9 +1476,9 @@ const CustomClarificationCard = ({
           : 'bg-blue-50 border-blue-200 text-blue-950'
       }`}>
         {clarificationReason === 'unclear' ? (
-          <span><strong>Need more details:</strong> Your description was brief or unclear. Please fill in the target person, date, and venue below so AheadOfTime can map out your preparation milestones.</span>
+          <span><strong>Need more details:</strong> Your description was brief or unclear. Please fill in the target person, date, and venue below so Ahead Of Time can map out your preparation milestones.</span>
         ) : (
-          <span><strong>Event details recognized:</strong> We detected a <strong>{customParsedCategory}</strong> event. Please review and fine-tune the details below before building your AheadOfTime milestones.</span>
+          <span><strong>Event details recognized:</strong> We detected a <strong>{customParsedCategory}</strong> event. Please review and fine-tune the details below before building your Ahead Of Time milestones.</span>
         )}
       </div>
 
@@ -1571,7 +1571,7 @@ const CustomClarificationCard = ({
             className="px-6 py-2.5 rounded-xl bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-sky-300" />
-            <span>Build AheadOfTime Milestones</span>
+            <span>Build Ahead Of Time Milestones</span>
           </button>
         </div>
       </form>

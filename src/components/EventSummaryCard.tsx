@@ -84,7 +84,7 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
             <span className="text-[11px] font-bold text-white uppercase tracking-wider bg-[#0f172a] px-2.5 py-0.5 rounded-full shadow-xs">
               Target Deadline
             </span>
-            {event.needsRefinement && !event.refinedAt && (
+            {event.needsRefinement && !event.refinedAt && (!event.context || Object.keys(event.context).length === 0) && (
               <span className="text-[10px] font-bold text-amber-950 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 animate-pulse">
                 <Sparkles className="w-3 h-3 text-amber-600" />
                 <span>Unrefined Plan</span>

@@ -1,6 +1,6 @@
 {
-  "name": "AheadOfTime",
-  "description": "Calendars tell you when an event starts. AheadOfTime makes sure you're ready when it does. Automatically builds backward preparation milestones for busy calendars.",
+  "name": "Ahead Of Time",
+  "description": "Calendars tell you when an event starts. Ahead Of Time makes sure you're ready when it does. Automatically builds backward preparation milestones for busy calendars.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -68,7 +68,7 @@ export const ThinkingModule: React.FC<ThinkingModuleProps> = ({ promptText, clas
               </span>
             </div>
             <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5 mt-0.5">
-              <span>Synthesizing AheadOfTime Milestones</span>
+              <span>Synthesizing Ahead Of Time Milestones</span>
               <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
             </h3>
           </div>

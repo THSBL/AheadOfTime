@@ -176,7 +176,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div 
               className="cursor-pointer flex items-center" 
               onClick={() => onSetFocusMode('welcome')} 
-              title="AheadOfTime Home"
+              title="Ahead Of Time Home"
             >
               <Logo variant="small" />
             </div>

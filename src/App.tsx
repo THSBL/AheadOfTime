@@ -1,4 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { 
+  BrowserRouter, 
+  Routes, 
+  Route, 
+  Navigate, 
+  useNavigate, 
+  useLocation, 
+  useParams,
+  useSearchParams,
+  Outlet
+} from 'react-router-dom';
 import { Header } from './components/Header';
 import { MessengerSidebar } from './components/MessengerSidebar';
 import { ChatConsole } from './components/ChatConsole';
@@ -15,6 +26,13 @@ import { CookieBanner } from './components/CookieBanner';
 import { CookiePreferencesModal } from './components/CookiePreferencesModal';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { PrivacyPage } from './components/PrivacyPage';
+import { FeaturesPage } from './components/FeaturesPage';
+import { FeedbackPage } from './components/FeedbackPage';
+import { AuthCallbackPage } from './components/AuthCallbackPage';
+import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
+import { SettingsProfilePage } from './components/SettingsProfilePage';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings } from './types';
 import { INITIAL_EVENTS } from './data/samplePresets';
 import { 
@@ -90,7 +108,7 @@ function mergeEvents(existingEvents: CalendarEvent[], syncedEvents: CalendarEven
   return [...updatedExisting, ...newSyncedEvents];
 }
 
-export default function App() {
+function App() {
   // Helper to detect if user requested the /privacy route directly
   const checkPathForPrivacy = (): boolean => {
     if (typeof window !== 'undefined') {
@@ -160,7 +178,20 @@ export default function App() {
     return INITIAL_MESSAGES;
   });
 
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = useParams<{ id?: string }>();
+
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(() => params.id || null);
+
+  useEffect(() => {
+    if (params.id) {
+      setSelectedEventId(params.id);
+      setActiveTab('tasks');
+      setFocusMode('adjust-event');
+    }
+  }, [params.id]);
+
   const [currentReferenceDate, setCurrentReferenceDate] = useState<string>('2026-09-01T03:20:00.000Z');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>('chat');
@@ -299,7 +330,23 @@ export default function App() {
     }
   });
 
-  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const isNewEventRoute = location.pathname === '/events/new' || new URLSearchParams(location.search).get('modal') === 'new';
+  const isEditRoute = location.pathname.endsWith('/edit');
+
+  const [isManualModalOpen, setIsManualModalOpen] = useState(isNewEventRoute || isEditRoute);
+
+  useEffect(() => {
+    setIsManualModalOpen(isNewEventRoute || isEditRoute);
+  }, [location.pathname, location.search]);
+
+  const handleCloseManualModal = () => {
+    setIsManualModalOpen(false);
+    if (location.pathname === '/events/new' || new URLSearchParams(location.search).get('modal') === 'new') {
+      navigate('/events', { replace: true });
+    } else if (location.pathname.endsWith('/edit')) {
+      navigate(selectedEventId ? `/events/${selectedEventId}` : '/events', { replace: true });
+    }
+  };
   const [isCustomMilestoneModalOpen, setIsCustomMilestoneModalOpen] = useState(false);
   const [isGoogleCalendarModalOpen, setIsGoogleCalendarModalOpen] = useState(false);
   const [isScanAgendaModalOpen, setIsScanAgendaModalOpen] = useState(false);
@@ -351,7 +398,7 @@ export default function App() {
   const [syncToast, setSyncToast] = useState<{ id: number; message: string; count?: number } | null>(null);
 
   // Core Bidirectional Task Completion Sync (only runs daily unless forced by explicit user action)
-  const runGoogleTaskSync = async (silent = false, force = false) => {
+  const runGoogleTaskSync = async (silent = true, force = false) => {
     const token = getStoredAccessToken();
     if (!token || isTokenExpired()) return;
 
@@ -375,19 +422,22 @@ export default function App() {
       localStorage.setItem('aot_last_daily_task_sync_time', nowTs.toString());
       setLastGoogleSyncTime(new Date(nowTs));
 
-      if (summary.completedCount > 0) {
-        setSyncToast({
-          id: Date.now(),
-          message: `${summary.completedCount} task${
-            summary.completedCount > 1 ? 's' : ''
-          } marked complete in Google Calendar!`,
-          count: summary.completedCount,
-        });
-      } else if (!silent) {
-        setSyncToast({
-          id: Date.now(),
-          message: 'Tasks are fully up to date with Google Calendar.',
-        });
+      // ONLY show toast popup if forcefully requested by explicit user action
+      if (force) {
+        if (summary.completedCount > 0) {
+          setSyncToast({
+            id: Date.now(),
+            message: `${summary.completedCount} task${
+              summary.completedCount > 1 ? 's' : ''
+            } marked complete in Google Calendar!`,
+            count: summary.completedCount,
+          });
+        } else {
+          setSyncToast({
+            id: Date.now(),
+            message: 'Tasks are fully up to date with Google Calendar.',
+          });
+        }
       }
     } catch (e) {
       console.warn('Google bidirectional task sync failed:', e);
@@ -912,7 +962,7 @@ export default function App() {
     setMessages((prev) => [...prev, agentMsg]);
   };
 
-  // Import Tracked Events from AheadOfTime Evaluation Engine
+  // Import Tracked Events from Ahead Of Time Evaluation Engine
   const handleImportTrackedEvents = (newEvents: CalendarEvent[]) => {
     if (!newEvents || newEvents.length === 0) return;
     setEvents((prev) => {
@@ -931,7 +981,7 @@ export default function App() {
       setCurrentView('dashboard');
       setSyncToast({
         id: Date.now(),
-        message: `Imported ${newEvents.length} event${newEvents.length > 1 ? 's' : ''} from AheadOfTime Evaluation!`,
+        message: `Imported ${newEvents.length} event${newEvents.length > 1 ? 's' : ''} from Ahead Of Time Evaluation!`,
         count: newEvents.length,
       });
     }
@@ -1005,17 +1055,14 @@ export default function App() {
               onReferenceDateChange={(newDate) => setCurrentReferenceDate(newDate)}
               onResetData={handleResetData}
               onOpenNewEventModal={() => {
-                setSelectedEventId(null);
-                setActiveTab('chat');
-                setFocusMode('welcome');
-                setMobileDashboardView('detail');
+                navigate('/events/new');
               }}
               onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
-              onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
-              onOpenOnboarding={() => setIsPreferencesModalOpen(true)}
+              onOpenGoogleCalendarSync={() => navigate('/settings/credentials')}
+              onOpenOnboarding={() => navigate('/settings/profile')}
               isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
               isSyncingWithGoogle={isSyncingWithGoogle}
-              onTriggerGoogleSync={() => runGoogleTaskSync(false)}
+              onTriggerGoogleSync={() => runGoogleTaskSync(false, true)}
               lastSyncTime={lastGoogleSyncTime}
               activeEventsCount={events.length}
               pendingMilestonesCount={pendingMilestonesCount}
@@ -1048,12 +1095,10 @@ export default function App() {
                   setActiveTab('tasks');
                   setFocusMode('adjust-event');
                   setMobileDashboardView('detail');
+                  navigate(`/events/${id}`);
                 }}
                 onOpenNewEventModal={() => {
-                  setSelectedEventId(null);
-                  setActiveTab('chat');
-                  setFocusMode('welcome');
-                  setMobileDashboardView('detail');
+                  navigate('/events/new');
                 }}
                 onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
@@ -1185,7 +1230,7 @@ export default function App() {
                   currentReferenceDate={currentReferenceDate}
                   isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
                   isSyncingWithGoogle={isSyncingWithGoogle}
-                  onTriggerGoogleSync={() => runGoogleTaskSync(false)}
+                  onTriggerGoogleSync={() => runGoogleTaskSync(false, true)}
                 />
               )}
             </div>
@@ -1254,7 +1299,7 @@ export default function App() {
       {/* Manual Event Modal */}
       <ManualEventModal
         isOpen={isManualModalOpen}
-        onClose={() => setIsManualModalOpen(false)}
+        onClose={handleCloseManualModal}
         onSaveEvent={handleSaveManualEvent}
         currentReferenceDate={currentReferenceDate}
       />
@@ -1366,5 +1411,81 @@ export default function App() {
       />
 
     </div>
+  );
+}
+
+// Landing Route Component
+function LandingRoute() {
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
+
+  const hasCompleted = typeof window !== 'undefined' && (
+    localStorage.getItem('aot_onboarding_completed') === 'true' ||
+    localStorage.getItem('has_completed_onboarding') === 'true'
+  );
+
+  const isConnected = typeof window !== 'undefined' && (
+    localStorage.getItem('aot_calendar_connected') === 'true' ||
+    Boolean(getStoredAccessToken() && !isTokenExpired())
+  );
+
+  if (hasCompleted || isConnected) {
+    return <Navigate to={returnTo ? decodeURIComponent(returnTo) : "/dashboard"} replace />;
+  }
+
+  const handleLandingConnectCalendar = () => {
+    try {
+      localStorage.setItem('aot_onboarding_completed', 'true');
+      localStorage.setItem('aot_calendar_connected', 'true');
+      localStorage.setItem('has_completed_onboarding', 'true');
+    } catch (e) {
+      console.warn('Could not save calendar connection state', e);
+    }
+    window.location.href = returnTo ? decodeURIComponent(returnTo) : '/dashboard';
+  };
+
+  return (
+    <LandingUSPPage
+      onConnectCalendar={handleLandingConnectCalendar}
+      onStartFreeTrial={() => {
+        try {
+          localStorage.setItem('aot_onboarding_completed', 'true');
+        } catch (e) {
+          console.warn('Error saving onboarding state', e);
+        }
+        window.location.href = returnTo ? decodeURIComponent(returnTo) : '/dashboard';
+      }}
+    />
+  );
+}
+
+// Main App Router Entry Point
+export default function AppWithRouter() {
+  return (
+    <BrowserRouter>
+      <AnalyticsTracker />
+      <Routes>
+        {/* Public / SEO Routes */}
+        <Route path="/" element={<LandingRoute />} />
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/feedback" element={<FeedbackPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+        {/* Protected Application Routes */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/dashboard" element={<App />} />
+          <Route path="/events" element={<App />} />
+          <Route path="/events/new" element={<App />} />
+          <Route path="/events/:id" element={<App />} />
+          <Route path="/events/:id/edit" element={<App />} />
+          <Route path="/settings/credentials" element={<SettingsCredentialsPage />} />
+          <Route path="/settings/profile" element={<SettingsProfilePage />} />
+        </Route>
+
+        {/* Catch-all Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

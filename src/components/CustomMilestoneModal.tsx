@@ -56,25 +56,68 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [hasConfirmedInput, setHasConfirmedInput] = useState<boolean>(false);
 
-  // Trigger smart timing analysis and autofill on-demand only AFTER calculations complete
+  // Auto-calculate smart timing on input change (immediate local inference + debounced API call)
+  useEffect(() => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setCurrentSuggestion(null);
+      setHasConfirmedInput(false);
+      setAmount('');
+      setCustomBadge('');
+      return;
+    }
+
+    // Immediately run local inference for instant responsiveness (e.g. Karaoke -> 3 weeks)
+    const localResult = inferTaskTimingLocally(trimmedTitle, description.trim(), eventTitle);
+    setCurrentSuggestion(localResult);
+    setHasConfirmedInput(true);
+
+    if (!userEditedTiming) {
+      setAmount(localResult.amount);
+      setUnit(localResult.unit);
+    }
+    if (!userEditedCategory) {
+      setCategory(localResult.category);
+    }
+
+    // Debounced call to server AI endpoint
+    const timer = setTimeout(async () => {
+      try {
+        setIsAnalyzing(true);
+        const aiResult = await fetchAITaskTiming(trimmedTitle, description.trim(), eventTitle, eventDate, eventTime);
+        setCurrentSuggestion(aiResult);
+        if (!userEditedTiming) {
+          setAmount(aiResult.amount);
+          setUnit(aiResult.unit);
+        }
+        if (!userEditedCategory) {
+          setCategory(aiResult.category);
+        }
+      } catch (e) {
+        // Graceful fallback
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [title, description, eventTitle, eventDate, eventTime, userEditedTiming, userEditedCategory]);
+
+  // Manual trigger button to re-run AI suggestion on demand
   const handleConfirmAndSuggest = async () => {
     if (!title.trim() || isAnalyzing) return;
 
     setIsAnalyzing(true);
     setHasConfirmedInput(false);
-    setCurrentSuggestion(null);
 
     try {
-      // Perform timing calculation (AI model with intelligent heuristic fallback)
       let result: TimingSuggestion;
       try {
         result = await fetchAITaskTiming(title.trim(), description.trim(), eventTitle, eventDate, eventTime);
       } catch (e) {
-        // Fallback to local semantic inference if network/AI is unavailable
         result = inferTaskTimingLocally(title.trim(), description.trim(), eventTitle);
       }
 
-      // Populate after calculation completes
       setCurrentSuggestion(result);
       setAmount(result.amount);
       setUnit(result.unit);

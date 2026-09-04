@@ -487,7 +487,7 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
               className="bg-[#0f172a] hover:bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-sm shadow-slate-900/25 flex items-center gap-2 transition-all cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Generate AheadOfTime Milestones</span>
+              <span>Generate Ahead Of Time Milestones</span>
             </button>
           </div>
 

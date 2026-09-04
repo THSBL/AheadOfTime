@@ -43,7 +43,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'small', className = '', s
         className="w-8 h-8 sm:w-10 sm:h-10 object-contain rounded-xl shrink-0" 
       />
       <span className="hidden sm:inline text-lg sm:text-xl font-black tracking-tight text-[#0e1d2c] whitespace-nowrap">
-        Ahead<span className="text-[#529479]">Of</span>Time
+        Ahead <span className="text-[#529479]">Of</span> Time
       </span>
     </div>
   );

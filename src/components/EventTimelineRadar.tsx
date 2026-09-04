@@ -149,11 +149,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       setClarifyDate(activeEvent.eventDate || new Date().toISOString().substring(0, 10));
       setClarifyTime(activeEvent.eventTime || '19:00');
       setClarifyLocation(activeEvent.location || '');
-      if (activeEvent.status === 'intake_pending' || !activeEvent.milestones || activeEvent.milestones.length === 0) {
-        setIsEditingEvent(true);
-      } else {
-        setIsEditingEvent(false);
-      }
+      setIsEditingEvent(false);
     }
   }, [activeEvent?.id, activeEvent?.status]);
 
@@ -296,7 +292,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <h3 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight leading-snug break-words">
                 {activeEvent.title}
               </h3>
-              {activeEvent.needsRefinement && !activeEvent.refinedAt && (
+              {activeEvent.needsRefinement && !activeEvent.refinedAt && (!activeEvent.context || Object.keys(activeEvent.context).length === 0) && (
                 <span className="text-[10px] font-mono font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
                   <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                   <span>Unrefined</span>

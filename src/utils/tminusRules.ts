@@ -1,4 +1,5 @@
 import { CalendarEvent, TMinusMilestone, MilestoneCategory, IntakeQuestion, EventCategory } from '../types';
+import { inferTaskTimingLocally } from './timingAI';
 
 /**
  * Automatically detects an event category from its title, summary, or description
@@ -381,13 +382,27 @@ export function generateHeuristicMilestones(
           !lower.includes('speech') && !lower.includes('toast') && !lower.includes('talk') &&
           !lower.includes('cake') && !lower.includes('transport') &&
           item.trim().length > 0) {
-        addMilestone('T-4d', -4 * 24 * 60, `Arrange & prep: ${item.trim()}`, 'prep', `Coordinate logistics, equipment, and confirmation for ${item.trim()} ahead of party`);
+        const itemText = item.trim();
+        const timing = inferTaskTimingLocally(itemText, '', event.title || '');
+        const offsetMins = timing.unit === 'weeks'
+          ? -timing.amount * 7 * 24 * 60
+          : timing.unit === 'hours'
+          ? -timing.amount * 60
+          : -timing.amount * 24 * 60;
+        addMilestone(timing.badge, offsetMins, itemText, timing.category, timing.reason);
       }
     });
 
     // Custom Note / Anything else
     if (context.customNote && context.customNote.trim() && !/speech|toast|talk/i.test(context.customNote)) {
-      addMilestone('T-3d', -3 * 24 * 60, `Prep: ${context.customNote.trim()}`, 'prep', `User specified prep: ${context.customNote.trim()}`);
+      const noteText = context.customNote.trim();
+      const timing = inferTaskTimingLocally(noteText, '', event.title || '');
+      const offsetMins = timing.unit === 'weeks'
+        ? -timing.amount * 7 * 24 * 60
+        : timing.unit === 'hours'
+        ? -timing.amount * 60
+        : -timing.amount * 24 * 60;
+      addMilestone(timing.badge, offsetMins, `Prep: ${noteText}`, timing.category, timing.reason);
     }
   } 
   else if (category === 'hosting_visitors') {
@@ -548,13 +563,18 @@ export function generateHeuristicMilestones(
 
   // Support customItems across all presets & event categories
   if (Array.isArray(context.customItems)) {
-    context.customItems.forEach((ci: string, idx: number) => {
+    context.customItems.forEach((ci: string) => {
       if (ci && typeof ci === 'string' && ci.trim()) {
         const itemText = ci.trim();
-        const title = `Task: ${itemText}`;
+        const title = itemText.startsWith('Task:') ? itemText : itemText;
         if (!milestones.some(m => m.title.toLowerCase() === title.toLowerCase() || m.title.toLowerCase().includes(itemText.toLowerCase()))) {
-          const offsetDays = Math.max(1, 5 - idx);
-          addMilestone(`T-${offsetDays}d`, -offsetDays * 24 * 60, title, 'prep', `Custom user task: ${itemText}`);
+          const timing = inferTaskTimingLocally(itemText, '', event.title || '');
+          const offsetMins = timing.unit === 'weeks'
+            ? -timing.amount * 7 * 24 * 60
+            : timing.unit === 'hours'
+            ? -timing.amount * 60
+            : -timing.amount * 24 * 60;
+          addMilestone(timing.badge, offsetMins, title, timing.category, timing.reason);
         }
       }
     });
@@ -590,10 +610,10 @@ export function generateICSContent(event: CalendarEvent): string {
   let ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//AheadOfTime Preparation Assistant//EN',
+    'PRODID:-//Ahead Of Time Preparation Assistant//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    `X-WR-CALNAME:${event.title} + AheadOfTime Milestones`,
+    `X-WR-CALNAME:${event.title} + Ahead Of Time Milestones`,
   ];
 
   // Main Event
@@ -606,7 +626,7 @@ export function generateICSContent(event: CalendarEvent): string {
   ics.push(`DTSTART:${formatDateToICS(mainEventStart)}`);
   ics.push(`DTEND:${formatDateToICS(mainEventEnd)}`);
   ics.push(`SUMMARY:🎯 ${event.title}`);
-  ics.push(`DESCRIPTION:Event prepared with AheadOfTime.\\nStatus: ${event.status}\\nCategory: ${event.category}`);
+  ics.push(`DESCRIPTION:Event prepared with Ahead Of Time.\\nStatus: ${event.status}\\nCategory: ${event.category}`);
   if (event.location) ics.push(`LOCATION:${event.location}`);
   ics.push('STATUS:CONFIRMED');
   ics.push('END:VEVENT');
@@ -626,7 +646,7 @@ export function generateICSContent(event: CalendarEvent): string {
     ics.push(`DTSTART:${formatDateToICS(msStart)}`);
     ics.push(`DTEND:${formatDateToICS(msEnd)}`);
     ics.push(`SUMMARY:[${ms.tMinusLabel}] ${ms.title} (${event.title})`);
-    ics.push(`DESCRIPTION:AheadOfTime Milestone for ${event.title}\\nCategory: ${ms.category}\\nDetail: ${ms.description || 'Milestone action'}`);
+    ics.push(`DESCRIPTION:Ahead Of Time Milestone for ${event.title}\\nCategory: ${ms.category}\\nDetail: ${ms.description || 'Milestone action'}`);
     ics.push('STATUS:CONFIRMED');
     ics.push('BEGIN:VALARM');
     ics.push('ACTION:DISPLAY');
@@ -676,6 +696,6 @@ export function formatMessagingSummary(event: CalendarEvent): string {
   }
 
   lines.push('');
-  lines.push(`_Generated by AheadOfTime Preparation Assistant_`);
+  lines.push(`_Generated by Ahead Of Time Preparation Assistant_`);
   return lines.join('\n');
 }

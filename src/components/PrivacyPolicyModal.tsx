@@ -75,7 +75,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
               <span>1. Google Calendar, Email &amp; Tasks Limited Use</span>
             </div>
             <p>
-              When you connect or scan your Google Calendar, Ahead Of Time requests explicit authorization for email authentication, secondary calendar management, event reading/writing, and Google Tasks sync strictly to build backward preparation milestones, breathing room, and timely reminders. AheadOfTime&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+              When you connect or scan your Google Calendar, Ahead Of Time requests explicit authorization for email authentication, secondary calendar management, event reading/writing, and Google Tasks sync strictly to build backward preparation milestones, breathing room, and timely reminders. Ahead Of Time&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
               <a 
                 href="https://developers.google.com/terms/api-services-user-data-policy" 
                 target="_blank" 

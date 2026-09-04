@@ -171,7 +171,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const pendingTasks = evt.milestones?.filter((m) => m.status !== 'completed') || [];
             const nextTask = pendingTasks[0];
 
-            const isUnrefined = evt.needsRefinement === true && !evt.refinedAt;
+            const isUnrefined = evt.needsRefinement === true && !evt.refinedAt && (!evt.context || Object.keys(evt.context).length === 0);
 
             return (
               <div

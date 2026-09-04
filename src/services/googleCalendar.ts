@@ -312,7 +312,7 @@ export async function pushSingleMilestoneToGoogleCalendar(
   try {
     const taskRes = await createGoogleTask(accessToken, {
       title: `[${milestone.tMinusLabel}] ${milestone.title} (${eventTitle})`,
-      notes: `AheadOfTime Milestone for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}`,
+      notes: `Ahead Of Time Milestone for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}`,
       due: `${dateOnly}T00:00:00.000Z`,
       taskListId: options?.taskListId || '@default',
     });
@@ -458,7 +458,7 @@ export async function syncEventToGoogleCalendar(
       try {
         const taskItem = await createGoogleTask(accessToken, {
           title: `[${milestone.tMinusLabel}] ${milestone.title} (${event.title})`,
-          notes: `AheadOfTime Milestone for "${event.title}"\nEvent Date: ${eventDateOnly}\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${msDateOnly}\nCategory: ${milestone.category}\nAction: ${milestone.description || ''}`,
+          notes: `Ahead Of Time Milestone for "${event.title}"\nEvent Date: ${eventDateOnly}\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${msDateOnly}\nCategory: ${milestone.category}\nAction: ${milestone.description || ''}`,
           due: `${msDateOnly}T00:00:00.000Z`,
           taskListId: options?.taskListId || '@default',
         });

@@ -23,7 +23,7 @@ interface PrivacyPageProps {
 export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
   useEffect(() => {
     // Update document title for SEO & OAuth compliance
-    document.title = 'Privacy Policy & Google API Data Disclosure - AheadOfTime';
+    document.title = 'Privacy Policy & Google API Data Disclosure - Ahead Of Time';
     window.scrollTo(0, 0);
   }, []);
 
@@ -43,7 +43,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
           <div 
             onClick={handleGoHome}
             className="cursor-pointer flex items-center gap-2 group"
-            title="AheadOfTime Home"
+            title="Ahead Of Time Home"
           >
             <Logo variant="small" />
           </div>
@@ -80,7 +80,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
               Last updated: September 4, 2026
             </span>
             <span>&bull;</span>
-            <span>App: AheadOfTime (https://aheadoftime.app)</span>
+            <span>App: Ahead Of Time (https://aheadoftime.app)</span>
             <span>&bull;</span>
             <span>Applies to Web, Google OAuth, &amp; Calendar Integrations</span>
           </div>
@@ -93,7 +93,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
             <h2>Our Privacy Principles in Plain English</h2>
           </div>
           <p className="text-xs sm:text-sm text-emerald-900/90 leading-relaxed font-medium">
-            AheadOfTime exists to eliminate the scramble before important calendar events. 
+            Ahead Of Time exists to eliminate the scramble before important calendar events. 
             We do <strong>not</strong> sell your data, do <strong>not</strong> advertise to you, 
             do <strong>not</strong> inspect your personal communications, and do <strong>not</strong> use your calendar data to train public foundation models. 
             Your calendar data is processed purely to calculate preparation milestones and breathing room for your schedule.
@@ -110,7 +110,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
               <span>Overview &amp; Scope</span>
             </h3>
             <p>
-              This Privacy Policy explains how <strong>AheadOfTime</strong> (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;the Service&rdquo;), available at 
+              This Privacy Policy explains how <strong>Ahead Of Time</strong> (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;the Service&rdquo;), available at 
               <a href="https://aheadoftime.app" className="text-sky-700 hover:underline font-semibold ml-1">https://aheadoftime.app</a>, 
               collects, processes, stores, and protects information when you use our web application, onboarding engine, 
               and Google Calendar / Google Tasks integration.
@@ -134,7 +134,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
             </div>
             
             <p className="text-slate-700">
-              AheadOfTime allows users to connect their Google Account via Google Identity Services (GIS) / OAuth 2.0. 
+              Ahead Of Time allows users to connect their Google Account via Google Identity Services (GIS) / OAuth 2.0. 
               We request only the minimum necessary permissions to scan upcoming commitments, calculate reverse-planning lead times, and write isolated task milestones. 
               Below is the comprehensive list of all requested scopes and their exact operational purposes:
             </p>
@@ -158,7 +158,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                     <span className="text-[11px] font-semibold text-slate-500">Authentication</span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    View user&rsquo;s primary Google account email address to authenticate identity, verify active connection status, and manage their AheadOfTime session.
+                    View user&rsquo;s primary Google account email address to authenticate identity, verify active connection status, and manage their Ahead Of Time session.
                   </p>
                 </div>
 
@@ -171,7 +171,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                     <span className="text-[11px] font-semibold text-slate-500">App-Owned Entries</span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    Create secondary calendars and manage preparation milestone blocks created specifically by AheadOfTime without modifying unrelated existing calendar entries.
+                    Create secondary calendars and manage preparation milestone blocks created specifically by Ahead Of Time without modifying unrelated existing calendar entries.
                   </p>
                 </div>
               </div>
@@ -274,7 +274,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 <span>Google API Services User Data Policy Compliance</span>
               </h4>
               <p className="text-xs sm:text-sm text-sky-950 font-medium leading-relaxed">
-                AheadOfTime&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+                Ahead Of Time&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
                 <a 
                   href="https://developers.google.com/terms/api-services-user-data-policy" 
                   target="_blank" 
@@ -294,7 +294,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 <span>Explicit Prohibition on AI &amp; Machine Learning Model Training</span>
               </h4>
               <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed">
-                AheadOfTime does <strong>NOT</strong> use Google Workspace APIs or any user data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) foundation models. All data processing is strictly deterministic and localized to your specific preparation timeline calculations.
+                Ahead Of Time does <strong>NOT</strong> use Google Workspace APIs or any user data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) foundation models. All data processing is strictly deterministic and localized to your specific preparation timeline calculations.
               </p>
             </div>
           </section>
@@ -306,7 +306,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
               <span>How We Use Your Information</span>
             </h3>
             <p>
-              We process your data exclusively to deliver the functionality of the AheadOfTime application:
+              We process your data exclusively to deliver the functionality of the Ahead Of Time application:
             </p>
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               <li className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5">
@@ -344,7 +344,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
             </h3>
             <div className="space-y-2">
               <p>
-                AheadOfTime is architected with a privacy-first, client-side approach:
+                Ahead Of Time is architected with a privacy-first, client-side approach:
               </p>
               <ul className="list-disc list-inside space-y-1.5 pl-2 text-slate-600 text-xs sm:text-sm">
                 <li><strong>No Central Database of User Calendars:</strong> We do not store copies of your full calendar database on persistent central servers.</li>
@@ -400,7 +400,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                   <span>Google Account Revocation</span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  You can revoke AheadOfTime&rsquo;s access directly at any time via your 
+                  You can revoke Ahead Of Time&rsquo;s access directly at any time via your 
                   <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="text-sky-700 underline font-semibold ml-1 inline-flex items-center gap-0.5">
                     Google Account Security Hub <ExternalLink className="w-3 h-3 inline" />
                   </a>.
@@ -419,7 +419,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
               If you have any questions, concerns, or requests regarding this Privacy Policy or how your calendar data is processed, please contact our team:
             </p>
             <div className="pt-2 text-xs sm:text-sm text-slate-900 font-medium space-y-1">
-              <p><strong>AheadOfTime Application Support</strong></p>
+              <p><strong>Ahead Of Time Application Support</strong></p>
               <p>Website: <a href="https://aheadoftime.app" className="text-sky-700 underline">https://aheadoftime.app</a></p>
               <p>Email: <a href="mailto:support@aheadoftime.app" className="text-sky-700 underline">support@aheadoftime.app</a></p>
               <p>Direct Inquiries: <a href="mailto:Th.blanckaert@gmail.com" className="text-sky-700 underline">Th.blanckaert@gmail.com</a></p>
@@ -432,7 +432,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
         <footer className="pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <Logo variant="small" />
-            <span>&copy; {new Date().getFullYear()} AheadOfTime. All rights reserved.</span>
+            <span>&copy; {new Date().getFullYear()} Ahead Of Time. All rights reserved.</span>
           </div>
 
           <button
