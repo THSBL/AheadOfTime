@@ -255,21 +255,13 @@ function App() {
     };
   }, []);
 
-  // Navigation handlers between views and privacy URL
+  // Navigation handlers using router
   const navigateToPrivacyPage = () => {
-    if (typeof window !== 'undefined' && window.history) {
-      window.history.pushState(null, '', '/privacy');
-    }
-    setCurrentView('privacy');
+    navigate('/privacy');
   };
 
   const navigateToHome = () => {
-    if (typeof window !== 'undefined' && window.history) {
-      window.history.pushState(null, '', '/');
-    }
-    const completed = localStorage.getItem('aot_onboarding_completed') === 'true' || localStorage.getItem('has_completed_onboarding') === 'true';
-    const connected = localStorage.getItem('aot_calendar_connected') === 'true' || Boolean(getStoredAccessToken() && !isTokenExpired());
-    setCurrentView((completed || connected) ? 'dashboard' : 'landing');
+    navigate('/');
   };
 
   // 3. Onboarding & Connection Completion Handlers
@@ -1025,31 +1017,8 @@ function App() {
         <div className="absolute top-2/3 right-1/4 w-[450px] h-[450px] bg-indigo-200/25 rounded-full blur-3xl" />
       </div>
 
-      {currentView === 'privacy' ? (
-        <div className="relative z-10 w-full min-h-screen">
-          <PrivacyPage onNavigateHome={navigateToHome} />
-        </div>
-      ) : currentView === 'landing' ? (
-        <div className="relative z-10 w-full h-screen overflow-y-auto">
-          <LandingUSPPage
-            onGetStarted={() => setCurrentView('onboarding')}
-            onExploreDashboard={handleLandingConnectCalendar}
-            onGoToDashboard={() => setCurrentView('dashboard')}
-            onOpenPrivacyPolicy={navigateToPrivacyPage}
-          />
-        </div>
-      ) : currentView === 'onboarding' ? (
-        <div className="relative z-10 w-full h-screen overflow-y-auto">
-          <OnboardingPage
-            initialProfile={onboardingProfile || undefined}
-            onComplete={handleCompleteOnboarding}
-            onOpenPrivacyPolicy={navigateToPrivacyPage}
-          />
-        </div>
-      ) : (
-        <>
-          {/* Milky Glass Header */}
-          <div className="relative z-20">
+      {/* Milky Glass Header */}
+      <div className="relative z-20">
             <Header
               currentReferenceDate={currentReferenceDate}
               onReferenceDateChange={(newDate) => setCurrentReferenceDate(newDate)}
@@ -1272,8 +1241,6 @@ function App() {
               </button>
             </div>
           </footer>
-        </>
-      )}
 
       {/* Real-time Bidirectional Sync Notification Toast */}
       {syncToast && (
@@ -1417,6 +1384,7 @@ function App() {
 // Landing Route Component
 function LandingRoute() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const returnTo = searchParams.get('returnTo');
 
   const hasCompleted = typeof window !== 'undefined' && (
@@ -1429,32 +1397,49 @@ function LandingRoute() {
     Boolean(getStoredAccessToken() && !isTokenExpired())
   );
 
-  if (hasCompleted || isConnected) {
-    return <Navigate to={returnTo ? decodeURIComponent(returnTo) : "/dashboard"} replace />;
-  }
-
-  const handleLandingConnectCalendar = () => {
+  const handleEnterApp = () => {
     try {
       localStorage.setItem('aot_onboarding_completed', 'true');
-      localStorage.setItem('aot_calendar_connected', 'true');
       localStorage.setItem('has_completed_onboarding', 'true');
     } catch (e) {
-      console.warn('Could not save calendar connection state', e);
+      console.warn('Could not save onboarding state', e);
     }
-    window.location.href = returnTo ? decodeURIComponent(returnTo) : '/dashboard';
+    const target = returnTo ? decodeURIComponent(returnTo) : '/dashboard';
+    navigate(target);
   };
 
   return (
     <LandingUSPPage
-      onConnectCalendar={handleLandingConnectCalendar}
-      onStartFreeTrial={() => {
-        try {
-          localStorage.setItem('aot_onboarding_completed', 'true');
-        } catch (e) {
-          console.warn('Error saving onboarding state', e);
-        }
-        window.location.href = returnTo ? decodeURIComponent(returnTo) : '/dashboard';
-      }}
+      onGetStarted={() => navigate('/onboarding')}
+      onExploreDashboard={handleEnterApp}
+      onGoToDashboard={hasCompleted || isConnected ? handleEnterApp : undefined}
+      onOpenPrivacyPolicy={() => navigate('/privacy')}
+    />
+  );
+}
+
+// Onboarding Route Component
+function OnboardingRoute() {
+  const navigate = useNavigate();
+
+  const handleComplete = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => {
+    try {
+      localStorage.setItem('onboarding_profile', JSON.stringify(profile));
+      localStorage.setItem('aot_onboarding_completed', 'true');
+      localStorage.setItem('has_completed_onboarding', 'true');
+      if (action === 'connect_calendar') {
+        localStorage.setItem('aot_calendar_connected', 'true');
+      }
+    } catch (e) {
+      console.warn('Error saving onboarding profile', e);
+    }
+    navigate('/dashboard');
+  };
+
+  return (
+    <OnboardingPage
+      onComplete={handleComplete}
+      onOpenPrivacyPolicy={() => navigate('/privacy')}
     />
   );
 }
@@ -1467,6 +1452,7 @@ export default function AppWithRouter() {
       <Routes>
         {/* Public / SEO Routes */}
         <Route path="/" element={<LandingRoute />} />
+        <Route path="/onboarding" element={<OnboardingRoute />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/feedback" element={<FeedbackPage />} />
