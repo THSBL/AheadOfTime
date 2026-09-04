@@ -118,46 +118,183 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
           </section>
 
           {/* Section 2: Google OAuth & Limited Use Policy (Crucial for Verification) */}
-          <section className="space-y-4 bg-white border border-sky-200 rounded-3xl p-6 sm:p-8 shadow-xs">
-            <div className="flex items-center gap-2.5 text-sky-950">
-              <div className="p-2 rounded-xl bg-sky-100 text-sky-800">
+          <section className="space-y-6 bg-white border border-sky-200 rounded-3xl p-6 sm:p-8 shadow-xs">
+            <div className="flex items-center gap-3 text-sky-950 border-b border-slate-100 pb-4">
+              <div className="p-2.5 rounded-2xl bg-sky-100 text-sky-800">
                 <Calendar className="w-5 h-5" />
               </div>
-              <h3 className="text-lg sm:text-xl font-black">
-                2. Google User Data Access &amp; Limited Use Disclosure
-              </h3>
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                  2. Google User Data Access &amp; Limited Use Disclosure
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Detailed breakdown of every requested Google OAuth 2.0 API scope and functional justification
+                </p>
+              </div>
             </div>
             
-            <p>
+            <p className="text-slate-700">
               AheadOfTime allows users to connect their Google Account via Google Identity Services (GIS) / OAuth 2.0. 
-              When authorized by you, we request access to the following Google API scopes:
+              We request only the minimum necessary permissions to scan upcoming commitments, calculate reverse-planning lead times, and write isolated task milestones. 
+              Below is the comprehensive list of all requested scopes and their exact operational purposes:
             </p>
 
-            <div className="space-y-2.5 pl-2">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <code className="text-xs font-mono font-bold text-sky-900">https://www.googleapis.com/auth/calendar.events</code>
-                <p className="text-xs text-slate-600 mt-1">
-                  Used exclusively to inspect event titles and dates to calculate preparation milestones, and to write milestone reminders or breathing room blocks to your calendar upon your explicit confirmation.
-                </p>
+            {/* Non-Sensitive Scopes Group */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold uppercase tracking-wider">
+                  Non-Sensitive Scopes
+                </span>
+                <span className="text-xs text-slate-500 font-medium">Identity &amp; App-Created Calendar Events</span>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <code className="text-xs font-mono font-bold text-sky-900">https://www.googleapis.com/auth/tasks</code>
-                <p className="text-xs text-slate-600 mt-1">
-                  Used optionally to create and synchronize backward preparation task checklists directly into your Google Tasks lists.
-                </p>
+              <div className="grid grid-cols-1 gap-2.5">
+                {/* userinfo.email */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/userinfo.email
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Authentication</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    View user&rsquo;s primary Google account email address to authenticate identity, verify active connection status, and manage their AheadOfTime session.
+                  </p>
+                </div>
+
+                {/* calendar.app.created */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/calendar.app.created
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">App-Owned Entries</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Create secondary calendars and manage preparation milestone blocks created specifically by AheadOfTime without modifying unrelated existing calendar entries.
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl space-y-2">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-sky-950">
-                Google API Services User Data Policy Compliance
+            {/* Sensitive Scopes Group */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-xs font-bold uppercase tracking-wider">
+                  Sensitive Scopes
+                </span>
+                <span className="text-xs text-slate-500 font-medium">Calendar Discovery, Schedule Scanning &amp; Tasks Sync</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                {/* calendar.calendarlist */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/calendar.calendarlist
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Calendar Discovery</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Read user&rsquo;s calendar list to detect whether an &ldquo;Ahead of Time Tasks&rdquo; sub-calendar already exists, preventing duplicate calendar creation and ensuring seamless synchronization.
+                  </p>
+                </div>
+
+                {/* calendar.calendars */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/calendar.calendars
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Secondary Calendar Provisioning</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Create and configure the isolated &ldquo;Ahead of Time Tasks&rdquo; secondary calendar, safeguarding primary calendar data while providing dedicated visual preparation layers.
+                  </p>
+                </div>
+
+                {/* calendar.events */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/calendar.events
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Milestone Read/Write</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Read primary calendar event titles and times to compute T-minus preparation milestones, and write/delete prep tasks and buffer zones on the user-approved secondary calendar upon explicit confirmation.
+                  </p>
+                </div>
+
+                {/* calendar.events.owned */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/calendar.events.owned
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Owned Calendar Management</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Manage task items and milestone reminders on calendars owned by the user, ensuring full control and accurate synchronization of scheduled preparation timelines.
+                  </p>
+                </div>
+
+                {/* calendar.events.readonly */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/calendar.events.readonly
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Read-Only Agenda Ingestion</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Read-only access used exclusively to detect incoming schedules and high-priority commitments for backwards planning calculations without modifying source calendar entries.
+                  </p>
+                </div>
+
+                {/* tasks */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <code className="text-xs font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80 break-all">
+                      https://www.googleapis.com/auth/tasks
+                    </code>
+                    <span className="text-[11px] font-semibold text-slate-500">Google Tasks Checklists</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Create, organize, and synchronize backwards preparation task checklists directly into the user&rsquo;s Google Tasks lists upon explicit opt-in.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Mandatory Verbatim Limited Use Statement */}
+            <div className="p-5 bg-sky-50/90 border border-sky-200 rounded-2xl space-y-2.5">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-sky-950 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-sky-700" />
+                <span>Google API Services User Data Policy Compliance</span>
               </h4>
-              <p className="text-xs sm:text-sm text-sky-900 font-medium leading-relaxed">
-                AheadOfTime&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to 
-                the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noreferrer" className="underline font-bold text-sky-950 inline-flex items-center gap-1">
-                  Google API Services User Data Policy <ExternalLink className="w-3 h-3 inline" />
-                </a>, including the Limited Use requirements.
+              <p className="text-xs sm:text-sm text-sky-950 font-medium leading-relaxed">
+                AheadOfTime&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+                <a 
+                  href="https://developers.google.com/terms/api-services-user-data-policy" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="underline font-bold text-sky-900 hover:text-sky-950 inline-flex items-center gap-1"
+                >
+                  Google API Services User Data Policy <ExternalLink className="w-3.5 h-3.5 inline" />
+                </a>
+                , including the Limited Use requirements.
+              </p>
+            </div>
+
+            {/* Explicit AI / ML Model Training Prohibition */}
+            <div className="p-5 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-2">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+                <Lock className="w-4 h-4 text-amber-700" />
+                <span>Explicit Prohibition on AI &amp; Machine Learning Model Training</span>
+              </h4>
+              <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed">
+                AheadOfTime does <strong>NOT</strong> use Google Workspace APIs or any user data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) foundation models. All data processing is strictly deterministic and localized to your specific preparation timeline calculations.
               </p>
             </div>
           </section>
@@ -222,16 +359,17 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
           <section className="space-y-3">
             <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
               <span className="w-7 h-7 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xs font-black">5</span>
-              <span>Prohibition on Selling &amp; AI Model Training</span>
+              <span>Prohibition on Selling, Advertising Transfers &amp; AI Training</span>
             </h3>
-            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-950 space-y-1.5">
-              <p className="text-xs sm:text-sm font-semibold">
-                We strictly enforce that:
+            <div className="p-5 rounded-3xl bg-rose-50 border border-rose-200 text-rose-950 space-y-2.5">
+              <p className="text-xs sm:text-sm font-bold">
+                In strict compliance with consumer privacy standards and the Google API Services User Data Policy:
               </p>
-              <ul className="list-disc list-inside space-y-1 text-xs text-rose-900">
-                <li>We <strong>NEVER</strong> sell, rent, monetize, or trade your personal data or Google Calendar information to third parties or data brokers.</li>
-                <li>We <strong>NEVER</strong> use your personal Google Calendar event content to train generalized or public artificial intelligence models.</li>
-                <li>We <strong>NEVER</strong> allow human employees to read your calendar events unless explicitly requested by you for technical troubleshooting.</li>
+              <ul className="list-disc list-inside space-y-1.5 text-xs text-rose-900 font-medium leading-relaxed">
+                <li>We <strong>NEVER</strong> sell, rent, monetize, or trade your personal data or Google account information to third parties, data brokers, or advertising platforms.</li>
+                <li>We <strong>NEVER</strong> use or transfer Google user data to serve targeted advertisements, retargeting campaigns, or personalized promotions.</li>
+                <li>We <strong>NEVER</strong> use Google Workspace APIs or any data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) models.</li>
+                <li>We <strong>NEVER</strong> permit human employees or contractors to read your calendar events or task data, unless we have obtained your affirmative agreement for specific technical troubleshooting, it is necessary for security reasons (such as investigating abuse), or to comply with applicable law.</li>
               </ul>
             </div>
           </section>

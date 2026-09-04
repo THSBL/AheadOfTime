@@ -72,10 +72,18 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Calendar className="w-4 h-4 text-sky-600" />
-              <span>1. Google Calendar &amp; Tasks Limited Use</span>
+              <span>1. Google Calendar, Email &amp; Tasks Limited Use</span>
             </div>
             <p>
-              When you connect or scan your Google Calendar, Ahead Of Time accesses read-only metadata (event title, start date/time, and general location) strictly to build backward preparation milestones, breathing room, and timely reminders. Ahead Of Time&rsquo;s use and transfer of information received from Google APIs will adhere to the Google API Services User Data Policy, including Limited Use requirements.
+              When you connect or scan your Google Calendar, Ahead Of Time requests explicit authorization for email authentication, secondary calendar management, event reading/writing, and Google Tasks sync strictly to build backward preparation milestones, breathing room, and timely reminders. AheadOfTime&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+              <a 
+                href="https://developers.google.com/terms/api-services-user-data-policy" 
+                target="_blank" 
+                rel="noreferrer" 
+                className="underline font-bold text-sky-900"
+              >
+                Google API Services User Data Policy
+              </a>, including the Limited Use requirements.
             </p>
           </section>
 
@@ -100,7 +108,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
               <span>3. Zero Commercialization &amp; No AI Training</span>
             </div>
             <p>
-              We never sell, rent, monetize, or transfer your personal preferences or calendar metadata to third-party advertisers, data aggregators, or brokers. We never use your event data to train generalized AI models.
+              We never sell, rent, monetize, or transfer your personal preferences or calendar metadata to third-party advertisers, data aggregators, or brokers. We never use Google Workspace APIs or event data to train, retrain, or fine-tune generalized AI foundation models.
             </p>
           </section>
 
