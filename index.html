@@ -12,7 +12,14 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <noscript>
+        <div style="font-family: sans-serif; padding: 24px; text-align: center;">
+          <p>AheadOfTime requires JavaScript to run the interactive calendar planner.</p>
+          <p><a href="/privacy">Privacy Policy</a></p>
+        </div>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

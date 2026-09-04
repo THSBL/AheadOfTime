@@ -34,13 +34,19 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             </button>
           )}
 
-          <button
-            onClick={onOpenPrivacyPolicy}
+          <a
+            href="/privacy"
+            onClick={(e) => {
+              if (onOpenPrivacyPolicy) {
+                e.preventDefault();
+                onOpenPrivacyPolicy();
+              }
+            }}
             className="text-xs sm:text-sm text-slate-600 hover:text-slate-900 font-medium transition-colors cursor-pointer hidden sm:flex items-center gap-1.5"
           >
             <ShieldCheck className="w-4 h-4 text-sky-700" />
             <span>Privacy Notice</span>
-          </button>
+          </a>
 
           <button
             onClick={onGetStarted}
@@ -183,9 +189,18 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
 
         {/* Footer info */}
         <div className="text-xs text-slate-500 flex flex-wrap items-center justify-center gap-4 py-4">
-          <button onClick={onOpenPrivacyPolicy} className="hover:text-slate-900 underline cursor-pointer">
+          <a
+            href="/privacy"
+            onClick={(e) => {
+              if (onOpenPrivacyPolicy) {
+                e.preventDefault();
+                onOpenPrivacyPolicy();
+              }
+            }}
+            className="hover:text-slate-900 underline cursor-pointer"
+          >
             Privacy Policy
-          </button>
+          </a>
           <span>&bull;</span>
           <span>Secure Calendar Integration</span>
         </div>

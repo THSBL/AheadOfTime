@@ -1131,13 +1131,16 @@ export default function App() {
                 Preferences &amp; Heuristics
               </button>
               <span className="text-slate-300">&bull;</span>
-              <button
-                type="button"
-                onClick={() => setIsPrivacyModalOpen(true)}
+              <a
+                href="/privacy"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateToPrivacyPage();
+                }}
                 className="hover:text-slate-700 transition-colors cursor-pointer"
               >
-                Privacy Notice
-              </button>
+                Privacy Policy
+              </a>
             </div>
 
             <div className="flex items-center gap-2 mt-1.5 sm:mt-0">
