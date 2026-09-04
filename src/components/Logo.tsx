@@ -28,7 +28,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'small', className = '', s
         <img 
           src="/assets/AheadOfTime_Large-logo-tag.png" 
           alt="Ahead Of Time Logo" 
-          className={`${is2xl ? 'max-h-60 sm:max-h-80 lg:max-h-[360px]' : isXl ? 'max-h-48 sm:max-h-64 lg:max-h-80' : 'max-h-12 sm:max-h-16'} w-auto object-contain`} 
+          className={`${is2xl ? 'max-h-24 sm:max-h-32 md:max-h-36 lg:max-h-44' : isXl ? 'max-h-20 sm:max-h-28' : 'max-h-10 sm:max-h-14'} w-auto object-contain`} 
         />
       </div>
     );

@@ -20,7 +20,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       
       {/* Top Header Navigation */}
       <div className="max-w-6xl mx-auto w-full flex items-center justify-between p-4 sm:p-6 lg:px-10">
-        <Logo variant="large" size="normal" />
+        <Logo variant="small" />
 
         <div className="flex items-center gap-3 sm:gap-4">
           {onGoToDashboard && (
