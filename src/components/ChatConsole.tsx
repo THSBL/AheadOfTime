@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { AgentMessage, CalendarEvent } from '../types';
 import { EVENT_PRESETS, SMALL_PRESETS, PromptPreset } from '../data/samplePresets';
+import { ThinkingModule } from './ThinkingModule';
 
 interface ChatConsoleProps {
   messages: AgentMessage[];
@@ -60,6 +61,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   isLandingMode,
 }) => {
   const [inputText, setInputText] = useState('');
+  const [lastSubmittedPrompt, setLastSubmittedPrompt] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -391,6 +393,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     }
 
     const fullMessage = parts.join('. ');
+    setLastSubmittedPrompt(eventTitle || whoInput || 'New Event');
 
     // Reset preset step state
     setPresetStep('initial');
@@ -406,30 +409,22 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     onSendMessage(fullMessage, false);
   };
 
-  // Handle Freeform Form Submit & Interactive Clarification Card (1.1 unclear details & 1.2 recognized events like birthday/trip)
+  // Handle Freeform Form Submit - directly sends event description to agent and triggers Thinking Module
   const handleFreeformSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || isLoading) return;
     const textToSend = inputText.trim();
-    
-    // Analyze text for custom clarification / recognition (birthdays, trips, dinner, unclear details)
-    const analysis = analyzeCustomText(textToSend);
-    setCustomEventTitle(textToSend);
-    setCustomParsedCategory(analysis.category);
-    setCustomWho(analysis.extractedWho || (analysis.category === 'birthday' ? 'Birthday Guest' : analysis.category === 'trip' ? 'Travelers' : 'Event Subject'));
-    setCustomDate(analysis.extractedDate || '2026-09-16');
-    setCustomTime(analysis.extractedTime || '19:00');
-    setCustomLocation(analysis.extractedLocation || '');
-    setClarificationReason(analysis.detectedReason);
-    setCustomClarificationStep('details');
+    setLastSubmittedPrompt(textToSend);
     setInputText('');
     setIsInputFocused(false);
     onFocusChange?.(false);
+    onSendMessage(textToSend, false);
   };
 
   const handleConfirmCustomClarification = (e: React.FormEvent) => {
     e.preventDefault();
     const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}. Please build the AheadOfTime preparation plan!`;
+    setLastSubmittedPrompt(customEventTitle || detailsMsg);
     setCustomClarificationStep('none');
     onSendMessage(detailsMsg, false);
   };
@@ -1413,17 +1408,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         </div>
       )}
 
-      {/* Loading State Spinner */}
+      {/* Interactive AI Thinking Module during Event Generation */}
       {isLoading && (
-        <div className="flex items-center justify-center gap-3 text-slate-900 py-10 animate-pulse">
-          <div className="flex gap-1.5">
-            <div className="w-2.5 h-2.5 bg-slate-900 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-2.5 h-2.5 bg-slate-900 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-2.5 h-2.5 bg-slate-900 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-          <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-slate-800">
-            Building backward preparation milestones...
-          </span>
+        <div className="py-6 px-1 animate-in fade-in zoom-in-95 duration-300">
+          <ThinkingModule promptText={lastSubmittedPrompt} />
         </div>
       )}
 
