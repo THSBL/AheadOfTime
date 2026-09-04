@@ -1602,7 +1602,7 @@ const InitialPresetsAndFreeform = ({
           <div className="w-full border-t border-slate-200/80" />
         </div>
         <div className="relative bg-[#f1f5f9] px-4 text-xs font-bold text-slate-500 uppercase tracking-wider rounded-full">
-          Or choose an event preset
+          Choose an event preset
         </div>
       </div>
 

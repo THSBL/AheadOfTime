@@ -86,7 +86,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [clarifyLocation, setClarifyLocation] = useState('');
   const [isDeepRefining, setIsDeepRefining] = useState(false);
 
-  const activeEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) : (events[0] || null);
+  const activeEvent = selectedEventId 
+    ? (events.find((e) => e.id === selectedEventId) || events[0] || null) 
+    : (events[0] || null);
 
   const handleDeepRefineWithAI = async () => {
     if (!activeEvent || isDeepRefining || !onUpdateEvent) return;
