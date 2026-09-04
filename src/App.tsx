@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { MessengerSidebar } from './components/MessengerSidebar';
 import { ChatConsole } from './components/ChatConsole';
@@ -50,6 +50,46 @@ const INITIAL_MESSAGES: AgentMessage[] = [
   },
 ];
 
+// Helper function to safely merge synced Google/external events with local events without deleting newly created local items
+function mergeEvents(existingEvents: CalendarEvent[], syncedEvents: CalendarEvent[]): CalendarEvent[] {
+  if (!syncedEvents || syncedEvents.length === 0) return existingEvents;
+
+  const syncedMap = new Map<string, CalendarEvent>();
+  syncedEvents.forEach((evt) => syncedMap.set(evt.id, evt));
+
+  // Update existing events if present in syncedEvents
+  const updatedExisting = existingEvents.map((evt) => {
+    const synced = syncedMap.get(evt.id);
+    if (!synced) return evt; // Keep existing local event intact even if not in synced list
+
+    const syncedMsMap = new Map((synced.milestones || []).map((m) => [m.id, m]));
+    const mergedMilestones = (evt.milestones || []).map((m) => {
+      const syncedMs = syncedMsMap.get(m.id) || (m.googleTaskId ? synced.milestones?.find((sm) => sm.googleTaskId === m.googleTaskId) : undefined);
+      if (syncedMs) {
+        return {
+          ...m,
+          status: syncedMs.status,
+          googleTaskId: syncedMs.googleTaskId || m.googleTaskId,
+          completedAt: syncedMs.completedAt || m.completedAt,
+        };
+      }
+      return m;
+    });
+
+    return {
+      ...evt,
+      ...synced,
+      milestones: mergedMilestones,
+    };
+  });
+
+  // Add any brand-new events from synced
+  const existingIds = new Set(existingEvents.map((e) => e.id));
+  const newSyncedEvents = syncedEvents.filter((e) => !existingIds.has(e.id));
+
+  return [...updatedExisting, ...newSyncedEvents];
+}
+
 export default function App() {
   // Helper to detect if user requested the /privacy route directly
   const checkPathForPrivacy = (): boolean => {
@@ -96,6 +136,11 @@ export default function App() {
     }
     return INITIAL_EVENTS;
   });
+
+  const eventsRef = useRef(events);
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
 
   const [messages, setMessages] = useState<AgentMessage[]>(() => {
     const saved = localStorage.getItem('tminus_messages_v2');
@@ -305,18 +350,30 @@ export default function App() {
   const [lastGoogleSyncTime, setLastGoogleSyncTime] = useState<Date | null>(null);
   const [syncToast, setSyncToast] = useState<{ id: number; message: string; count?: number } | null>(null);
 
-  // Core Bidirectional Task Completion Sync
-  const runGoogleTaskSync = async (silent = false) => {
+  // Core Bidirectional Task Completion Sync (only runs daily unless forced by explicit user action)
+  const runGoogleTaskSync = async (silent = false, force = false) => {
     const token = getStoredAccessToken();
     if (!token || isTokenExpired()) return;
 
+    // Daily check guard: unless forcefully requested by user, only check daily (24h threshold)
+    if (!force) {
+      const lastSync = localStorage.getItem('aot_last_daily_task_sync_time');
+      const now = Date.now();
+      if (lastSync && now - parseInt(lastSync, 10) < 24 * 60 * 60 * 1000) {
+        return;
+      }
+    }
+
     setIsSyncingWithGoogle(true);
     try {
-      const summary: TaskSyncSummary = await syncGoogleTasksWithLocalEvents(token, events);
-      if (summary.updatedEvents && summary.updatedEvents !== events) {
-        setEvents(summary.updatedEvents);
+      const currentEvents = eventsRef.current;
+      const summary: TaskSyncSummary = await syncGoogleTasksWithLocalEvents(token, currentEvents);
+      if (summary.updatedEvents) {
+        setEvents((prev) => mergeEvents(prev, summary.updatedEvents));
       }
-      setLastGoogleSyncTime(new Date());
+      const nowTs = Date.now();
+      localStorage.setItem('aot_last_daily_task_sync_time', nowTs.toString());
+      setLastGoogleSyncTime(new Date(nowTs));
 
       if (summary.completedCount > 0) {
         setSyncToast({
@@ -348,39 +405,12 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [syncToast]);
 
-  // Periodic and Event-Driven Sync (Mount, Window Focus, Visibility Change, 30s interval)
+  // Initial mount daily check (respects 24h threshold, no polling interval)
   useEffect(() => {
     const token = getStoredAccessToken();
     if (token && !isTokenExpired()) {
-      runGoogleTaskSync(true);
+      runGoogleTaskSync(true, false);
     }
-
-    const handleFocus = () => {
-      if (document.visibilityState === 'visible') {
-        const t = getStoredAccessToken();
-        if (t && !isTokenExpired()) {
-          runGoogleTaskSync(true);
-        }
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleFocus);
-
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        const t = getStoredAccessToken();
-        if (t && !isTokenExpired()) {
-          runGoogleTaskSync(true);
-        }
-      }
-    }, 30000);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleFocus);
-      clearInterval(interval);
-    };
   }, []);
 
   // Sync to LocalStorage
@@ -1253,7 +1283,7 @@ export default function App() {
               events={events}
               selectedEventId={selectedEventId || undefined}
               onUpdateEvent={handleUpdateEvent}
-              onUpdateAllEvents={(updated) => setEvents(updated)}
+              onUpdateAllEvents={(updated) => setEvents((prev) => mergeEvents(prev, updated))}
               onClose={() => setIsGoogleCalendarModalOpen(false)}
             />
           </div>

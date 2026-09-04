@@ -296,7 +296,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <h3 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight leading-snug break-words">
                 {activeEvent.title}
               </h3>
-              {activeEvent.needsRefinement && (
+              {activeEvent.needsRefinement && !activeEvent.refinedAt && (
                 <span className="text-[10px] font-mono font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
                   <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                   <span>Unrefined</span>
@@ -448,36 +448,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}
       <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 bg-sky-50/20 w-full">
-        {/* Compact Unrefined Alert Strip */}
-        {activeEvent.needsRefinement && (
-          <div className="p-2.5 sm:p-3 rounded-2xl bg-amber-50/90 border border-amber-300/80 shadow-2xs flex items-center justify-between gap-2.5 animate-in fade-in duration-300">
-            <div className="flex items-center gap-2 min-w-0">
-              <Sparkles className="w-4 h-4 text-amber-700 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-xs font-bold text-amber-950 block truncate">
-                  Unrefined timing: Deep logistics not calculated yet
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={handleDeepRefineWithAI}
-                disabled={isDeepRefining}
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-all shadow-2xs flex items-center gap-1 cursor-pointer disabled:opacity-60"
-                title="Automatically calculate tailored T-minus schedule"
-              >
-                {isDeepRefining ? (
-                  <RefreshCw className="w-3 h-3 animate-spin text-white" />
-                ) : (
-                  <Sparkles className="w-3 h-3 text-amber-200" />
-                )}
-                <span>{isDeepRefining ? 'Refining...' : 'AI Refine'}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider px-0.5">
           <div className="flex items-center gap-1.5">
             <span className="text-slate-700">Prep Tasks ({totalCount})</span>

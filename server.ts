@@ -812,6 +812,8 @@ ADDITION: <1-2 questions or confirmation>`;
     status: mode === "CREATE_AND_INTAKE" ? "intake_pending" 
           : mode === "RESEARCH_REQUIRED" ? "research_watchpoint" 
           : "milestones_active",
+    needsRefinement: (params.intakeAnswer || params.batchAnswers || params.existingEvent || mode === "RESOLVE_MILESTONES") ? false : (params.existingEvent?.needsRefinement ?? false),
+    refinedAt: (params.intakeAnswer || params.batchAnswers || params.existingEvent || mode === "RESOLVE_MILESTONES") ? new Date().toISOString() : params.existingEvent?.refinedAt,
     context: mergedContext,
     intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
     milestones,
@@ -1030,6 +1032,8 @@ function processWithDeterministicRules(params: {
     status: mode === "CREATE_AND_INTAKE" ? "intake_pending" 
           : mode === "RESEARCH_REQUIRED" ? "research_watchpoint" 
           : "milestones_active",
+    needsRefinement: (params.intakeAnswer || params.batchAnswers || params.existingEvent || mode === "RESOLVE_MILESTONES") ? false : (params.existingEvent?.needsRefinement ?? false),
+    refinedAt: (params.intakeAnswer || params.batchAnswers || params.existingEvent || mode === "RESOLVE_MILESTONES") ? new Date().toISOString() : params.existingEvent?.refinedAt,
     context,
     intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
     milestones,
