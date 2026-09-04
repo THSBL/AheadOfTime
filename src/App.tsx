@@ -466,13 +466,10 @@ export default function App() {
 
       setMessages((prev) => [...prev, agentMsg]);
       setSelectedEventId(newEvent.id);
-
-      // AUTO-SWITCH TO DASHBOARD: If we have milestones, go to Plan tab
-      if (data.mode === 'RESOLVE_MILESTONES') {
-        setCurrentView('dashboard');
-        setMobileDashboardView('detail');
-        setActiveTab('tasks');
-      }
+      setCurrentView('dashboard');
+      setMobileDashboardView('detail');
+      setActiveTab('tasks');
+      setFocusMode('adjust-event');
     } catch (err: any) {
       console.error('Failed to process message:', err);
       const errorMsg: AgentMessage = {
@@ -546,12 +543,10 @@ export default function App() {
 
       setMessages((prev) => [...prev, agentMsg]);
       setSelectedEventId(updatedEvent.id);
-
-      // AUTO-SWITCH TO DASHBOARD
-      if (data.mode === 'RESOLVE_MILESTONES') {
-        setCurrentView('dashboard');
-        setActiveTab('tasks');
-      }
+      setCurrentView('dashboard');
+      setMobileDashboardView('detail');
+      setActiveTab('tasks');
+      setFocusMode('adjust-event');
     } catch (err) {
       console.error('Error submitting intake option:', err);
     } finally {
@@ -677,12 +672,10 @@ export default function App() {
 
       setMessages((prev) => [...prev, agentMsg]);
       setSelectedEventId(updatedEvent.id);
-
-      // AUTO-SWITCH TO DASHBOARD
-      if (data.mode === 'RESOLVE_MILESTONES') {
-        setCurrentView('dashboard');
-        setActiveTab('tasks');
-      }
+      setCurrentView('dashboard');
+      setMobileDashboardView('detail');
+      setActiveTab('tasks');
+      setFocusMode('adjust-event');
     } catch (err: any) {
       console.error('Error submitting batch intake:', err);
       const errorMsg: AgentMessage = {

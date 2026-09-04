@@ -11,7 +11,7 @@ import {
   TMinusMilestone,
   IntakeQuestion
 } from "./src/types";
-import { generateHeuristicMilestones, calculateOffsetDate } from "./src/utils/tminusRules";
+import { generateHeuristicMilestones, calculateOffsetDate, detectEventCategory } from "./src/utils/tminusRules";
 import { inferTaskTimingLocally } from "./src/utils/timingAI";
 import { deepRefineEventLocally } from "./src/utils/deepRefine";
 
@@ -800,21 +800,19 @@ ADDITION: <1-2 questions or confirmation>`;
   }
 
   // High-performance deterministic milestone generation (computes all lead times in <1ms)
-  let milestones: TMinusMilestone[] = [];
-  if (mode === "RESOLVE_MILESTONES" || (mode !== "CREATE_AND_INTAKE" && mode !== "RESEARCH_REQUIRED")) {
-    milestones = generateHeuristicMilestones(
-      { category: parsed.category, context: mergedContext },
-      eventId,
-      eventDate,
-      eventTime
-    );
-  }
+  const finalCategory = parsed.category || params.existingEvent?.category || detectEventCategory(parsed.eventTitle || params.message, params.message);
+  const milestones: TMinusMilestone[] = generateHeuristicMilestones(
+    { category: finalCategory, context: mergedContext },
+    eventId,
+    eventDate,
+    eventTime
+  );
 
   // Construct CalendarEvent object
   const calendarEvent: CalendarEvent = {
     id: eventId,
     title: parsed.eventTitle || params.existingEvent?.title || "New Event",
-    category: parsed.category || params.existingEvent?.category || "custom",
+    category: finalCategory,
     eventDate,
     eventTime,
     location: parsed.location || params.existingEvent?.location || undefined,
@@ -852,17 +850,28 @@ function processWithDeterministicRules(params: {
   const msgLower = (params.message || "").toLowerCase();
   const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   
-  // Default target date: 3 weeks out from reference date
-  const targetDateObj = new Date(params.refDateISO);
-  targetDateObj.setDate(targetDateObj.getDate() + 21);
-  const defaultEventDate = targetDateObj.toISOString().substring(0, 10);
+  // Check if message starts with "<Title> on <YYYY-MM-DD> [at <HH:mm>]"
+  let eventDate = params.existingEvent?.eventDate || "";
+  let eventTime = params.existingEvent?.eventTime || "19:00";
+  let title = params.existingEvent?.title || "";
+
+  const dateMatch = params.message.match(/^([^\[\n]+?)\s+on\s+(\d{4}-\d{2}-\d{2})(?:\s+at\s+(\d{1,2}:\d{2}))?/i);
+  if (dateMatch) {
+    if (!title) title = dateMatch[1].trim();
+    if (!eventDate) eventDate = dateMatch[2];
+    if (dateMatch[3]) eventTime = dateMatch[3];
+  }
+
+  // Fallback default target date: 3 weeks out from reference date
+  if (!eventDate) {
+    const targetDateObj = new Date(params.refDateISO);
+    targetDateObj.setDate(targetDateObj.getDate() + 21);
+    eventDate = targetDateObj.toISOString().substring(0, 10);
+  }
   
-  const eventDate = params.existingEvent?.eventDate || defaultEventDate;
-  const eventTime = params.existingEvent?.eventTime || "19:00";
- 
   let mode: OperationalMode = "CREATE_AND_INTAKE";
-  let category: any = params.existingEvent?.category || "custom";
-  let title = params.existingEvent?.title || "Upcoming Event";
+  let category: any = params.existingEvent?.category || detectEventCategory(title || params.message, params.message);
+  if (!title) title = "Upcoming Event";
   const context: any = extractContextFromMessage(params.message, params.existingEvent?.context);
  
   if (params.intakeAnswer) {
@@ -878,47 +887,47 @@ function processWithDeterministicRules(params: {
   }
 
   const hasExplicitBrackets = /\[[a-zA-Z0-9_-]+:\s*[^\]]+\]/.test(params.message);
-  if (hasExplicitBrackets || (context.neededItems && context.neededItems.length > 0) || (context.customItems && context.customItems.length > 0) || context.transportType || context.foodPlan) {
+  if (hasExplicitBrackets || (context.neededItems && context.neededItems.length > 0) || (context.customItems && context.customItems.length > 0) || context.transportType || context.foodPlan || context.giftType) {
     mode = "RESOLVE_MILESTONES";
   }
 
   if (msgLower.includes("glastonbury") || msgLower.includes("ticket drop") || msgLower.includes("unconfirmed") || msgLower.includes("festival ticket")) {
     mode = "RESEARCH_REQUIRED";
     category = "festival_concert";
-    title = msgLower.includes("glastonbury") ? "Glastonbury Festival 2027" : "Festival Ticket Release & Event";
-  } else if (msgLower.includes("birthday") || msgLower.includes("bday") || msgLower.includes("party")) {
+    if (title === "Upcoming Event") title = msgLower.includes("glastonbury") ? "Glastonbury Festival 2027" : "Festival Ticket Release & Event";
+  } else if (category === "birthday_party" || msgLower.includes("birthday") || msgLower.includes("bday") || msgLower.includes("party")) {
     category = "birthday_party";
-    title = "Birthday Celebration";
-    if (msgLower.includes("maya")) title = "Maya's 30th Birthday Party";
+    if (title === "Upcoming Event") title = "Birthday Celebration";
+    if (msgLower.includes("maya") && title === "Upcoming Event") title = "Maya's 30th Birthday Party";
     if (msgLower.includes("group gift") || msgLower.includes("pot")) context.giftType = "group";
     else if (msgLower.includes("solo") || msgLower.includes("gift from me")) context.giftType = "solo";
     if (msgLower.includes("costume") || msgLower.includes("themed") || msgLower.includes("80s")) {
       context.isThemed = true;
       context.theme = "80s Neon / Costume";
     }
-  } else if (msgLower.includes("visiting") || msgLower.includes("staying") || msgLower.includes("hosting") || msgLower.includes("in town")) {
+  } else if (category === "hosting_visitors" || msgLower.includes("visiting") || msgLower.includes("staying") || msgLower.includes("hosting") || msgLower.includes("in town")) {
     category = "hosting_visitors";
-    title = "Friends Visiting Weekend";
-  } else if (msgLower.includes("trip") || msgLower.includes("flight") || msgLower.includes("travel") || msgLower.includes("vacation") || msgLower.includes("holiday")) {
+    if (title === "Upcoming Event") title = "Friends Visiting Weekend";
+  } else if (category === "travel_trip" || msgLower.includes("trip") || msgLower.includes("flight") || msgLower.includes("travel") || msgLower.includes("vacation") || msgLower.includes("holiday")) {
     category = "travel_trip";
-    title = "Upcoming Trip / Vacation";
-  } else if (msgLower.includes("project") || msgLower.includes("deadline") || msgLower.includes("launch") || msgLower.includes("milestone") || msgLower.includes("sprint")) {
+    if (title === "Upcoming Event") title = "Upcoming Trip / Vacation";
+  } else if (category === "project_deadline" || msgLower.includes("project") || msgLower.includes("deadline") || msgLower.includes("launch") || msgLower.includes("milestone") || msgLower.includes("sprint")) {
     category = "project_deadline";
-    title = "Project Launch / Deadline";
-  } else if (msgLower.includes("dinner") || msgLower.includes("supper")) {
+    if (title === "Upcoming Event") title = "Project Launch / Deadline";
+  } else if (category === "subscription" || msgLower.includes("subscription") || msgLower.includes("cancellation")) {
+    category = "subscription";
+    if (title === "Upcoming Event") title = "Subscription Cancellation Review";
+  } else if (category === "maintenance" || msgLower.includes("maintenance") || msgLower.includes("oil change") || msgLower.includes("inspection")) {
+    category = "maintenance";
+    if (title === "Upcoming Event") title = "Vehicle & Home Maintenance";
+  } else if (category === "dinner_social" || msgLower.includes("dinner") || msgLower.includes("supper")) {
     category = "dinner_social";
-    title = "Dinner Gathering";
-  }
-
-  // If user provided complete details directly
-  if (context.giftType && (category === "birthday_party" || category === "hosting_visitors")) {
-    mode = "RESOLVE_MILESTONES";
+    if (title === "Upcoming Event") title = "Dinner Gathering";
   }
 
   let focusText = "";
   let additionText = "";
   let intakeQuestions: IntakeQuestion[] = [];
-  let milestones: TMinusMilestone[] = [];
   let watchpoint: any = undefined;
 
   if (mode === "RESEARCH_REQUIRED") {
@@ -1005,16 +1014,17 @@ function processWithDeterministicRules(params: {
       additionText = `Please select your preparation preferences below.`;
     }
   } else {
-    // RESOLVE_MILESTONES
-    milestones = generateHeuristicMilestones(
-      { category, context },
-      eventId,
-      eventDate,
-      eventTime
-    );
     focusText = `I scheduled the preparation timeline for "${title}" on ${eventDate} at ${eventTime}.`;
     additionText = `Event details, chosen parameters, and milestones are summarized below.`;
   }
+
+  // Always generate heuristic milestones for the event
+  const milestones: TMinusMilestone[] = generateHeuristicMilestones(
+    { category, context },
+    eventId,
+    eventDate,
+    eventTime
+  );
 
   const replyText = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
