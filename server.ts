@@ -12,6 +12,8 @@ import {
   IntakeQuestion
 } from "./src/types";
 import { generateHeuristicMilestones, calculateOffsetDate } from "./src/utils/tminusRules";
+import { inferTaskTimingLocally } from "./src/utils/timingAI";
+import { deepRefineEventLocally } from "./src/utils/deepRefine";
 
 dotenv.config();
 
@@ -41,8 +43,8 @@ function getGeminiClient(): GoogleGenAI {
 // Multi-model fast execution with low thinking latency and strict timeout
 async function generateContentFast(
   requestConfig: (modelName: string) => any,
-  modelsToTry: string[] = ["gemini-3.7-flash", "gemini-3.1-flash-lite"],
-  timeoutMs: number = 3200
+  modelsToTry: string[] = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+  timeoutMs: number = 5500
 ): Promise<{ text: string; usedModel: string }> {
   const ai = getGeminiClient();
   let lastError: any = null;
@@ -113,7 +115,7 @@ app.post("/api/agent/transcribe", async (req: Request, res: Response): Promise<v
       },
     };
 
-    const transcribeModels = ["gemini-3.5-transcribe", "gemini-3.7-flash"];
+    const transcribeModels = ["gemini-3.5-transcribe", "gemini-3.8-flash", "gemini-3.1-flash-lite"];
     const result = await generateContentFast(
       () => ({
         contents: { 
@@ -124,7 +126,7 @@ app.post("/api/agent/transcribe", async (req: Request, res: Response): Promise<v
         },
       }),
       transcribeModels,
-      3500
+      4500
     );
 
     const transcribedText = result.text?.trim() || "";
@@ -132,6 +134,212 @@ app.post("/api/agent/transcribe", async (req: Request, res: Response): Promise<v
   } catch (error: any) {
     console.warn("Audio transcription notice:", error?.message || "Unavailable");
     res.json({ transcribedText: "Voice memo captured successfully. (Transcription fallback applied)." });
+  }
+});
+
+// Endpoint to intelligently infer preparation timing based on task input and event context
+app.post("/api/milestone/suggest-timing", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { taskTitle = "", taskDescription = "", eventTitle = "", eventDate = "", eventTime = "" } = req.body;
+    
+    if (!taskTitle.trim()) {
+      res.status(400).json({ error: "taskTitle is required" });
+      return;
+    }
+
+    const localBaseline = inferTaskTimingLocally(taskTitle, taskDescription, eventTitle);
+
+    if (!process.env.GEMINI_API_KEY) {
+      res.json(localBaseline);
+      return;
+    }
+
+    const prompt = `You are a world-class event concierge, logistics director, and timing strategist.
+Analyze the user's specific preparation task in the context of their upcoming event, and calculate the exact optimal lead time (T-Minus buffer) before the event.
+
+Event: "${eventTitle || "Upcoming Event"}" (Date: ${eventDate || "Upcoming"}, Time: ${eventTime || "unspecified"})
+Task Action: "${taskTitle}"
+Task Notes: "${taskDescription || "None"}"
+
+CRITICAL INSTRUCTIONS FOR REASONING & ACCURACY:
+- Tailor the rationale explicitly and specifically to "${taskTitle}". Mention the real-world logistical realities and constraints for this exact activity or item.
+  * For example:
+    - Karaoke booths, private karaoke rooms, escape rooms, bowling: explain that private entertainment booths and weekend evening slots have high peak demand and frequently sell out 2 to 4 weeks ahead.
+    - Custom gifts, monogramming, custom crafting: explain artisan production lead times and parcel delivery buffers.
+    - Bakeries & custom cakes: explain decorator reservation minimums and pre-order cutoff dates.
+    - Haircut, salon, barber, makeup: explain weekend booking bottlenecks and letting styling settle.
+    - Fresh groceries, perishable meats, ice, party platters: explain that purchasing 24 hours prior preserves optimal freshness.
+    - Flights, hotels, rental cars: explain surge pricing and securing nearby room availability.
+- NEVER output generic placeholder text like "Standard preparation window" or "Recommended 3-day lead window".
+- The explanation must feel expert, practical, and directly customized to the user's task.
+
+Required JSON format:
+{
+  "amount": <integer number, e.g. 1, 2, 3, 4, 7, 14>,
+  "unit": <"weeks" | "days" | "hours">,
+  "badge": <string e.g. "T-3w", "T-2w", "T-7d", "T-3d", "T-1d", "T-4h">,
+  "category": <"prep" | "gift" | "shopping" | "booking" | "costume" | "logistics">,
+  "reason": <1-2 sentences of crisp, domain-specific, tailored rationale explaining why this exact task requires this timing>,
+  "alternatives": [
+    { "amount": <number>, "unit": <"weeks"|"days"|"hours">, "badge": <string>, "label": <string>, "reason": <string> },
+    { "amount": <number>, "unit": <"weeks"|"days"|"hours">, "badge": <string>, "label": <string>, "reason": <string> }
+  ]
+}
+
+Output ONLY the JSON object.`;
+
+    const result = await generateContentFast(
+      () => ({
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.15,
+        },
+      }),
+      ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+      5000
+    );
+
+    const parsed = JSON.parse(result.text.trim());
+    if (parsed && typeof parsed.amount === "number" && parsed.unit && parsed.reason) {
+      res.json(parsed);
+      return;
+    }
+    res.json(localBaseline);
+  } catch (err: any) {
+    console.warn("AI milestone timing inference notice:", err?.message);
+    const { taskTitle = "", taskDescription = "", eventTitle = "" } = req.body;
+    res.json(inferTaskTimingLocally(taskTitle, taskDescription, eventTitle));
+  }
+});
+
+// Endpoint to deeply refine an unrefined agenda event with expert logistics reasoning
+app.post("/api/event/deep-refine", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { event }: { event: CalendarEvent } = req.body;
+    if (!event || !event.title) {
+      res.status(400).json({ error: "Valid calendar event is required" });
+      return;
+    }
+
+    const localMilestones = deepRefineEventLocally(event);
+    const localRefinedEvent: CalendarEvent = {
+      ...event,
+      needsRefinement: false,
+      refinedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      milestones: localMilestones,
+    };
+
+    if (!process.env.GEMINI_API_KEY) {
+      res.json({ event: localRefinedEvent });
+      return;
+    }
+
+    const prompt = `You are an elite event logistics director, personal concierge, and timing strategist.
+A user imported this upcoming agenda event from their calendar. It currently has not been refined yet.
+Generate an intelligent, reverse-engineered timeline of backward preparation milestones (T-Minus buffer tasks).
+
+Event Title: "${event.title}"
+Event Date: ${event.eventDate || "Upcoming"} (Time: ${event.eventTime || "19:00"})
+Event Location: "${event.location || "None specified"}"
+Event Category: "${event.category || "custom"}"
+Existing Context: "${JSON.stringify(event.context || {})}"
+
+CRITICAL LOGISTICAL & TIMING REQUIREMENTS:
+1. Deconstruct the event into 4 to 8 realistic, concrete, chronological preparation milestones leading backward from the event date.
+2. Calculate exact lead times based on real-world logistical constraints:
+   - Private entertainment booths (karaoke, escape rooms, bowling, VR): T-3w or T-4w for weekend peak bookings.
+   - High-demand restaurants & group dining tables: T-2w to T-3w.
+   - Flights & lodging: T-4w to T-6w.
+   - Custom gifts, monogramming, artisan crafting & parcel shipping: T-2w to T-3w.
+   - Bakeries & custom cakes: T-7d to T-5d with T-4h pickup.
+   - Invitations & RSVPs: T-3w for headcount collection.
+   - Fresh grocery shopping, ice, perishable appetizers: T-1d or T-2d.
+   - Travel packing, luggage, roaming eSIM: T-3d.
+   - 24-hour airline check-in: T-1d.
+   - Day-of travel buffer & arrival: T-2h or T-1h.
+3. Every milestone MUST have a tailored, crisp, domain-specific rationale in "description" explaining why this exact task requires this timing. NEVER use generic placeholder phrases.
+
+Required JSON format:
+{
+  "milestones": [
+    {
+      "tMinusLabel": "T-3w",
+      "tMinusOffsetMinutes": -30240,
+      "title": "Book private karaoke room / booth",
+      "description": "Private entertainment rooms experience heavy weekend demand; booking 3 weeks ahead secures your preferred room size and optimal time slot.",
+      "category": "booking"
+    }
+  ]
+}
+
+Categories allowed: "booking" | "gift" | "shopping" | "logistics" | "prep" | "costume" | "tickets" | "review" | "work" | "admin"
+
+Output ONLY the raw JSON object.`;
+
+    const result = await generateContentFast(
+      () => ({
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.15,
+        },
+      }),
+      ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+      5500
+    );
+
+    const parsed = JSON.parse(result.text.trim());
+    if (parsed && Array.isArray(parsed.milestones) && parsed.milestones.length > 0) {
+      const refinedMilestones: TMinusMilestone[] = parsed.milestones.map((m: any, idx: number) => {
+        const offset = typeof m.tMinusOffsetMinutes === "number" ? m.tMinusOffsetMinutes : -((idx + 1) * 24 * 60);
+        const calculatedDate = calculateOffsetDate(event.eventDate, event.eventTime || "19:00", offset);
+        return {
+          id: `ms-${event.id}-${(m.tMinusLabel || `T-${idx + 1}d`).toLowerCase().replace(/[^a-z0-9]/g, "")}-${Date.now() % 100000}-${idx}`,
+          eventId: event.id,
+          tMinusLabel: m.tMinusLabel || `T-${idx + 1}d`,
+          tMinusOffsetMinutes: offset,
+          calculatedDate,
+          title: m.title || `Prep task ${idx + 1}`,
+          description: m.description || "",
+          category: m.category || "prep",
+          status: "pending",
+        };
+      });
+
+      refinedMilestones.sort((a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime());
+
+      res.json({
+        event: {
+          ...event,
+          needsRefinement: false,
+          refinedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          milestones: refinedMilestones,
+        },
+      });
+      return;
+    }
+
+    res.json({ event: localRefinedEvent });
+  } catch (err: any) {
+    console.warn("AI deep refinement notice, using local engine:", err?.message);
+    const { event }: { event: CalendarEvent } = req.body;
+    if (event) {
+      const localMilestones = deepRefineEventLocally(event);
+      res.json({
+        event: {
+          ...event,
+          needsRefinement: false,
+          refinedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          milestones: localMilestones,
+        },
+      });
+    } else {
+      res.status(500).json({ error: "Failed to refine event" });
+    }
   }
 });
 

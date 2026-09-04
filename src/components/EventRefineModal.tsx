@@ -383,7 +383,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Answer targeted follow-up questions to customize your reverse-engineered T-Minus schedule.
+                Answer targeted follow-up questions to customize your AheadOfTime preparation milestones.
               </p>
             </div>
           </div>

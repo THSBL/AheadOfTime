@@ -23,10 +23,11 @@ import {
   Wrench,
   CreditCard
 } from 'lucide-react';
-import { CalendarEvent, EventCategory, TMinusMilestone } from '../types';
+import { CalendarEvent, EventCategory, TMinusMilestone, OnboardingProfile } from '../types';
 import { fetchGoogleCalendarEvents, fetchPrimaryCalendarProfile, GoogleCalendarProfile, GoogleCalendarEventItem } from '../services/googleCalendar';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, getStoredClientId, clearGoogleSession } from '../services/googleAuth';
 import { detectEventCategory, generateHeuristicMilestones, formatDisplayDate } from '../utils/tminusRules';
+import { deepRefineEventLocally } from '../utils/deepRefine';
 
 interface ScanAgendaModalProps {
   isOpen: boolean;
@@ -35,6 +36,8 @@ interface ScanAgendaModalProps {
   onImportTrackedEvents: (events: CalendarEvent[]) => void;
   isGoogleConnected: boolean;
   onOpenGoogleCalendarSync: () => void;
+  onboardingProfile?: OnboardingProfile | null;
+  initialScanMonths?: number;
 }
 
 interface ScannedEventItem extends GoogleCalendarEventItem {
@@ -52,6 +55,8 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   onImportTrackedEvents,
   isGoogleConnected,
   onOpenGoogleCalendarSync,
+  onboardingProfile,
+  initialScanMonths = 6,
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
@@ -59,9 +64,15 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   const [scannedEvents, setScannedEvents] = useState<ScannedEventItem[]>([]);
   const [selectedEventIds, setSelectedEventIds] = useState<Record<string, boolean>>({});
   const [activeFilter, setActiveFilter] = useState<'all' | 'actionable' | 'parties' | 'trips' | 'hosting' | 'deadlines' | 'routine'>('actionable');
-  const [scanMonths, setScanMonths] = useState<number>(6);
+  const [scanMonths, setScanMonths] = useState<number>(initialScanMonths);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialScanMonths) {
+      setScanMonths(initialScanMonths);
+    }
+  }, [initialScanMonths]);
 
   const token = getStoredAccessToken();
   const connected = Boolean(token && !isTokenExpired());
@@ -102,15 +113,22 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         const eventTime = new Date(eventDateStr || currentReferenceDate).getTime();
         const diffDays = Math.max(0, Math.round((eventTime - refTime) / (1000 * 60 * 60 * 24)));
 
-        // Detect routine work / repetitive meetings to ignore by default
+        // Detect routine work / repetitive meetings with profile calibration
         const lowerTitle = title.toLowerCase();
-        const isRoutine = 
-          /standup|1:1|sync|weekly|daily|scrum|catchup|status check|office hours|all hands|retrospective|retro\b/i.test(lowerTitle) ||
-          /dentist|cleaning|doctor|vet\b|haircut|dry clean/i.test(lowerTitle);
+        const filterWorkNoise = !onboardingProfile || onboardingProfile.calendarType === 'Mixed (Personal & Work)' || onboardingProfile.calendarType === 'Personal only';
+        const flagsKids = onboardingProfile?.familyStatus === 'Couple with kids';
+
+        const isWorkRoutine = filterWorkNoise && 
+          /standup|1:1|sync|weekly|daily|scrum|catchup|status check|office hours|all hands|retrospective|retro\b/i.test(lowerTitle);
+        const isPersonalRoutine = /dentist|cleaning|doctor|vet\b|haircut|dry clean/i.test(lowerTitle);
+        const isRoutine = isWorkRoutine || isPersonalRoutine;
+
+        // If couple with kids, prioritize school and youth events
+        const isKidsPriority = flagsKids && /school|costume|spirit|rehearsal|recital|tournament|sports|camp|halloween/i.test(lowerTitle);
 
         const category = detectEventCategory(title, desc);
 
-        // Create temporary event structure to generate preview milestones
+        // Create temporary event structure to generate preview milestones using deep domain logic
         const tempEvent: CalendarEvent = {
           id: `temp-${item.id}`,
           title,
@@ -118,15 +136,16 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
           eventTime: eventTimeStr,
           category,
           status: 'milestones_active',
+          needsRefinement: true,
           location: item.location || '',
           context: {},
           milestones: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        const previewMilestones = generateHeuristicMilestones(tempEvent, tempEvent.id, eventDateStr, eventTimeStr);
+        const previewMilestones = deepRefineEventLocally(tempEvent);
 
-        const shouldTrackByDefault = !isRoutine && diffDays >= 2;
+        const shouldTrackByDefault = (isKidsPriority || !isRoutine) && diffDays >= 2;
 
         return {
           ...item,
@@ -240,6 +259,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         eventTime: eventTimeStr,
         category: item.detectedCategory,
         status: 'milestones_active',
+        needsRefinement: true,
         location: item.location || '',
         googleEventId: item.id,
         context: {},
@@ -248,7 +268,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      newEvt.milestones = generateHeuristicMilestones(newEvt, newEvt.id, eventDateStr, eventTimeStr);
+      newEvt.milestones = deepRefineEventLocally(newEvt);
       return newEvt;
     });
 
@@ -260,6 +280,11 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
   const totalCount = scannedEvents.length;
   const actionableCount = scannedEvents.filter((e) => !e.isRoutine && e.shouldTrackByDefault).length;
+  const partiesCount = scannedEvents.filter((e) => e.detectedCategory === 'birthday_party').length;
+  const tripsCount = scannedEvents.filter((e) => e.detectedCategory === 'travel_trip').length;
+  const hostingCount = scannedEvents.filter((e) => e.detectedCategory === 'hosting_visitors').length;
+  const deadlinesCount = scannedEvents.filter((e) => e.detectedCategory === 'project_deadline').length;
+  const routineCount = scannedEvents.filter((e) => e.isRoutine).length;
   const selectedCount = Object.values(selectedEventIds).filter(Boolean).length;
   const filteredEvents = getFilteredEvents(activeFilter);
 
@@ -278,7 +303,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                 <span>Scan for Existing Agenda Events</span>
               </h2>
               <p className="text-xs text-slate-300 font-medium">
-                Detect upcoming calendar events and automatically reverse-engineer prep milestones
+                Detect upcoming calendar events and automatically build backward preparation milestones
               </p>
             </div>
           </div>
@@ -375,7 +400,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
                   }`}
                 >
-                  Prep Ready ({actionableCount})
+                  Actionable ({actionableCount})
                 </button>
 
                 <button
@@ -389,49 +414,70 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                   All Scanned ({totalCount})
                 </button>
 
-                <button
-                  onClick={() => setActiveFilter('parties')}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                    activeFilter === 'parties'
-                      ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Parties
-                </button>
+                {partiesCount > 0 && (
+                  <button
+                    onClick={() => setActiveFilter('parties')}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                      activeFilter === 'parties'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    Parties ({partiesCount})
+                  </button>
+                )}
 
-                <button
-                  onClick={() => setActiveFilter('trips')}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                    activeFilter === 'trips'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Trips
-                </button>
+                {tripsCount > 0 && (
+                  <button
+                    onClick={() => setActiveFilter('trips')}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                      activeFilter === 'trips'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    Trips ({tripsCount})
+                  </button>
+                )}
 
-                <button
-                  onClick={() => setActiveFilter('deadlines')}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                    activeFilter === 'deadlines'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Deadlines
-                </button>
+                {hostingCount > 0 && (
+                  <button
+                    onClick={() => setActiveFilter('hosting')}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                      activeFilter === 'hosting'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    Hosting ({hostingCount})
+                  </button>
+                )}
 
-                <button
-                  onClick={() => setActiveFilter('routine')}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
-                    activeFilter === 'routine'
-                      ? 'bg-slate-700 text-white border-slate-700 shadow-2xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200'
-                  }`}
-                >
-                  Routine
-                </button>
+                {deadlinesCount > 0 && (
+                  <button
+                    onClick={() => setActiveFilter('deadlines')}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                      activeFilter === 'deadlines'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    Deadlines ({deadlinesCount})
+                  </button>
+                )}
+
+                {routineCount > 0 && (
+                  <button
+                    onClick={() => setActiveFilter('routine')}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer border ${
+                      activeFilter === 'routine'
+                        ? 'bg-slate-700 text-white border-slate-700 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200'
+                    }`}
+                  >
+                    Routine ({routineCount})
+                  </button>
+                )}
               </div>
 
               {/* Select All / Deselect All Controls */}
@@ -535,9 +581,6 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         {/* Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
           <div className="text-xs text-slate-500 font-medium">
-            {connected && totalCount > 0 ? (
-              <span>Selected for T-Minus: <strong className="text-slate-900">{selectedCount}</strong> / {totalCount}</span>
-            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -554,7 +597,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                 disabled={selectedCount === 0}
                 className="px-5 py-2.5 bg-[#0f172a] hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
               >
-                <span>Import &amp; Generate Runways ({selectedCount})</span>
+                <span>Import &amp; Generate Timelines ({selectedCount})</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}

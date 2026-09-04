@@ -348,7 +348,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
               Push to Google Calendar
             </h3>
             <p className="text-xs text-slate-500">
-              Sync your event &amp; reverse-engineered prep schedule
+              Sync your event &amp; preparation milestones
             </p>
           </div>
         </div>
@@ -443,7 +443,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     Bidirectional Task Completion Sync
                   </h4>
                   <p className="text-[11px] text-slate-500">
-                    Tasks checked off in Google Calendar or Tasks automatically mark as complete in T-Minus
+                    Tasks checked off in Google Calendar or Tasks automatically mark as complete in Ahead Of Time
                   </p>
                 </div>
               </div>

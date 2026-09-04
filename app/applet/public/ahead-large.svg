@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 160" width="100%" height="100%">
+  <!-- Left Roadmap Waves -->
+  <g transform="translate(20, 30)">
+    <!-- Orange top wave -->
+    <path d="M 0 12 C 20 12, 40 12, 55 12 C 55 18, 55 24, 55 24 C 40 24, 20 24, 0 24 Z" fill="#f97316" rx="6"/>
+    <rect x="0" y="12" width="50" height="12" rx="6" fill="#f97316"/>
+    
+    <!-- Light mint second wave -->
+    <rect x="0" y="32" width="75" height="13" rx="6.5" fill="#a3d9c9"/>
+    
+    <!-- Medium green third wave -->
+    <rect x="0" y="52" width="100" height="14" rx="7" fill="#529479"/>
+    
+    <!-- Dark navy bottom wave -->
+    <rect x="0" y="73" width="125" height="16" rx="8" fill="#0e1d2c"/>
+  </g>
+
+  <!-- Calendar Box -->
+  <g transform="translate(160, 20)">
+    <!-- Calendar Body -->
+    <rect x="0" y="0" width="108" height="108" rx="22" fill="#0e1d2c" stroke="#1e293b" stroke-width="2"/>
+    
+    <!-- Top Binding Loops -->
+    <rect x="28" y="-7" width="10" height="14" rx="4" fill="#ffffff"/>
+    <rect x="70" y="-7" width="10" height="14" rx="4" fill="#ffffff"/>
+
+    <!-- Inner White Calendar Box -->
+    <rect x="14" y="16" width="80" height="80" rx="12" fill="none" stroke="#ffffff" stroke-width="4"/>
+
+    <!-- 3x3 Grid of Days -->
+    <!-- Row 1 -->
+    <rect x="23" y="26" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    <rect x="46" y="26" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    <rect x="69" y="26" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    
+    <!-- Row 2 -->
+    <rect x="23" y="49" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    <rect x="46" y="49" width="16" height="16" rx="4" fill="#529479"/>
+    <rect x="69" y="49" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    
+    <!-- Row 3 -->
+    <rect x="23" y="72" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    <rect x="46" y="72" width="16" height="16" rx="4" fill="#a3d9c9"/>
+    <rect x="69" y="72" width="16" height="16" rx="4" fill="#a3d9c9"/>
+
+    <!-- Orange Location Pin -->
+    <g transform="translate(62, 60)">
+      <circle cx="18" cy="18" r="16" fill="#0e1d2c"/>
+      <path d="M 18 4 C 12 4, 7 9, 7 15 C 7 23, 18 32, 18 32 C 18 32, 29 23, 29 15 C 29 9, 24 4, 18 4 Z" fill="#f97316"/>
+      <circle cx="18" cy="14" r="5" fill="#ffffff"/>
+    </g>
+  </g>
+
+  <!-- Typography -->
+  <g transform="translate(295, 78)">
+    <text x="0" y="0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="52" font-weight="800" fill="#0e1d2c" letter-spacing="-1.5">Ahead<tspan fill="#529479">Of</tspan>Time</text>
+    <text x="2" y="30" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#529479" letter-spacing="-0.3">The assistant for busy calendars.</text>
+  </g>
+</svg>

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <!-- Background app icon container -->
+  <rect x="8" y="8" width="184" height="184" rx="44" fill="#0e1d2c"/>
+
+  <!-- Calendar Inside -->
+  <g transform="translate(32, 20)">
+    <!-- Loops -->
+    <rect x="36" y="-6" width="12" height="14" rx="4" fill="#ffffff"/>
+    <rect x="88" y="-6" width="12" height="14" rx="4" fill="#ffffff"/>
+
+    <!-- Inner White Outline -->
+    <rect x="14" y="14" width="108" height="108" rx="16" fill="none" stroke="#ffffff" stroke-width="5"/>
+
+    <!-- 3x3 Grid -->
+    <!-- Row 1 -->
+    <rect x="25" y="26" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <rect x="57" y="26" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <rect x="89" y="26" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <!-- Row 2 -->
+    <rect x="25" y="58" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <rect x="57" y="58" width="24" height="24" rx="5" fill="#529479"/>
+    <rect x="89" y="58" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <!-- Row 3 -->
+    <rect x="25" y="90" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <rect x="57" y="90" width="24" height="24" rx="5" fill="#a3d9c9"/>
+    <rect x="89" y="90" width="24" height="24" rx="5" fill="#a3d9c9"/>
+
+    <!-- Pin -->
+    <g transform="translate(74, 76)">
+      <circle cx="22" cy="22" r="18" fill="#0e1d2c"/>
+      <path d="M 22 4 C 15 4, 9 10, 9 17 C 9 26, 22 38, 22 38 C 22 38, 35 26, 35 17 C 35 10, 29 4, 22 4 Z" fill="#f97316"/>
+      <circle cx="22" cy="16" r="6" fill="#ffffff"/>
+    </g>
+  </g>
+
+  <!-- Roadmap Waves at bottom -->
+  <g transform="translate(36, 148)">
+    <rect x="15" y="0" width="100" height="8" rx="4" fill="#a3d9c9"/>
+    <rect x="0" y="12" width="128" height="10" rx="5" fill="#a3d9c9"/>
+  </g>
+</svg>

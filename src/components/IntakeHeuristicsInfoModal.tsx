@@ -21,7 +21,7 @@ export const IntakeHeuristicsInfoModal: React.FC<IntakeHeuristicsInfoModalProps>
           <div className="flex items-center gap-2.5">
             <BookOpen className="w-5 h-5 text-rose-500" />
             <h3 className="text-sm sm:text-base font-bold text-white uppercase tracking-wide">
-              Agent Intelligence & T-Minus Rules Matrix
+              Ahead Of Time Preparation Rules Matrix
             </h3>
           </div>
           <button
@@ -58,7 +58,7 @@ export const IntakeHeuristicsInfoModal: React.FC<IntakeHeuristicsInfoModalProps>
                   <span>RESOLVE_MILESTONES</span>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed font-medium">
-                  Complete event details provided or user answered intake questions. Reverse-engineers exact T-minus schedule with precise dates.
+                  Complete event details provided or user answered intake questions. Builds backward preparation milestones with precise dates.
                 </p>
               </div>
 
@@ -78,7 +78,7 @@ export const IntakeHeuristicsInfoModal: React.FC<IntakeHeuristicsInfoModalProps>
           <div>
             <h4 className="text-sm sm:text-base font-bold text-white mb-3 flex items-center gap-2">
               <Clock className="w-4 h-4 text-rose-400" />
-              T-Minus Preparation Heuristics
+              Ahead Of Time Preparation Milestones
             </h4>
             <div className="space-y-3.5">
               

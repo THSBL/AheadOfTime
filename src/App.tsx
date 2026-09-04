@@ -8,7 +8,13 @@ import { CustomMilestoneModal } from './components/CustomMilestoneModal';
 import { GoogleCalendarSync } from './components/GoogleCalendarSync';
 import { ScanAgendaModal } from './components/ScanAgendaModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
-import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode } from './types';
+import { OnboardingPage } from './components/OnboardingPage';
+import { LandingUSPPage } from './components/LandingUSPPage';
+import { PreferencesModal } from './components/PreferencesModal';
+import { CookieBanner } from './components/CookieBanner';
+import { CookiePreferencesModal } from './components/CookiePreferencesModal';
+import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings } from './types';
 import { INITIAL_EVENTS } from './data/samplePresets';
 import { 
   MessageSquare, 
@@ -22,6 +28,8 @@ import {
   LayoutDashboard, 
   Target,
   RefreshCw,
+  RotateCcw,
+  Loader2,
   Check
 } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired } from './services/googleAuth';
@@ -32,37 +40,45 @@ const INITIAL_MESSAGES: AgentMessage[] = [
   {
     id: 'msg-welcome-1',
     sender: 'agent',
-    text: `Hello! I'm your T-Minus preparation assistant. Tell me about any upcoming event (a dinner, birthday, trip, or hosting friends), and I will calculate all your reverse-engineered preparation lead times.`,
-    focusText: 'Hello! I am ready for your events.',
-    additionText: 'Tell me about an upcoming event or select a scenario below.',
+    text: `Hello! I'm Ahead Of Time, your assistant for busy calendars. Tell me about any upcoming event (a dinner, birthday, trip, or hosting friends), or scan your Google Calendar, and I will build your backward preparation milestones so you're ready when it starts.`,
+    focusText: 'Ahead Of Time is ready for your events.',
+    additionText: 'Tell me about an upcoming event or connect your calendar.',
     timestamp: new Date('2026-09-01T03:20:00.000Z').toISOString(),
     mode: 'CREATE_AND_INTAKE',
-  },
-  {
-    id: 'msg-welcome-2',
-    sender: 'user',
-    text: "Alex and Sarah are visiting and staying over the weekend from October 16th to 19th. We want to do reservations at nice restaurants and host breakfast at home.",
-    timestamp: new Date('2026-09-01T03:20:30.000Z').toISOString(),
-  },
-  {
-    id: 'msg-welcome-3',
-    sender: 'agent',
-    text: `I've reverse-engineered the preparation timeline for Alex & Sarah's visit! You have 1 target deadline and 4 lead-time tasks ready to sync to Google Calendar.`,
-    focusText: 'I scheduled the preparation timeline for "Alex & Sarah Visiting Weekend" on 2026-10-16 at 17:00.',
-    additionText: '1 Target Deadline + 4 Tasks calculated.',
-    timestamp: new Date('2026-09-01T03:21:00.000Z').toISOString(),
-    mode: 'RESOLVE_MILESTONES',
-    associatedEventId: 'evt-alex-sarah',
   },
 ];
 
 export default function App() {
+  // 1. State & Storage Initialization: Check storage before mounting view
+  const hasCompleted = typeof window !== 'undefined' && (
+    localStorage.getItem('aot_onboarding_completed') === 'true' ||
+    localStorage.getItem('has_completed_onboarding') === 'true'
+  );
+  const isConnected = typeof window !== 'undefined' && (
+    localStorage.getItem('aot_calendar_connected') === 'true' ||
+    Boolean(getStoredAccessToken() && !isTokenExpired())
+  );
+
+  const [currentView, setCurrentView] = useState<'dashboard' | 'landing' | 'onboarding'>(
+    (hasCompleted || isConnected) ? 'dashboard' : 'landing'
+  );
+
+  // 2. Prevent Layout Flash: loading state during verification
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+
   // Local storage or default initial state
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
     const saved = localStorage.getItem('tminus_events_v2');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Filter out old demo/sample events if user hasn't added custom ones
+          const filtered = parsed.filter(
+            (e: any) => e.id !== 'evt-maya-birthday' && e.id !== 'evt-alex-sarah'
+          );
+          return filtered;
+        }
       } catch (e) {
         console.error('Failed to parse saved events', e);
       }
@@ -74,7 +90,13 @@ export default function App() {
     const saved = localStorage.getItem('tminus_messages_v2');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(
+            (m: any) => m.associatedEventId !== 'evt-alex-sarah' && m.associatedEventId !== 'evt-maya-birthday' && !m.text?.includes('Alex & Sarah')
+          );
+          if (filtered.length > 0) return filtered;
+        }
       } catch (e) {
         console.error('Failed to parse saved messages', e);
       }
@@ -88,16 +110,111 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>('chat');
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
   const [isWizardInputFocused, setIsWizardInputFocused] = useState(false);
-  const [viewMode, setViewMode] = useState<'landing' | 'dashboard'>('landing');
 
-  // Modals
+  // Onboarding profile
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
+    try {
+      return (
+        localStorage.getItem('aot_onboarding_completed') === 'true' ||
+        localStorage.getItem('has_completed_onboarding') === 'true'
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  const [onboardingProfile, setOnboardingProfile] = useState<OnboardingProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('onboarding_profile');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Verify auth / storage on initial mount without flashing landing
+  useEffect(() => {
+    try {
+      const completed = localStorage.getItem('aot_onboarding_completed') === 'true' || localStorage.getItem('has_completed_onboarding') === 'true';
+      const connected = localStorage.getItem('aot_calendar_connected') === 'true' || Boolean(getStoredAccessToken() && !isTokenExpired());
+      
+      if (completed || connected) {
+        setCurrentView('dashboard');
+      }
+    } catch (e) {
+      console.error('Initial storage verification error:', e);
+    } finally {
+      setIsInitializing(false);
+    }
+  }, []);
+
+  // 3. Onboarding & Connection Completion Handlers
+  const handleCompleteOnboarding = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => {
+    try {
+      localStorage.setItem('aot_onboarding_completed', 'true');
+      localStorage.setItem('aot_calendar_connected', 'true');
+      localStorage.setItem('has_completed_onboarding', 'true');
+      localStorage.setItem('onboarding_profile', JSON.stringify(profile));
+    } catch (e) {
+      console.warn('Could not save onboarding profile', e);
+    }
+    setHasCompletedOnboarding(true);
+    setOnboardingProfile(profile);
+    setCurrentView('dashboard');
+
+    if (action === 'connect_calendar') {
+      setIsScanAgendaModalOpen(true);
+    }
+  };
+
+  const handleLandingConnectCalendar = () => {
+    try {
+      localStorage.setItem('aot_onboarding_completed', 'true');
+      localStorage.setItem('aot_calendar_connected', 'true');
+      localStorage.setItem('has_completed_onboarding', 'true');
+    } catch (e) {
+      console.warn('Could not save calendar connection state', e);
+    }
+    setCurrentView('dashboard');
+    setIsScanAgendaModalOpen(true);
+  };
+
+  // 4. Testing & Demo Reset Handler
+  const handleResetDemo = () => {
+    if (window.confirm('Reset all demo data and storage to test the first-time visitor landing page and onboarding flow?')) {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (e) {
+        console.warn('Error clearing storage', e);
+      }
+      window.location.href = '/';
+      window.location.reload();
+    }
+  };
+
+  // Modals & Compliance
+  const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isCookiePreferencesModalOpen, setIsCookiePreferencesModalOpen] = useState(false);
+  const [cookieSettings, setCookieSettings] = useState<CookieConsentSettings>(() => {
+    try {
+      const saved = localStorage.getItem('has_cookie_consent_v1');
+      return saved ? JSON.parse(saved) : { hasConsented: false, functional: true, analytics: false };
+    } catch {
+      return { hasConsented: false, functional: true, analytics: false };
+    }
+  });
+
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isCustomMilestoneModalOpen, setIsCustomMilestoneModalOpen] = useState(false);
   const [isGoogleCalendarModalOpen, setIsGoogleCalendarModalOpen] = useState(false);
   const [isScanAgendaModalOpen, setIsScanAgendaModalOpen] = useState(false);
+  const [agendaHorizonMonths, setAgendaHorizonMonths] = useState<number>(6);
   const [targetEventForMilestone, setTargetEventForMilestone] = useState<CalendarEvent | null>(null);
   const [selectedBulkEventIds, setSelectedBulkEventIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>('list');
 
   const handleToggleSelectEvent = (id: string) => {
     setSelectedBulkEventIds((prev) =>
@@ -301,7 +418,8 @@ export default function App() {
 
       // AUTO-SWITCH TO DASHBOARD: If we have milestones, go to Plan tab
       if (data.mode === 'RESOLVE_MILESTONES') {
-        setViewMode('dashboard');
+        setCurrentView('dashboard');
+        setMobileDashboardView('detail');
         setActiveTab('tasks');
       }
     } catch (err: any) {
@@ -380,7 +498,7 @@ export default function App() {
 
       // AUTO-SWITCH TO DASHBOARD
       if (data.mode === 'RESOLVE_MILESTONES') {
-        setViewMode('dashboard');
+        setCurrentView('dashboard');
         setActiveTab('tasks');
       }
     } catch (err) {
@@ -511,7 +629,7 @@ export default function App() {
 
       // AUTO-SWITCH TO DASHBOARD
       if (data.mode === 'RESOLVE_MILESTONES') {
-        setViewMode('dashboard');
+        setCurrentView('dashboard');
         setActiveTab('tasks');
       }
     } catch (err: any) {
@@ -666,7 +784,7 @@ export default function App() {
     const agentMsg: AgentMessage = {
       id: `agt-manual-${Date.now()}`,
       sender: 'agent',
-      text: `Scheduled: ${newEvent.title} on ${newEvent.eventDate}. I've prepared ${newEvent.milestones.length} reverse-engineered tasks for your calendar.`,
+      text: `Scheduled: ${newEvent.title} on ${newEvent.eventDate}. I've prepared ${newEvent.milestones.length} preparation milestones for your calendar.`,
       timestamp: new Date().toISOString(),
       mode: 'RESOLVE_MILESTONES',
       associatedEventId: newEvent.id,
@@ -688,7 +806,7 @@ export default function App() {
 
     if (newEvents.length > 0) {
       setSelectedEventId(newEvents[0].id);
-      setViewMode('dashboard');
+      setCurrentView('dashboard');
       setSyncToast({
         id: Date.now(),
         message: `Imported ${newEvents.length} event${newEvents.length > 1 ? 's' : ''} from AheadOfTime Evaluation!`,
@@ -710,6 +828,20 @@ export default function App() {
     }
   };
 
+  // 2. Prevent Layout Flash: Show neutral centered loading spinner while checking storage / session
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-[#f1f7fe] flex flex-col items-center justify-center p-4 text-slate-600 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-center mb-3">
+          <Loader2 className="w-6 h-6 text-slate-800 animate-spin" />
+        </div>
+        <p className="text-xs font-semibold text-slate-500 tracking-wide">
+          Loading Ahead Of Time...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#eaf4fd] via-[#f1f7fe] to-[#dbeefd] text-slate-800 flex flex-col font-sans selection:bg-[#0f172a] selection:text-white relative overflow-x-hidden">
       
@@ -721,74 +853,22 @@ export default function App() {
         <div className="absolute top-2/3 right-1/4 w-[450px] h-[450px] bg-indigo-200/25 rounded-full blur-3xl" />
       </div>
 
-      {viewMode === 'landing' ? (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-start p-4 bg-gradient-to-br from-[#eaf4fd] via-[#f1f7fe] to-[#dbeefd] overflow-y-auto">
-          <div className="max-w-3xl w-full pt-8 sm:pt-14 pb-12 space-y-8">
-            
-            {/* Always Keep 'What are we prepping for?' on top */}
-            <div className="text-center space-y-3 transition-all duration-300">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900 text-white shadow-xs text-[11px] font-black uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5 text-blue-300" />
-                <span>T-Minus AI Agent</span>
-              </div>
-              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-[1.1]">
-                What are we <span className="text-[#0f172a] underline decoration-blue-500/40 underline-offset-8">prepping</span> for?
-              </h1>
-              <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto font-medium">
-                Select an event preset or describe what you're planning to reverse-engineer all target lead times.
-              </p>
-
-              {/* Top Quick Actions: Scan existing agenda + View scheduled events */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3 animate-in fade-in slide-in-from-top duration-500">
-                <button
-                  onClick={() => setIsScanAgendaModalOpen(true)}
-                  className="w-full sm:w-auto group flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm border border-slate-700 shadow-sm hover:shadow-md transition-all cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 text-sky-300" />
-                  <span>Scan for existing events in your agenda</span>
-                  <ChevronRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
-                </button>
-
-                <button
-                  onClick={() => {
-                    setViewMode('dashboard');
-                    if (!selectedEventId && events.length > 0) {
-                      setSelectedEventId(events[0].id);
-                    }
-                  }}
-                  className="w-full sm:w-auto group flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-2xl bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 font-bold text-xs sm:text-sm border border-slate-200/90 shadow-xs hover:shadow-md transition-all cursor-pointer"
-                >
-                  <CalendarDays className="w-4 h-4 text-slate-900" />
-                  <span>View Scheduled Events</span>
-                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-            </div>
-
-            <div className="w-full max-w-2xl mx-auto space-y-6">
-              <div className="relative flex flex-col">
-                <ChatConsole
-                  messages={messages}
-                  onSendMessage={handleSendMessage}
-                  onIntakeOptionSelect={handleIntakeOptionSelect}
-                  onBatchIntakeSubmit={handleBatchIntakeSubmit}
-                  onSelectVariable={handleSelectVariable}
-                  onToggleMilestoneStatus={handleToggleMilestoneStatus}
-                  onViewEventDetails={(evt) => {
-                    setSelectedEventId(evt.id);
-                    setViewMode('dashboard');
-                    setActiveTab('tasks');
-                  }}
-                  onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
-                  isLoading={isLoading}
-                  events={events}
-                  focusMode="new-event"
-                  onFocusChange={setIsWizardInputFocused}
-                  isLandingMode={true}
-                />
-              </div>
-            </div>
-          </div>
+      {currentView === 'landing' ? (
+        <div className="relative z-10 w-full h-screen overflow-y-auto">
+          <LandingUSPPage
+            onGetStarted={() => setCurrentView('onboarding')}
+            onExploreDashboard={handleLandingConnectCalendar}
+            onGoToDashboard={() => setCurrentView('dashboard')}
+            onOpenPrivacyPolicy={() => setIsPrivacyModalOpen(true)}
+          />
+        </div>
+      ) : currentView === 'onboarding' ? (
+        <div className="relative z-10 w-full h-screen overflow-y-auto">
+          <OnboardingPage
+            initialProfile={onboardingProfile || undefined}
+            onComplete={handleCompleteOnboarding}
+            onOpenPrivacyPolicy={() => setIsPrivacyModalOpen(true)}
+          />
         </div>
       ) : (
         <>
@@ -799,10 +879,14 @@ export default function App() {
               onReferenceDateChange={(newDate) => setCurrentReferenceDate(newDate)}
               onResetData={handleResetData}
               onOpenNewEventModal={() => {
-                setViewMode('landing');
+                setSelectedEventId(null);
+                setActiveTab('chat');
+                setFocusMode('welcome');
+                setMobileDashboardView('detail');
               }}
               onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
               onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+              onOpenOnboarding={() => setIsPreferencesModalOpen(true)}
               isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
               isSyncingWithGoogle={isSyncingWithGoogle}
               onTriggerGoogleSync={() => runGoogleTaskSync(false)}
@@ -811,24 +895,39 @@ export default function App() {
               pendingMilestonesCount={pendingMilestonesCount}
               watchpointsCount={watchpointsCount}
               focusMode={focusMode}
-              onSetFocusMode={setFocusMode}
+              onSetFocusMode={(mode) => {
+                setFocusMode(mode);
+                if (mode === 'welcome') {
+                  setSelectedEventId(null);
+                  setActiveTab('chat');
+                  setMobileDashboardView('detail');
+                }
+              }}
               events={events}
+              agendaHorizonMonths={agendaHorizonMonths}
+              onAgendaHorizonChange={setAgendaHorizonMonths}
             />
           </div>
 
-          {/* Main Dashboard Layout */}
+          {/* Main Dashboard Layout (Master-Detail on Mobile, 2-Column on Desktop) */}
           <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 overflow-hidden relative z-10 animate-in fade-in duration-700">
             
-            {/* Left Console: Event Navigator */}
-            <div className="lg:col-span-5 xl:col-span-4 h-[calc(100vh-120px)] flex flex-col">
+            {/* Left Console: Event Navigator (Screen State 1 on mobile) */}
+            <div className={`${mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'} lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
                 events={events}
                 selectedEventId={selectedEventId}
                 onSelectEvent={(id) => {
                   setSelectedEventId(id);
+                  setActiveTab('tasks');
+                  setFocusMode('adjust-event');
+                  setMobileDashboardView('detail');
                 }}
                 onOpenNewEventModal={() => {
-                  setViewMode('landing');
+                  setSelectedEventId(null);
+                  setActiveTab('chat');
+                  setFocusMode('welcome');
+                  setMobileDashboardView('detail');
                 }}
                 onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
@@ -841,34 +940,164 @@ export default function App() {
               />
             </div>
 
-            {/* Right Console: Main Preparation Workspace */}
-            <div className="lg:col-span-7 xl:col-span-8 h-[calc(100vh-120px)] flex flex-col">
-              <EventTimelineRadar
-                events={events}
-                selectedEventId={selectedEventId}
-                onSelectEvent={(id) => {
-                  setSelectedEventId(id);
-                }}
-                onToggleMilestoneStatus={handleToggleMilestoneStatus}
-                onDeleteEvent={handleDeleteEvent}
-                onDeleteEventFromCalendarOnly={handleDeleteEventFromCalendarOnly}
-                onDeleteEventAndCalendar={handleDeleteEvent}
-                onAddCustomMilestone={handleOpenAddCustomMilestone}
-                onUpdateMilestone={handleUpdateMilestone}
-                onDeleteMilestone={handleDeleteMilestone}
-                onUpdateEvent={handleUpdateEvent}
-                onOpenNewEventModal={() => {
-                  setViewMode('landing');
-                }}
-                onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
-                onSelectVariable={handleSelectVariable}
-                currentReferenceDate={currentReferenceDate}
-                isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
-                isSyncingWithGoogle={isSyncingWithGoogle}
-                onTriggerGoogleSync={() => runGoogleTaskSync(false)}
-              />
+            {/* Right Console: Main Preparation Workspace / Presets Planner (Screen State 2 on mobile) */}
+            <div className={`${mobileDashboardView === 'list' ? 'hidden lg:flex' : 'flex'} lg:col-span-7 xl:col-span-8 h-[calc(100vh-140px)] flex-col w-full`}>
+              
+              {/* Workspace Navigation Bar */}
+              <div className="flex items-center justify-between pb-2 shrink-0">
+                <div className="flex items-center gap-1.5 p-1 bg-white/80 backdrop-blur-md rounded-2xl border border-sky-200/90 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEventId(null);
+                      setActiveTab('chat');
+                      setFocusMode('welcome');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      activeTab === 'chat' || !selectedEventId || focusMode === 'welcome'
+                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Presets &amp; New Event</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (events.length > 0) {
+                        if (!selectedEventId) setSelectedEventId(events[0].id);
+                        setActiveTab('tasks');
+                        setFocusMode('adjust-event');
+                      }
+                    }}
+                    disabled={events.length === 0}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
+                      activeTab === 'tasks' && selectedEventId && focusMode !== 'welcome'
+                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                    }`}
+                  >
+                    <ListChecks className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Timeline &amp; Tasks</span>
+                    {events.length > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.2 bg-sky-100 text-sky-950 font-bold rounded-full font-mono">
+                        {events.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Quick action for manual modal if ever desired */}
+                <button
+                  type="button"
+                  onClick={() => setIsManualModalOpen(true)}
+                  className="text-xs text-slate-500 hover:text-slate-900 font-medium underline cursor-pointer hidden sm:inline-flex items-center gap-1"
+                  title="Open traditional manual event form"
+                >
+                  <span>Manual form modal</span>
+                </button>
+              </div>
+
+              {/* Workspace Content */}
+              {activeTab === 'chat' || !selectedEventId || focusMode === 'welcome' ? (
+                <div className="flex-1 min-h-0 h-full overflow-y-auto">
+                  <ChatConsole
+                    messages={messages}
+                    onSendMessage={handleSendMessage}
+                    onIntakeOptionSelect={handleIntakeOptionSelect}
+                    onBatchIntakeSubmit={handleBatchIntakeSubmit}
+                    onSelectVariable={handleSelectVariable}
+                    onToggleMilestoneStatus={handleToggleMilestoneStatus}
+                    onViewEventDetails={(event) => {
+                      setSelectedEventId(event.id);
+                      setActiveTab('tasks');
+                      setFocusMode('adjust-event');
+                    }}
+                    onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+                    isLoading={isLoading}
+                    events={events}
+                    focusMode={focusMode}
+                    onFocusChange={setIsWizardInputFocused}
+                  />
+                </div>
+              ) : (
+                <EventTimelineRadar
+                  events={events}
+                  selectedEventId={selectedEventId}
+                  onSelectEvent={(id) => {
+                    setSelectedEventId(id);
+                    if (id) {
+                      setMobileDashboardView('detail');
+                      setActiveTab('tasks');
+                      setFocusMode('adjust-event');
+                    }
+                  }}
+                  onBackToList={() => setMobileDashboardView('list')}
+                  onToggleMilestoneStatus={handleToggleMilestoneStatus}
+                  onDeleteEvent={(id) => {
+                    handleDeleteEvent(id);
+                    setMobileDashboardView('list');
+                  }}
+                  onDeleteEventFromCalendarOnly={handleDeleteEventFromCalendarOnly}
+                  onDeleteEventAndCalendar={(id, cleanup) => {
+                    handleDeleteEvent(id);
+                    setMobileDashboardView('list');
+                  }}
+                  onAddCustomMilestone={handleOpenAddCustomMilestone}
+                  onUpdateMilestone={handleUpdateMilestone}
+                  onDeleteMilestone={handleDeleteMilestone}
+                  onUpdateEvent={handleUpdateEvent}
+                  onOpenNewEventModal={() => {
+                    setSelectedEventId(null);
+                    setActiveTab('chat');
+                    setFocusMode('welcome');
+                  }}
+                  onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+                  onSelectVariable={handleSelectVariable}
+                  currentReferenceDate={currentReferenceDate}
+                  isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
+                  isSyncingWithGoogle={isSyncingWithGoogle}
+                  onTriggerGoogleSync={() => runGoogleTaskSync(false)}
+                />
+              )}
             </div>
           </main>
+
+          {/* Clean Minimalist Footer */}
+          <footer className="w-full max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between text-xs text-slate-400 border-t border-slate-200/50 mt-auto relative z-10 shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPreferencesModalOpen(true)}
+                className="hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                Preferences &amp; Heuristics
+              </button>
+              <span className="text-slate-300">&bull;</span>
+              <button
+                type="button"
+                onClick={() => setIsPrivacyModalOpen(true)}
+                className="hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                Privacy Notice
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 mt-1.5 sm:mt-0">
+              <button
+                type="button"
+                id="btn-footer-reset-demo"
+                onClick={handleResetDemo}
+                className="text-[11px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+                title="Reset local demo data"
+              >
+                <RotateCcw className="w-3 h-3 text-slate-400" />
+                <span>Reset Demo</span>
+              </button>
+            </div>
+          </footer>
         </>
       )}
 
@@ -939,6 +1168,8 @@ export default function App() {
         currentReferenceDate={currentReferenceDate}
         onImportTrackedEvents={handleImportTrackedEvents}
         isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
+        onboardingProfile={onboardingProfile}
+        initialScanMonths={agendaHorizonMonths}
         onOpenGoogleCalendarSync={() => {
           setIsScanAgendaModalOpen(false);
           setIsGoogleCalendarModalOpen(true);
@@ -953,6 +1184,55 @@ export default function App() {
         events={events}
         onConfirmDeleteAppOnly={handleBulkDeleteAppOnly}
         onConfirmDeleteAppAndCalendar={handleBulkDeleteAppAndCalendar}
+      />
+
+      {/* Preferences & Heuristics Calibration Modal */}
+      <PreferencesModal
+        isOpen={isPreferencesModalOpen}
+        onClose={() => setIsPreferencesModalOpen(false)}
+        profile={onboardingProfile}
+        onSaveProfile={(profile) => {
+          setOnboardingProfile(profile);
+          try {
+            localStorage.setItem('onboarding_profile', JSON.stringify(profile));
+          } catch (e) {
+            console.warn('Failed to save profile', e);
+          }
+        }}
+        onOpenPrivacyPolicy={() => {
+          setIsPreferencesModalOpen(false);
+          setIsPrivacyModalOpen(true);
+        }}
+        agendaHorizonMonths={agendaHorizonMonths}
+        onAgendaHorizonChange={setAgendaHorizonMonths}
+        onResetDemo={handleResetDemo}
+      />
+
+      {/* Cookie Consent Banner */}
+      <CookieBanner
+        onOpenPreferences={() => setIsCookiePreferencesModalOpen(true)}
+        onConsentAccepted={(settings) => setCookieSettings(settings)}
+      />
+
+      {/* Cookie Preferences Modal */}
+      <CookiePreferencesModal
+        isOpen={isCookiePreferencesModalOpen}
+        onClose={() => setIsCookiePreferencesModalOpen(false)}
+        currentSettings={cookieSettings}
+        onSavePreferences={(settings) => {
+          setCookieSettings(settings);
+          try {
+            localStorage.setItem('has_cookie_consent_v1', JSON.stringify(settings));
+          } catch (e) {
+            console.warn('Failed to save cookie settings', e);
+          }
+        }}
+      />
+
+      {/* Privacy Policy Modal */}
+      <PrivacyPolicyModal
+        isOpen={isPrivacyModalOpen}
+        onClose={() => setIsPrivacyModalOpen(false)}
       />
 
     </div>

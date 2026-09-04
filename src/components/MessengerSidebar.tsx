@@ -105,8 +105,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             )}
             <button
               onClick={onOpenNewEventModal}
-              className="p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 transition-colors cursor-pointer border border-sky-200/80 shadow-xs"
-              title="Add new event"
+              className="p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 transition-all cursor-pointer border border-sky-200/80 shadow-xs active:scale-95 flex items-center justify-center"
+              title="Add new event using presets or assistant"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -171,14 +171,20 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const pendingTasks = evt.milestones?.filter((m) => m.status !== 'completed') || [];
             const nextTask = pendingTasks[0];
 
+            const isUnrefined = evt.needsRefinement === true;
+
             return (
               <div
                 key={evt.id}
                 onClick={() => onSelectEvent(evt.id)}
                 className={`p-3 rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group ${
                   isSelected
-                    ? 'bg-white border-2 border-slate-900 shadow-sm'
-                    : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
+                    ? isUnrefined
+                      ? 'bg-white border-2 border-slate-900 border-l-4 border-l-amber-500 shadow-sm'
+                      : 'bg-white border-2 border-slate-900 shadow-sm'
+                    : isUnrefined
+                      ? 'bg-amber-50/40 border border-amber-200/90 border-l-4 border-l-amber-500 hover:border-amber-300 hover:shadow-xs shadow-2xs'
+                      : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
                 }`}
               >
                 {/* Checkbox for Bulk Deletion */}
@@ -196,7 +202,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 </div>
 
                 {/* Category Icon */}
-                <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs text-slate-700">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                  isUnrefined ? 'bg-amber-100/80 border border-amber-300 text-amber-900' : 'bg-slate-100 border border-slate-200 text-slate-700'
+                }`}>
                   {getCategoryIcon(evt.category)}
                 </div>
 
@@ -207,11 +215,12 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                       {evt.title}
                     </h4>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {(evt.needsRefinement || evt.milestones.length <= 2) && (
-                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 bg-amber-100/90 border border-amber-300/80 px-1.5 py-0.5 rounded-md">
-                          Refine
+                      {isUnrefined ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-950 bg-amber-200/90 border border-amber-300 px-1.5 py-0.5 rounded-full shadow-2xs animate-pulse">
+                          <Sparkles className="w-2.5 h-2.5 text-amber-700" />
+                          <span>Unrefined</span>
                         </span>
-                      )}
+                      ) : null}
                       <span className="text-[11px] font-mono font-medium text-slate-500">
                         {countdown.label}
                       </span>

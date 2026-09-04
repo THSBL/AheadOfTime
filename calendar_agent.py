@@ -1,3 +1,4 @@
+import os
 import os.path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -15,8 +16,13 @@ def main():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
+            credentials_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
+            if not os.path.exists(credentials_file):
+                print(f"No credentials file found at '{credentials_file}'.")
+                print("Please copy 'credentials.example.json' to 'credentials.json' and fill in your credentials locally.")
+                return
             flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json", SCOPES
+                credentials_file, SCOPES
             )
             creds = flow.run_local_server(port=0)
         with open("token.json", "w") as token:

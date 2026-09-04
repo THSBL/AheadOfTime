@@ -43,6 +43,10 @@ export interface GoogleCalendarEventItem {
   hangoutLink?: string;
   conferenceData?: any;
   status?: string;
+  extendedProperties?: {
+    private?: Record<string, string>;
+    shared?: Record<string, string>;
+  };
 }
 
 export interface GoogleCalendarProfile {
@@ -98,7 +102,7 @@ export async function fetchGoogleCalendarEvents(
   timeMin?: string,
   timeMax?: string
 ): Promise<GoogleCalendarEventItem[]> {
-  const min = timeMin || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // Include today/yesterday for test visibility
+  const min = timeMin || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   let url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
     min
   )}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`;
@@ -222,7 +226,6 @@ export async function wipeGoogleCalendarTestEvents(
  */
 export function extractDateOnly(dateStr: string): string {
   if (!dateStr) return new Date().toISOString().substring(0, 10);
-  // If already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
     return dateStr.trim();
   }
@@ -255,7 +258,7 @@ export function getNextDayDate(dateStr: string): string {
 }
 
 /**
- * Format RFC3339 start and end dateTimes cleanly without double ISO suffixes
+ * Format RFC3339 start and end dateTimes cleanly
  */
 export function formatStartEndDateTime(
   dateInput: string,
@@ -271,7 +274,6 @@ export function formatStartEndDateTime(
   const startMinsStr = String(startMins).padStart(2, '0');
   const startDateTime = `${dateOnly}T${startHoursStr}:${startMinsStr}:00`;
 
-  // Calculate end time
   const totalMins = startHrs * 60 + startMins + durationMinutes;
   const endHrs = Math.min(23, Math.floor(totalMins / 60));
   const endMinutes = totalMins % 60;
@@ -285,51 +287,13 @@ export function formatStartEndDateTime(
 export type MilestoneSyncFormat = 'tasks_only' | 'all_day' | 'timed';
 
 export interface SyncOptions {
-  milestoneFormat?: MilestoneSyncFormat; // 'tasks_only' (default, clean Google Tasks), 'all_day', or 'timed'
-  createCalendarBlocksForMilestones?: boolean; // legacy alias
+  milestoneFormat?: MilestoneSyncFormat;
+  createCalendarBlocksForMilestones?: boolean;
   taskListId?: string;
 }
 
 /**
- * Wipe ONLY the duplicate milestone calendar events (events starting with 📋 or containing [TASK] / [T-)
- * Keeps the main 🎯 [TARGET DEADLINE] calendar events intact.
- */
-export async function wipeMilestoneCalendarEventsOnly(
-  accessToken: string,
-  timeMin = '2026-01-01T00:00:00Z',
-  timeMax = '2027-12-31T23:59:59Z'
-): Promise<{ deletedCount: number; deletedTitles: string[] }> {
-  const items = await fetchGoogleCalendarEvents(accessToken, 250, timeMin, timeMax);
-  const milestoneEvents = items.filter((item) => {
-    const summary = (item.summary || '').toLowerCase();
-    const desc = (item.description || '').toLowerCase();
-    return (
-      summary.startsWith('📋') ||
-      summary.includes('[task]') ||
-      (summary.includes('[t-') && !summary.includes('[target deadline]') && !summary.startsWith('🎯')) ||
-      desc.includes('preparation task') ||
-      desc.includes('reverse-engineered preparation task')
-    );
-  });
-
-  let deletedCount = 0;
-  const deletedTitles: string[] = [];
-
-  for (const item of milestoneEvents) {
-    try {
-      await deleteGoogleCalendarEvent(accessToken, item.id);
-      deletedCount++;
-      deletedTitles.push(item.summary || 'Milestone Event');
-    } catch (err) {
-      console.warn(`Could not delete duplicate milestone calendar event ${item.id}:`, err);
-    }
-  }
-
-  return { deletedCount, deletedTitles };
-}
-
-/**
- * Push an individual milestone reminder directly to Google Tasks
+ * Push an individual milestone reminder directly to Google Tasks (and optionally Google Calendar)
  */
 export async function pushSingleMilestoneToGoogleCalendar(
   accessToken: string,
@@ -342,14 +306,13 @@ export async function pushSingleMilestoneToGoogleCalendar(
   let createdTaskId: string | undefined;
 
   const dateOnly = extractDateOnly(milestone.calculatedDate);
-  // Default to 'tasks_only' so tasks do NOT create duplicate calendar events
-  const format: MilestoneSyncFormat = options?.milestoneFormat || (options?.createCalendarEventBlock ? 'timed' : 'tasks_only');
+  const shouldCreateCalBlock = options?.createCalendarEventBlock || options?.milestoneFormat === 'timed' || options?.milestoneFormat === 'all_day';
 
-  // 1. Create as a Literal Google Task in Google Tasks API
+  // 1. Create in Google Tasks (native Google Calendar task layer)
   try {
     const taskRes = await createGoogleTask(accessToken, {
       title: `[${milestone.tMinusLabel}] ${milestone.title} (${eventTitle})`,
-      notes: `T-Minus Preparation Task for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}`,
+      notes: `AheadOfTime Milestone for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}`,
       due: `${dateOnly}T00:00:00.000Z`,
       taskListId: options?.taskListId || '@default',
     });
@@ -358,18 +321,19 @@ export async function pushSingleMilestoneToGoogleCalendar(
     console.warn('Could not push to Google Tasks API:', tErr);
   }
 
-  // 2. ONLY publish as an extra Calendar Event if explicitly requested (not 'tasks_only')
-  if (format === 'all_day') {
+  // 2. Optionally create Calendar Event block if requested
+  if (shouldCreateCalBlock) {
     const nextDay = getNextDayDate(dateOnly);
+    const isTimed = options?.milestoneFormat === 'timed';
     const calPayload = {
-      summary: `📋 [TASK] [${milestone.tMinusLabel}] ${milestone.title}`,
-      description: `T-Minus Preparation Task for "${eventTitle}".\n\nTask: ${milestone.title}\nDetails: ${milestone.description || ''}\nCategory: ${milestone.category}\nTarget Event Date: ${dateOnly}`,
-      start: {
-        date: dateOnly,
-      },
-      end: {
-        date: nextDay,
-      },
+      summary: `📋 [${milestone.tMinusLabel}] ${milestone.title}`,
+      description: `Preparation milestone for "${eventTitle}".\n\nLead Time: ${milestone.tMinusLabel}\nCategory: ${milestone.category}\nAction Required: ${milestone.description || 'Complete advance preparation.'}\nTarget Event Date: ${dateOnly}`,
+      start: isTimed 
+        ? { dateTime: formatStartEndDateTime(dateOnly, '09:00', 30).startDateTime, timeZone }
+        : { date: dateOnly },
+      end: isTimed 
+        ? { dateTime: formatStartEndDateTime(dateOnly, '09:00', 30).endDateTime, timeZone }
+        : { date: nextDay },
       transparency: 'transparent',
       reminders: {
         useDefault: false,
@@ -380,37 +344,23 @@ export async function pushSingleMilestoneToGoogleCalendar(
     };
 
     try {
-      createdCalEvent = await createCalendarEvent(accessToken, calPayload);
-    } catch (cErr) {
-      console.error('Error creating all-day agenda task on Google Calendar:', cErr);
-    }
-  } else if (format === 'timed') {
-    const { startDateTime, endDateTime } = formatStartEndDateTime(milestone.calculatedDate, '09:00', 30);
+      const res = await fetch(
+        'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(calPayload),
+        }
+      );
 
-    const msBody = {
-      summary: `📋 [${milestone.tMinusLabel} TASK] ${milestone.title} (${eventTitle})`,
-      description: `T-Minus Preparation Task for "${eventTitle}".\n\nTask: ${milestone.title}\nDetails: ${milestone.description || ''}\nTag: ${milestone.category}\nDue Date: ${dateOnly}`,
-      start: {
-        dateTime: startDateTime,
-        timeZone,
-      },
-      end: {
-        dateTime: endDateTime,
-        timeZone,
-      },
-      reminders: {
-        useDefault: false,
-        overrides: [
-          { method: 'popup' as const, minutes: 0 },
-          { method: 'popup' as const, minutes: 120 },
-        ],
-      },
-    };
-
-    try {
-      createdCalEvent = await createCalendarEvent(accessToken, msBody);
+      if (res.ok) {
+        createdCalEvent = await res.json();
+      }
     } catch (cErr) {
-      console.error('Error creating timed calendar event for milestone:', cErr);
+      console.error('Error creating calendar block for milestone:', cErr);
     }
   }
 
@@ -422,7 +372,6 @@ export async function pushSingleMilestoneToGoogleCalendar(
 
 /**
  * Push an event and its calculated T-minus milestones into Google Calendar & Google Tasks
- * Model: 1 Target Deadline Event in Calendar + N Reverse-Engineered Tasks strictly in Google Tasks
  */
 export async function syncEventToGoogleCalendar(
   accessToken: string,
@@ -437,64 +386,66 @@ export async function syncEventToGoogleCalendar(
     totalSynced: 0,
   };
 
-  // Default to 'tasks_only' so that milestones are created exclusively as Google Tasks,
-  // preventing duplicate calendar event entries
-  const format: MilestoneSyncFormat = options?.milestoneFormat || (options?.createCalendarBlocksForMilestones ? 'timed' : 'tasks_only');
+  const createCalBlocks = options?.createCalendarBlocksForMilestones || options?.milestoneFormat === 'all_day' || options?.milestoneFormat === 'timed';
 
-  // 1. Create Main Event (The 1 Target Deadline on Google Calendar)
+  // 1. Create or verify Main Event on the Primary Calendar
   const eventDateOnly = extractDateOnly(event.eventDate);
   const timeStr = event.eventTime || '19:00';
   const { startDateTime, endDateTime } = formatStartEndDateTime(eventDateOnly, timeStr, 120);
 
-  const mainEventBody = {
-    summary: `🎯 ${event.title} [TARGET DEADLINE]`,
-    description: `Target Event organized with T-Minus Calendar Intelligence Agent.\nCategory: ${event.category}\n\nReverse-Engineered Preparation Tasks (in Google Tasks & Agenda):\n${
-      event.milestones?.map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
-    }`,
-    location: event.location || '',
-    start: {
-      dateTime: startDateTime,
-      timeZone,
-    },
-    end: {
-      dateTime: endDateTime,
-      timeZone,
-    },
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: 'popup' as const, minutes: 60 },
-        { method: 'popup' as const, minutes: 1440 }, // 1 day before
-      ],
-    },
-  };
-
-  try {
-    const resMain = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+  if (event.googleEventId && !event.googleEventId.startsWith('local_')) {
+    result.mainEventId = event.googleEventId;
+    result.mainEventLink = event.googleEventLink;
+  } else {
+    const mainEventBody = {
+      summary: `🎯 ${event.title}`,
+      description: `Target Event organized with Ahead Of Time.\nCategory: ${event.category}\n\nPreparation Countdown:\n${
+        event.milestones?.map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
+      }`,
+      location: event.location || '',
+      start: {
+        dateTime: startDateTime,
+        timeZone,
       },
-      body: JSON.stringify(mainEventBody),
-    });
+      end: {
+        dateTime: endDateTime,
+        timeZone,
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'popup' as const, minutes: 60 },
+          { method: 'popup' as const, minutes: 1440 },
+        ],
+      },
+    };
 
-    if (resMain.ok) {
-      const createdMain = await resMain.json();
-      result.mainEventId = createdMain.id;
-      result.mainEventLink = createdMain.htmlLink;
-      result.totalSynced += 1;
-    } else {
-      const errData = await resMain.json().catch(() => ({}));
-      console.warn('Main event sync notice:', errData);
-      result.error = errData.error?.message || `Failed to create main event (${resMain.status})`;
+    try {
+      const resMain = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mainEventBody),
+      });
+
+      if (resMain.ok) {
+        const createdMain = await resMain.json();
+        result.mainEventId = createdMain.id;
+        result.mainEventLink = createdMain.htmlLink;
+        result.totalSynced += 1;
+      } else {
+        const errData = await resMain.json().catch(() => ({}));
+        result.error = errData.error?.message || `Failed to create main event (${resMain.status})`;
+      }
+    } catch (err: any) {
+      console.error('Error creating main event on Google Calendar:', err);
+      result.error = err.message || 'Network error creating main event';
     }
-  } catch (err: any) {
-    console.error('Error creating main event on Google Calendar:', err);
-    result.error = err.message || 'Network error creating main event';
   }
 
-  // 2. Create All T-Minus Milestones as Tasks (Google Tasks + Agenda Items)
+  // 2. Create All T-Minus Milestones as Google Tasks (and optionally calendar blocks)
   const updatedMilestones: TMinusMilestone[] = [];
 
   if (event.milestones && event.milestones.length > 0) {
@@ -503,11 +454,11 @@ export async function syncEventToGoogleCalendar(
       let msCalId: string | undefined = undefined;
       let msTaskId: string | undefined = undefined;
 
-      // 2A. Push to Google Tasks API (Always created for Tasks app & sidebar)
+      // Push to Google Tasks API (standard Google Calendar tasks sub-layer)
       try {
         const taskItem = await createGoogleTask(accessToken, {
           title: `[${milestone.tMinusLabel}] ${milestone.title} (${event.title})`,
-          notes: `T-Minus Task for "${event.title}"\nEvent Date: ${eventDateOnly}\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${msDateOnly}\nCategory: ${milestone.category}\nAction: ${milestone.description || ''}`,
+          notes: `AheadOfTime Milestone for "${event.title}"\nEvent Date: ${eventDateOnly}\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${msDateOnly}\nCategory: ${milestone.category}\nAction: ${milestone.description || ''}`,
           due: `${msDateOnly}T00:00:00.000Z`,
           taskListId: options?.taskListId || '@default',
         });
@@ -521,19 +472,18 @@ export async function syncEventToGoogleCalendar(
         console.warn('Notice pushing to Google Tasks API:', gtErr);
       }
 
-      // 2B. Push to Google Calendar Agenda if requested (All-Day or Timed)
-      if (format === 'all_day') {
+      // If calendar event blocks requested, create on primary calendar
+      if (createCalBlocks) {
         try {
           const nextDay = getNextDayDate(msDateOnly);
-          const allDayBody = {
-            summary: `📋 [TASK] [${milestone.tMinusLabel}] ${milestone.title} (${event.title})`,
-            description: `T-Minus Preparation Task for "${event.title}".\n\nTask: ${milestone.title}\nDetails: ${milestone.description || ''}\nTag: ${milestone.category}\nDue Date: ${msDateOnly}`,
-            start: {
-              date: msDateOnly,
-            },
-            end: {
-              date: nextDay,
-            },
+          const isTimed = options?.milestoneFormat === 'timed';
+          const timedData = isTimed ? formatStartEndDateTime(msDateOnly, '09:00', 30) : null;
+
+          const calBody = {
+            summary: `📋 [${milestone.tMinusLabel}] ${milestone.title}`,
+            description: `Preparation milestone for "${event.title}".\n\nLead Time: ${milestone.tMinusLabel}\nCategory: ${milestone.category}\nTask: ${milestone.title}\nDetails: ${milestone.description || ''}\nTarget Event: ${event.title} (${eventDateOnly})`,
+            start: isTimed ? { dateTime: timedData?.startDateTime, timeZone } : { date: msDateOnly },
+            end: isTimed ? { dateTime: timedData?.endDateTime, timeZone } : { date: nextDay },
             transparency: 'transparent',
             reminders: {
               useDefault: false,
@@ -543,14 +493,17 @@ export async function syncEventToGoogleCalendar(
             },
           };
 
-          const resMs = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(allDayBody),
-          });
+          const resMs = await fetch(
+            'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(calBody),
+            }
+          );
 
           if (resMs.ok) {
             const createdMs = await resMs.json();
@@ -558,48 +511,7 @@ export async function syncEventToGoogleCalendar(
             result.milestoneEventIds.push(createdMs.id);
           }
         } catch (msErr) {
-          console.error('Error creating all-day milestone on Google Calendar:', msErr);
-        }
-      } else if (format === 'timed') {
-        try {
-          const { startDateTime: msStart, endDateTime: msEnd } = formatStartEndDateTime(msDateOnly, '09:00', 30);
-
-          const msBody = {
-            summary: `📋 [${milestone.tMinusLabel} TASK] ${milestone.title} (${event.title})`,
-            description: `T-Minus Preparation Task for "${event.title}" (Event Date: ${eventDateOnly}).\n\nTask: ${milestone.title}\nDetails: ${milestone.description || ''}\nTag: ${milestone.category}\nDue Date: ${msDateOnly}`,
-            start: {
-              dateTime: msStart,
-              timeZone,
-            },
-            end: {
-              dateTime: msEnd,
-              timeZone,
-            },
-            reminders: {
-              useDefault: false,
-              overrides: [
-                { method: 'popup' as const, minutes: 0 },
-                { method: 'popup' as const, minutes: 120 },
-              ],
-            },
-          };
-
-          const resMs = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(msBody),
-          });
-
-          if (resMs.ok) {
-            const createdMs = await resMs.json();
-            msCalId = createdMs.id;
-            result.milestoneEventIds.push(createdMs.id);
-          }
-        } catch (msErr) {
-          console.error('Error creating milestone block on Google Calendar:', msErr);
+          console.error('Error creating milestone calendar event:', msErr);
         }
       }
 
@@ -611,7 +523,6 @@ export async function syncEventToGoogleCalendar(
     }
   }
 
-  // Construct updated event payload with IDs
   result.updatedEvent = {
     ...event,
     googleEventId: result.mainEventId || event.googleEventId,
@@ -625,18 +536,21 @@ export async function syncEventToGoogleCalendar(
 }
 
 /**
- * Delete an entire event and all its associated preparation tasks from Google Calendar and Google Tasks.
- * This cleans up target deadlines, all-day task blocks, and Google Tasks items so the agenda remains clean.
+ * Delete an event and/or its associated preparation tasks from Google Calendar and Google Tasks.
  */
 export async function deleteEventFromGoogleCalendar(
   accessToken: string,
-  event: CalendarEvent
+  event: CalendarEvent,
+  options: { deleteMainEvent?: boolean; deleteTasks?: boolean } = { deleteMainEvent: true, deleteTasks: true }
 ): Promise<{ deletedCalendarEvents: number; deletedTasks: number; success: boolean }> {
   let deletedCalendarEvents = 0;
   let deletedTasks = 0;
 
-  // 1. Delete main event by stored ID
-  if (event.googleEventId) {
+  const shouldDeleteMain = options.deleteMainEvent !== false;
+  const shouldDeleteTasks = options.deleteTasks !== false;
+
+  // 1. Delete main event by stored ID if requested
+  if (shouldDeleteMain && event.googleEventId && !event.googleEventId.startsWith('local_')) {
     try {
       await deleteGoogleCalendarEvent(accessToken, event.googleEventId);
       deletedCalendarEvents++;
@@ -645,8 +559,8 @@ export async function deleteEventFromGoogleCalendar(
     }
   }
 
-  // 2. Delete milestones by stored calendar IDs and task IDs
-  if (event.milestones && event.milestones.length > 0) {
+  // 2. Delete milestones by stored calendar IDs and task IDs if requested
+  if (shouldDeleteTasks && event.milestones && event.milestones.length > 0) {
     for (const ms of event.milestones) {
       if (ms.googleCalendarEventId) {
         try {
@@ -667,64 +581,50 @@ export async function deleteEventFromGoogleCalendar(
     }
   }
 
-  // 3. Fallback / thorough scan: query calendar for any matching items with this event title
-  // to guarantee no lingering preparation milestones remain on the user's agenda
-  try {
-    const searchUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${encodeURIComponent(
-      event.title
-    )}&maxResults=50`;
-    const res = await fetch(searchUrl, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const items: GoogleCalendarEventItem[] = data.items || [];
-      for (const item of items) {
-        const sum = (item.summary || '').toLowerCase();
-        const desc = (item.description || '').toLowerCase();
-        const eventTitleLower = event.title.toLowerCase();
-
-        if (
-          (sum.includes(eventTitleLower) || desc.includes(eventTitleLower)) &&
-          (sum.includes('🎯') || sum.includes('[task]') || sum.includes('[t-') || desc.includes('t-minus'))
-        ) {
+  // 3. Fallback scan: query Google Tasks for any tasks containing `(${event.title})` if tasks requested
+  if (shouldDeleteTasks) {
+    try {
+      const tasks = await fetchGoogleTasks(accessToken, '@default', 100);
+      for (const t of tasks) {
+        if (t.title && t.title.toLowerCase().includes(`(${event.title.toLowerCase()})`)) {
           try {
-            await deleteGoogleCalendarEvent(accessToken, item.id);
-            deletedCalendarEvents++;
-          } catch (delErr) {
-            console.warn('Could not delete matched calendar item:', delErr);
+            await deleteGoogleTask(accessToken, t.id);
+            deletedTasks++;
+          } catch (delTaskErr) {
+            console.warn('Could not delete matched Google Task:', delTaskErr);
           }
         }
       }
+    } catch (taskScanErr) {
+      console.warn('Notice scanning tasks for matching items:', taskScanErr);
     }
-  } catch (searchErr) {
-    console.warn('Notice scanning calendar for matching items:', searchErr);
-  }
-
-  // 4. Scan Google Tasks for any tasks containing `(${event.title})`
-  try {
-    const tasks = await fetchGoogleTasks(accessToken, '@default', 100);
-    for (const t of tasks) {
-      if (t.title && t.title.toLowerCase().includes(`(${event.title.toLowerCase()})`)) {
-        try {
-          await deleteGoogleTask(accessToken, t.id);
-          deletedTasks++;
-        } catch (delTaskErr) {
-          console.warn('Could not delete matched Google Task:', delTaskErr);
-        }
-      }
-    }
-  } catch (taskScanErr) {
-    console.warn('Notice scanning tasks for matching items:', taskScanErr);
   }
 
   return {
     deletedCalendarEvents,
     deletedTasks,
     success: true,
+  };
+}
+
+/**
+ * Safe Plan Deletion with granular flags
+ */
+export async function executeSafePlanDeletion(
+  accessToken: string,
+  event: CalendarEvent,
+  options: { deleteFromPrimaryCalendar?: boolean; deleteMainEvent?: boolean; deleteTasks?: boolean }
+): Promise<{ deletedTasksCount: number; deletedPrimaryEvent: boolean; success: boolean }> {
+  const deleteMain = options.deleteMainEvent ?? options.deleteFromPrimaryCalendar ?? false;
+  const deleteTasks = options.deleteTasks ?? true;
+  const result = await deleteEventFromGoogleCalendar(accessToken, event, {
+    deleteMainEvent: deleteMain,
+    deleteTasks: deleteTasks,
+  });
+  return {
+    deletedTasksCount: result.deletedTasks,
+    deletedPrimaryEvent: result.deletedCalendarEvents > 0,
+    success: result.success,
   };
 }
 
@@ -883,4 +783,54 @@ export async function updateMilestoneCompletionOnGoogle(
     calendarUpdated,
   };
 }
+
+/**
+ * Clean up legacy or duplicate milestone calendar events on the primary calendar
+ * (so prep tasks live purely as Google Tasks)
+ */
+export async function wipeMilestoneCalendarEventsOnly(
+  accessToken: string
+): Promise<{ deletedCount: number }> {
+  try {
+    const listUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+    listUrl.searchParams.set('maxResults', '250');
+    listUrl.searchParams.set('q', '[TASK]');
+
+    const res = await fetch(listUrl.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      return { deletedCount: 0 };
+    }
+
+    const data = await res.json();
+    const items: GoogleCalendarEventItem[] = data.items || [];
+    let deletedCount = 0;
+
+    for (const item of items) {
+      const isTaskEvent =
+        item.summary?.startsWith('[TASK]') ||
+        item.extendedProperties?.private?.aot_is_milestone === 'true' ||
+        item.extendedProperties?.private?.aot_type === 'milestone';
+
+      if (isTaskEvent && item.id) {
+        try {
+          await deleteGoogleCalendarEvent(accessToken, item.id);
+          deletedCount++;
+        } catch (delErr) {
+          console.warn('Failed to delete milestone event block:', item.id, delErr);
+        }
+      }
+    }
+
+    return { deletedCount };
+  } catch (err) {
+    console.error('Error wiping milestone calendar events:', err);
+    return { deletedCount: 0 };
+  }
+}
+
 

@@ -195,3 +195,22 @@ export interface EvaluationTopicGroup {
   allSelected: boolean;
 }
 
+export type AgeRange = '18–25' | '26–35' | '36–50' | '51+';
+export type FamilyStatus = 'Single' | 'Couple' | 'Couple with kids';
+export type CalendarType = 'Personal only' | 'Business only' | 'Mixed (Personal & Work)';
+
+export interface OnboardingProfile {
+  ageRange: AgeRange;
+  familyStatus: FamilyStatus;
+  calendarType: CalendarType;
+  privacyConsentAccepted: boolean;
+  completedAt?: string;
+}
+
+export interface CookieConsentSettings {
+  hasConsented: boolean;
+  functional: boolean;
+  analytics: boolean;
+  timestamp?: string;
+}
+

@@ -429,7 +429,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
   const handleConfirmCustomClarification = (e: React.FormEvent) => {
     e.preventDefault();
-    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}. Please build the T-Minus preparation plan!`;
+    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}. Please build the AheadOfTime preparation plan!`;
     setCustomClarificationStep('none');
     onSendMessage(detailsMsg, false);
   };
@@ -536,7 +536,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   );
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-transparent overflow-hidden transition-all duration-300">
+    <div className="flex-1 flex flex-col h-full bg-transparent overflow-y-auto min-h-0 transition-all duration-300 pr-1">
       
       {/* 1. INITIAL PRESET SELECTION & FREEFORM OPPORTUNITY OR CUSTOM CLARIFICATION CARD */}
       {presetStep === 'initial' && !isLoading && (
@@ -1399,13 +1399,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
           </div>
 
-          {/* Primary CTA: Generate T-Minus Schedule */}
+          {/* Primary CTA: Generate AheadOfTime Schedule */}
           <div className="pt-4">
             <button
               onClick={handleGeneratePresetSchedule}
               className="w-full py-4 sm:py-5 rounded-3xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-base sm:text-lg shadow-xl shadow-slate-900/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 cursor-pointer group"
             >
-              <span>Generate T-Minus Schedule</span>
+              <span>Build AheadOfTime Milestones</span>
               <Target className="w-5 h-5 group-hover:rotate-12 transition-transform" />
             </button>
           </div>
@@ -1422,7 +1422,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             <div className="w-2.5 h-2.5 bg-slate-900 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
           <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-slate-800">
-            Reverse-engineering deadlines & milestones...
+            Building backward preparation milestones...
           </span>
         </div>
       )}
@@ -1488,9 +1488,9 @@ const CustomClarificationCard = ({
           : 'bg-blue-50 border-blue-200 text-blue-950'
       }`}>
         {clarificationReason === 'unclear' ? (
-          <span><strong>Need more details:</strong> Your description was brief or unclear. Please fill in the target person, date, and venue below so T-Minus can calculate the exact preparation countdown.</span>
+          <span><strong>Need more details:</strong> Your description was brief or unclear. Please fill in the target person, date, and venue below so AheadOfTime can map out your preparation milestones.</span>
         ) : (
-          <span><strong>Event successfully parsed!</strong> We detected a <strong>{customParsedCategory}</strong> event. Please review and fine-tune the details below before generating your T-Minus countdown.</span>
+          <span><strong>Event details recognized:</strong> We detected a <strong>{customParsedCategory}</strong> event. Please review and fine-tune the details below before building your AheadOfTime milestones.</span>
         )}
       </div>
 
@@ -1582,8 +1582,8 @@ const CustomClarificationCard = ({
             type="submit"
             className="px-6 py-2.5 rounded-xl bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
           >
-            <Sparkles className="w-4 h-4 text-blue-300" />
-            <span>Generate T-Minus Preparation Plan</span>
+            <Sparkles className="w-4 h-4 text-sky-300" />
+            <span>Build AheadOfTime Milestones</span>
           </button>
         </div>
       </form>
@@ -1620,24 +1620,24 @@ const InitialPresetsAndFreeform = ({
 
       <div className="space-y-3">
         {/* 4 Big Presets: Party / Friends visiting / Trip / Project management */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
           {EVENT_PRESETS.map((preset: any) => (
             <button
               key={preset.id}
               onClick={() => handleSelectPreset(preset)}
-              className="group relative text-left p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-3"
+              className="group relative text-left p-3 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-2"
             >
-              <div className="flex items-start justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 text-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-slate-200 transition-all">
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-100 text-xl sm:text-2xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
                   {preset.emoji}
                 </div>
-                <div className="w-7 h-7 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
-                  <ChevronRight className="w-4 h-4" />
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </div>
               </div>
 
               <div>
-                <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-slate-900 transition-colors">
+                <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-slate-900 transition-colors">
                   {preset.title}
                 </h3>
                 <p className="text-xs text-slate-500 font-normal leading-relaxed mt-0.5">
@@ -1691,10 +1691,10 @@ const InitialPresetsAndFreeform = ({
       <div className="relative z-30 space-y-2">
         <form
           onSubmit={handleFreeformSubmit}
-          className={`relative flex items-end gap-2 p-3 sm:p-4 transition-all duration-300 ${
+          className={`relative isolate z-30 flex items-end gap-2 p-3 sm:p-4 transition-all duration-300 ${
             isInputFocused 
-              ? 'bg-white rounded-[28px] border border-slate-700 ring-4 ring-slate-100 shadow-sm' 
-              : 'bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-2xs'
+              ? 'bg-white rounded-[28px] border-2 border-slate-900 ring-4 ring-sky-100 shadow-md' 
+              : 'bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm'
           }`}
         >
           <div className="flex-1 relative">
