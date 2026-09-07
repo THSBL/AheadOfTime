@@ -23,11 +23,17 @@ import {
   Megaphone,
   Briefcase,
   Wrench,
-  X
+  X,
+  Layers,
+  FileSpreadsheet,
+  Zap
 } from 'lucide-react';
-import { AgentMessage, CalendarEvent } from '../types';
+import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset } from '../types';
 import { EVENT_PRESETS, SMALL_PRESETS, PromptPreset } from '../data/samplePresets';
 import { ThinkingModule } from './ThinkingModule';
+import { loadCustomPresets } from '../utils/templateEngine';
+import { MySavedPresetsView } from './MySavedPresetsView';
+import { LaunchPresetModal } from './LaunchPresetModal';
 
 interface ChatConsoleProps {
   messages: AgentMessage[];
@@ -38,6 +44,10 @@ interface ChatConsoleProps {
   onToggleMilestoneStatus?: (eventId: string, milestoneId: string) => void;
   onViewEventDetails?: (event: CalendarEvent) => void;
   onOpenGoogleCalendarSync?: () => void;
+  onOpenImporter?: () => void;
+  onApplyCustomPreset?: (preset: CustomPreset, targetDate: string, targetTime: string, eventTitle: string) => void;
+  savedPresets?: CustomPreset[];
+  onPresetsUpdated?: (updated: CustomPreset[]) => void;
   isLoading: boolean;
   events: CalendarEvent[];
   focusMode?: 'welcome' | 'new-event' | 'adjust-event';
@@ -54,6 +64,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   onToggleMilestoneStatus,
   onViewEventDetails,
   onOpenGoogleCalendarSync,
+  onOpenImporter,
+  onApplyCustomPreset,
+  savedPresets: propSavedPresets,
+  onPresetsUpdated: propOnPresetsUpdated,
   isLoading,
   events,
   focusMode,
@@ -65,6 +79,31 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Custom Presets State
+  const [localSavedPresets, setLocalSavedPresets] = useState<CustomPreset[]>(() => loadCustomPresets());
+  const currentSavedPresets = propSavedPresets || localSavedPresets;
+  const [activePresetExplorerTab, setActivePresetExplorerTab] = useState<'core' | 'saved'>('core');
+  const [selectedLaunchPreset, setSelectedLaunchPreset] = useState<CustomPreset | null>(null);
+  const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
+
+  const handleUpdatePresets = (updated: CustomPreset[]) => {
+    setLocalSavedPresets(updated);
+    if (propOnPresetsUpdated) {
+      propOnPresetsUpdated(updated);
+    }
+  };
+
+  const handleStartLaunch = (preset: CustomPreset) => {
+    setSelectedLaunchPreset(preset);
+    setIsLaunchModalOpen(true);
+  };
+
+  const handleConfirmLaunch = (preset: CustomPreset, targetDate: string, targetTime: string, eventTitle: string) => {
+    if (onApplyCustomPreset) {
+      onApplyCustomPreset(preset, targetDate, targetTime, eventTitle);
+    }
+  };
   
   // Preset Guided Intake Workflow State
   const [selectedPreset, setSelectedPreset] = useState<PromptPreset | null>(null);
@@ -72,6 +111,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   
   // Who & When Fields
   const [whoInput, setWhoInput] = useState('');
+  const [presetUserRole, setPresetUserRole] = useState<UserEventRole>('organiser');
   const [dateInput, setDateInput] = useState('2026-10-24');
   const [timeInput, setTimeInput] = useState('19:00');
   const [locationInput, setLocationInput] = useState('');
@@ -250,6 +290,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setCustomItems([]);
     setNewCustomItemInput('');
     setWhoInput('');
+    setPresetUserRole('organiser');
     
     // Set default reasonable dates based on category
     const targetDate = new Date('2026-09-02');
@@ -344,6 +385,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     // Build natural language descriptive prompt with chosen context
     const parts: string[] = [];
     parts.push(`${eventTitle} on ${dateInput} at ${timeInput}`);
+    parts.push(`[userRole: ${presetUserRole}]`);
     if (selectedPreset.id === 'trip') {
       parts.push(`[returnDate: ${tripReturnDate}]`);
       parts.push(`[returnTime: ${tripReturnTime}]`);
@@ -570,6 +612,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               stopVoiceRecording={stopVoiceRecording}
               isLoading={isLoading}
               textareaRef={textareaRef}
+              savedPresets={currentSavedPresets}
+              activePresetExplorerTab={activePresetExplorerTab}
+              setActivePresetExplorerTab={setActivePresetExplorerTab}
+              onOpenImporter={onOpenImporter}
+              onStartLaunch={handleStartLaunch}
+              onPresetsUpdated={handleUpdatePresets}
             />
           )}
         </div>
@@ -680,7 +728,83 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               </div>
             )}
 
-            {/* 3. Optional Location / Venue */}
+            {/* 3. Role for this Event Module */}
+            <div className="space-y-2 pt-1">
+              <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span>👤</span>
+                  <span>Your Role for this Event</span>
+                </span>
+                <span className="text-[11px] font-normal text-slate-500">Expands or limits your tasks</span>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPresetUserRole('organiser')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    presetUserRole === 'organiser'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
+                      : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span>👑</span>
+                      <span>Organiser</span>
+                    </span>
+                    {presetUserRole === 'organiser' && <Check className="w-3.5 h-3.5" />}
+                  </div>
+                  <p className={`text-[11px] mt-1 leading-snug ${presetUserRole === 'organiser' ? 'text-slate-300' : 'text-slate-500'}`}>
+                    Full runway: group bookings, deposits, reservations & deliverables.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPresetUserRole('co_organiser')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    presetUserRole === 'co_organiser'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
+                      : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span>🤝</span>
+                      <span>Co-Organiser</span>
+                    </span>
+                    {presetUserRole === 'co_organiser' && <Check className="w-3.5 h-3.5" />}
+                  </div>
+                  <p className={`text-[11px] mt-1 leading-snug ${presetUserRole === 'co_organiser' ? 'text-slate-300' : 'text-slate-500'}`}>
+                    Support & logistics: assist with activities, dining & headcounts.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPresetUserRole('guest')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    presetUserRole === 'guest'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
+                      : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span>🎟️</span>
+                      <span>Guest</span>
+                    </span>
+                    {presetUserRole === 'guest' && <Check className="w-3.5 h-3.5" />}
+                  </div>
+                  <p className={`text-[11px] mt-1 leading-snug ${presetUserRole === 'guest' ? 'text-slate-300' : 'text-slate-500'}`}>
+                    Attendee runway: RSVP, travel/stay booking, kitty share & personal prep.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. Optional Location / Venue */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
@@ -1415,6 +1539,17 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         </div>
       )}
 
+      {/* Fast Preset Launcher Modal */}
+      <LaunchPresetModal
+        isOpen={isLaunchModalOpen}
+        onClose={() => {
+          setIsLaunchModalOpen(false);
+          setSelectedLaunchPreset(null);
+        }}
+        preset={selectedLaunchPreset}
+        onConfirmLaunch={handleConfirmLaunch}
+      />
+
     </div>
   );
 };
@@ -1594,79 +1729,132 @@ const InitialPresetsAndFreeform = ({
   stopVoiceRecording,
   isLoading,
   textareaRef,
+  savedPresets = [],
+  activePresetExplorerTab = 'core',
+  setActivePresetExplorerTab,
+  onOpenImporter,
+  onStartLaunch,
+  onPresetsUpdated,
 }: any) => {
   return (
     <div className="space-y-6">
-      <div className="relative flex items-center justify-center py-1">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-slate-200/80" />
+      {/* Dual Track Navigation Bar: Core Presets vs. My Saved Presets + Import Button */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pb-1">
+        <div className="flex items-center gap-1.5 p-1 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActivePresetExplorerTab?.('core')}
+            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+              activePresetExplorerTab === 'core'
+                ? 'bg-[#0f172a] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+            <span>Core Presets</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePresetExplorerTab?.('saved')}
+            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+              activePresetExplorerTab === 'saved'
+                ? 'bg-[#0f172a] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 text-indigo-400" />
+            <span>My Saved Presets</span>
+            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
+              activePresetExplorerTab === 'saved' ? 'bg-indigo-500/40 text-indigo-100' : 'bg-indigo-100 text-indigo-700'
+            }`}>
+              {savedPresets?.length || 0}
+            </span>
+          </button>
         </div>
-        <div className="relative bg-white border border-slate-200/90 px-4 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider rounded-full shadow-2xs flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-          <span>Choose an event preset</span>
-        </div>
+
+        {onOpenImporter && (
+          <button
+            type="button"
+            onClick={onOpenImporter}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/90 flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95 shrink-0"
+            title="Import existing spreadsheet (.csv / .xlsx) with workflows"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Import Template (.csv / .xlsx)</span>
+          </button>
+        )}
       </div>
 
-      <div className="space-y-3">
-        {/* 4 Big Presets: Party / Friends visiting / Trip / Project management */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
-          {EVENT_PRESETS.map((preset: any) => (
-            <button
-              key={preset.id}
-              onClick={() => handleSelectPreset(preset)}
-              className="group relative text-left p-3 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-2"
-            >
-              <div className="flex items-center justify-between">
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-100 text-xl sm:text-2xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
-                  {preset.emoji}
-                </div>
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-slate-900 transition-colors">
-                  {preset.title}
-                </h3>
-                <p className="text-xs text-slate-500 font-normal leading-relaxed mt-0.5">
-                  {preset.description}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* 2 Small Presets: Subscription cancellation / Maintenance (require less preparation) */}
-        {SMALL_PRESETS && SMALL_PRESETS.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-            {SMALL_PRESETS.map((preset: any) => (
+      {activePresetExplorerTab === 'saved' ? (
+        <MySavedPresetsView
+          presets={savedPresets || []}
+          onOpenImporter={onOpenImporter || (() => {})}
+          onApplyPresetToNewEvent={onStartLaunch || (() => {})}
+          onPresetsUpdated={onPresetsUpdated || (() => {})}
+        />
+      ) : (
+        <div className="space-y-3">
+          {/* 4 Big Presets: Party / Friends visiting / Trip / Project management */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+            {EVENT_PRESETS.map((preset: any) => (
               <button
                 key={preset.id}
                 onClick={() => handleSelectPreset(preset)}
-                className="group relative text-left p-3.5 rounded-2xl bg-white/95 border border-slate-200/80 shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-3"
+                className="group relative text-left p-3 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-2"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 text-xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-100 text-xl sm:text-2xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
                     {preset.emoji}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors">
-                      {preset.title}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 font-normal truncate mt-0.5">
-                      {preset.description}
-                    </p>
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="w-6 h-6 shrink-0 rounded-full bg-slate-50 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
-                  <ChevronRight className="w-3.5 h-3.5" />
+
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-slate-900 transition-colors">
+                    {preset.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-normal leading-relaxed mt-0.5">
+                    {preset.description}
+                  </p>
                 </div>
               </button>
             ))}
           </div>
-        )}
-      </div>
+
+          {/* 2 Small Presets: Subscription cancellation / Maintenance (require less preparation) */}
+          {SMALL_PRESETS && SMALL_PRESETS.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {SMALL_PRESETS.map((preset: any) => (
+                <button
+                  key={preset.id}
+                  onClick={() => handleSelectPreset(preset)}
+                  className="group relative text-left p-3.5 rounded-2xl bg-white/95 border border-slate-200/80 shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 text-xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                      {preset.emoji}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors">
+                        {preset.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-normal truncate mt-0.5">
+                        {preset.description}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-6 h-6 shrink-0 rounded-full bg-slate-50 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="relative flex items-center justify-center py-1">
         <div className="absolute inset-0 flex items-center">

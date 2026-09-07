@@ -17,7 +17,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
-import { formatDisplayDate, generateICSContent, formatMessagingSummary, getCountdownStatus } from '../utils/tminusRules';
+import { formatDisplayDate, generateICSContent, formatMessagingSummary, getCountdownStatus, getCleanEventTitle, getEventTopicLabel } from '../utils/tminusRules';
 import { EventVariablePicker } from './EventVariablePicker';
 
 interface EventSummaryCardProps {
@@ -100,22 +100,44 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
                 {eventCountdown.label}
               </span>
             )}
-            {paramSummary.length > 0 && (
-              <span className="text-xs text-slate-500 font-medium">
-                • {paramSummary.join(', ')}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              {getCleanEventTitle(event.title, event.category, event.context)}
+            </h4>
+            <span className="text-xs font-semibold text-sky-800 bg-sky-100/90 border border-sky-200 px-2 py-0.5 rounded-full">
+              {getEventTopicLabel(event.category, event.context)}
+            </span>
+            {(event.macroEvent?.archetype || event.macroEvent?.type) && (
+              <span className="text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                {event.macroEvent.archetype || event.macroEvent.type}
               </span>
             )}
           </div>
-          <h4 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-            {event.title}
-          </h4>
           <div className="flex items-center gap-2 mt-1 text-xs sm:text-sm text-slate-600 flex-wrap">
             <span className={`font-semibold ${eventCountdown.isOverdue ? 'text-rose-700 font-bold' : 'text-slate-900'}`}>
-              {formatDisplayDate(event.eventDate)}
+              {event.endDate || event.macroEvent?.end_date 
+                ? `${formatDisplayDate(event.eventDate)} – ${formatDisplayDate(event.endDate || event.macroEvent?.end_date || '')}`
+                : formatDisplayDate(event.eventDate)
+              }
             </span>
-            <span>at {event.eventTime || '19:00'}</span>
+            {event.eventTime && <span>at {event.eventTime}</span>}
             {event.location && <span className="text-slate-500">• {event.location}</span>}
           </div>
+
+          {/* Sub-Events / In-Trip Objectives Pill List */}
+          {event.subEvents && event.subEvents.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap pt-1.5 border-t border-sky-100/80">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">In-Trip:</span>
+              {event.subEvents.map((sub, idx) => (
+                <span key={idx} className="text-[11px] bg-white text-indigo-950 border border-indigo-200 px-2 py-0.5 rounded-md font-medium inline-flex items-center gap-1 shadow-2xs">
+                  <span>🎯</span>
+                  <span className="font-semibold">{sub.title}</span>
+                  {sub.relative_day && <span className="text-[10px] text-indigo-600 font-bold">({sub.relative_day})</span>}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Sync to Google Calendar CTA */}
@@ -237,6 +259,17 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
                     }`}>
                       {ms.tMinusLabel}
                     </span>
+
+                    {ms.scope === 'micro' && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded shrink-0">
+                        {ms.relativeDay || 'In-Trip'}
+                      </span>
+                    )}
+                    {ms.tag && (
+                      <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 hidden sm:inline">
+                        {ms.tag}
+                      </span>
+                    )}
 
                     <span className={`font-semibold truncate ${
                       isCompleted 

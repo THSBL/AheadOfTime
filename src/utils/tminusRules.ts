@@ -1,4 +1,16 @@
-import { CalendarEvent, TMinusMilestone, MilestoneCategory, IntakeQuestion, EventCategory } from '../types';
+import { 
+  CalendarEvent, 
+  TMinusMilestone, 
+  MilestoneCategory, 
+  IntakeQuestion, 
+  EventCategory,
+  MacroEventData,
+  SubEvent,
+  StructuredMilestone,
+  StructuredPlanningPayload,
+  UserEventRole,
+  TaskItemKind
+} from '../types';
 import { inferTaskTimingLocally } from './timingAI';
 
 /**
@@ -76,6 +88,64 @@ export function formatDisplayDate(isoString: string, includeTime: boolean = fals
   } catch {
     return isoString;
   }
+}
+
+/**
+ * Return human-readable event topic / category name
+ */
+export function getEventTopicLabel(category?: string, context?: any): string {
+  if (context?.topic && typeof context.topic === 'string') return context.topic;
+  switch (category) {
+    case 'birthday_party':
+      return 'Birthday Celebration';
+    case 'hosting_visitors':
+      return 'Hosting Visitors & Guests';
+    case 'festival_concert':
+      return 'Concert & Festival Event';
+    case 'travel_trip':
+    case 'booking_trip':
+      return 'Travel & Vacation Trip';
+    case 'dinner_social':
+      return 'Dinner & Social Gathering';
+    case 'project_deadline':
+      return 'Project & Milestone';
+    case 'maintenance':
+      return 'Service & Maintenance';
+    case 'subscription':
+      return 'Subscription Review';
+    default:
+      return 'Calendar Event';
+  }
+}
+
+/**
+ * Ensures an event title is never generic 'Upcoming Event'
+ */
+export function getCleanEventTitle(title?: string, category?: string, context?: any): string {
+  let cleaned = (title || '').trim();
+
+  // Strip leading emojis or icons if followed by 'Upcoming Event'
+  cleaned = cleaned.replace(/^[🎯📅🗓️✨🎉🚀🎈🚗✈️👥]\s*/, '');
+
+  const isGeneric = !cleaned || 
+    /^upcoming(\s+event)?$/i.test(cleaned) || 
+    /^new(\s+event)?$/i.test(cleaned) ||
+    cleaned.toLowerCase() === 'event';
+
+  if (!isGeneric) {
+    return cleaned;
+  }
+
+  // Look for custom notes or topic hints in context
+  if (context?.customNote && typeof context.customNote === 'string' && context.customNote.length < 50) {
+    return context.customNote;
+  }
+  if (context?.who && typeof context.who === 'string') {
+    return `${context.who}'s Event`;
+  }
+
+  // Fallback to category topic name
+  return getEventTopicLabel(category, context);
 }
 
 /**
@@ -242,6 +312,7 @@ export function generateHeuristicMilestones(
   const milestones: TMinusMilestone[] = [];
   const category = event.category || 'custom';
   const context = event.context || {};
+  const role: UserEventRole = event.userRole || context.userRole || 'organiser';
 
   const addMilestone = (
     label: string,
@@ -249,8 +320,18 @@ export function generateHeuristicMilestones(
     title: string,
     cat: MilestoneCategory,
     description?: string,
-    customBaseDate?: string
+    customBaseDate?: string,
+    kind: TaskItemKind = 'milestone',
+    needsRefinement: boolean = false,
+    refinementOptions?: string[],
+    applicableRoles?: UserEventRole[],
+    deliverableType?: string
   ) => {
+    // If specific roles are specified and current role is not in the list, skip
+    if (applicableRoles && !applicableRoles.includes(role)) {
+      return;
+    }
+
     const baseDate = customBaseDate || eventDate;
     const calcDate = calculateOffsetDate(baseDate, eventTime, offsetMinutes);
     milestones.push({
@@ -263,71 +344,108 @@ export function generateHeuristicMilestones(
       description,
       category: cat,
       status: 'pending',
+      kind,
+      needsRefinement,
+      refinementOptions,
+      applicableRoles,
+      deliverableType,
     });
   };
+
+  // 0. SPECIALIZED GUEST RUNWAY (When the user's role is guest/attendee)
+  if (role === 'guest') {
+    if (category === 'birthday_party') {
+      addMilestone('T-21d', -21 * 24 * 60, 'RSVP & confirm attendance', 'booking', 'Notify host of attendance and any dietary requirements', undefined, 'deliverable');
+      addMilestone('T-14d', -14 * 24 * 60, 'Contribute to gift kitty or choose solo present', 'shopping', 'Send share of group present or order personalized gift', undefined, 'deliverable', true, ['Contribute to Group Money Pool', 'Buy Solo Personalized Gift', 'Bring Flowers / Wine / Card']);
+      addMilestone('T-7d', -7 * 24 * 60, 'Check party attire & costume theme', 'costume', 'Ensure clothes match party dress code or costume requirements', undefined, 'milestone');
+      addMilestone('T-2d', -2 * 24 * 60, 'Wrap gift & write birthday card', 'prep', 'Write personal card and prepare present packaging', undefined, 'milestone');
+      addMilestone('T-1h', -60, 'Departure buffer & arrive at venue', 'logistics', 'Leave with travel buffer and arrive on time for party', undefined, 'milestone');
+      return milestones;
+    }
+
+    if (category === 'travel_trip' || category === 'booking_trip') {
+      addMilestone('T-30d', -30 * 24 * 60, 'Confirm attendance & RSVP to organiser', 'booking', 'Confirm participation and secure room share with trip organiser', undefined, 'deliverable');
+      addMilestone('T-21d', -21 * 24 * 60, 'Transfer deposit / kitty share to organiser', 'booking', 'Pay share for lodging and group activity bookings', undefined, 'deliverable');
+      addMilestone('T-21d', -21 * 24 * 60, 'Book personal travel / flights & coordinate arrival', 'booking', 'Book transport to match group arrival window', undefined, 'deliverable', true, ['Direct Flight', 'Train / Rail Ticket', 'Carpool with Group', 'Self Driving']);
+      addMilestone('T-14d', -14 * 24 * 60, 'Check passport validity & travel insurance', 'prep', 'Verify 6-month passport validity and medical/travel coverage', undefined, 'milestone');
+      addMilestone('T-7d', -7 * 24 * 60, 'Check weekend theme dress code & activity gear', 'prep', 'Coordinate group outfits or prepare specific activity footwear', undefined, 'milestone');
+      addMilestone('T-3d', -3 * 24 * 60, 'Trip packing essentials & roaming eSIM', 'prep', 'Pack weather attire, toiletries, chargers, and activate data roaming', undefined, 'milestone');
+      addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & boarding pass download', 'logistics', 'Check in 24h prior and confirm meeting point with group chat', undefined, 'milestone');
+      addMilestone('T-2h', -120, 'Departure buffer & meet group at transit hub', 'logistics', 'Head out with buffer to meet trip crew on time', undefined, 'milestone');
+      return milestones;
+    }
+
+    if (category === 'dinner_social') {
+      addMilestone('T-14d', -14 * 24 * 60, 'RSVP & communicate dietary preferences', 'booking', 'Confirm seat at dinner and list any food allergies', undefined, 'deliverable');
+      addMilestone('T-1d', -1 * 24 * 60, 'Pick up wine, beverage, or dessert to share', 'shopping', 'Select wine or host dessert contribution', undefined, 'deliverable', true, ['Bottle of Fine Wine', 'Craft Beer / Cider Selection', 'Artisan Bakery Dessert', 'Flowers / Host Gift']);
+      addMilestone('T-2h', -120, 'Outfit check & prep departure', 'prep', 'Dress comfortably and check restaurant address', undefined, 'milestone');
+      addMilestone('T-30m', -30, 'Departure buffer & arrive at venue', 'logistics', 'Arrive on time to meet dining companions', undefined, 'milestone');
+      return milestones;
+    }
+  }
 
   if (category === 'birthday_party') {
     // 1. Invitations & RSVPs Baseline
     if (context.skipInvites !== true && context.invitationsSent !== true) {
-      addMilestone('T-21d', -21 * 24 * 60, 'Send invitations & track RSVPs', 'booking', 'Send out party invitations, collect RSVPs, and confirm headcount');
+      addMilestone('T-21d', -21 * 24 * 60, 'Send invitations & track RSVPs', 'booking', 'Send out party invitations, collect RSVPs, and confirm headcount', undefined, 'deliverable', false, undefined, ['organiser', 'co_organiser']);
     }
 
     // 2. Group Gift vs Solo Gift vs None
     if (context.giftType === 'none' || context.noGift === true) {
       // Skip gift milestones
     } else if (context.giftType === 'group') {
-      addMilestone('T-30d', -30 * 24 * 60, 'Initiate pot & rally team', 'gift', 'Reach out to friends, set up money pool, brainstorm main group present');
-      addMilestone('T-10d', -10 * 24 * 60, 'Purchase group gift', 'shopping', 'Finalize collection and place order for group present');
+      addMilestone('T-30d', -30 * 24 * 60, 'Initiate pot & rally team', 'gift', 'Reach out to friends, set up money pool, brainstorm main group present', undefined, 'deliverable', false, undefined, ['organiser', 'co_organiser']);
+      addMilestone('T-10d', -10 * 24 * 60, 'Purchase group gift', 'shopping', 'Finalize collection and place order for group present', undefined, 'deliverable', true, ['Main Experience / Voucher', 'Luxury Tech / Watch', 'Custom Keepsake Gift']);
     } else if (context.giftType === 'solo') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Order gift', 'shopping', 'Select and order solo birthday gift online with delivery margin');
-      addMilestone('T-2d', -2 * 24 * 60, 'Wrapping & card check', 'prep', 'Wrap present, write birthday card, ensure tags and tape are ready');
+      addMilestone('T-14d', -14 * 24 * 60, 'Order gift', 'shopping', 'Select and order solo birthday gift online with delivery margin', undefined, 'deliverable');
+      addMilestone('T-2d', -2 * 24 * 60, 'Wrapping & card check', 'prep', 'Wrap present, write birthday card, ensure tags and tape are ready', undefined, 'milestone');
     } else {
       // Default baseline solo gift if not yet refined
-      addMilestone('T-14d', -14 * 24 * 60, 'Order or brainstorm birthday gift', 'shopping', 'Select and order birthday gift with shipping buffer');
-      addMilestone('T-2d', -2 * 24 * 60, 'Wrap gift & prepare birthday card', 'prep', 'Wrap gift, write heartfelt birthday card, and check ribbon/tags');
+      addMilestone('T-14d', -14 * 24 * 60, 'Order or brainstorm birthday gift', 'shopping', 'Select and order birthday gift with shipping buffer', undefined, 'deliverable');
+      addMilestone('T-2d', -2 * 24 * 60, 'Wrap gift & prepare birthday card', 'prep', 'Wrap gift, write heartfelt birthday card, and check ribbon/tags', undefined, 'milestone');
     }
 
     // 3. Themed / Costume Check
     if (context.isThemed === true || context.isThemed === 'true' || context.theme) {
       const themeDesc = context.theme ? `Outfit theme: ${context.theme}` : 'Source costume or outfit accessories';
-      addMilestone('T-14d', -14 * 24 * 60, 'Source costume / outfit', 'costume', themeDesc);
+      addMilestone('T-14d', -14 * 24 * 60, 'Source costume / outfit', 'costume', themeDesc, undefined, 'milestone');
     }
 
     // 4. Food & Drinks Refinements (Custom bakery cake, standard cake, restaurant, bar, catering, home cooking, or baseline)
     const foodChoice = context.foodPlan || context.foodOrCake || context.cakeStrategy;
     if (foodChoice === 'custom_cake' || foodChoice === 'cake') {
-      addMilestone('T-7d', -7 * 24 * 60, 'Order custom bakery cake', 'shopping', 'Confirm bakery order, flavor, custom design, and pickup window');
-      addMilestone('T-4h', -240, 'Pick up birthday cake & refrigerate', 'prep', 'Retrieve cake from bakery and store in cool fridge until party');
+      addMilestone('T-7d', -7 * 24 * 60, 'Order custom bakery cake', 'shopping', 'Confirm bakery order, flavor, custom design, and pickup window', undefined, 'deliverable', true, ['Chocolate Fudge Layer Cake', 'Red Velvet / Berry', 'Custom Photo / Fondant Cake', 'Gluten-Free / Vegan Cake']);
+      addMilestone('T-4h', -240, 'Pick up birthday cake & refrigerate', 'prep', 'Retrieve cake from bakery and store in cool fridge until party', undefined, 'milestone');
     } else if (foodChoice === 'standard_cake') {
-      addMilestone('T-1d', -1 * 24 * 60, 'Buy birthday cake & candles', 'shopping', 'Pick up fresh cake, candles, and matches from bakery/store');
+      addMilestone('T-1d', -1 * 24 * 60, 'Buy birthday cake & candles', 'shopping', 'Pick up fresh cake, candles, and matches from bakery/store', undefined, 'deliverable');
     } else if (foodChoice === 'restaurant') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Reserve restaurant table', 'booking', 'Book restaurant table for party group and confirm dietary requirements');
+      addMilestone('T-14d', -14 * 24 * 60, 'Reserve restaurant table', 'booking', 'Book restaurant table for party group and confirm dietary requirements', undefined, 'deliverable', true, ['Italian Trattoria', 'Steakhouse & Grill', 'Tapas Sharing Table', 'Asian Fusion']);
     } else if (foodChoice === 'bar') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Reserve bar / lounge area', 'booking', 'Book reserved area or table at bar/lounge and confirm guest list');
+      addMilestone('T-14d', -14 * 24 * 60, 'Reserve bar / lounge area', 'booking', 'Book reserved area or table at bar/lounge and confirm guest list', undefined, 'deliverable', true, ['Cocktail Lounge Booth', 'Rooftop Bar Area', 'Craft Beer Brewery Table']);
     } else if (foodChoice === 'catering') {
-      addMilestone('T-7d', -7 * 24 * 60, 'Confirm party catering order', 'booking', 'Lock in food platters/catering menu and dietary counts');
-      addMilestone('T-3h', -180, 'Catering delivery & food setup', 'prep', 'Receive food delivery, set up chafing dishes and serving utensils');
+      addMilestone('T-7d', -7 * 24 * 60, 'Confirm party catering order', 'booking', 'Lock in food platters/catering menu and dietary counts', undefined, 'deliverable', true, ['Finger Food / Canapes', 'BBQ Buffet', 'Taco Bar', 'Charcuterie & Grazing Table']);
+      addMilestone('T-3h', -180, 'Catering delivery & food setup', 'prep', 'Receive food delivery, set up chafing dishes and serving utensils', undefined, 'milestone');
     } else if (foodChoice === 'home_cooking' || foodChoice === 'homemade') {
-      addMilestone('T-2d', -2 * 24 * 60, 'Party food & drink grocery run', 'shopping', 'Buy party food, fresh ingredients, mixers, and ice');
-      addMilestone('T-4h', -240, 'Food prep & chill drinks', 'prep', 'Prepare appetizer platters and chill beverages on ice');
+      addMilestone('T-2d', -2 * 24 * 60, 'Party food & drink grocery run', 'shopping', 'Buy party food, fresh ingredients, mixers, and ice', undefined, 'deliverable');
+      addMilestone('T-4h', -240, 'Food prep & chill drinks', 'prep', 'Prepare appetizer platters and chill beverages on ice', undefined, 'milestone');
     } else {
       // Robust baseline food, cake & refreshments for any birthday celebration
-      addMilestone('T-7d', -7 * 24 * 60, 'Order birthday cake & plan refreshments', 'shopping', 'Confirm bakery order or party food, snacks, and drink options');
-      addMilestone('T-1d', -1 * 24 * 60, 'Party beverages, snacks & ice run', 'shopping', 'Pick up party drinks, mixers, party snacks, and fresh ice bags');
-      addMilestone('T-3h', -180, 'Party setup & beverage chill', 'prep', 'Chill drinks on ice, set up gift table, and light party ambiance');
+      addMilestone('T-7d', -7 * 24 * 60, 'Order birthday cake & plan refreshments', 'shopping', 'Confirm bakery order or party food, snacks, and drink options', undefined, 'deliverable', true, ['Custom Bakery Cake', 'Party Finger Food Platters', 'Cocktail & Mocktail Bar']);
+      addMilestone('T-1d', -1 * 24 * 60, 'Party beverages, snacks & ice run', 'shopping', 'Pick up party drinks, mixers, party snacks, and fresh ice bags', undefined, 'deliverable');
+      addMilestone('T-3h', -180, 'Party setup & beverage chill', 'prep', 'Chill drinks on ice, set up gift table, and light party ambiance', undefined, 'milestone');
     }
 
     // 5. Transport & Arrival Logistics
     if (context.transportType === 'taxi' || context.transportType === 'rideshare') {
-      addMilestone('T-2h', -120, 'Pre-book taxi / rideshare', 'logistics', 'Book taxi with 20min buffer to guarantee timely party arrival');
+      addMilestone('T-2h', -120, 'Pre-book taxi / rideshare', 'logistics', 'Book taxi with 20min buffer to guarantee timely party arrival', undefined, 'deliverable');
     } else if (context.transportType === 'carpool' || context.transportType === 'rental') {
-      addMilestone('T-7d', -7 * 24 * 60, 'Coordinate carpool / vehicle', 'logistics', 'Confirm vehicle, designated driver schedule, and parking space');
-      addMilestone('T-2h', -120, 'Vehicle departure & parking check', 'logistics', 'Gas check, load party gear, navigate to venue');
+      addMilestone('T-7d', -7 * 24 * 60, 'Coordinate carpool / vehicle', 'logistics', 'Confirm vehicle, designated driver schedule, and parking space', undefined, 'deliverable');
+      addMilestone('T-2h', -120, 'Vehicle departure & parking check', 'logistics', 'Gas check, load party gear, navigate to venue', undefined, 'milestone');
     } else if (context.transportType === 'transit') {
-      addMilestone('T-1d', -1 * 24 * 60, 'Check train / transit timetables', 'logistics', 'Verify weekend rail/bus schedules and travel tickets');
-      addMilestone('T-2h', -120, 'Head to transit station', 'logistics', 'Allow 15min transit buffer for connections');
+      addMilestone('T-1d', -1 * 24 * 60, 'Check train / transit timetables', 'logistics', 'Verify weekend rail/bus schedules and travel tickets', undefined, 'milestone');
+      addMilestone('T-2h', -120, 'Head to transit station', 'logistics', 'Allow 15min transit buffer for connections', undefined, 'milestone');
     } else {
-      addMilestone('T-1h', -60, 'Departure buffer & arrival check', 'logistics', 'Gather gifts and card, coordinate travel, and arrive on time');
+      addMilestone('T-1h', -60, 'Departure buffer & arrival check', 'logistics', 'Gather gifts and card, coordinate travel, and arrive on time', undefined, 'milestone');
     }
 
     // Other Reservations & Party Vendors Checklist (Photographer, DJ, Balloons, Projector, Speech, Custom items)
@@ -482,55 +600,147 @@ export function generateHeuristicMilestones(
     addMilestone('T-2h', -120, 'Go/No-Go launch check & team standup', 'logistics', 'Conduct final operational sync, monitor alarms, and execute release sequence');
   }
   else if (category === 'travel_trip') {
+    const isStagOrGroupParty = /stag|bachelor|bachelorette|hen|party/i.test(event.title || '') || 
+      /stag|bachelor|bachelorette|hen/i.test(context.theme || '') ||
+      event.macroEvent?.archetype === 'Stag Party / Bachelor Trip';
+
     if (context.needPassportRenewal === true || context.needPassportRenewal === 'true') {
-      addMilestone('T-60d', -60 * 24 * 60, 'Passport validity & renewal check', 'booking', 'Verify passport has 6+ months validity remaining and initiate renewal if expiring soon');
+      addMilestone('T-60d', -60 * 24 * 60, 'Passport validity & renewal check', 'booking', 'Verify passport has 6+ months validity remaining and initiate renewal if expiring soon', undefined, 'milestone');
     }
     if (context.needVisa === true || context.needVisa === 'true') {
-      addMilestone('T-45d', -45 * 24 * 60, 'Entry visa & e-visa application', 'booking', 'Submit required travel visa applications and entry permits');
+      addMilestone('T-45d', -45 * 24 * 60, 'Entry visa & e-visa application', 'booking', 'Submit required travel visa applications and entry permits', undefined, 'deliverable');
     }
     if (context.bookingStatus !== 'done') {
-      addMilestone('T-30d', -30 * 24 * 60, 'Flights, trains & hotel reservation lock', 'booking', 'Lock transport legs, accommodations, and travel insurance coverage');
+      addMilestone(
+        'T-30d', 
+        -30 * 24 * 60, 
+        isStagOrGroupParty ? 'Book flights / group transit & lodging' : 'Flights, trains & hotel reservation lock', 
+        'booking', 
+        'Lock transport legs, accommodations, and travel insurance coverage',
+        undefined,
+        'deliverable',
+        true,
+        isStagOrGroupParty ? ['Group Airbnb / Villa Rental', 'Central Hotel Room Block', 'Budget Hostel Pods', 'Self-booked Individual Lodging'] : ['Hotel / Resort Reservation', 'Airbnb / Vacation Apartment', 'Flight & Hotel Package']
+      );
     }
-    // Separate Activity Checklists
+
+    if (isStagOrGroupParty) {
+      addMilestone(
+        'T-14d',
+        -14 * 24 * 60,
+        'Collect group kitty & lock in attendance count',
+        'booking',
+        'Avoid last-minute dropouts and pool funds for deposits',
+        undefined,
+        'deliverable',
+        false,
+        undefined,
+        ['organiser', 'co_organiser']
+      );
+    }
+
+    // Context-Aware Activity Deliverables
     if (context.activitySightseeing !== false && context.activitySightseeing !== 'false') {
-      addMilestone('T-21d', -21 * 24 * 60, 'Book guided city tours & museum tickets', 'booking', 'Secure tickets and time slots for popular museums, city tours & excursions');
+      if (isStagOrGroupParty) {
+        addMilestone(
+          'T-21d',
+          -21 * 24 * 60,
+          'Shortlist & book group activity (e.g. Karting / Brewery / Boat / Paintball)',
+          'booking',
+          'Lock in group activity slot, waivers, and deposit with provider',
+          undefined,
+          'deliverable',
+          true,
+          [
+            'Go-Karting Grand Prix',
+            'Paintball / Laser Combat',
+            'Private Craft Brewery Tour & VIP Tasting',
+            'Private Boat / Yacht Cruise',
+            'Axe Throwing & Arcade Bar',
+            'Escape Room Tournament',
+            'VIP Nightclub Table'
+          ],
+          ['organiser', 'co_organiser'],
+          'activity'
+        );
+
+        addMilestone(
+          'T-14d',
+          -14 * 24 * 60,
+          'Reserve group dinner restaurant & confirm table deposit',
+          'booking',
+          'Book large group dining table with set menu or deposit',
+          undefined,
+          'deliverable',
+          true,
+          [
+            'Steakhouse & Grill',
+            'Craft Beer Pub & Burgers',
+            'Tapas & Sharing Platters',
+            'Private Dining Room'
+          ],
+          ['organiser', 'co_organiser'],
+          'reservation'
+        );
+      } else {
+        addMilestone(
+          'T-21d',
+          -21 * 24 * 60,
+          'Book activities, tours & excursions',
+          'booking',
+          'Secure bookings, time slots, and passes for destination activities',
+          undefined,
+          'deliverable',
+          true,
+          [
+            'Guided City Walking Tour',
+            'Museum & Cultural Passes',
+            'Boat / Water Excursion',
+            'Outdoor Adventure / Hike',
+            'Food & Wine Tasting'
+          ],
+          ['organiser', 'co_organiser'],
+          'activity'
+        );
+      }
     }
+
     if (context.activityHikingExcursion === true || context.activityHikingExcursion === 'true') {
-      addMilestone('T-21d', -21 * 24 * 60, 'Plan hiking trails & outdoor routes', 'prep', 'Map out hiking trails, check weather forecasts, and download offline maps');
+      addMilestone('T-21d', -21 * 24 * 60, 'Plan hiking trails & outdoor routes', 'prep', 'Map out hiking trails, check weather forecasts, and download offline maps', undefined, 'milestone');
     }
     if (context.activityWaterSports === true || context.activityWaterSports === 'true') {
-      addMilestone('T-21d', -21 * 24 * 60, 'Book beach, snorkel & water sports excursions', 'booking', 'Reserve boat tours, snorkel gear rentals, or water activity spots');
+      addMilestone('T-21d', -21 * 24 * 60, 'Book beach, snorkel & water sports excursions', 'booking', 'Reserve boat tours, snorkel gear rentals, or water activity spots', undefined, 'deliverable', true, ['Jet Ski Tour', 'Scuba Diving / Snorkel Boat', 'Surfing / Paddleboard Session']);
     }
 
     // Separate Gear Buying Checklists with Examples (sunscreen, hiking boots, snorkel gear, adapters)
     if (context.gearSunscreen !== false && context.gearSunscreen !== 'false') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Buy sunscreen & beach essentials (e.g. SPF 50, hats)', 'shopping', 'Purchase reef-safe sunscreen, sunglasses, and beach wear');
+      addMilestone('T-14d', -14 * 24 * 60, 'Buy sunscreen & beach essentials (e.g. SPF 50, hats)', 'shopping', 'Purchase reef-safe sunscreen, sunglasses, and beach wear', undefined, 'milestone');
     }
     if (context.gearHikingBoots !== false && context.gearHikingBoots !== 'false') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Buy hiking boots & outdoor gear (e.g. wool socks)', 'shopping', 'Break in hiking boots, purchase moisture-wicking socks and daypacks');
+      addMilestone('T-14d', -14 * 24 * 60, 'Buy hiking boots & outdoor gear (e.g. wool socks)', 'shopping', 'Break in hiking boots, purchase moisture-wicking socks and daypacks', undefined, 'milestone');
     }
     if (context.gearSnorkelGear === true || context.gearSnorkelGear === 'true') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Buy snorkel gear & water accessories', 'shopping', 'Purchase travel snorkel mask, dry bag, and quick-dry towels');
+      addMilestone('T-14d', -14 * 24 * 60, 'Buy snorkel gear & water accessories', 'shopping', 'Purchase travel snorkel mask, dry bag, and quick-dry towels', undefined, 'milestone');
     }
     if (context.gearSkiGear === true || context.gearSkiGear === 'true') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Rent ski gear & pack thermal layers (e.g. goggles, base layers)', 'shopping', 'Reserve skis/snowboard equipment rentals, pack thermal base layers, helmets, and ski goggles');
+      addMilestone('T-14d', -14 * 24 * 60, 'Rent ski gear & pack thermal layers (e.g. goggles, base layers)', 'shopping', 'Reserve skis/snowboard equipment rentals, pack thermal base layers, helmets, and ski goggles', undefined, 'deliverable', true, ['Equipment Rental Package', 'Thermal Base Layers & Goggles']);
     }
     if (context.gearAdapters !== false && context.gearAdapters !== 'false') {
-      addMilestone('T-14d', -14 * 24 * 60, 'Buy universal power adapters & chargers', 'shopping', 'Acquire country-specific electrical plug adapters and portable power banks');
+      addMilestone('T-14d', -14 * 24 * 60, 'Buy universal power adapters & chargers', 'shopping', 'Acquire country-specific electrical plug adapters and portable power banks', undefined, 'milestone');
     }
 
-    addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack weather apparel, toiletries, and activate roaming/eSIM');
-    addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & out-of-office setup', 'logistics', 'Check in for flights 24h prior, download offline maps, and set email out-of-office');
+    addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack weather apparel, toiletries, and activate roaming/eSIM', undefined, 'milestone');
+    addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & out-of-office setup', 'logistics', 'Check in for flights 24h prior, download offline maps, and set email out-of-office', undefined, 'milestone');
     const returnBaseDate = context.returnDate || eventDate;
-    addMilestone('T-Return-1d', -1 * 24 * 60, 'Return trip prep & flight status check', 'logistics', 'Verify return flight status, pack return luggage, and plan hotel check-out', returnBaseDate);
-    addMilestone('T-2h', -120, 'Departure buffer & home lockup', 'logistics', 'Final luggage zip, lock house, travel to airport / terminal');
+    addMilestone('T-Return-1d', -1 * 24 * 60, 'Return trip prep & flight status check', 'logistics', 'Verify return flight status, pack return luggage, and plan hotel check-out', returnBaseDate, 'milestone');
+    addMilestone('T-2h', -120, 'Departure buffer & home lockup', 'logistics', 'Final luggage zip, lock house, travel to airport / terminal', undefined, 'milestone');
     if (context.customNote && context.customNote.trim()) {
-      addMilestone('T-5d', -5 * 24 * 60, `Travel prep: ${context.customNote.trim()}`, 'prep', `Travel custom requirement: ${context.customNote.trim()}`);
+      addMilestone('T-5d', -5 * 24 * 60, `Travel prep: ${context.customNote.trim()}`, 'prep', `Travel custom requirement: ${context.customNote.trim()}`, undefined, 'milestone');
     }
     if (Array.isArray(context.customItems)) {
       context.customItems.forEach((ci: string, idx: number) => {
         if (ci && ci.trim()) {
-          addMilestone(`T-${4 + idx}d`, -(4 + idx) * 24 * 60, `Task: ${ci.trim()}`, 'prep', `Custom user task: ${ci.trim()}`);
+          addMilestone(`T-${4 + idx}d`, -(4 + idx) * 24 * 60, `Task: ${ci.trim()}`, 'prep', `Custom user task: ${ci.trim()}`, undefined, 'milestone');
         }
       });
     }
@@ -699,3 +909,438 @@ export function formatMessagingSummary(event: CalendarEvent): string {
   lines.push(`_Generated by Ahead Of Time Preparation Assistant_`);
   return lines.join('\n');
 }
+
+/**
+ * Hierarchical Context Decomposition Engine for complex queries and multi-track milestones.
+ * Decomposes multi-day trips and nested micro-events into structured parent/child models.
+ */
+export function decomposeComplexTripIntent(
+  message: string,
+  referenceDateISO: string = new Date().toISOString(),
+  userRole?: UserEventRole
+): StructuredPlanningPayload | null {
+  const msgLower = (message || '').toLowerCase();
+  
+  // Detect role if not explicitly passed
+  let role: UserEventRole = userRole || 'organiser';
+  if (/i('m| am) a guest|as (a )?guest|just attending|invited/i.test(msgLower)) {
+    role = 'guest';
+  } else if (/co-organiser|co-organizer|co organiser|co organizer|helping organise/i.test(msgLower)) {
+    role = 'co_organiser';
+  }
+
+  // Check if this is a trip, multi-day span, or contains sub-task/activity requirements
+  const isTripIntent = 
+    /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?|trip|vacation|holiday|getaway|conference|retreat|weekend/i.test(message) ||
+    /from\s+.*?to\s+/i.test(message) ||
+    /day\s*\d+|2nd\s*day|second\s*day|3rd\s*day|third\s*day/i.test(message);
+
+  if (!isTripIntent) return null;
+
+  const baseRef = new Date(referenceDateISO);
+  const safeBase = isNaN(baseRef.getTime()) ? new Date('2026-09-01T03:20:00Z') : baseRef;
+
+  // 1. Date Range Extraction
+  let startDateStr = '';
+  let endDateStr = '';
+
+  const isoRangeMatch = message.match(/from\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\s+to\s+([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+  if (isoRangeMatch) {
+    startDateStr = isoRangeMatch[1];
+    endDateStr = isoRangeMatch[2];
+  } else {
+    // Check for placeholder or month/day ranges
+    const monthNames = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+    const monthRangeRegex = new RegExp(`(?:from\\s+)?(${monthNames})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(?:(${monthNames})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
+    const mMatch = message.match(monthRangeRegex);
+    if (mMatch) {
+      const startMonth = mMatch[1];
+      const startDay = parseInt(mMatch[2], 10);
+      const endMonth = mMatch[3] || startMonth;
+      const endDay = parseInt(mMatch[4], 10);
+      const year = mMatch[5] ? parseInt(mMatch[5], 10) : safeBase.getFullYear();
+      
+      const sDate = new Date(`${startMonth} ${startDay}, ${year}`);
+      const eDate = new Date(`${endMonth} ${endDay}, ${year}`);
+      if (!isNaN(sDate.getTime()) && !isNaN(eDate.getTime())) {
+        startDateStr = sDate.toISOString().substring(0, 10);
+        endDateStr = eDate.toISOString().substring(0, 10);
+      }
+    }
+  }
+
+  // If placeholder like [Date X] to [Date Y] or no explicit dates, anchor a 3-day weekend 4 weeks from reference date
+  if (!startDateStr || !endDateStr) {
+    const s = new Date(safeBase);
+    s.setDate(s.getDate() + 25);
+    const currentDay = s.getDay();
+    const daysUntilFriday = (5 - currentDay + 7) % 7;
+    s.setDate(s.getDate() + (daysUntilFriday || 7));
+    
+    const e = new Date(s);
+    e.setDate(e.getDate() + 2); // 3-day weekend (Friday to Sunday)
+
+    startDateStr = s.toISOString().substring(0, 10);
+    endDateStr = e.toISOString().substring(0, 10);
+  }
+
+  // Calculate day-level target dates
+  const startObj = new Date(startDateStr + 'T12:00:00Z');
+  const day2Obj = new Date(startObj);
+  day2Obj.setDate(day2Obj.getDate() + 1);
+  const day2DateStr = day2Obj.toISOString().substring(0, 10);
+
+  // Determine Archetype & Macro Title
+  let archetype = 'Trip';
+  let macroTitle = 'Group Trip Horizon';
+  if (/stag\s*(party|do)?|bachelor/i.test(message)) {
+    archetype = 'Stag Party / Bachelor Trip';
+    macroTitle = 'Stag Party Weekend';
+  } else if (/hen\s*(party|do)?|bachelorette/i.test(message)) {
+    archetype = 'Bachelorette / Hen Party';
+    macroTitle = 'Bachelorette Weekend Getaway';
+  } else if (/conference|summit/i.test(message)) {
+    archetype = 'Conference & Summit';
+    macroTitle = 'Conference & Industry Summit';
+  } else if (/family|vacation|holiday/i.test(message)) {
+    archetype = 'Family Vacation';
+    macroTitle = 'Vacation & Holiday Getaway';
+  }
+
+  // Check destination
+  const destMatch = message.match(/(?:to|in)\s+([A-Z][a-zA-Z\s]{2,20}?)(?:\s+(?:from|with|for|,|\.|$))/);
+  const destination = destMatch ? destMatch[1].trim() : undefined;
+  if (destination) {
+    macroTitle = `${macroTitle} (${destination})`;
+  }
+
+  // 2. Unpack Embedded Sub-Events
+  const subEvents: SubEvent[] = [];
+  if (/2nd\s*day|second\s*day|day\s*2/i.test(message)) {
+    subEvents.push({
+      title: 'Day 2 Group Activity',
+      relative_day: 'Day 2',
+      target_date: day2DateStr,
+      description: 'Highlight group activity or excursion requiring advance reservation',
+    });
+  }
+  if (/dinner|supper|restaurant/i.test(message)) {
+    subEvents.push({
+      title: 'Saturday Group Dinner Reservation',
+      relative_day: 'Day 2 Evening',
+      target_date: day2DateStr,
+      description: 'Group dining reservation with fixed menu or deposit',
+    });
+  }
+  if (/theme|costume|fancy\s*dress/i.test(message)) {
+    subEvents.push({
+      title: 'Themed Night & Costumes',
+      relative_day: 'Day 2 Night',
+      target_date: day2DateStr,
+      description: 'Coordinated group outfits or fancy dress',
+    });
+  }
+
+  if (subEvents.length === 0) {
+    subEvents.push({
+      title: 'Day 2 In-Trip Activity',
+      relative_day: 'Day 2',
+      target_date: day2DateStr,
+      description: 'Core group event requiring dedicated booking lead time',
+    });
+  }
+
+  // 3. Multi-Track Milestone Generation
+  const milestones: StructuredMilestone[] = [];
+
+  const getMilestoneDate = (tMinusDays: number) => {
+    const d = new Date(startObj);
+    d.setDate(d.getDate() - tMinusDays);
+    return d.toISOString().substring(0, 10);
+  };
+
+  const activityTitle = subEvents[0]?.title || 'Day 2 activity';
+  const activityRefinementOptions = [
+    'Go-Karting Grand Prix',
+    'Paintball / Laser Combat',
+    'Private Craft Brewery Tour & VIP Tasting',
+    'Private Boat / Yacht Cruise',
+    'Axe Throwing & Arcade Bar',
+    'Escape Room Tournament',
+    'VIP Nightclub Table'
+  ];
+
+  // Tailor based on User Role (Organiser vs Co-Organiser vs Guest)
+  if (role === 'guest') {
+    milestones.push({
+      task: 'Confirm trip attendance & RSVP to organiser',
+      target_date: getMilestoneDate(30),
+      t_minus_days: 30,
+      scope: 'macro',
+      tag: 'RSVP',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['guest'],
+      description: 'Lock in your place on the trip and confirm bed allocation.',
+    });
+
+    milestones.push({
+      task: 'Transfer deposit / share of group kitty to organiser',
+      target_date: getMilestoneDate(21),
+      t_minus_days: 21,
+      scope: 'macro',
+      tag: 'Finance',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['guest'],
+      description: 'Send your portion of lodging and activity deposits to the lead organiser.',
+    });
+
+    milestones.push({
+      task: 'Book personal travel / flights & coordinate arrival times',
+      target_date: getMilestoneDate(21),
+      t_minus_days: 21,
+      scope: 'macro',
+      tag: 'Travel',
+      kind: 'deliverable',
+      needsRefinement: true,
+      refinementOptions: ['Direct Flight', 'Train / Rail Pass', 'Carpool with Group', 'Driving Solo'],
+      applicableRoles: ['guest'],
+      description: 'Book your flight or train to match the group airport arrival window.',
+    });
+
+    milestones.push({
+      task: 'Check weekend party dress code & activity gear',
+      target_date: getMilestoneDate(7),
+      t_minus_days: 7,
+      scope: 'micro',
+      tag: 'Prep',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['guest'],
+      description: 'Prepare coordinated outfits, swimwear, or specific activity footwear.',
+    });
+
+    milestones.push({
+      task: 'Luggage packing & roaming eSIM setup',
+      target_date: getMilestoneDate(3),
+      t_minus_days: 3,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['guest'],
+      description: 'Pack personal gear, passport with 6+ months validity, and download offline maps.',
+    });
+
+    milestones.push({
+      task: 'Departure buffer & meet group at transit hub',
+      target_date: getMilestoneDate(0),
+      t_minus_days: 0,
+      scope: 'macro',
+      tag: 'Departure',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['guest'],
+      description: 'Head to the airport or station with buffer time to meet the trip crew.',
+    });
+  } else if (role === 'co_organiser') {
+    milestones.push({
+      task: 'Align with lead organiser & claim assigned tracks',
+      target_date: getMilestoneDate(30),
+      t_minus_days: 30,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['co_organiser'],
+      description: 'Divide responsibility for activity reservations, transfers, and communication.',
+    });
+
+    milestones.push({
+      task: `Shortlist & reserve ${activityTitle}`,
+      target_date: getMilestoneDate(21),
+      t_minus_days: 21,
+      scope: 'micro',
+      tag: 'Activity',
+      kind: 'deliverable',
+      needsRefinement: true,
+      refinementOptions: activityRefinementOptions,
+      deliverableType: 'activity',
+      applicableRoles: ['organiser', 'co_organiser'],
+      description: 'Reserve prime weekend slot (Karting, Brewery, Boat, Paintball) and lock in deposit.',
+    });
+
+    milestones.push({
+      task: 'Chase unconfirmed RSVPs & help collect group kitty',
+      target_date: getMilestoneDate(14),
+      t_minus_days: 14,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['co_organiser'],
+      description: 'Support lead organiser in gathering deposits and confirming final numbers.',
+    });
+
+    milestones.push({
+      task: `Confirm final headcount, waiver forms & time slot for ${activityTitle}`,
+      target_date: getMilestoneDate(7),
+      t_minus_days: 7,
+      scope: 'micro',
+      tag: 'Reservations',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['organiser', 'co_organiser'],
+      description: 'Check waiver links and confirm party arrival window with provider.',
+    });
+
+    milestones.push({
+      task: 'Coordinate shared rides & meeting point with lead organiser',
+      target_date: getMilestoneDate(3),
+      t_minus_days: 3,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['co_organiser'],
+      description: 'Confirm transit schedule from airport/station to accommodation.',
+    });
+
+    milestones.push({
+      task: 'Personal luggage packing & gear check',
+      target_date: getMilestoneDate(2),
+      t_minus_days: 2,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['co_organiser'],
+      description: 'Pack essentials and verify group party props/supplies.',
+    });
+  } else {
+    // Default Organiser
+    milestones.push({
+      task: 'Book flights / group transport & lodging',
+      target_date: getMilestoneDate(30),
+      t_minus_days: 30,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'deliverable',
+      needsRefinement: true,
+      refinementOptions: ['Group Airbnb / Villa Rental', 'Central Hotel Room Block', 'Budget Hostel Pods', 'Self-booked Individual Lodging'],
+      deliverableType: 'lodging',
+      applicableRoles: ['organiser'],
+      description: 'Secures accommodation and peak transit rates before prices surge or rooms sell out.',
+    });
+
+    milestones.push({
+      task: `Shortlist & reserve ${activityTitle}`,
+      target_date: getMilestoneDate(21),
+      t_minus_days: 21,
+      scope: 'micro',
+      tag: 'Activity',
+      kind: 'deliverable',
+      needsRefinement: true,
+      refinementOptions: activityRefinementOptions,
+      deliverableType: 'activity',
+      applicableRoles: ['organiser', 'co_organiser'],
+      description: 'Prime group slots (Karting, Brewery, Boat, Paintball) sell out 3 weeks ahead.',
+    });
+
+    milestones.push({
+      task: 'Collect group kitty & lock in attendance count',
+      target_date: getMilestoneDate(14),
+      t_minus_days: 14,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['organiser'],
+      description: 'Avoids last-minute dropouts and provides working funds for activity deposits.',
+    });
+
+    milestones.push({
+      task: `Confirm final headcount, waiver forms & time slot for ${activityTitle}`,
+      target_date: getMilestoneDate(7),
+      t_minus_days: 7,
+      scope: 'micro',
+      tag: 'Reservations',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['organiser', 'co_organiser'],
+      description: 'Ensures provider can accommodate exact party size and signs liability releases ahead of time.',
+    });
+
+    milestones.push({
+      task: 'Coordinate arrival times, shared cabs & meeting point',
+      target_date: getMilestoneDate(7),
+      t_minus_days: 7,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'deliverable',
+      needsRefinement: false,
+      applicableRoles: ['organiser'],
+      description: 'Aligns group flights/trains and schedules seamless airport-to-hotel transfers.',
+    });
+
+    milestones.push({
+      task: 'Trip luggage packing & travel logistics briefing',
+      target_date: getMilestoneDate(3),
+      t_minus_days: 3,
+      scope: 'macro',
+      tag: 'Logistics',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['organiser', 'co_organiser', 'guest'],
+      description: 'Pack weather-appropriate attire, roaming SIMs, and distribute weekend itinerary.',
+    });
+
+    milestones.push({
+      task: `Finalize dress code, gear & transport for ${activityTitle}`,
+      target_date: getMilestoneDate(2),
+      t_minus_days: 2,
+      scope: 'micro',
+      tag: 'Supplies',
+      kind: 'milestone',
+      needsRefinement: false,
+      applicableRoles: ['organiser', 'co_organiser', 'guest'],
+      description: 'Verifies required footwear, safety equipment, and rideshare pickup points.',
+    });
+  }
+
+  // Sort milestones chronologically (earliest action first)
+  milestones.sort((a, b) => b.t_minus_days - a.t_minus_days);
+
+  const tailored_options = [
+    'Outdoor Paintball & Quad Biking (High adrenaline; peak weekend slots require 3-week reservation)',
+    'Private Craft Brewery Tour & VIP Tasting (Relaxed & social; includes local guide and tasting flights)',
+    'Escape Room Challenge & Axe Throwing Tournament (Indoor & weatherproof; competitive group bracket)',
+  ];
+
+  const roleLabel = role === 'guest' ? 'Guest / Attendee' : role === 'co_organiser' ? 'Co-Organiser' : 'Lead Organiser';
+
+  const conversational_response = `I've decomposed your request into a hierarchical multi-track plan for **${roleLabel}**:\n\n` +
+    `• **Macro Trip Horizon:** ${macroTitle} from ${startDateStr} to ${endDateStr} (${role === 'guest' ? 'guest attendance & personal bookings' : 'operational travel, lodging & kitty'}).\n` +
+    `• **Track B Micro Specifics:** ${role === 'guest' ? 'Dress code coordination & personal gear.' : 'Advance reservation runway for group activity.'}\n\n` +
+    `To nail down the Day 2 activity, here are 3 tailored concepts suited for group trips:\n` +
+    `1. *Outdoor Paintball & Quad Biking* (Adrenaline)\n` +
+    `2. *Private Brewery Tour & Tasting* (Social)\n` +
+    `3. *Escape Room & Axe Throwing* (Indoor competition)\n\n` +
+    `Which direction fits your group best, or do you have another activity in mind?`;
+
+  return {
+    macro_event: {
+      title: macroTitle,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      type: archetype,
+      destination,
+    },
+    sub_events: subEvents,
+    milestones,
+    conversational_response,
+    tailored_options,
+  };
+}
+

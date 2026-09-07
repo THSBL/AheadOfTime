@@ -1,4 +1,4 @@
-export type OperationalMode = 'CREATE_AND_INTAKE' | 'RESOLVE_MILESTONES' | 'RESEARCH_REQUIRED';
+export type OperationalMode = 'CREATE_AND_INTAKE' | 'RESOLVE_MILESTONES' | 'RESEARCH_REQUIRED' | 'NORMAL';
 
 export type EventCategory = 
   | 'birthday_party' 
@@ -24,7 +24,11 @@ export type MilestoneCategory =
   | 'review'
   | 'marketing'
   | 'work'
-  | 'admin';
+  | 'admin'
+  | 'project_deadline'
+  | 'qa'
+  | 'operations'
+  | 'general';
 
 export interface IntakeOption {
   label: string;
@@ -41,6 +45,48 @@ export interface IntakeQuestion {
   selectedAnswer?: string;
 }
 
+export interface MacroEventData {
+  title: string;
+  start_date: string; // YYYY-MM-DD
+  end_date?: string; // YYYY-MM-DD
+  type: string; // e.g. "Trip", "Stag Party", "Conference", "Celebration"
+  destination?: string;
+  archetype?: string;
+}
+
+export interface SubEvent {
+  id?: string;
+  title: string;
+  relative_day?: string; // e.g. "Day 2", "Saturday night"
+  target_date: string; // YYYY-MM-DD
+  description?: string;
+}
+
+export type UserEventRole = 'organiser' | 'co_organiser' | 'guest';
+export type TaskItemKind = 'milestone' | 'deliverable';
+
+export interface StructuredMilestone {
+  task: string;
+  target_date: string;
+  t_minus_days: number;
+  scope: 'macro' | 'micro';
+  tag: 'Logistics' | 'Activity' | 'Reservations' | 'Supplies' | string;
+  description?: string;
+  kind?: TaskItemKind;
+  needsRefinement?: boolean;
+  deliverableType?: 'reservation' | 'activity' | 'booking' | 'shopping' | 'logistics' | 'general' | string;
+  refinementOptions?: string[];
+  applicableRoles?: UserEventRole[];
+}
+
+export interface StructuredPlanningPayload {
+  macro_event: MacroEventData;
+  sub_events: SubEvent[];
+  milestones: StructuredMilestone[];
+  conversational_response: string;
+  tailored_options?: string[];
+}
+
 export interface TMinusMilestone {
   id: string;
   eventId: string;
@@ -54,6 +100,14 @@ export interface TMinusMilestone {
   completedAt?: string;
   googleCalendarEventId?: string;
   googleTaskId?: string;
+  scope?: 'macro' | 'micro';
+  tag?: 'Logistics' | 'Activity' | 'Reservations' | 'Supplies' | string;
+  relativeDay?: string;
+  kind?: TaskItemKind;
+  needsRefinement?: boolean;
+  deliverableType?: 'reservation' | 'activity' | 'booking' | 'shopping' | 'logistics' | 'general' | string;
+  refinementOptions?: string[];
+  applicableRoles?: UserEventRole[];
 }
 
 export interface WatchpointData {
@@ -70,8 +124,10 @@ export interface CalendarEvent {
   title: string;
   category: EventCategory;
   eventDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
   eventTime?: string; // HH:mm
   location?: string;
+  userRole?: UserEventRole;
   status: 'intake_pending' | 'milestones_active' | 'research_watchpoint' | 'completed';
   needsRefinement?: boolean;
   refinedAt?: string;
@@ -79,7 +135,12 @@ export interface CalendarEvent {
   googleEventLink?: string;
   syncedToGoogleAt?: string;
   googleMilestoneCount?: number;
+  macroEvent?: MacroEventData;
+  subEvents?: SubEvent[];
+  structuredPayload?: StructuredPlanningPayload;
+  tailoredOptions?: string[];
   context: {
+    userRole?: UserEventRole;
     giftType?: 'group' | 'solo' | 'none' | string;
     theme?: string;
     isThemed?: boolean | string;
@@ -111,6 +172,9 @@ export interface AgentMessage {
   associatedEventId?: string;
   intakeQuestions?: IntakeQuestion[];
   generatedMilestones?: TMinusMilestone[];
+  structuredPayload?: StructuredPlanningPayload;
+  conversationalResponse?: string;
+  tailoredOptions?: string[];
   isVoiceMemo?: boolean;
   voiceAudioUrl?: string;
   voiceDurationSeconds?: number;
@@ -140,6 +204,8 @@ export interface ProcessAgentResponsePayload {
   focusText?: string;
   additionText?: string;
   event: CalendarEvent;
+  structuredPayload?: StructuredPlanningPayload;
+  tailoredOptions?: string[];
   transcribedText?: string;
   explanation?: string;
 }
@@ -212,5 +278,38 @@ export interface CookieConsentSettings {
   functional: boolean;
   analytics: boolean;
   timestamp?: string;
+}
+
+// Custom T-Minus Template Presets & Spreadsheet Importer Types
+export interface CustomPresetMilestone {
+  id: string;
+  task: string;
+  t_minus_days: number; // e.g. 30 for T-30d, 0 for launch day, -7 for Day +7
+  tag: string; // e.g. "QA", "Legal", "Design", "Marketing", "Logistics", "Operations"
+  description?: string;
+  kind?: TaskItemKind;
+  scope?: 'macro' | 'micro';
+  deliverableType?: string;
+}
+
+export interface CustomPreset {
+  id: string;
+  title: string;
+  name?: string; // friendly alias for title
+  description?: string;
+  category: MilestoneCategory | string;
+  tags: string[];
+  milestones: CustomPresetMilestone[];
+  createdAt: string;
+  updatedAt: string;
+  isBuiltIn?: boolean;
+  author?: string;
+}
+
+export interface SpreadsheetColumnMapping {
+  taskCol: string;
+  offsetCol?: string;
+  tagCol?: string;
+  descCol?: string;
 }
 

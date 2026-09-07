@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  MoreHorizontal
+  MoreHorizontal,
+  Layers
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone } from '../types';
@@ -27,6 +28,7 @@ import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { DeleteEventModal } from './DeleteEventModal';
 import { EventRefineModal } from './EventRefineModal';
+import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
 
@@ -45,6 +47,7 @@ interface EventTimelineRadarProps {
   onUpdateEvent?: (updated: CalendarEvent) => void;
   onOpenNewEventModal: () => void;
   onOpenGoogleCalendarSync?: () => void;
+  onOpenApplyPreset?: (event: CalendarEvent) => void;
   onSelectVariable?: (eventId: string, key: string, value: any, label: string) => void;
   currentReferenceDate: string;
   isGoogleConnected?: boolean;
@@ -67,6 +70,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   onUpdateEvent,
   onOpenNewEventModal,
   onOpenGoogleCalendarSync,
+  onOpenApplyPreset,
   currentReferenceDate,
   isGoogleConnected,
   isSyncingWithGoogle,
@@ -85,6 +89,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [clarifyTime, setClarifyTime] = useState('');
   const [clarifyLocation, setClarifyLocation] = useState('');
   const [isDeepRefining, setIsDeepRefining] = useState(false);
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
+  const [refiningDeliverable, setRefiningDeliverable] = useState<TMinusMilestone | null>(null);
 
   const activeEvent = selectedEventId 
     ? (events.find((e) => e.id === selectedEventId) || events[0] || null) 
@@ -257,6 +263,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const countdown = getCountdownStatus(activeEvent.eventDate, currentReferenceDate);
   const completedCount = activeEvent.milestones.filter((m) => m.status === 'completed').length;
   const totalCount = activeEvent.milestones.length;
+  const hasMicroTasks = activeEvent.milestones.some((m) => m.scope === 'micro');
+  const microCount = activeEvent.milestones.filter((m) => m.scope === 'micro').length;
+  const macroCount = totalCount - microCount;
+
+  const displayedMilestones = activeEvent.milestones.filter((ms) => {
+    if (scopeFilter === 'all') return true;
+    if (scopeFilter === 'macro') return ms.scope !== 'micro';
+    if (scopeFilter === 'micro') return ms.scope === 'micro';
+    return true;
+  });
 
   return (
     <div className="flex-1 flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs w-full">
@@ -292,6 +308,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <h3 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight leading-snug break-words">
                 {activeEvent.title}
               </h3>
+              {(activeEvent.macroEvent?.archetype || activeEvent.macroEvent?.type) && (
+                <span className="text-[10px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 shadow-2xs shrink-0">
+                  {activeEvent.macroEvent.archetype || activeEvent.macroEvent.type}
+                </span>
+              )}
               {activeEvent.needsRefinement && !activeEvent.refinedAt && (!activeEvent.context || Object.keys(activeEvent.context).length === 0) && (
                 <span className="text-[10px] font-mono font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
                   <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
@@ -313,7 +334,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
               <div className="flex items-center gap-1 font-semibold text-slate-800">
                 <Calendar className="w-3.5 h-3.5 text-sky-700 shrink-0" />
-                <span>{formatDisplayDate(activeEvent.eventDate)}</span>
+                <span>
+                  {activeEvent.endDate || activeEvent.macroEvent?.end_date
+                    ? `${formatDisplayDate(activeEvent.eventDate)} – ${formatDisplayDate(activeEvent.endDate || activeEvent.macroEvent?.end_date || '')}`
+                    : formatDisplayDate(activeEvent.eventDate)
+                  }
+                </span>
               </div>
               {activeEvent.eventTime && (
                 <div className="flex items-center gap-1 font-mono text-slate-500 text-[11px]">
@@ -350,6 +376,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <span>Refine</span>
             </button>
 
+            {onOpenApplyPreset && (
+              <button
+                onClick={() => onOpenApplyPreset(activeEvent)}
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-950 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                title="Apply custom spreadsheet template or saved runway preset"
+              >
+                <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span className="hidden md:inline">Apply Template</span>
+                <span className="md:hidden">Template</span>
+              </button>
+            )}
+
             {/* More Actions Menu */}
             <div className="relative">
               <button
@@ -367,6 +405,19 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     onClick={() => setIsMoreMenuOpen(false)}
                   />
                   <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {onOpenApplyPreset && (
+                      <button
+                        onClick={() => {
+                          onOpenApplyPreset(activeEvent);
+                          setIsMoreMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-950 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Apply Template Preset...</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         handleDownloadICS(activeEvent);
@@ -444,6 +495,40 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}
       <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 bg-sky-50/20 w-full">
+        {/* Hierarchical Sub-events Strip */}
+        {activeEvent.subEvents && activeEvent.subEvents.length > 0 && (
+          <div className="bg-indigo-50/50 border border-indigo-100/90 rounded-2xl p-2.5 sm:p-3 space-y-1.5 shadow-2xs">
+            <div className="flex items-center justify-between text-[11px] font-bold text-indigo-950 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <span>🎯</span>
+                <span>In-Trip Objectives ({activeEvent.subEvents.length})</span>
+              </span>
+              {activeEvent.macroEvent?.destination && (
+                <span className="text-[10px] text-indigo-700 font-semibold lowercase">
+                  📍 {activeEvent.macroEvent.destination}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {activeEvent.subEvents.map((sub, idx) => (
+                <div key={idx} className="bg-white text-indigo-950 border border-indigo-200/80 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
+                  <span className="font-bold">{sub.title}</span>
+                  {sub.relative_day && (
+                    <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md font-bold">
+                      {sub.relative_day}
+                    </span>
+                  )}
+                  {sub.target_date && (
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {formatDisplayDate(sub.target_date)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider px-0.5">
           <div className="flex items-center gap-1.5">
             <span className="text-slate-700">Prep Tasks ({totalCount})</span>
@@ -457,6 +542,45 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <span>Add Task</span>
           </button>
         </div>
+
+        {/* Scope Filter Buttons if Hierarchical Tasks exist */}
+        {hasMicroTasks && (
+          <div className="flex items-center gap-1 bg-slate-100/80 p-0.5 rounded-xl text-xs font-bold w-fit">
+            <button
+              type="button"
+              onClick={() => setScopeFilter('all')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                scopeFilter === 'all'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All ({totalCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setScopeFilter('macro')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                scopeFilter === 'macro'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Trip Prep ({macroCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setScopeFilter('micro')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                scopeFilter === 'micro'
+                  ? 'bg-white text-indigo-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              In-Trip Tasks ({microCount})
+            </button>
+          </div>
+        )}
 
         {isEditingEvent ? (
           <div className="bg-white border border-sky-300 rounded-3xl p-5 shadow-lg space-y-4 animate-in fade-in duration-300">
@@ -568,8 +692,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               Add First Task
             </button>
           </div>
+        ) : displayedMilestones.length === 0 ? (
+          <div className="p-6 text-center text-slate-400 text-xs sm:text-sm bg-white rounded-2xl border border-sky-100 space-y-2 shadow-xs">
+            <p>No tasks found for "{scopeFilter === 'micro' ? 'In-Trip Tasks' : 'Trip Prep'}".</p>
+            <button
+              onClick={() => setScopeFilter('all')}
+              className="px-3 py-1 bg-sky-50 text-sky-900 rounded-lg text-xs font-bold hover:bg-sky-100 cursor-pointer border border-sky-200"
+            >
+              Show All Tasks
+            </button>
+          </div>
         ) : (
-          activeEvent.milestones.map((ms) => {
+          displayedMilestones.map((ms) => {
             const isCompleted = ms.status === 'completed';
             const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
             const isOverdue = !isCompleted && msCountdown.isOverdue;
@@ -611,6 +745,49 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       }`}>
                         {ms.tMinusLabel}
                       </span>
+
+                      {/* Milestone vs Deliverable Badge */}
+                      {ms.kind === 'deliverable' ? (
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/90 px-1.5 py-0.5 rounded shrink-0">
+                          Deliverable
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium text-slate-500 bg-slate-100/90 border border-slate-200/60 px-1.5 py-0.5 rounded shrink-0 hidden sm:inline">
+                          Milestone
+                        </span>
+                      )}
+
+                      {/* Refine Button for Deliverables needing more details */}
+                      {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRefiningDeliverable(ms);
+                          }}
+                          className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
+                          title="Refine specifics for this deliverable"
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                          <span>Refine</span>
+                        </button>
+                      )}
+
+                      {ms.scope === 'micro' && (
+                        <span className="text-[10px] font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
+                          {ms.relativeDay || 'In-Trip'}
+                        </span>
+                      )}
+                      {ms.scope === 'macro' && (
+                        <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 hidden sm:inline">
+                          Trip Prep
+                        </span>
+                      )}
+                      {ms.tag && (
+                        <span className="text-[10px] font-semibold text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100 shrink-0 hidden sm:inline">
+                          {ms.tag}
+                        </span>
+                      )}
                       
                       {isOverdue && (
                         <span className="text-[10px] text-rose-700 font-bold bg-rose-100/90 px-1.5 py-0.5 rounded-md border border-rose-300 inline-flex items-center gap-1 shrink-0 shadow-2xs">
@@ -652,6 +829,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1">
+                        {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
+                          <button
+                            onClick={() => setRefiningDeliverable(ms)}
+                            className="p-1 px-2 rounded-lg text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                            title="Refine deliverable details"
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                            <span>Refine</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => setEditingMilestone(ms)}
                           className="p-1 px-2 rounded-lg text-slate-600 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
@@ -690,8 +877,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     )}
                   </div>
 
-                  {/* Desktop Task Actions (Edit & Delete) */}
+                  {/* Desktop Task Actions (Refine, Edit & Delete) */}
                   <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity pt-1">
+                    {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
+                      <button
+                        onClick={() => setRefiningDeliverable(ms)}
+                        className="p-1 px-2 rounded-lg text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs mr-0.5"
+                        title="Refine deliverable specifics & options"
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-600" />
+                        <span>Refine</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => setEditingMilestone(ms)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
@@ -805,6 +1002,22 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             }
           }}
           currentReferenceDate={currentReferenceDate}
+        />
+      )}
+
+      {/* Refine Deliverable Modal */}
+      {refiningDeliverable && activeEvent && (
+        <RefineDeliverableModal
+          isOpen={Boolean(refiningDeliverable)}
+          onClose={() => setRefiningDeliverable(null)}
+          milestone={refiningDeliverable}
+          event={activeEvent}
+          onSaveMilestone={(updated) => {
+            if (activeEvent && onUpdateMilestone) {
+              onUpdateMilestone(activeEvent.id, updated);
+            }
+            setRefiningDeliverable(null);
+          }}
         />
       )}
 

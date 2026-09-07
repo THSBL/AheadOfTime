@@ -33,7 +33,9 @@ import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
 import { SettingsProfilePage } from './components/SettingsProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
-import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings } from './types';
+import { ImportTemplateModal } from './components/ImportTemplateModal';
+import { ApplyPresetModal } from './components/ApplyPresetModal';
+import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings, CustomPreset } from './types';
 import { INITIAL_EVENTS } from './data/samplePresets';
 import { 
   MessageSquare, 
@@ -49,12 +51,14 @@ import {
   RefreshCw,
   RotateCcw,
   Loader2,
-  Check
+  Check,
+  FileSpreadsheet
 } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired } from './services/googleAuth';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle } from './services/googleCalendar';
-import { detectEventCategory, generateHeuristicMilestones } from './utils/tminusRules';
+import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle } from './utils/tminusRules';
+import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
 
 const INITIAL_MESSAGES: AgentMessage[] = [
   {
@@ -348,6 +352,117 @@ function App() {
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>('list');
 
+  // Custom Presets & Spreadsheet Importer State
+  const [isImportTemplateModalOpen, setIsImportTemplateModalOpen] = useState(false);
+  const [isApplyPresetModalOpen, setIsApplyPresetModalOpen] = useState(false);
+  const [applyPresetTargetEvent, setApplyPresetTargetEvent] = useState<CalendarEvent | null>(null);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => loadCustomPresets());
+
+  const handleCustomPresetsUpdated = (updated: CustomPreset[]) => {
+    setCustomPresets(updated);
+    saveCustomPresets(updated);
+  };
+
+  const handleOpenApplyPreset = (event: CalendarEvent) => {
+    setApplyPresetTargetEvent(event);
+    setIsApplyPresetModalOpen(true);
+  };
+
+  const handleApplyPresetToEvent = (
+    event: CalendarEvent,
+    preset: CustomPreset,
+    mode: 'replace' | 'augment',
+    customMilestones?: any[]
+  ) => {
+    const presetName = preset.title || preset.name || 'Preset';
+    const projectedMilestones = projectPresetToMilestones(
+      preset,
+      event.eventDate,
+      event.eventTime || '10:00',
+      event.id,
+      customMilestones
+    );
+
+    setEvents((prev) =>
+      prev.map((e) => {
+        if (e.id !== event.id) return e;
+
+        let finalMilestones: TMinusMilestone[] = [];
+        if (mode === 'replace') {
+          finalMilestones = projectedMilestones;
+        } else {
+          finalMilestones = [...(e.milestones || []), ...projectedMilestones];
+        }
+
+        return {
+          ...e,
+          milestones: finalMilestones,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+
+    const confirmMessage: AgentMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'agent',
+      text: `Applied preset "${presetName}" (${projectedMilestones.length} milestones) to "${event.title}" in ${mode} mode using deterministic T-minus projection.`,
+      associatedEventId: event.id,
+      timestamp: new Date().toISOString(),
+      mode: 'NORMAL',
+    };
+    setMessages((prev) => [...prev, confirmMessage]);
+    setSelectedEventId(event.id);
+    setActiveTab('tasks');
+  };
+
+  const handleApplyCustomPresetToNewEvent = (
+    preset: CustomPreset,
+    targetDate: string,
+    targetTime: string,
+    eventTitle: string
+  ) => {
+    const newEventId = `evt-${Date.now()}`;
+    const presetName = preset.title || preset.name || 'Preset';
+    const cleanTitle = eventTitle.trim() || presetName;
+    const projectedMilestones = projectPresetToMilestones(
+      preset,
+      targetDate,
+      targetTime || '09:00',
+      newEventId
+    );
+
+    const newEvent: CalendarEvent = {
+      id: newEventId,
+      title: cleanTitle,
+      eventDate: targetDate,
+      eventTime: targetTime || '09:00',
+      category: (preset.category as any) || 'custom',
+      milestones: projectedMilestones,
+      status: 'milestones_active',
+      userRole: 'organiser',
+      context: {
+        notes: preset.description || `Configured with deterministic preset "${presetName}"`,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setEvents((prev) => [newEvent, ...prev]);
+    setSelectedEventId(newEventId);
+    setActiveTab('tasks');
+    setFocusMode('adjust-event');
+
+    const confirmMessage: AgentMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'agent',
+      text: `Created new event "${cleanTitle}" with ${projectedMilestones.length} preparation milestones from template preset "${presetName}". Instant deterministic projection completed!`,
+      associatedEventId: newEventId,
+      timestamp: new Date().toISOString(),
+      mode: 'NORMAL',
+    };
+    setMessages((prev) => [...prev, confirmMessage]);
+  };
+
   const handleToggleSelectEvent = (id: string) => {
     setSelectedBulkEventIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -554,7 +669,7 @@ function App() {
       if (timeMatch) targetTime = timeMatch[1];
 
       let title = text.split('.')[0].replace(/\[.*?\]/g, '').trim();
-      if (!title || title.length > 50) title = 'Upcoming Event';
+      title = getCleanEventTitle(title, category);
 
       const eventId = `evt-${Date.now()}`;
       const milestones = generateHeuristicMilestones({ category, context: {} }, eventId, targetDate, targetTime);
@@ -1129,15 +1244,27 @@ function App() {
                   </button>
                 </div>
 
-                {/* Quick action for manual modal if ever desired */}
-                <button
-                  type="button"
-                  onClick={() => setIsManualModalOpen(true)}
-                  className="text-xs text-slate-500 hover:text-slate-900 font-medium underline cursor-pointer hidden sm:inline-flex items-center gap-1"
-                  title="Open traditional manual event form"
-                >
-                  <span>Manual form modal</span>
-                </button>
+                {/* Quick actions for manual modal and template importer */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsImportTemplateModalOpen(true)}
+                    className="text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/90 font-bold px-2.5 py-1 rounded-xl cursor-pointer inline-flex items-center gap-1.5 transition-all shadow-2xs active:scale-95"
+                    title="Import template from spreadsheet (.csv / .xlsx)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+                    <span className="hidden sm:inline">Import Template</span>
+                    <span className="sm:hidden">Import</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsManualModalOpen(true)}
+                    className="text-xs text-slate-500 hover:text-slate-900 font-medium underline cursor-pointer hidden sm:inline-flex items-center gap-1"
+                    title="Open traditional manual event form"
+                  >
+                    <span>Manual form modal</span>
+                  </button>
+                </div>
               </div>
 
               {/* Workspace Content */}
@@ -1156,6 +1283,10 @@ function App() {
                       setFocusMode('adjust-event');
                     }}
                     onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+                    onOpenImporter={() => setIsImportTemplateModalOpen(true)}
+                    onApplyCustomPreset={handleApplyCustomPresetToNewEvent}
+                    savedPresets={customPresets}
+                    onPresetsUpdated={handleCustomPresetsUpdated}
                     isLoading={isLoading}
                     events={events}
                     focusMode={focusMode}
@@ -1195,6 +1326,7 @@ function App() {
                     setFocusMode('welcome');
                   }}
                   onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+                  onOpenApplyPreset={handleOpenApplyPreset}
                   onSelectVariable={handleSelectVariable}
                   currentReferenceDate={currentReferenceDate}
                   isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
@@ -1347,6 +1479,42 @@ function App() {
         agendaHorizonMonths={agendaHorizonMonths}
         onAgendaHorizonChange={setAgendaHorizonMonths}
         onResetDemo={handleResetDemo}
+      />
+
+      {/* Dynamic Spreadsheet Importer (.csv / .xlsx) */}
+      <ImportTemplateModal
+        isOpen={isImportTemplateModalOpen}
+        onClose={() => setIsImportTemplateModalOpen(false)}
+        onSavePreset={(newPreset) => {
+          const updated = [...customPresets, newPreset];
+          handleCustomPresetsUpdated(updated);
+        }}
+        onApplyDirectly={(preset) => {
+          const activeEvent = events.find((e) => e.id === selectedEventId);
+          if (activeEvent) {
+            handleOpenApplyPreset(activeEvent);
+          } else {
+            handleApplyCustomPresetToNewEvent(
+              preset,
+              new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+              '09:00',
+              preset.name
+            );
+          }
+        }}
+      />
+
+      {/* Deterministic Apply Preset Modal (Replace vs Augment) */}
+      <ApplyPresetModal
+        isOpen={isApplyPresetModalOpen}
+        onClose={() => {
+          setIsApplyPresetModalOpen(false);
+          setApplyPresetTargetEvent(null);
+        }}
+        event={applyPresetTargetEvent}
+        presets={customPresets}
+        onApplyPreset={handleApplyPresetToEvent}
+        onOpenImporter={() => setIsImportTemplateModalOpen(true)}
       />
 
       {/* Cookie Consent Banner */}

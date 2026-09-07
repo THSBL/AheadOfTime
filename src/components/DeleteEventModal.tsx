@@ -147,22 +147,22 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
       <div 
-        className="w-full max-w-lg bg-white rounded-3xl border border-slate-200/90 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]"
+        className="w-full max-w-lg bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[88dvh] sm:max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 bg-rose-50/85 border-b border-rose-100 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs">
-              <Trash2 className="w-5 h-5" />
+        <div className="p-3.5 sm:px-6 sm:py-4 bg-rose-50/85 border-b border-rose-100 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs shrink-0">
+              <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 leading-tight">
-                What do you want to delete?
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight truncate">
+                Delete Options
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-slate-500 font-medium truncate">
                 Customize deletion targets &amp; scope
               </p>
             </div>
@@ -170,14 +170,14 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-5 overflow-y-auto">
+        <div className="p-3.5 sm:p-6 space-y-3.5 sm:space-y-5 overflow-y-auto flex-1 overscroll-contain">
           
           {/* Target Event Context Chip */}
           <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">

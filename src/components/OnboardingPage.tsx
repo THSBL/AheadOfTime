@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -6,10 +6,12 @@ import {
   Calendar, 
   Users, 
   User, 
-  Briefcase 
+  Briefcase,
+  Loader2
 } from 'lucide-react';
 import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType } from '../types';
 import { Logo } from './Logo';
+import { ensureGisLoaded, requestGoogleCalendarToken, getStoredClientId } from '../services/googleAuth';
 
 interface OnboardingPageProps {
   initialProfile?: Partial<OnboardingProfile>;
@@ -27,8 +29,13 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   const [calendarType, setCalendarType] = useState<CalendarType>(initialProfile?.calendarType || 'Mixed (Personal & Work)');
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
-  const handleSubmit = (action: 'connect_calendar' | 'go_dashboard') => {
+  useEffect(() => {
+    ensureGisLoaded().catch((err) => console.warn('GIS preloading notice:', err));
+  }, []);
+
+  const handleSubmit = async (action: 'connect_calendar' | 'go_dashboard') => {
     if (!consentChecked) {
       setShowConsentError(true);
       return;
@@ -43,7 +50,19 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       completedAt: new Date().toISOString(),
     };
 
-    onComplete(profile, action);
+    if (action === 'connect_calendar') {
+      setIsConnecting(true);
+      try {
+        await requestGoogleCalendarToken(getStoredClientId());
+      } catch (err) {
+        console.warn('OAuth popup closed or error:', err);
+      } finally {
+        setIsConnecting(false);
+        onComplete(profile, action);
+      }
+    } else {
+      onComplete(profile, action);
+    }
   };
 
   return (
@@ -222,12 +241,22 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
             <button
               type="button"
               id="btn-save-and-connect-calendar"
+              disabled={isConnecting}
               onClick={() => handleSubmit('connect_calendar')}
-              className="w-full py-3.5 px-6 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
+              className="w-full py-3.5 px-6 rounded-2xl bg-[#0f172a] hover:bg-slate-800 disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
             >
-              <Sparkles className="w-4 h-4 text-sky-300" />
-              <span>Connect Calendar &amp; Start</span>
-              <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
+                  <span>Connecting Google Account...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-sky-300" />
+                  <span>Connect Calendar &amp; Start</span>
+                  <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
 
             <div className="text-center">

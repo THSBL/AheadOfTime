@@ -1,5 +1,5 @@
 import { CalendarEvent, TMinusMilestone, MilestoneCategory } from '../types';
-import { calculateOffsetDate } from './tminusRules';
+import { calculateOffsetDate, getCleanEventTitle } from './tminusRules';
 import { inferTaskTimingLocally } from './timingAI';
 
 /**
@@ -7,7 +7,7 @@ import { inferTaskTimingLocally } from './timingAI';
  * Uses deep real-world logistical constraints (booking lead times, artisan crafting, freshness, packing buffers).
  */
 export function deepRefineEventLocally(event: CalendarEvent): TMinusMilestone[] {
-  const title = event.title || 'Upcoming Event';
+  const title = getCleanEventTitle(event.title, event.category, event.context);
   const text = `${title} ${event.location || ''} ${JSON.stringify(event.context || {})}`.toLowerCase();
   const eventDate = event.eventDate;
   const eventTime = event.eventTime || '19:00';

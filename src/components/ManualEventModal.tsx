@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, MapPin, Sparkles, Plus, Trash2 } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, Sparkles, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { CalendarEvent, EventCategory } from '../types';
 import { generateHeuristicMilestones, detectEventCategory } from '../utils/tminusRules';
 
@@ -33,6 +33,7 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
   });
   const [returnTime, setReturnTime] = useState('17:00');
   const [location, setLocation] = useState('');
+  const [showCategoryOptions, setShowCategoryOptions] = useState(false);
   
   // Topic specific context states
   const [giftType, setGiftType] = useState<'group' | 'solo' | 'none'>('group');
@@ -110,27 +111,32 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150">
+      <div 
+        className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[88dvh] sm:max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Modal Header */}
-        <div className="bg-slate-50/80 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Calendar className="w-5 h-5 text-slate-900" />
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-wide">
-              Create Event & Auto-Calculate Milestones
+        <div className="bg-slate-50/90 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Calendar className="w-4 h-4 text-sky-400" />
+            </div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+              Add New Event
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto flex-1 overscroll-contain">
           
           {/* Title */}
           <div>
@@ -223,6 +229,29 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
           </div>
 
           {/* Context Options specific to category */}
+          {category !== 'custom' && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCategoryOptions(!showCategoryOptions)}
+                className="w-full flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="text-xs font-bold text-slate-800">
+                    Category Prep Options
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    (Optional rules)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-semibold text-sky-700">
+                  <span>{showCategoryOptions ? 'Fewer' : 'More'}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transform transition-transform ${showCategoryOptions ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+
+              {showCategoryOptions && (
+                <div className="mt-2.5 space-y-3 animate-in fade-in duration-150">
           {/* Travel Trip specific options: Return date and Passport / Visa independent checks */}
           {category === 'travel_trip' && (
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3.5">
@@ -472,22 +501,26 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
               </div>
             </div>
           )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-full text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="bg-[#0f172a] hover:bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-sm shadow-slate-900/25 flex items-center gap-2 transition-all cursor-pointer"
+              className="bg-[#0f172a] hover:bg-slate-800 text-white px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-sm shadow-slate-900/25 flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>Generate Ahead Of Time Milestones</span>
+              <Sparkles className="w-4 h-4 text-sky-400" />
+              <span>Generate Milestones</span>
             </button>
           </div>
 

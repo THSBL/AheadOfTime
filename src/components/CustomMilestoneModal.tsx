@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, Clock, Plus, Sparkles, Calendar, Check, Zap, Lightbulb, Loader2, RefreshCw } from 'lucide-react';
+import { X, Clock, Plus, Sparkles, Calendar, Check, Zap, Lightbulb, Loader2, RefreshCw, ChevronDown } from 'lucide-react';
 import { MilestoneCategory, TMinusMilestone } from '../types';
 import { calculateOffsetDate, formatDisplayDate } from '../utils/tminusRules';
 import { inferTaskTimingLocally, fetchAITaskTiming, TimeUnit, TimingSuggestion } from '../utils/timingAI';
@@ -27,6 +27,10 @@ const CATEGORY_NAMES: Record<MilestoneCategory, string> = {
   marketing: '📢 Marketing & Outreach',
   work: '💼 Work & Milestones',
   admin: '📋 Admin & Paperwork',
+  project_deadline: '🎯 Project Deadline',
+  qa: '🧪 QA & Testing',
+  operations: '⚙️ Operations & Deployment',
+  general: '📌 General Deliverable',
 };
 
 export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
@@ -46,6 +50,8 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
   const [unit, setUnit] = useState<TimeUnit>('days');
   const [customBadge, setCustomBadge] = useState('');
   const [category, setCategory] = useState<MilestoneCategory>('prep');
+  const [showDetails, setShowDetails] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   // Track if user manually touched timing or category
   const [userEditedTiming, setUserEditedTiming] = useState(false);
@@ -222,193 +228,87 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl max-w-md w-[calc(100vw-1.25rem)] sm:w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85dvh] sm:max-h-[82vh]">
         
-        {/* Header */}
-        <div className="bg-slate-50/90 px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
-              <Clock className="w-4 h-4 text-sky-400" />
+        {/* Compact Header */}
+        <div className="bg-slate-50 px-3.5 sm:px-5 py-2.5 sm:py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Clock className="w-3.5 h-3.5 text-sky-400" />
             </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                Add Preparation Milestone
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                Add Preparation Task
               </h3>
-              <p className="text-xs text-slate-500">
-                For target event: <strong className="text-slate-800 font-semibold">{eventTitle}</strong>
+              <p className="text-[11px] text-slate-500 truncate">
+                For: <span className="text-slate-800 font-semibold">{eventTitle}</span>
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Form Container */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-5 space-y-3 overflow-y-auto flex-1 overscroll-contain">
           
-          {/* Step 1: Desired Task Input */}
+          {/* Task Name */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
-                1. What task do you need to do? *
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Task Name *
               </label>
               {isAnalyzing ? (
-                <span className="text-[11px] text-sky-600 font-medium flex items-center gap-1 animate-pulse">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Calculating smart timing...
+                <span className="text-[10px] text-sky-600 font-medium flex items-center gap-1 animate-pulse">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  Suggesting timing...
                 </span>
               ) : hasConfirmedInput && currentSuggestion ? (
-                <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-emerald-500" />
-                  Smart Timing Applied
+                <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                  <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                  Smart Timing
                 </span>
               ) : null}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={title}
-                  onChange={(e) => handleTitleChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleConfirmAndSuggest();
-                    }
-                  }}
-                  placeholder="e.g. Order personalized gift, Buy groceries, Book flight..."
-                  className="w-full bg-slate-50 text-slate-900 text-sm px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white placeholder:text-slate-400 font-medium transition-all shadow-2xs"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleConfirmAndSuggest}
-                disabled={!title.trim() || isAnalyzing}
-                className="bg-gradient-to-r from-amber-500/10 to-sky-500/10 hover:from-amber-500/20 hover:to-sky-500/20 text-slate-900 text-xs sm:text-sm font-bold px-3.5 py-2.5 rounded-2xl border border-amber-300/80 flex items-center justify-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-amber-500/10 disabled:hover:to-sky-500/10 shrink-0"
-                title={title.trim() ? "Analyze task and suggest optimal timing" : "Type a task first"}
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />
-                    <span className="truncate">Calculating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span className="truncate">Confirm &amp; Suggest</span>
-                  </>
-                )}
-              </button>
-            </div>
+            <input
+              type="text"
+              required
+              autoFocus
+              value={title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              placeholder="e.g. Book group dinner, Order supplies..."
+              className="w-full bg-slate-50 text-slate-900 text-xs sm:text-sm px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white placeholder:text-slate-400 font-medium transition-all"
+            />
           </div>
 
-          {/* Dynamic Smart Analysis & Auto-Fill Explainer (Shown only after calculations are complete) */}
-          {!isAnalyzing && hasConfirmedInput && currentSuggestion && title.trim().length > 0 && (
-            <div className="bg-gradient-to-br from-sky-50/90 via-indigo-50/50 to-slate-50 p-4 rounded-2xl border border-sky-200/80 shadow-xs space-y-2.5 transition-all">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider font-bold text-sky-800 flex items-center gap-1.5">
-                      <span>Smart Suggested Timing</span>
-                      {!userEditedTiming && !userEditedCategory && (
-                        <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                          Applied
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <span>{currentSuggestion.amount} {currentSuggestion.unit} before</span>
-                      <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-bold border border-sky-200">
-                        {currentSuggestion.badge}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-500">
-                        • {CATEGORY_NAMES[currentSuggestion.category] || currentSuggestion.category}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {(userEditedTiming || userEditedCategory) && (
-                  <button
-                    type="button"
-                    onClick={handleResetToAuto}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
-                    title="Reset to recommended timing"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Sync Auto</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Rationale explanation */}
-              <p className="text-xs text-slate-600 leading-relaxed pl-8">
-                💡 <strong className="text-slate-800 font-semibold">Why this timing:</strong> {currentSuggestion.reason}
-              </p>
-
-              {/* Alternative Options */}
-              {currentSuggestion.alternatives && currentSuggestion.alternatives.length > 0 && (
-                <div className="pt-2 border-t border-sky-100 flex flex-wrap items-center gap-2 pl-8">
-                  <span className="text-[11px] font-semibold text-slate-500">Alternative buffers:</span>
-                  {currentSuggestion.alternatives.map((alt, idx) => {
-                    const isSelected = amount === alt.amount && unit === alt.unit;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => applyTimingSuggestion(alt.amount, alt.unit, alt.badge, currentSuggestion.category)}
-                        className={`text-[11px] font-semibold px-2 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-2xs border ${
-                          isSelected
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'text-slate-700 bg-white hover:bg-sky-100/70 border-sky-200'
-                        }`}
-                        title={alt.reason}
-                      >
-                        <span>{alt.label}</span>
-                        <span className={`text-[9px] font-mono font-bold ${isSelected ? 'text-sky-300' : 'text-sky-700'}`}>
-                          ({alt.badge})
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 2: Exact Timing Controls (Amount + Unit Dropdown) */}
-          <div className="pt-1">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
-                2. Timing (Lead Time Before Event) *
+          {/* Timing (Lead Time) Controls */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Lead Time *
               </label>
-              {userEditedTiming ? (
-                <span className="text-[10px] font-medium text-slate-400">Customized</span>
-              ) : hasConfirmedInput && amount !== '' ? (
-                <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100">
-                  ⚡ Auto-filled
+              {calculatedDate && computedBadge ? (
+                <span className="text-[10px] font-mono font-bold text-sky-800 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded">
+                  Due {formatDisplayDate(calculatedDate, unit === 'hours')} ({computedBadge})
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-2.5">
+
+            <div className="flex items-center gap-2">
               <input
                 type="number"
                 min="1"
                 step="1"
                 value={amount}
-                placeholder="e.g. 3"
+                placeholder="3"
                 onChange={(e) => {
                   const rawVal = e.target.value;
                   if (rawVal === '') {
@@ -420,7 +320,7 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
                   setCustomBadge('');
                   setUserEditedTiming(true);
                 }}
-                className="w-28 bg-slate-50 text-slate-900 text-sm font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white text-center font-mono placeholder:text-slate-400 placeholder:font-normal"
+                className="w-16 sm:w-20 bg-slate-50 text-slate-900 text-xs sm:text-sm font-bold px-2.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white text-center font-mono"
               />
               
               <select
@@ -430,7 +330,7 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
                   setCustomBadge('');
                   setUserEditedTiming(true);
                 }}
-                className="flex-1 bg-slate-50 text-slate-900 text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white cursor-pointer"
+                className="flex-1 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold px-2.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white cursor-pointer"
               >
                 <option value="weeks">Weeks before</option>
                 <option value="days">Days before</option>
@@ -439,81 +339,105 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
             </div>
           </div>
 
-          {/* Scheduled Date Preview - Only displayed once calculated or entered */}
-          {calculatedDate && computedBadge ? (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs animate-in fade-in duration-200">
-              <div className="flex items-center gap-2 text-slate-600">
-                <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <span>Calculated due date:</span>
-                <strong className="font-mono text-slate-900 font-bold">
-                  {formatDisplayDate(calculatedDate, unit === 'hours')}
-                </strong>
+          {/* Progressive Disclosure Button for More Information */}
+          <button
+            type="button"
+            onClick={() => setShowDetails(!showDetails)}
+            className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between transition-colors cursor-pointer mt-1"
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+              <span>{showDetails ? 'Fewer options' : 'More options (Category, Notes, AI insights)'}</span>
+            </span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Collapsible Details */}
+          {showDetails && (
+            <div className="space-y-3 pt-1 border-t border-slate-100 animate-in fade-in duration-150">
+              {/* Category Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  Category
+                </label>
+                <select
+                  value={category}
+                  onChange={(e: any) => {
+                    setCategory(e.target.value);
+                    setUserEditedCategory(true);
+                  }}
+                  className="w-full bg-slate-50 text-slate-800 text-xs px-2.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white cursor-pointer font-medium"
+                >
+                  {Object.entries(CATEGORY_NAMES).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <span className="font-mono font-bold text-sky-800 bg-sky-100 px-2 py-0.5 rounded-md text-[11px]">
-                {computedBadge}
-              </span>
-            </div>
-          ) : null}
 
-          {/* Category Selector */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Category
-              </label>
-              {userEditedCategory ? (
-                <span className="text-[10px] font-medium text-slate-400">Customized</span>
-              ) : (
-                <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100">
-                  ⚡ Auto-classified
-                </span>
+              {/* AI Timing Context & Alternatives */}
+              {currentSuggestion && (
+                <div className="p-2.5 bg-sky-50/60 rounded-xl border border-sky-100 space-y-1.5 text-xs">
+                  {currentSuggestion.reason && (
+                    <p className="text-[11px] text-slate-600 leading-snug">
+                      <strong className="text-slate-800 font-semibold">Recommended: </strong>
+                      {currentSuggestion.reason}
+                    </p>
+                  )}
+                  {currentSuggestion.alternatives && currentSuggestion.alternatives.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 pt-1">
+                      <span className="text-[10px] font-bold text-slate-500">Quick options:</span>
+                      {currentSuggestion.alternatives.map((alt, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => applyTimingSuggestion(alt.amount, alt.unit, alt.badge, currentSuggestion.category)}
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-all cursor-pointer border ${
+                            amount === alt.amount && unit === alt.unit
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'text-slate-700 bg-white hover:bg-sky-100 border-slate-200'
+                          }`}
+                        >
+                          {alt.label} ({alt.badge})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
-            <select
-              value={category}
-              onChange={(e: any) => {
-                setCategory(e.target.value);
-                setUserEditedCategory(true);
-              }}
-              className="w-full bg-slate-50 text-slate-900 text-sm px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white cursor-pointer font-medium"
-            >
-              {Object.entries(CATEGORY_NAMES).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
 
-          {/* Detailed Notes */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Detailed Notes (Optional)
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add specific URLs, recipes, vendor phone numbers, or checklist details..."
-              rows={2}
-              className="w-full bg-slate-50 text-slate-900 text-sm p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white placeholder:text-slate-400 resize-none font-medium"
-            />
-          </div>
+              {/* Notes / Checklist */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Links, booking refs, or notes..."
+                  rows={2}
+                  className="w-full bg-slate-50 text-slate-900 text-xs p-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-900 focus:bg-white placeholder:text-slate-400 resize-none font-medium"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="bg-[#0f172a] hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm shadow-slate-900/25 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              className="bg-[#0f172a] hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
             >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Add to Schedule</span>
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Add Task</span>
             </button>
           </div>
         </form>

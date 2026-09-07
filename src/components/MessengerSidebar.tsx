@@ -14,10 +14,11 @@ import {
   AlertTriangle,
   Trash2,
   CheckSquare,
-  Square
+  Square,
+  Tag
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
-import { formatDisplayDate, getCountdownStatus } from '../utils/tminusRules';
+import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel } from '../utils/tminusRules';
 
 interface MessengerSidebarProps {
   events: CalendarEvent[];
@@ -52,8 +53,17 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
   const filteredEvents = events.filter((e) => {
     if (!searchQuery.trim()) return true;
-    return e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.category.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.toLowerCase().trim();
+    const displayTitle = getCleanEventTitle(e.title, e.category, e.context).toLowerCase();
+    const topicLabel = getEventTopicLabel(e.category, e.context).toLowerCase();
+    const rawSnippet = (e.rawInputSnippet || '').toLowerCase();
+    const dateStr = (e.eventDate || '').toLowerCase();
+
+    return displayTitle.includes(query) ||
+           topicLabel.includes(query) ||
+           e.category.toLowerCase().includes(query) ||
+           rawSnippet.includes(query) ||
+           dateStr.includes(query);
   });
 
   const getCategoryIcon = (category: string) => {
@@ -171,13 +181,17 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const pendingTasks = evt.milestones?.filter((m) => m.status !== 'completed') || [];
             const nextTask = pendingTasks[0];
 
+            const displayTitle = getCleanEventTitle(evt.title, evt.category, evt.context);
+            const topicLabel = getEventTopicLabel(evt.category, evt.context);
+            const formattedDeadline = formatDisplayDate(evt.eventDate);
+
             const isUnrefined = evt.needsRefinement === true && !evt.refinedAt && (!evt.context || Object.keys(evt.context).length === 0);
 
             return (
               <div
                 key={evt.id}
                 onClick={() => onSelectEvent(evt.id)}
-                className={`p-3 rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group ${
+                className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-2.5 relative group ${
                   isSelected
                     ? isUnrefined
                       ? 'bg-white border-2 border-slate-900 border-l-4 border-l-amber-500 shadow-sm'
@@ -189,7 +203,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               >
                 {/* Checkbox for Bulk Deletion */}
                 <div 
-                  className="shrink-0"
+                  className="shrink-0 mt-0.5"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <input
@@ -202,34 +216,52 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 </div>
 
                 {/* Category Icon */}
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs mt-0.5 ${
                   isUnrefined ? 'bg-amber-100/80 border border-amber-300 text-amber-900' : 'bg-slate-100 border border-slate-200 text-slate-700'
                 }`}>
                   {getCategoryIcon(evt.category)}
                 </div>
 
                 {/* Event Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <h4 className={`text-xs sm:text-sm font-bold truncate ${isSelected ? 'text-slate-950 font-black' : 'text-slate-900'}`}>
-                      {evt.title}
+                <div className="flex-1 min-w-0 space-y-1">
+                  {/* Top Row: Title + Countdown / Unrefined Badge */}
+                  <div className="flex items-start justify-between gap-1.5">
+                    <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${isSelected ? 'text-slate-950 font-black' : 'text-slate-900'}`}>
+                      {displayTitle}
                     </h4>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       {isUnrefined ? (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-950 bg-amber-200/90 border border-amber-300 px-1.5 py-0.5 rounded-full shadow-2xs animate-pulse">
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider text-amber-950 bg-amber-200/90 border border-amber-300 px-1.5 py-0.5 rounded-full shadow-2xs animate-pulse">
                           <Sparkles className="w-2.5 h-2.5 text-amber-700" />
                           <span>Unrefined</span>
                         </span>
                       ) : null}
-                      <span className="text-[11px] font-mono font-medium text-slate-500">
+                      <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md">
                         {countdown.label}
                       </span>
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-slate-500 font-medium truncate">
-                    {nextTask ? `Next: ${nextTask.title}` : `${formatDisplayDate(evt.eventDate)}`}
-                  </p>
+                  {/* Middle Row: Event Topic Tag + Deadline Date */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
+                    <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-100/80 border border-sky-200 px-1.5 py-0.5 rounded-md shrink-0">
+                      <Tag className="w-2.5 h-2.5 text-sky-600 shrink-0" />
+                      <span className="truncate max-w-[110px] sm:max-w-[140px]">{topicLabel}</span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 text-slate-600 font-medium shrink-0">
+                      <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>Deadline: <strong className="text-slate-800 font-semibold">{formattedDeadline}</strong></span>
+                    </span>
+                  </div>
+
+                  {/* Bottom Row: Next Preparation Task */}
+                  {nextTask && (
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate flex items-center gap-1 pt-0.5 border-t border-slate-100">
+                      <span className="text-slate-400 font-bold">•</span>
+                      <span className="truncate">Next: <span className="text-slate-700 font-semibold">{nextTask.title}</span></span>
+                    </p>
+                  )}
                 </div>
               </div>
             );

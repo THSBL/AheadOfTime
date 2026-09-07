@@ -22,10 +22,11 @@ import {
   Clock,
   CheckSquare,
   Square,
-  Sparkle
+  Sparkle,
+  ChevronDown
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { CalendarEvent, EventCategory, TMinusMilestone } from '../types';
+import { CalendarEvent, EventCategory, TMinusMilestone, UserEventRole } from '../types';
 import { generateHeuristicMilestones, formatDisplayDate, detectEventCategory } from '../utils/tminusRules';
 
 interface EventRefineModalProps {
@@ -50,6 +51,11 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
   const [eventDate, setEventDate] = useState(event.eventDate);
   const [eventTime, setEventTime] = useState(event.eventTime || '19:00');
   const [location, setLocation] = useState(event.location || '');
+  const [userRole, setUserRole] = useState<UserEventRole>(
+    event.userRole || event.context?.userRole || 'organiser'
+  );
+  const [showEventDetails, setShowEventDetails] = useState<boolean>(false);
+  const [showOptionDetails, setShowOptionDetails] = useState<boolean>(false);
 
   // 1. BIRTHDAY PRESET REFINEMENTS
   const [giftType, setGiftType] = useState<string>(event.context?.giftType || 'solo');
@@ -176,6 +182,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
       setEventDate(event.eventDate);
       setEventTime(event.eventTime || '19:00');
       setLocation(event.location || '');
+      setUserRole(event.userRole || event.context?.userRole || 'organiser');
 
       // Birthday
       setGiftType(event.context?.giftType || 'solo');
@@ -259,6 +266,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
     // Build the enriched context object preserving all preset intake details
     const updatedContext: Record<string, any> = {
       ...(event.context || {}),
+      userRole,
       // Birthday
       giftType,
       isThemed,
@@ -315,6 +323,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
       eventDate,
       eventTime,
       location,
+      userRole,
       status: 'milestones_active',
       needsRefinement: false, // Refinement questionnaire resolved!
       refinedAt: new Date().toISOString(),
@@ -362,139 +371,240 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div 
-        className="bg-white border border-sky-200/90 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl w-[calc(100vw-1.25rem)] sm:max-w-xl max-h-[85dvh] sm:max-h-[82vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-sky-100 bg-gradient-to-r from-sky-50 via-white to-blue-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-600/25 shrink-0">
-              <Sparkles className="w-5 h-5" />
+        <div className="px-3.5 sm:px-5 py-2.5 sm:py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-slate-900">
-                  Refine Event Schedule
-                </h3>
-                <span className="text-[10px] font-bold text-sky-800 bg-sky-100/90 px-2 py-0.5 rounded-full border border-sky-200">
-                  Preset Intake Questions
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Answer targeted follow-up questions to customize your Ahead Of Time preparation milestones.
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                Refine Event Schedule
+              </h3>
+              <p className="text-[11px] text-slate-500 truncate">
+                {title || 'Targeted Intake Questions'}
               </p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3 sm:space-y-4 overscroll-contain">
           
-          {/* 1. Basic Details Card */}
-          <div className="bg-sky-50/50 border border-sky-100/80 rounded-2xl p-4 space-y-3.5">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Event Target &amp; Category
+          {/* 1. Basic Details Summary with Progressive Disclosure */}
+          <div className="bg-sky-50/60 border border-sky-100/90 rounded-2xl p-3 sm:p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Calendar className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+                <span className="text-xs font-bold text-slate-800 truncate">
+                  {title || 'Event Details'} · {formatDisplayDate(eventDate)} {eventTime ? `@ ${eventTime}` : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEventDetails(!showEventDetails)}
+                className="text-xs font-semibold text-sky-700 hover:text-sky-900 flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-sky-100/60 transition-colors shrink-0"
+              >
+                <span>{showEventDetails ? 'Less' : 'Edit details'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transform transition-transform ${showEventDetails ? 'rotate-180' : ''}`} />
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Event Title</label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setTitle(val);
-                    if (val.trim()) {
-                      const guessed = detectEventCategory(val);
-                      if (guessed && guessed !== 'custom') {
-                        setCategory(guessed);
-                      }
-                    }
-                  }}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
-                />
-              </div>
+            {showEventDetails && (
+              <div className="pt-2.5 border-t border-sky-100/90 space-y-3 animate-in fade-in duration-150">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Event Title</label>
+                    <input
+                      type="text"
+                      required
+                      value={title}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTitle(val);
+                        if (val.trim()) {
+                          const guessed = detectEventCategory(val);
+                          if (guessed && guessed !== 'custom') {
+                            setCategory(guessed);
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
 
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700">Category Preset Form</label>
-                  <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 border border-sky-200">
-                    <Sparkles className="w-2.5 h-2.5 text-sky-500 animate-pulse" />
-                    Auto-guessed
-                  </span>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Category Preset</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as EventCategory)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800 cursor-pointer"
+                    >
+                      <option value="birthday_party">🎂 Wedding / Party / Celebration</option>
+                      <option value="hosting_visitors">🏡 Hosting Visitors / Weekend Guests</option>
+                      <option value="travel_trip">✈️ Trip / Holiday Travel</option>
+                      <option value="project_deadline">🚀 Project / Business Deadline</option>
+                      <option value="dinner_social">🍽️ Dinner / Social Dining</option>
+                      <option value="festival_concert">🎪 Festival &amp; Concert</option>
+                      <option value="subscription">💳 Subscription / Renewal</option>
+                      <option value="maintenance">🔧 Maintenance / Service</option>
+                      <option value="custom">📅 General Event</option>
+                    </select>
+                  </div>
                 </div>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as EventCategory)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800 cursor-pointer"
-                >
-                  <option value="birthday_party">🎂 Wedding / Party / Celebration</option>
-                  <option value="hosting_visitors">🏡 Hosting Visitors / Weekend Guests</option>
-                  <option value="travel_trip">✈️ Trip / Holiday Travel</option>
-                  <option value="project_deadline">🚀 Project / Business Deadline</option>
-                  <option value="dinner_social">🍽️ Dinner / Social Dining</option>
-                  <option value="festival_concert">🎪 Festival &amp; Concert</option>
-                  <option value="subscription">💳 Subscription / Renewal</option>
-                  <option value="maintenance">🔧 Maintenance / Service</option>
-                  <option value="custom">📅 General Event</option>
-                </select>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Event Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={eventDate}
+                      onChange={(e) => setEventDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Start Time</label>
+                    <input
+                      type="time"
+                      value={eventTime}
+                      onChange={(e) => setEventTime(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Location (Optional)</label>
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="e.g. Home, London, Venue"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* User Role Module: Organiser / Co-Organiser / Guest */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">👤</span>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900">Your Role for this Event</h4>
+                  <p className="text-[11px] text-slate-500">Expands or limits your runway tasks and deliverables</p>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Event Date</label>
-                <input
-                  type="date"
-                  required
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
-                />
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setUserRole('organiser')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  userRole === 'organiser'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
+                    : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between font-bold text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span>👑</span>
+                    <span>Organiser</span>
+                  </span>
+                  {userRole === 'organiser' && <Check className="w-3.5 h-3.5" />}
+                </div>
+                <p className={`text-[11px] mt-1 leading-snug ${userRole === 'organiser' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  Full runway: all group bookings, deposits, itineraries & deliverables.
+                </p>
+              </button>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Start Time</label>
-                <input
-                  type="time"
-                  value={eventTime}
-                  onChange={(e) => setEventTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setUserRole('co_organiser')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  userRole === 'co_organiser'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
+                    : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between font-bold text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span>🤝</span>
+                    <span>Co-Organiser</span>
+                  </span>
+                  {userRole === 'co_organiser' && <Check className="w-3.5 h-3.5" />}
+                </div>
+                <p className={`text-[11px] mt-1 leading-snug ${userRole === 'co_organiser' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  Support: assist with activities, dining, headcounts & logistics.
+                </p>
+              </button>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Location (Optional)</label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Home, London, Venue"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-slate-800"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setUserRole('guest')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  userRole === 'guest'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
+                    : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between font-bold text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span>🎟️</span>
+                    <span>Guest</span>
+                  </span>
+                  {userRole === 'guest' && <Check className="w-3.5 h-3.5" />}
+                </div>
+                <p className={`text-[11px] mt-1 leading-snug ${userRole === 'guest' ? 'text-slate-300' : 'text-slate-500'}`}>
+                  Attendee runway: RSVP, travel/hotel booking, kitty share & personal prep.
+                </p>
+              </button>
             </div>
+          </div>
+
+          {/* Progressive Disclosure Header for Intake Questions */}
+          <div className="flex items-center justify-between pt-1 pb-1 border-b border-slate-100">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Tailor your timeline
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowOptionDetails(!showOptionDetails)}
+              className="text-xs font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 cursor-pointer py-0.5 px-2 rounded-lg hover:bg-sky-50 transition-colors"
+            >
+              <span>{showOptionDetails ? 'Hide timing details' : 'Show timing details'}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showOptionDetails ? 'rotate-180' : ''}`} />
+            </button>
           </div>
 
           {/* 2. DYNAMIC PRESET INTAKE FORMS ACCORDING TO CATEGORY */}
           
           {/* CATEGORY 1: BIRTHDAY PARTY (Matching ChatConsole step 2) */}
           {category === 'birthday_party' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               
               {/* Question: Gift Strategy */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Gift className="w-4 h-4 text-pink-600" />
                   <span>Do you need a gift?</span>
@@ -509,23 +619,25 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       key={opt.value}
                       type="button"
                       onClick={() => setGiftType(opt.value)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         giftType === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm'
+                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
                       <span className="text-xs font-bold">{opt.label}</span>
-                      <span className={`text-[10px] leading-tight ${giftType === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
-                        {opt.desc}
-                      </span>
+                      {showOptionDetails && (
+                        <span className={`text-[10px] leading-tight ${giftType === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
+                          {opt.desc}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Question: Theme & Costume */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Shirt className="w-4 h-4 text-slate-900" />
                   <span className="text-xs sm:text-sm font-bold text-slate-900">Do you need a costume or theme outfit?</span>
@@ -539,16 +651,18 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       key={String(opt.value)}
                       type="button"
                       onClick={() => setIsThemed(opt.value)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         isThemed === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm'
+                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
                       <span className="text-xs font-bold">{opt.label}</span>
-                      <span className={`text-[10px] leading-tight ${isThemed === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
-                        {opt.desc}
-                      </span>
+                      {showOptionDetails && (
+                        <span className={`text-[10px] leading-tight ${isThemed === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
+                          {opt.desc}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -564,7 +678,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
               </div>
 
               {/* Question: Transport */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Car className="w-4 h-4 text-sky-600" />
                   <span>Do you need transport?</span>
@@ -580,23 +694,25 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       key={opt.value}
                       type="button"
                       onClick={() => setTransportType(opt.value)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         transportType === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm'
+                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
                       <span className="text-xs font-bold">{opt.label}</span>
-                      <span className={`text-[10px] leading-tight ${transportType === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
-                        {opt.desc}
-                      </span>
+                      {showOptionDetails && (
+                        <span className={`text-[10px] leading-tight ${transportType === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
+                          {opt.desc}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Question: Food & Drinks Plan */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Utensils className="w-4 h-4 text-amber-600" />
                   <span>Food &amp; Drinks Plan</span>
@@ -614,16 +730,18 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       key={opt.value}
                       type="button"
                       onClick={() => setFoodPlan(opt.value)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         foodPlan === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm'
+                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
                       <span className="text-xs font-bold">{opt.label}</span>
-                      <span className={`text-[10px] leading-tight ${foodPlan === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
-                        {opt.desc}
-                      </span>
+                      {showOptionDetails && (
+                        <span className={`text-[10px] leading-tight ${foodPlan === opt.value ? 'text-white/80' : 'text-slate-400'}`}>
+                          {opt.desc}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

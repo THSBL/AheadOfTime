@@ -72,10 +72,24 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Calendar className="w-4 h-4 text-sky-600" />
-              <span>1. Google Calendar, Email &amp; Tasks Limited Use</span>
+              <span>1. Google OAuth Sensitive Scopes &amp; Limited Use</span>
             </div>
             <p>
-              When you connect or scan your Google Calendar, Ahead Of Time requests explicit authorization for email authentication, secondary calendar management, event reading/writing, and Google Tasks sync strictly to build backward preparation milestones, breathing room, and timely reminders. Ahead Of Time&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+              Ahead Of Time requests these Google OAuth scopes to scan upcoming schedule entries and insert backward-planned preparation milestones:
+            </p>
+            <ul className="list-disc list-inside space-y-1.5 pl-1 text-xs text-slate-600 font-medium">
+              <li>
+                <code className="font-mono text-sky-900 font-bold bg-sky-50 px-1 py-0.5 rounded">.../auth/calendar.readonly</code>: Used during initial onboarding and daily scans to read primary calendar metadata without altering existing entries, identifying events requiring lead time (trips, parties, school theme days).
+              </li>
+              <li>
+                <code className="font-mono text-sky-900 font-bold bg-sky-50 px-1 py-0.5 rounded">.../auth/calendar.events</code>: Necessary to read full event details and directly write calculated T-minus preparation milestones (reservations, gifts, packing reminders) onto your schedule with lead time.
+              </li>
+              <li>
+                <code className="font-mono text-sky-900 font-bold bg-sky-50 px-1 py-0.5 rounded">.../auth/tasks</code>: Required to synchronize and manage preparation checklists directly in Google Tasks for users who prefer actionable to-do items alongside or instead of direct calendar time blocks.
+              </li>
+            </ul>
+            <p className="text-xs pt-1">
+              Ahead Of Time&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
               <a 
                 href="https://developers.google.com/terms/api-services-user-data-policy" 
                 target="_blank" 
@@ -105,10 +119,10 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Lock className="w-4 h-4 text-sky-600" />
-              <span>3. Zero Commercialization &amp; No AI Training</span>
+              <span>3. Commercialization, Ads &amp; No AI Training Policy</span>
             </div>
             <p>
-              We never sell, rent, monetize, or transfer your personal preferences or calendar metadata to third-party advertisers, data aggregators, or brokers. We never use Google Workspace APIs or event data to train, retrain, or fine-tune generalized AI foundation models.
+              We <strong>never sell, rent, or trade</strong> your Google user data or calendar metadata to data brokers or ad networks. To keep the app viable, non-targeted, contextual ads or optional subscription tiers may be offered in the future. No Google API data is ever shared with ad providers or used for targeted ads. We never use Google Workspace API data to train generalized AI foundation models.
             </p>
           </section>
 

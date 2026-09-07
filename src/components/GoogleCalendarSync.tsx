@@ -430,63 +430,6 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           </div>
         </div>
 
-        {/* Bidirectional Sync Status & Quick Pull Card */}
-        {accessToken && (
-          <div className="p-4 bg-sky-50/70 border border-sky-200/90 rounded-2xl space-y-2.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center text-sky-700">
-                  <RefreshCw className={`w-4 h-4 ${isPullingCompletions ? 'animate-spin' : ''}`} />
-                </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-                    Bidirectional Task Completion Sync
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Tasks checked off in Google Calendar or Tasks automatically mark as complete in Ahead Of Time
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={handlePullCompletions}
-                  disabled={isPullingCompletions}
-                  className="px-3 py-1.5 bg-white hover:bg-sky-100 text-sky-950 border border-sky-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                  title="Fetch latest task completion statuses from Google Tasks"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isPullingCompletions ? 'animate-spin text-sky-800' : ''}`} />
-                  <span>{isPullingCompletions ? 'Syncing...' : 'Sync Completions'}</span>
-                </button>
-
-                <button
-                  onClick={handleCleanDuplicateTaskEvents}
-                  disabled={isCleaningDuplicates}
-                  className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                  title="Remove any older duplicate task event blocks from Google Calendar"
-                >
-                  <Trash2 className={`w-3.5 h-3.5 ${isCleaningDuplicates ? 'animate-spin text-rose-600' : ''}`} />
-                  <span>{isCleaningDuplicates ? 'Cleaning...' : 'Clean Duplicate Events'}</span>
-                </button>
-              </div>
-            </div>
-
-            {completionSyncReport && (
-              <div className="p-2.5 bg-white rounded-xl border border-sky-200 text-xs font-medium text-slate-700 flex items-center gap-2 animate-in fade-in duration-150">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{completionSyncReport}</span>
-              </div>
-            )}
-
-            {cleanDuplicatesReport && (
-              <div className="p-2.5 bg-white rounded-xl border border-amber-200 text-xs font-medium text-amber-900 flex items-center gap-2 animate-in fade-in duration-150">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{cleanDuplicatesReport}</span>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Mode Selector Tabs (Single vs Batch Multiple) */}
         {events.length > 1 && (
           <div className="flex bg-sky-100/70 p-1 rounded-2xl gap-1">

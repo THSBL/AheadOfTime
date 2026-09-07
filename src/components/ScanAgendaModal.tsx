@@ -26,7 +26,7 @@ import {
 import { CalendarEvent, EventCategory, TMinusMilestone, OnboardingProfile } from '../types';
 import { fetchGoogleCalendarEvents, fetchPrimaryCalendarProfile, GoogleCalendarProfile, GoogleCalendarEventItem } from '../services/googleCalendar';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, getStoredClientId, clearGoogleSession } from '../services/googleAuth';
-import { detectEventCategory, generateHeuristicMilestones, formatDisplayDate } from '../utils/tminusRules';
+import { detectEventCategory, generateHeuristicMilestones, formatDisplayDate, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 
 interface ScanAgendaModalProps {
@@ -254,7 +254,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
       const newEvt: CalendarEvent = {
         id: `gcal-${item.id}`,
-        title: item.summary || 'Upcoming Event',
+        title: getCleanEventTitle(item.summary, item.detectedCategory),
         eventDate: eventDateStr,
         eventTime: eventTimeStr,
         category: item.detectedCategory,
@@ -289,20 +289,20 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   const filteredEvents = getFilteredEvents(activeFilter);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white border border-slate-200 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-900 max-h-[90vh]">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-200 w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-900 max-h-[88dvh] sm:max-h-[85vh]">
         
         {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-sky-950 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-300 shadow-xs">
-              <Sparkles className="w-5 h-5" />
+        <div className="p-3.5 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-sky-950 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-300 shadow-xs shrink-0">
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                <span>Scan for Existing Agenda Events</span>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-lg font-black tracking-tight text-white truncate">
+                Scan Calendar Agenda
               </h2>
-              <p className="text-xs text-slate-300 font-medium">
+              <p className="text-xs text-slate-300 font-medium hidden sm:block truncate">
                 Detect upcoming calendar events and automatically build backward preparation milestones
               </p>
             </div>
@@ -310,14 +310,14 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
             ✕
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+        <div className="p-3.5 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1 overscroll-contain">
           
           {errorMsg && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5">
@@ -595,9 +595,10 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
               <button
                 onClick={handleImportSelected}
                 disabled={selectedCount === 0}
-                className="px-5 py-2.5 bg-[#0f172a] hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#0f172a] hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
               >
-                <span>Import &amp; Generate Timelines ({selectedCount})</span>
+                <span className="sm:hidden">Import ({selectedCount})</span>
+                <span className="hidden sm:inline">Import &amp; Generate Timelines ({selectedCount})</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
