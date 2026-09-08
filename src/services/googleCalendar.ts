@@ -293,6 +293,51 @@ export interface SyncOptions {
 }
 
 /**
+ * Builds Google Calendar event payload for milestone synchronization
+ * Summary: Concrete Milestone title (e.g. AheadOfTime: RSVP & Arrange Transport)
+ * Description: Actionable Markdown/plaintext checklist of all deliverables
+ */
+export function buildMilestoneCalendarPayload(
+  milestone: TMinusMilestone,
+  eventTitle: string,
+  dateOnly: string,
+  timeZone: string,
+  isTimed: boolean = false
+) {
+  const cleanTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
+  const summary = `AheadOfTime: ${cleanTitle}`;
+
+  let checklistItems = '';
+  if (milestone.deliverables && milestone.deliverables.length > 0) {
+    checklistItems = milestone.deliverables
+      .map(d => `[${d.is_completed ? 'x' : ' '}] ${d.title}`)
+      .join('\n');
+  } else if (milestone.description && milestone.description.trim()) {
+    checklistItems = `[ ] ${milestone.description.trim()}`;
+  } else {
+    checklistItems = `[ ] ${cleanTitle}`;
+  }
+
+  const description = `Checklist for ${eventTitle}:\n${checklistItems}\n\n--\nPlanned with AheadOfTime`;
+  const nextDay = getNextDayDate(dateOnly);
+  const timedData = isTimed ? formatStartEndDateTime(dateOnly, '09:00', 30) : null;
+
+  return {
+    summary,
+    description,
+    start: isTimed ? { dateTime: timedData?.startDateTime, timeZone } : { date: dateOnly },
+    end: isTimed ? { dateTime: timedData?.endDateTime, timeZone } : { date: nextDay },
+    transparency: 'transparent',
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'popup' as const, minutes: 540 },
+      ],
+    },
+  };
+}
+
+/**
  * Push an individual milestone reminder directly to Google Tasks (and optionally Google Calendar)
  */
 export async function pushSingleMilestoneToGoogleCalendar(
@@ -309,14 +354,24 @@ export async function pushSingleMilestoneToGoogleCalendar(
   const shouldCreateCalBlock = options?.createCalendarEventBlock || options?.milestoneFormat === 'timed' || options?.milestoneFormat === 'all_day';
 
   // 1. Create in Google Tasks (native Google Calendar task layer)
-  const deliverablesSummary = milestone.deliverables && milestone.deliverables.length > 0
-    ? `\n\nDeliverables (${milestone.deliverables.length}):\n` + milestone.deliverables.map(d => `• [${d.is_completed ? '✓' : ' '}] ${d.title} (${d.type})`).join('\n')
-    : '';
+  const cleanTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
+  let taskChecklist = '';
+  if (milestone.deliverables && milestone.deliverables.length > 0) {
+    taskChecklist = milestone.deliverables
+      .map(d => `[${d.is_completed ? 'x' : ' '}] ${d.title}`)
+      .join('\n');
+  } else if (milestone.description && milestone.description.trim()) {
+    taskChecklist = `[ ] ${milestone.description.trim()}`;
+  } else {
+    taskChecklist = `[ ] ${cleanTitle}`;
+  }
+
+  const taskNotes = `Checklist for ${eventTitle}:\n${taskChecklist}\n\n--\nPlanned with AheadOfTime`;
 
   try {
     const taskRes = await createGoogleTask(accessToken, {
-      title: `[${milestone.tMinusLabel}] ${milestone.title} (${eventTitle})`,
-      notes: `Ahead Of Time Milestone for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}${deliverablesSummary}`,
+      title: `AheadOfTime: ${cleanTitle}`,
+      notes: taskNotes,
       due: `${dateOnly}T00:00:00.000Z`,
       taskListId: options?.taskListId || '@default',
     });
@@ -327,25 +382,14 @@ export async function pushSingleMilestoneToGoogleCalendar(
 
   // 2. Optionally create Calendar Event block if requested
   if (shouldCreateCalBlock) {
-    const nextDay = getNextDayDate(dateOnly);
     const isTimed = options?.milestoneFormat === 'timed';
-    const calPayload = {
-      summary: `📋 [${milestone.tMinusLabel}] ${milestone.title}`,
-      description: `Preparation milestone for "${eventTitle}".\n\nLead Time: ${milestone.tMinusLabel}\nCategory: ${milestone.category}\nAction Required: ${milestone.description || 'Complete advance preparation.'}${deliverablesSummary}\nTarget Event Date: ${dateOnly}`,
-      start: isTimed 
-        ? { dateTime: formatStartEndDateTime(dateOnly, '09:00', 30).startDateTime, timeZone }
-        : { date: dateOnly },
-      end: isTimed 
-        ? { dateTime: formatStartEndDateTime(dateOnly, '09:00', 30).endDateTime, timeZone }
-        : { date: nextDay },
-      transparency: 'transparent',
-      reminders: {
-        useDefault: false,
-        overrides: [
-          { method: 'popup' as const, minutes: 540 },
-        ],
-      },
-    };
+    const calPayload = buildMilestoneCalendarPayload(
+      milestone,
+      eventTitle,
+      dateOnly,
+      timeZone,
+      isTimed
+    );
 
     try {
       const res = await fetch(
@@ -459,10 +503,24 @@ export async function syncEventToGoogleCalendar(
       let msTaskId: string | undefined = undefined;
 
       // Push to Google Tasks API (standard Google Calendar tasks sub-layer)
+      const cleanMsTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
+      let taskChecklist = '';
+      if (milestone.deliverables && milestone.deliverables.length > 0) {
+        taskChecklist = milestone.deliverables
+          .map(d => `[${d.is_completed ? 'x' : ' '}] ${d.title}`)
+          .join('\n');
+      } else if (milestone.description && milestone.description.trim()) {
+        taskChecklist = `[ ] ${milestone.description.trim()}`;
+      } else {
+        taskChecklist = `[ ] ${cleanMsTitle}`;
+      }
+
+      const taskNotes = `Checklist for ${event.title}:\n${taskChecklist}\n\n--\nPlanned with AheadOfTime`;
+
       try {
         const taskItem = await createGoogleTask(accessToken, {
-          title: `[${milestone.tMinusLabel}] ${milestone.title} (${event.title})`,
-          notes: `Ahead Of Time Milestone for "${event.title}"\nEvent Date: ${eventDateOnly}\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${msDateOnly}\nCategory: ${milestone.category}\nAction: ${milestone.description || ''}`,
+          title: `AheadOfTime: ${cleanMsTitle}`,
+          notes: taskNotes,
           due: `${msDateOnly}T00:00:00.000Z`,
           taskListId: options?.taskListId || '@default',
         });
@@ -479,23 +537,14 @@ export async function syncEventToGoogleCalendar(
       // If calendar event blocks requested, create on primary calendar
       if (createCalBlocks) {
         try {
-          const nextDay = getNextDayDate(msDateOnly);
           const isTimed = options?.milestoneFormat === 'timed';
-          const timedData = isTimed ? formatStartEndDateTime(msDateOnly, '09:00', 30) : null;
-
-          const calBody = {
-            summary: `📋 [${milestone.tMinusLabel}] ${milestone.title}`,
-            description: `Preparation milestone for "${event.title}".\n\nLead Time: ${milestone.tMinusLabel}\nCategory: ${milestone.category}\nTask: ${milestone.title}\nDetails: ${milestone.description || ''}\nTarget Event: ${event.title} (${eventDateOnly})`,
-            start: isTimed ? { dateTime: timedData?.startDateTime, timeZone } : { date: msDateOnly },
-            end: isTimed ? { dateTime: timedData?.endDateTime, timeZone } : { date: nextDay },
-            transparency: 'transparent',
-            reminders: {
-              useDefault: false,
-              overrides: [
-                { method: 'popup' as const, minutes: 540 },
-              ],
-            },
-          };
+          const calBody = buildMilestoneCalendarPayload(
+            milestone,
+            event.title,
+            msDateOnly,
+            timeZone,
+            isTimed
+          );
 
           const resMs = await fetch(
             'https://www.googleapis.com/calendar/v3/calendars/primary/events',

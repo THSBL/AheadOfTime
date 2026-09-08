@@ -9,7 +9,7 @@ import {
   Briefcase,
   Loader2
 } from 'lucide-react';
-import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType } from '../types';
+import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
 import { Logo } from './Logo';
 import { ensureGisLoaded, requestGoogleCalendarToken, getStoredClientId } from '../services/googleAuth';
 
@@ -25,8 +25,27 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   onOpenPrivacyPolicy,
 }) => {
   const [ageRange, setAgeRange] = useState<AgeRange>(initialProfile?.ageRange || '26–35');
-  const [familyStatus, setFamilyStatus] = useState<FamilyStatus>(initialProfile?.familyStatus || 'Couple with kids');
-  const [calendarType, setCalendarType] = useState<CalendarType>(initialProfile?.calendarType || 'Mixed (Personal & Work)');
+  const [familyStatus, setFamilyStatus] = useState<FamilyStatus>(() => {
+    if (initialProfile?.family_structure === 'family_with_kids' || initialProfile?.familyStatus === 'Family with kids' || initialProfile?.familyStatus === 'Couple with kids') {
+      return 'Family with kids';
+    }
+    if (initialProfile?.family_structure === 'couple' || initialProfile?.familyStatus === 'Couple') {
+      return 'Couple';
+    }
+    if (initialProfile?.family_structure === 'single' || initialProfile?.familyStatus === 'Single') {
+      return 'Single';
+    }
+    return 'Family with kids';
+  });
+  const [calendarType, setCalendarType] = useState<CalendarType>(() => {
+    if (initialProfile?.calendar_type === 'personal' || initialProfile?.calendarType === 'Personal' || initialProfile?.calendarType === 'Personal only') {
+      return 'Personal';
+    }
+    if (initialProfile?.calendar_type === 'business' || initialProfile?.calendarType === 'Business' || initialProfile?.calendarType === 'Business only') {
+      return 'Business';
+    }
+    return 'Mixed (Personal & Work)';
+  });
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
@@ -42,8 +61,18 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
     }
     setShowConsentError(false);
 
+    const family_structure: FamilyStructure = 
+      familyStatus === 'Family with kids' ? 'family_with_kids' :
+      familyStatus === 'Couple' ? 'couple' : 'single';
+
+    const calendar_type: CalendarTypeScope = 
+      calendarType === 'Personal' ? 'personal' :
+      calendarType === 'Business' ? 'business' : 'mixed';
+
     const profile: OnboardingProfile = {
       ageRange,
+      family_structure,
+      calendar_type,
       familyStatus,
       calendarType,
       privacyConsentAccepted: true,
@@ -54,6 +83,8 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       setIsConnecting(true);
       try {
         await requestGoogleCalendarToken(getStoredClientId());
+        sessionStorage.setItem('aot_open_scan_modal', 'true');
+        localStorage.setItem('aot_calendar_connected', 'true');
       } catch (err) {
         console.warn('OAuth popup closed or error:', err);
       } finally {
@@ -128,14 +159,14 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               </div>
             </div>
 
-            {/* Family Status */}
+            {/* Family Structure */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-sky-700" />
-                <span>Household &amp; Family Status</span>
+                <span>Family Structure</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {(['Single', 'Couple', 'Couple with kids'] as FamilyStatus[]).map((status) => (
+                {(['Single', 'Couple', 'Family with kids'] as FamilyStatus[]).map((status) => (
                   <button
                     key={status}
                     type="button"
@@ -152,14 +183,14 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               </div>
             </div>
 
-            {/* Calendar Type */}
+            {/* Calendar Type / Scope */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5 text-sky-700" />
-                <span>Primary Calendar Focus</span>
+                <span>Calendar Type / Scope</span>
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {(['Personal only', 'Business only', 'Mixed (Personal & Work)'] as CalendarType[]).map((type) => (
+                {(['Personal', 'Mixed (Personal & Work)', 'Business'] as CalendarType[]).map((type) => (
                   <button
                     key={type}
                     type="button"
@@ -243,17 +274,17 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               id="btn-save-and-connect-calendar"
               disabled={isConnecting}
               onClick={() => handleSubmit('connect_calendar')}
-              className="w-full py-3.5 px-6 rounded-2xl bg-[#0f172a] hover:bg-slate-800 disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
+              className="w-full py-3.5 px-6 rounded-2xl bg-[#0e1d2c] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0e1d2c] disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
             >
               {isConnecting ? (
                 <>
                   <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
-                  <span>Connecting Google Account...</span>
+                  <span>Connecting Google Account &amp; Loading Agenda...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 text-sky-300" />
-                  <span>Connect Calendar &amp; Start</span>
+                  <span>Connect Calendar &amp; Import Agenda</span>
                   <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
                 </>
               )}

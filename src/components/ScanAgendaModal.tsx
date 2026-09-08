@@ -21,13 +21,76 @@ import {
   Users,
   Briefcase,
   Wrench,
-  CreditCard
+  CreditCard,
+  ShieldCheck,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { CalendarEvent, EventCategory, TMinusMilestone, OnboardingProfile } from '../types';
 import { fetchGoogleCalendarEvents, fetchPrimaryCalendarProfile, GoogleCalendarProfile, GoogleCalendarEventItem } from '../services/googleCalendar';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, getStoredClientId, clearGoogleSession } from '../services/googleAuth';
 import { detectEventCategory, generateHeuristicMilestones, formatDisplayDate, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
+import { normalizeProfile } from '../data/samplePresets';
+
+/**
+ * Robust check to determine if a Google Calendar item is already tracked in the dashboard.
+ * Compares Google Event IDs, synthesized IDs, and normalized Title + Date combinations.
+ */
+export function isEventAlreadyInDashboard(
+  item: GoogleCalendarEventItem,
+  existingEvents: CalendarEvent[]
+): boolean {
+  if (!existingEvents || existingEvents.length === 0) return false;
+
+  const gcalId = item.id;
+  const startDateStr = item.start?.dateTime || item.start?.date || '';
+  const itemDate = startDateStr ? startDateStr.substring(0, 10) : '';
+
+  const normalize = (str: string) =>
+    (str || '')
+      .toLowerCase()
+      .replace(/['’]/g, '')
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const normRaw = normalize(item.summary || '');
+  const detectedCategory = detectEventCategory(item.summary || '', item.description || '');
+  const normClean = normalize(getCleanEventTitle(item.summary || '', detectedCategory));
+
+  return existingEvents.some((existing) => {
+    // 1. Direct googleEventId match
+    if (existing.googleEventId && existing.googleEventId === gcalId) return true;
+    if (existing.id === `gcal-${gcalId}` || existing.id === gcalId) return true;
+
+    // 2. Normalized Title + Date Match
+    const normExisting = normalize(existing.title || '');
+    if (existing.eventDate && itemDate) {
+      const isDateExact = existing.eventDate === itemDate;
+      const isDateClose = Math.abs(new Date(existing.eventDate).getTime() - new Date(itemDate).getTime()) <= 86400000;
+
+      if (isDateExact) {
+        if (normExisting === normRaw || normExisting === normClean) return true;
+        if (normRaw.length >= 4 && normExisting.includes(normRaw)) return true;
+        if (normClean.length >= 4 && normExisting.includes(normClean)) return true;
+        if (normExisting.length >= 4 && normRaw.includes(normExisting)) return true;
+        if (normExisting.length >= 4 && normClean.includes(normExisting)) return true;
+      } else if (isDateClose) {
+        // Within 1 day (timezone shift) and identical title
+        if (normExisting === normRaw || normExisting === normClean) return true;
+      }
+    }
+
+    // 3. Fallback: substantial title (>6 chars) match across the board
+    if (normExisting.length > 6 && (normExisting === normRaw || normExisting === normClean)) {
+      return true;
+    }
+
+    return false;
+  });
+}
 
 interface ScanAgendaModalProps {
   isOpen: boolean;
@@ -36,6 +99,7 @@ interface ScanAgendaModalProps {
   onImportTrackedEvents: (events: CalendarEvent[]) => void;
   isGoogleConnected: boolean;
   onOpenGoogleCalendarSync: () => void;
+  existingEvents?: CalendarEvent[];
   onboardingProfile?: OnboardingProfile | null;
   initialScanMonths?: number;
 }
@@ -43,6 +107,7 @@ interface ScanAgendaModalProps {
 interface ScannedEventItem extends GoogleCalendarEventItem {
   detectedCategory: EventCategory;
   isRoutine: boolean;
+  isAlreadyInDashboard: boolean;
   shouldTrackByDefault: boolean;
   diffDays: number;
   previewMilestones: TMinusMilestone[];
@@ -55,6 +120,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   onImportTrackedEvents,
   isGoogleConnected,
   onOpenGoogleCalendarSync,
+  existingEvents,
   onboardingProfile,
   initialScanMonths = 6,
 }) => {
@@ -64,6 +130,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   const [scannedEvents, setScannedEvents] = useState<ScannedEventItem[]>([]);
   const [selectedEventIds, setSelectedEventIds] = useState<Record<string, boolean>>({});
   const [activeFilter, setActiveFilter] = useState<'all' | 'actionable' | 'parties' | 'trips' | 'hosting' | 'deadlines' | 'routine'>('actionable');
+  const [showAlreadyImported, setShowAlreadyImported] = useState<boolean>(false);
   const [scanMonths, setScanMonths] = useState<number>(initialScanMonths);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState<boolean>(false);
@@ -101,7 +168,18 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       const maxDate = new Date(new Date(currentReferenceDate).getTime() + monthsToUse * 30 * 24 * 60 * 60 * 1000).toISOString();
       const items = await fetchGoogleCalendarEvents(activeToken, 150, minDate, maxDate);
 
-      // 3. Evaluate each event with T-Minus rules
+      // 3. Evaluate each event with T-Minus rules and deduplicate against existing dashboard events
+      let currentDashboardEvents = existingEvents;
+      if (!currentDashboardEvents || currentDashboardEvents.length === 0) {
+        try {
+          const stored = localStorage.getItem('tminus_events_v2');
+          if (stored) currentDashboardEvents = JSON.parse(stored);
+        } catch {
+          // ignore
+        }
+      }
+      const liveDashboardEvents = currentDashboardEvents || [];
+
       const refTime = new Date(currentReferenceDate).getTime();
       const scannedList: ScannedEventItem[] = (items || []).map((item) => {
         const title = item.summary || 'Untitled Event';
@@ -115,8 +193,9 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
         // Detect routine work / repetitive meetings with profile calibration
         const lowerTitle = title.toLowerCase();
-        const filterWorkNoise = !onboardingProfile || onboardingProfile.calendarType === 'Mixed (Personal & Work)' || onboardingProfile.calendarType === 'Personal only';
-        const flagsKids = onboardingProfile?.familyStatus === 'Couple with kids';
+        const { family_structure, calendar_type } = normalizeProfile(onboardingProfile);
+        const filterWorkNoise = calendar_type !== 'business';
+        const flagsKids = family_structure === 'family_with_kids';
 
         const isWorkRoutine = filterWorkNoise && 
           /standup|1:1|sync|weekly|daily|scrum|catchup|status check|office hours|all hands|retrospective|retro\b/i.test(lowerTitle);
@@ -127,6 +206,9 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         const isKidsPriority = flagsKids && /school|costume|spirit|rehearsal|recital|tournament|sports|camp|halloween/i.test(lowerTitle);
 
         const category = detectEventCategory(title, desc);
+
+        // Deduplication against dashboard
+        const alreadyInDashboard = isEventAlreadyInDashboard(item, liveDashboardEvents);
 
         // Create temporary event structure to generate preview milestones using deep domain logic
         const tempEvent: CalendarEvent = {
@@ -145,12 +227,14 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         };
         const previewMilestones = deepRefineEventLocally(tempEvent);
 
-        const shouldTrackByDefault = (isKidsPriority || !isRoutine) && diffDays >= 2;
+        // Only track by default if it's actionable AND not already present in the dashboard
+        const shouldTrackByDefault = !alreadyInDashboard && (isKidsPriority || !isRoutine) && diffDays >= 2;
 
         return {
           ...item,
           detectedCategory: category,
           isRoutine,
+          isAlreadyInDashboard: alreadyInDashboard,
           shouldTrackByDefault,
           diffDays,
           previewMilestones,
@@ -160,7 +244,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       setScannedEvents(scannedList);
       setHasScanned(true);
 
-      // Select actionable events by default
+      // Select eligible actionable events by default
       const initialSelected: Record<string, boolean> = {};
       scannedList.forEach((item) => {
         initialSelected[item.id] = item.shouldTrackByDefault;
@@ -210,6 +294,8 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   };
 
   const handleToggleSelect = (id: string) => {
+    const item = scannedEvents.find((e) => e.id === id);
+    if (item?.isAlreadyInDashboard) return; // Prevent toggling already tracked items
     setSelectedEventIds((prev) => ({
       ...prev,
       [id]: !prev[id],
@@ -219,7 +305,9 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   const handleSelectAllInFilter = (filterType: typeof activeFilter) => {
     const updated: Record<string, boolean> = { ...selectedEventIds };
     getFilteredEvents(filterType).forEach((item) => {
-      updated[item.id] = true;
+      if (!item.isAlreadyInDashboard) {
+        updated[item.id] = true;
+      }
     });
     setSelectedEventIds(updated);
   };
@@ -234,6 +322,9 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
   const getFilteredEvents = (filter: typeof activeFilter) => {
     return scannedEvents.filter((e) => {
+      // If not explicitly toggled to show already imported items, hide them
+      if (!showAlreadyImported && e.isAlreadyInDashboard) return false;
+
       if (filter === 'all') return true;
       if (filter === 'actionable') return !e.isRoutine && e.shouldTrackByDefault;
       if (filter === 'parties') return e.detectedCategory === 'birthday_party';
@@ -246,7 +337,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   };
 
   const handleImportSelected = () => {
-    const selectedItems = scannedEvents.filter((item) => selectedEventIds[item.id]);
+    const selectedItems = scannedEvents.filter((item) => selectedEventIds[item.id] && !item.isAlreadyInDashboard);
     const eventsToImport: CalendarEvent[] = selectedItems.map((item) => {
       const startDateStr = item.start?.dateTime || item.start?.date || '';
       const eventDateStr = startDateStr ? startDateStr.substring(0, 10) : '';
@@ -278,14 +369,24 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
   if (!isOpen) return null;
 
-  const totalCount = scannedEvents.length;
-  const actionableCount = scannedEvents.filter((e) => !e.isRoutine && e.shouldTrackByDefault).length;
-  const partiesCount = scannedEvents.filter((e) => e.detectedCategory === 'birthday_party').length;
-  const tripsCount = scannedEvents.filter((e) => e.detectedCategory === 'travel_trip').length;
-  const hostingCount = scannedEvents.filter((e) => e.detectedCategory === 'hosting_visitors').length;
-  const deadlinesCount = scannedEvents.filter((e) => e.detectedCategory === 'project_deadline').length;
-  const routineCount = scannedEvents.filter((e) => e.isRoutine).length;
-  const selectedCount = Object.values(selectedEventIds).filter(Boolean).length;
+  const totalScannedCount = scannedEvents.length;
+  const alreadyImportedCount = scannedEvents.filter((e) => e.isAlreadyInDashboard).length;
+  const eligibleEvents = scannedEvents.filter((e) => !e.isAlreadyInDashboard);
+  const eligibleCount = eligibleEvents.length;
+
+  const actionableCount = eligibleEvents.filter((e) => !e.isRoutine && e.shouldTrackByDefault).length;
+  const partiesCount = eligibleEvents.filter((e) => e.detectedCategory === 'birthday_party').length;
+  const tripsCount = eligibleEvents.filter((e) => e.detectedCategory === 'travel_trip').length;
+  const hostingCount = eligibleEvents.filter((e) => e.detectedCategory === 'hosting_visitors').length;
+  const deadlinesCount = eligibleEvents.filter((e) => e.detectedCategory === 'project_deadline').length;
+  const routineCount = eligibleEvents.filter((e) => e.isRoutine).length;
+
+  const selectedCount = Object.keys(selectedEventIds).filter((id) => {
+    if (!selectedEventIds[id]) return false;
+    const item = scannedEvents.find((e) => e.id === id);
+    return item && !item.isAlreadyInDashboard;
+  }).length;
+
   const filteredEvents = getFilteredEvents(activeFilter);
 
   return (
@@ -390,6 +491,35 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                 </div>
               </div>
 
+              {/* Deduplication Status Notice */}
+              {alreadyImportedCount > 0 && (
+                <div className="p-3 bg-sky-50/90 border border-sky-200/90 rounded-2xl flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-sky-950 font-medium">
+                    <ShieldCheck className="w-4 h-4 text-sky-700 shrink-0" />
+                    <span>
+                      <strong>Deduplication active:</strong> Showing <strong>{eligibleCount}</strong> new eligible event{eligibleCount === 1 ? '' : 's'}. ({alreadyImportedCount} event{alreadyImportedCount === 1 ? '' : 's'} already in your dashboard {alreadyImportedCount === 1 ? 'was' : 'were'} filtered out).
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAlreadyImported(!showAlreadyImported)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-800 hover:text-sky-950 underline underline-offset-2 shrink-0 cursor-pointer"
+                  >
+                    {showAlreadyImported ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Hide tracked</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Show {alreadyImportedCount} already tracked</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Classification Filter Tabs */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                 <button
@@ -411,7 +541,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
                   }`}
                 >
-                  All Scanned ({totalCount})
+                  {showAlreadyImported ? `All (${totalScannedCount})` : `All Eligible (${eligibleCount})`}
                 </button>
 
                 {partiesCount > 0 && (
@@ -488,13 +618,13 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                     onClick={() => handleSelectAllInFilter(activeFilter)}
                     className="px-2 py-0.5 bg-white hover:bg-sky-50 text-slate-800 font-bold rounded-lg border border-slate-200 shadow-2xs cursor-pointer"
                   >
-                    Select In View
+                    Select Eligible
                   </button>
                   <button
                     onClick={() => handleDeselectAllInFilter(activeFilter)}
                     className="px-2 py-0.5 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-lg border border-slate-200 shadow-2xs cursor-pointer"
                   >
-                    Deselect In View
+                    Deselect All
                   </button>
                 </div>
                 <div className="text-xs font-bold text-slate-700 font-mono">
@@ -508,41 +638,89 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                   <Loader2 className="w-6 h-6 text-sky-600 animate-spin mx-auto" />
                   <p className="text-xs text-slate-500 font-medium">Scanning agenda events & calculating lead times...</p>
                 </div>
+              ) : totalScannedCount > 0 && eligibleCount === 0 && !showAlreadyImported ? (
+                /* All Caught Up State */
+                <div className="p-8 text-center bg-slate-50/80 border border-slate-200 rounded-3xl space-y-3 my-2">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-xs">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-slate-900">All Calendar Events Already Tracked!</h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                      All {totalScannedCount} upcoming events found on your Google Calendar are already present in your Ahead Of Time dashboard. No duplicate or unimported events require action.
+                    </p>
+                  </div>
+                  <div className="pt-2 flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowAlreadyImported(true)}
+                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      View {totalScannedCount} Tracked Items
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-4 py-1.5 bg-[#0e1d2c] hover:bg-[#162a3f] text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
+                    >
+                      Return to Dashboard
+                    </button>
+                  </div>
+                </div>
               ) : filteredEvents.length === 0 ? (
                 <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
-                  No events found in this category.
+                  No eligible new events found in this view.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {filteredEvents.map((item) => {
+                    const isAlreadyTracked = item.isAlreadyInDashboard;
                     const isSelected = selectedEventIds[item.id] ?? false;
                     const startDate = item.start?.dateTime || item.start?.date || '';
 
                     return (
                       <div
                         key={item.id}
-                        onClick={() => handleToggleSelect(item.id)}
-                        className={`p-3 rounded-2xl border transition-all flex items-start justify-between gap-3 cursor-pointer ${
-                          isSelected
-                            ? 'bg-white border-sky-300 shadow-2xs ring-1 ring-sky-300/40'
-                            : 'bg-slate-50/70 border-slate-200 opacity-75'
+                        onClick={() => {
+                          if (!isAlreadyTracked) handleToggleSelect(item.id);
+                        }}
+                        className={`p-3 rounded-2xl border transition-all flex items-start justify-between gap-3 ${
+                          isAlreadyTracked
+                            ? 'bg-slate-50/80 border-slate-200/80 opacity-75 cursor-default'
+                            : isSelected
+                            ? 'bg-white border-sky-300 shadow-2xs ring-1 ring-sky-300/40 cursor-pointer'
+                            : 'bg-slate-50/70 border-slate-200 opacity-85 hover:opacity-100 cursor-pointer'
                         }`}
                       >
                         <div className="flex items-start gap-3 min-w-0">
                           <input
                             type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(item.id)}
-                            className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900 cursor-pointer mt-0.5"
+                            checked={isAlreadyTracked ? true : isSelected}
+                            disabled={isAlreadyTracked}
+                            onChange={() => {
+                              if (!isAlreadyTracked) handleToggleSelect(item.id);
+                            }}
+                            className={`w-4 h-4 rounded mt-0.5 ${
+                              isAlreadyTracked 
+                                ? 'text-emerald-600 bg-emerald-50 border-emerald-300 cursor-not-allowed opacity-80' 
+                                : 'text-slate-900 focus:ring-slate-900 cursor-pointer'
+                            }`}
                           />
                           <div className="min-w-0 space-y-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="text-xs font-bold text-slate-900 truncate">
                                 {item.summary || 'Untitled Event'}
                               </h4>
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
-                                {item.detectedCategory.replace('_', ' ')}
-                              </span>
+                              {isAlreadyTracked ? (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                  <Check className="w-2.5 h-2.5 text-emerald-600" />
+                                  Already in Dashboard
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                                  {item.detectedCategory.replace('_', ' ')}
+                                </span>
+                              )}
                               {item.diffDays > 0 && (
                                 <span className="text-[10px] text-slate-400 font-mono">
                                   in {item.diffDays}d
@@ -563,11 +741,17 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                           </div>
                         </div>
 
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                          isSelected ? 'bg-sky-100 text-sky-800' : 'bg-slate-200 text-slate-600'
-                        }`}>
-                          {isSelected ? 'Import' : 'Skip'}
-                        </span>
+                        {isAlreadyTracked ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-slate-200/80 text-slate-600">
+                            Tracked
+                          </span>
+                        ) : (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                            isSelected ? 'bg-sky-100 text-sky-800' : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {isSelected ? 'Import' : 'Skip'}
+                          </span>
+                        )}
                       </div>
                     );
                   })}
@@ -581,6 +765,11 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         {/* Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
           <div className="text-xs text-slate-500 font-medium">
+            {alreadyImportedCount > 0 && (
+              <span className="hidden sm:inline">
+                {eligibleCount} eligible new item{eligibleCount === 1 ? '' : 's'} to track
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -591,11 +780,11 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
               Close
             </button>
 
-            {connected && totalCount > 0 && (
+            {connected && totalScannedCount > 0 && (
               <button
                 onClick={handleImportSelected}
                 disabled={selectedCount === 0}
-                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#0f172a] hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#0e1d2c] hover:bg-[#162a3f] disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <span className="sm:hidden">Import ({selectedCount})</span>
                 <span className="hidden sm:inline">Import &amp; Generate Timelines ({selectedCount})</span>

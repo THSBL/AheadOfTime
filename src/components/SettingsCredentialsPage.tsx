@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
-import { ArrowLeft, ShieldCheck, Key, CalendarDays, RefreshCw } from 'lucide-react';
+import { TelegramIntegrationCard } from './TelegramIntegrationCard';
+import { ArrowLeft, Key } from 'lucide-react';
 
 interface SettingsCredentialsPageProps {
   onSyncComplete?: (events: any[]) => void;
@@ -17,7 +18,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <button
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition font-medium"
+            className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition font-medium cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Dashboard
@@ -33,10 +34,14 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
         <div className="space-y-1">
           <h1 className="text-2xl font-bold text-white">Calendar Integrations & API Tokens</h1>
           <p className="text-xs text-slate-400">
-            Manage your connected Google Calendar, Google Tasks authorization, and milestone synchronization options.
+            Manage your connected Google Calendar, Google Tasks authorization, and Telegram Bot Assistant integration.
           </p>
         </div>
 
+        {/* Telegram Assistant Card */}
+        <TelegramIntegrationCard events={events} />
+
+        {/* Google Calendar Sync */}
         <GoogleCalendarSync
           onClose={() => navigate('/dashboard')}
           onSyncComplete={(syncedEvents) => {

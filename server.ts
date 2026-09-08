@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   CalendarEvent, 
   OperationalMode, 
@@ -33,6 +33,9 @@ import { WhatsAppWebhookHandler } from "./server/whatsappWebhookHandler";
 import { WhatsAppSessionStore } from "./server/whatsappStore";
 import { WhatsAppService } from "./server/whatsappService";
 import { AgendaScannerService } from "./server/agendaScanner";
+import { TelegramWebhookHandler } from "./server/telegramWebhookHandler";
+import { TelegramSessionStore } from "./server/telegramStore";
+import { TelegramService } from "./server/telegramService";
 
 dotenv.config();
 
@@ -59,10 +62,25 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-// Multi-model fast execution with low thinking latency and strict timeout
+// Fast active models prioritized for calendar planning and reasoning
+const DEFAULT_FAST_MODELS = [
+  "gemini-3.8-flash",
+  "gemini-3.6-flash",
+  "gemini-flash-latest",
+  "gemini-2.5-flash",
+];
+
+const TRANSCRIBE_MODELS = [
+  "gemini-3.8-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-transcribe",
+  "gemini-2.5-flash",
+];
+
+// Multi-model fast execution with low latency and strict timeout
 async function generateContentFast(
   requestConfig: (modelName: string) => any,
-  modelsToTry: string[] = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+  modelsToTry: string[] = DEFAULT_FAST_MODELS,
   timeoutMs: number = 10000
 ): Promise<{ text: string; usedModel: string }> {
   const ai = getGeminiClient();
@@ -128,7 +146,7 @@ app.post("/api/agent/transcribe", async (req: Request, res: Response): Promise<v
       },
     };
 
-    const transcribeModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
+    const transcribeModels = TRANSCRIBE_MODELS;
     const result = await generateContentFast(
       () => ({
         contents: { 
@@ -224,7 +242,7 @@ Output ONLY the JSON object.`;
           temperature: 0.15,
         },
       }),
-      ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      DEFAULT_FAST_MODELS,
       8000
     );
 
@@ -314,7 +332,7 @@ Output ONLY the raw JSON object.`;
           temperature: 0.15,
         },
       }),
-      ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      DEFAULT_FAST_MODELS,
       8000
     );
 
@@ -468,14 +486,13 @@ Ensure every input task is preserved and calibrated. Output ONLY the raw JSON ob
 
     const result = await generateContentFast(
       () => ({
-        contents: { parts: [{ text: prompt }] },
-        generationConfig: {
+        contents: prompt,
+        config: {
           responseMimeType: "application/json",
           temperature: 0.1,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         }
       }),
-      ["gemini-2.5-flash", "gemini-2.0-flash"],
+      DEFAULT_FAST_MODELS,
       8000
     );
 
@@ -531,7 +548,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
             data: audioBase64,
           },
         };
-        const transcribeModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
+        const transcribeModels = TRANSCRIBE_MODELS;
         const transcribeRes = await generateContentFast(
           () => ({
             contents: { 
@@ -936,7 +953,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         responseSchema,
       },
     }),
-    ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+    DEFAULT_FAST_MODELS,
     8000
   );
 
@@ -1664,6 +1681,104 @@ app.delete("/api/whatsapp/sessions/:sessionId", (req: Request, res: Response) =>
   const { sessionId } = req.params;
   const deleted = WhatsAppSessionStore.deleteSession(sessionId);
   res.json({ success: deleted });
+});
+
+// -----------------------------------------------------------------------------
+// Telegram Calendar Assistant - Webhook & API Routes
+// -----------------------------------------------------------------------------
+
+// 1. Telegram Incoming Webhook (supports both /webhook/telegram and /api/telegram/webhook)
+app.post("/webhook/telegram", TelegramWebhookHandler.handleWebhook);
+app.post("/api/telegram/webhook", TelegramWebhookHandler.handleWebhook);
+app.get("/api/telegram/webhook", (req: Request, res: Response) => {
+  res.json({ ok: true, message: "Ahead Of Time Telegram webhook is active and ready to receive POST updates from Telegram." });
+});
+app.get("/webhook/telegram", (req: Request, res: Response) => {
+  res.json({ ok: true, message: "Ahead Of Time Telegram webhook is active and ready to receive POST updates from Telegram." });
+});
+
+// 2. Telegram Integration Status
+app.get("/api/telegram/status", async (req: Request, res: Response) => {
+  const isConfigured = TelegramService.isConfigured();
+  let botInfo = null;
+  let webhookInfo = null;
+
+  if (isConfigured) {
+    try {
+      botInfo = await TelegramService.getMe();
+      webhookInfo = await TelegramService.getWebhookInfo();
+    } catch (e: any) {
+      console.warn("Could not retrieve telegram status:", e.message);
+    }
+  }
+
+  const host = req.get("host") || "localhost:3000";
+  const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
+  const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
+
+  res.json({
+    isConfigured,
+    hasToken: isConfigured,
+    botInfo: botInfo?.ok ? botInfo.result : null,
+    webhookInfo: webhookInfo?.ok ? webhookInfo.result : null,
+    inferredWebhookUrl,
+    activeSessions: TelegramSessionStore.getAllSessions().length,
+    storedEventsCount: TelegramSessionStore.getAllEvents().length,
+  });
+});
+
+// 3. Register Webhook with Telegram API
+app.post("/api/telegram/set-webhook", async (req: Request, res: Response) => {
+  try {
+    const host = req.get("host") || "localhost:3000";
+    const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
+    const defaultUrl = `${protocol}://${host}/api/telegram/webhook`;
+    const targetUrl = req.body?.webhookUrl || defaultUrl;
+    const secretToken = req.body?.secretToken || process.env.TELEGRAM_WEBHOOK_SECRET;
+
+    const result = await TelegramService.setWebhook(targetUrl, secretToken);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message || "Failed to set webhook" });
+  }
+});
+
+// 4. Send Refinement Prompt for an Event to Telegram (Multi-tenant: requires chatId)
+app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
+  try {
+    const { chatId, event } = req.body;
+    const targetChatId = chatId;
+
+    if (!targetChatId) {
+      res.status(400).json({
+        ok: false,
+        error: "chatId is required. Ahead Of Time is multi-tenant; please provide the destination Telegram chatId.",
+      });
+      return;
+    }
+
+    if (!event || !event.id || !event.title) {
+      res.status(400).json({
+        ok: false,
+        error: "Valid calendar event object with id and title is required.",
+      });
+      return;
+    }
+
+    const host = req.get("host") || "localhost:3000";
+    const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
+    const appBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+    const result = await TelegramService.sendRefinementPrompt(targetChatId, event, appBaseUrl);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message || "Failed to dispatch telegram prompt" });
+  }
+});
+
+// 5. Get Events created via Telegram
+app.get("/api/telegram/events", (_req: Request, res: Response) => {
+  res.json({ events: TelegramSessionStore.getAllEvents() });
 });
 
 // Setup Vite middleware for development or static serving for production

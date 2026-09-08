@@ -1,0 +1,286 @@
+{
+  "sessions": [
+    {
+      "chatId": 99887766,
+      "userId": 99887766,
+      "firstName": "Thomas",
+      "createdAt": "2026-09-08T10:36:26.080Z",
+      "lastActiveAt": "2026-09-08T10:36:26.088Z",
+      "eventsCreated": [
+        "evt-tg-1788863786082"
+      ],
+      "lastCreatedEventId": "evt-tg-1788863786082"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-tg-1788863786082",
+      "title": "Trip to Scottish Highlands on October 14",
+      "category": "travel_trip",
+      "eventDate": "2026-10-14",
+      "eventTime": "19:00",
+      "status": "milestones_active",
+      "needsRefinement": true,
+      "context": {
+        "customNote": "Trip to Scottish Highlands on October 14"
+      },
+      "milestones": [
+        {
+          "id": "ms-evt-tg-1788863786082-t30d-86086-czd",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-30d",
+          "tMinusOffsetMinutes": -43200,
+          "calculatedDate": "2026-09-14T19:00:00.000Z",
+          "title": "Flights, trains & hotel reservation lock",
+          "description": "Lock transport legs, accommodations, and travel insurance coverage",
+          "category": "booking",
+          "status": "pending",
+          "kind": "deliverable",
+          "needsRefinement": true,
+          "refinementOptions": [
+            "Hotel / Resort Reservation",
+            "Airbnb / Vacation Apartment",
+            "Flight & Hotel Package"
+          ],
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t30d-86086-czd_1",
+              "title": "Signed rental contract or confirmed booking reference",
+              "type": "booking",
+              "is_completed": false
+            },
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t30d-86086-czd_2",
+              "title": "Deposit receipt & arrival access code archived",
+              "type": "purchase",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t21d-86086-2vr",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-21d",
+          "tMinusOffsetMinutes": -30240,
+          "calculatedDate": "2026-09-23T19:00:00.000Z",
+          "title": "activities, tours & excursions Booked & Confirmed",
+          "description": "Secure bookings, time slots, and passes for destination activities",
+          "category": "booking",
+          "status": "pending",
+          "kind": "deliverable",
+          "needsRefinement": true,
+          "refinementOptions": [
+            "Guided City Walking Tour",
+            "Museum & Cultural Passes",
+            "Boat / Water Excursion",
+            "Outdoor Adventure / Hike",
+            "Food & Wine Tasting"
+          ],
+          "applicableRoles": [
+            "organiser",
+            "co_organiser"
+          ],
+          "deliverableType": "activity",
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t21d-86086-2vr_1",
+              "title": "Reserved excursion slots & paid group admission vouchers",
+              "type": "booking",
+              "is_completed": false
+            },
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t21d-86086-2vr_2",
+              "title": "Participant liability waivers & meeting point details distributed",
+              "type": "document",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t14d-86086-i6t",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-14d",
+          "tMinusOffsetMinutes": -20160,
+          "calculatedDate": "2026-09-30T19:00:00.000Z",
+          "title": "sunscreen & beach essentials (e.g. SPF 50, hats) Purchased",
+          "description": "Purchase reef-safe sunscreen, sunglasses, and beach wear",
+          "category": "shopping",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t14d-86086-i6t_1",
+              "title": "Completed action item artifact for Buy sunscreen & beach essentials (e.g. SPF 50, hats)",
+              "type": "purchase",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t14d-86086-7ae",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-14d",
+          "tMinusOffsetMinutes": -20160,
+          "calculatedDate": "2026-09-30T19:00:00.000Z",
+          "title": "hiking boots & outdoor gear (e.g. wool socks) Purchased",
+          "description": "Break in hiking boots, purchase moisture-wicking socks and daypacks",
+          "category": "shopping",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t14d-86086-7ae_1",
+              "title": "Completed action item artifact for Buy hiking boots & outdoor gear (e.g. wool socks)",
+              "type": "purchase",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t14d-86086-2yq",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-14d",
+          "tMinusOffsetMinutes": -20160,
+          "calculatedDate": "2026-09-30T19:00:00.000Z",
+          "title": "universal power adapters & chargers Purchased",
+          "description": "Acquire country-specific electrical plug adapters and portable power banks",
+          "category": "shopping",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t14d-86086-2yq_1",
+              "title": "Completed action item artifact for Buy universal power adapters & chargers",
+              "type": "purchase",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t5d-86087-g08",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-5d",
+          "tMinusOffsetMinutes": -7200,
+          "calculatedDate": "2026-10-09T19:00:00.000Z",
+          "title": "Travel prep: Trip to Scottish Highlands on October 14",
+          "description": "Travel custom requirement: Trip to Scottish Highlands on October 14",
+          "category": "prep",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t5d-86087-g08_1",
+              "title": "Completed action item artifact for Travel prep: Trip to Scottish Highlands on October 14",
+              "type": "coordination",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t3d-86086-pos",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-3d",
+          "tMinusOffsetMinutes": -4320,
+          "calculatedDate": "2026-10-11T19:00:00.000Z",
+          "title": "Packing essentials & roaming setup",
+          "description": "Pack weather apparel, toiletries, and activate roaming/eSIM",
+          "category": "prep",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t3d-86086-pos_1",
+              "title": "Event attire & required garments packed in suitcase",
+              "type": "coordination",
+              "is_completed": false
+            },
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t3d-86086-pos_2",
+              "title": "Passport, roaming eSIM, & essential toiletries loaded",
+              "type": "document",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t1d-86086-cpd",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-1d",
+          "tMinusOffsetMinutes": -1440,
+          "calculatedDate": "2026-10-13T19:00:00.000Z",
+          "title": "Online check-in & out-of-office setup",
+          "description": "Check in for flights 24h prior, download offline maps, and set email out-of-office",
+          "category": "logistics",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t1d-86086-cpd_1",
+              "title": "Completed action item artifact for Online check-in & out-of-office setup",
+              "type": "document",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-treturn1d-86086-6d0",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-Return-1d",
+          "tMinusOffsetMinutes": -1440,
+          "calculatedDate": "2026-10-13T19:00:00.000Z",
+          "title": "Return trip prep & flight status check",
+          "description": "Verify return flight status, pack return luggage, and plan hotel check-out",
+          "category": "logistics",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-treturn1d-86086-6d0_1",
+              "title": "Electronic transit tickets & boarding passes downloaded",
+              "type": "document",
+              "is_completed": false
+            },
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-treturn1d-86086-6d0_2",
+              "title": "Terminal / station departure schedule shared with crew",
+              "type": "coordination",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788863786082-t2h-86086-6c0",
+          "eventId": "evt-tg-1788863786082",
+          "tMinusLabel": "T-2h",
+          "tMinusOffsetMinutes": -120,
+          "calculatedDate": "2026-10-14T17:00:00.000Z",
+          "title": "Departure buffer & home lockup",
+          "description": "Final luggage zip, lock house, travel to airport / terminal",
+          "category": "logistics",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788863786082-t2h-86086-6c0_1",
+              "title": "Completed action item artifact for Departure buffer & home lockup",
+              "type": "document",
+              "is_completed": false
+            }
+          ]
+        }
+      ],
+      "rawInputSnippet": "Trip to Scottish Highlands on October 14",
+      "createdAt": "2026-09-08T10:36:26.088Z",
+      "updatedAt": "2026-09-08T10:36:26.088Z"
+    }
+  ],
+  "updatedAt": "2026-09-08T10:36:26.088Z"
+}

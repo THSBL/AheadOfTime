@@ -259,6 +259,26 @@ function App() {
     };
   }, []);
 
+  // Check for auto-scan trigger from onboarding, login, or redirect
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const shouldScan = 
+      searchParams.get('scan') === 'true' || 
+      searchParams.get('action') === 'scan' || 
+      sessionStorage.getItem('aot_open_scan_modal') === 'true';
+
+    if (shouldScan) {
+      sessionStorage.removeItem('aot_open_scan_modal');
+      setIsScanAgendaModalOpen(true);
+      if (searchParams.has('scan') || searchParams.has('action')) {
+        searchParams.delete('scan');
+        searchParams.delete('action');
+        const remaining = searchParams.toString();
+        navigate({ pathname: location.pathname, search: remaining ? `?${remaining}` : '' }, { replace: true });
+      }
+    }
+  }, [location.search, location.pathname, navigate]);
+
   // Navigation handlers using router
   const navigateToPrivacyPage = () => {
     navigate('/privacy');
@@ -330,13 +350,57 @@ function App() {
   const isEditRoute = location.pathname.endsWith('/edit');
 
   const [isManualModalOpen, setIsManualModalOpen] = useState(isNewEventRoute || isEditRoute);
+  const [refinementEvent, setRefinementEvent] = useState<CalendarEvent | null>(null);
+  const [wizardStage, setWizardStage] = useState<'step1_title' | 'step2_refinement' | 'step3_milestones'>('step1_title');
 
   useEffect(() => {
     setIsManualModalOpen(isNewEventRoute || isEditRoute);
   }, [location.pathname, location.search]);
 
+  // Deep-link handler for Telegram & external refinement: ?eventId=...&stage=refine
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const eventIdParam = sp.get('eventId');
+    const stageParam = sp.get('stage');
+
+    if (eventIdParam && (stageParam === 'refine' || stageParam === 'step2_refinement')) {
+      // 1. Check local state
+      const target = events.find((e) => e.id === eventIdParam);
+      if (target) {
+        setRefinementEvent(target);
+        setWizardStage('step2_refinement');
+        setSelectedEventId(target.id);
+        setIsManualModalOpen(true);
+        setActiveTab('tasks');
+      } else {
+        // 2. Fetch from Telegram server events store
+        fetch('/api/telegram/events')
+          .then((r) => r.json())
+          .then((data) => {
+            const found = (data.events || []).find((e: CalendarEvent) => e.id === eventIdParam);
+            if (found) {
+              setEvents((prev) => [found, ...prev.filter((e) => e.id !== found.id)]);
+              setRefinementEvent(found);
+              setWizardStage('step2_refinement');
+              setSelectedEventId(found.id);
+              setIsManualModalOpen(true);
+              setActiveTab('tasks');
+            }
+          })
+          .catch((err) => console.warn('Could not fetch telegram event for refinement:', err));
+      }
+    }
+  }, [location.search, events]);
+
   const handleCloseManualModal = () => {
     setIsManualModalOpen(false);
+    setRefinementEvent(null);
+    setWizardStage('step1_title');
+    const sp = new URLSearchParams(location.search);
+    if (sp.has('eventId') || sp.has('stage')) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
     if (location.pathname === '/events/new' || new URLSearchParams(location.search).get('modal') === 'new') {
       navigate('/events', { replace: true });
     } else if (location.pathname.endsWith('/edit')) {
@@ -580,11 +644,11 @@ function App() {
   }, [messages]);
 
   // Counts
-  const pendingMilestonesCount = events.reduce(
-    (acc, evt) => acc + evt.milestones.filter((m) => m.status === 'pending').length,
+  const pendingMilestonesCount = (events || []).reduce(
+    (acc, evt) => acc + (evt.milestones || []).filter((m) => m.status === 'pending').length,
     0
   );
-  const watchpointsCount = events.filter((e) => e.status === 'research_watchpoint').length;
+  const watchpointsCount = (events || []).filter((e) => e.status === 'research_watchpoint').length;
 
   // Send message to agent
   const handleSendMessage = async (text: string, isVoiceMemo?: boolean, audioBlob?: Blob) => {
@@ -931,7 +995,7 @@ function App() {
         targetEventTitle = evt.title;
         return {
           ...evt,
-          milestones: evt.milestones.map((ms) => {
+          milestones: (evt.milestones || []).map((ms) => {
             if (ms.id !== milestoneId) return ms;
             newStatus = ms.status === 'completed' ? 'pending' : 'completed';
             targetMilestone = {
@@ -980,7 +1044,7 @@ function App() {
           googleEventLink: undefined,
           syncedToGoogleAt: undefined,
           googleMilestoneCount: 0,
-          milestones: e.milestones.map((ms) => ({
+          milestones: (e.milestones || []).map((ms) => ({
             ...ms,
             googleCalendarEventId: undefined,
             googleTaskId: undefined,
@@ -1011,7 +1075,7 @@ function App() {
         if (evt.id !== eventId) return evt;
         return {
           ...evt,
-          milestones: evt.milestones
+          milestones: (evt.milestones || [])
             .map((ms) => (ms.id === updatedMilestone.id ? updatedMilestone : ms))
             .sort(
               (a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime()
@@ -1028,7 +1092,7 @@ function App() {
         if (evt.id !== eventId) return evt;
         return {
           ...evt,
-          milestones: evt.milestones.filter((ms) => ms.id !== milestoneId),
+          milestones: (evt.milestones || []).filter((ms) => ms.id !== milestoneId),
         };
       })
     );
@@ -1041,7 +1105,7 @@ function App() {
         if (evt.id !== milestone.eventId) return evt;
         return {
           ...evt,
-          milestones: [...evt.milestones, milestone].sort(
+          milestones: [...(evt.milestones || []), milestone].sort(
             (a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime()
           ),
         };
@@ -1049,13 +1113,31 @@ function App() {
     );
   };
 
-  // Save manual event
+  // Save manual event (upsert to avoid duplicates from Telegram or calendar imports)
   const handleSaveManualEvent = (newEvent: CalendarEvent) => {
-    setEvents((prev) => [newEvent, ...prev]);
+    setEvents((prev) => {
+      const existsIdx = prev.findIndex((e) => e.id === newEvent.id);
+      let updated: CalendarEvent[];
+      if (existsIdx >= 0) {
+        updated = [...prev];
+        updated[existsIdx] = newEvent;
+      } else {
+        updated = [newEvent, ...prev];
+      }
+      try {
+        localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Could not persist to local storage:', err);
+      }
+      return updated;
+    });
+
     setSelectedEventId(newEvent.id);
     setActiveTab('tasks');
     setFocusMode('adjust-event');
     setMobileDashboardView('detail');
+    setRefinementEvent(null);
+    setWizardStage('step1_title');
 
     const agentMsg: AgentMessage = {
       id: `agt-manual-${Date.now()}`,
@@ -1263,6 +1345,7 @@ function App() {
                   <ChatConsole
                     messages={messages}
                     onSendMessage={handleSendMessage}
+                    onSaveEvent={handleSaveManualEvent}
                     onIntakeOptionSelect={handleIntakeOptionSelect}
                     onBatchIntakeSubmit={handleBatchIntakeSubmit}
                     onSelectVariable={handleSelectVariable}
@@ -1281,6 +1364,8 @@ function App() {
                     events={events}
                     focusMode={focusMode}
                     onFocusChange={setIsWizardInputFocused}
+                    onboardingProfile={onboardingProfile}
+                    onOpenPreferences={() => setIsPreferencesModalOpen(true)}
                   />
                 </div>
               ) : (
@@ -1391,6 +1476,8 @@ function App() {
         onClose={handleCloseManualModal}
         onSaveEvent={handleSaveManualEvent}
         currentReferenceDate={currentReferenceDate}
+        initialStage={wizardStage}
+        initialEvent={refinementEvent}
       />
 
       {/* Custom Milestone Modal */}
@@ -1431,6 +1518,7 @@ function App() {
         currentReferenceDate={currentReferenceDate}
         onImportTrackedEvents={handleImportTrackedEvents}
         isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
+        existingEvents={events}
         onboardingProfile={onboardingProfile}
         initialScanMonths={agendaHorizonMonths}
         onOpenGoogleCalendarSync={() => {
@@ -1587,11 +1675,12 @@ function OnboardingRoute() {
       localStorage.setItem('has_completed_onboarding', 'true');
       if (action === 'connect_calendar') {
         localStorage.setItem('aot_calendar_connected', 'true');
+        sessionStorage.setItem('aot_open_scan_modal', 'true');
       }
     } catch (e) {
       console.warn('Error saving onboarding profile', e);
     }
-    navigate('/dashboard');
+    navigate(action === 'connect_calendar' ? '/dashboard?scan=true' : '/dashboard');
   };
 
   return (

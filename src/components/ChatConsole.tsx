@@ -26,18 +26,41 @@ import {
   X,
   Layers,
   FileSpreadsheet,
-  Zap
+  Zap,
+  GraduationCap
 } from 'lucide-react';
-import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset } from '../types';
-import { EVENT_PRESETS, SMALL_PRESETS, PromptPreset } from '../data/samplePresets';
+import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset, OnboardingProfile } from '../types';
+import { 
+  getVisiblePresets, 
+  getCategorizedPresets, 
+  normalizeProfile, 
+  PRESET_KIDS_SCHOOL, 
+  PRESET_KIDS_HOBBIES, 
+  PromptPreset 
+} from '../data/samplePresets';
 import { ThinkingModule } from './ThinkingModule';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
+import { EventCreationWizard } from './EventCreationWizard';
+import { CanonicalCategory } from '../utils/creationStateMachine';
+
+function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
+  if (presetId === 'kids_hobbies') return 'kids_hobbies';
+  if (presetId === 'kids_school' || presetId === 'kids') return 'kids_school';
+  if (presetId === 'trip') return 'trip';
+  if (presetId === 'friends') return 'friends_visiting';
+  if (presetId === 'birthday' || presetId === 'party') return 'party';
+  if (presetId === 'subscription') return 'subscription';
+  if (presetId === 'maintenance') return 'maintenance';
+  if (presetId === 'project') return 'project_management';
+  return 'party';
+}
 
 interface ChatConsoleProps {
   messages: AgentMessage[];
   onSendMessage: (text: string, isVoiceMemo?: boolean, audioBlob?: Blob) => void;
+  onSaveEvent?: (event: CalendarEvent) => void;
   onIntakeOptionSelect: (eventId: string, questionId: string, paramKey: string, optionValue: string) => void;
   onBatchIntakeSubmit?: (eventId: string, answers: Record<string, { paramKey: string, value: string, label: string }>) => void;
   onSelectVariable?: (eventId: string, key: string, value: any, label: string) => void;
@@ -53,11 +76,14 @@ interface ChatConsoleProps {
   focusMode?: 'welcome' | 'new-event' | 'adjust-event';
   onFocusChange?: (isFocused: boolean) => void;
   isLandingMode?: boolean;
+  onboardingProfile?: OnboardingProfile | null;
+  onOpenPreferences?: () => void;
 }
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
   messages,
   onSendMessage,
+  onSaveEvent,
   onIntakeOptionSelect,
   onBatchIntakeSubmit,
   onSelectVariable,
@@ -73,7 +99,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   focusMode,
   onFocusChange,
   isLandingMode,
+  onboardingProfile,
+  onOpenPreferences,
 }) => {
+  // Dynamic Profile Calibration
+  const categorizedPresets = getCategorizedPresets(onboardingProfile);
+
   const [inputText, setInputText] = useState('');
   const [lastSubmittedPrompt, setLastSubmittedPrompt] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -315,6 +346,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     } else if (preset.id === 'maintenance') {
       targetDate.setDate(targetDate.getDate() + 10); // 10 days out
       setTimeInput('09:00');
+    } else if (preset.id === 'kids' || preset.id === 'kids_school') {
+      targetDate.setDate(targetDate.getDate() + 14); // 2 weeks out
+      setTimeInput('08:30');
+    } else if (preset.id === 'kids_hobbies') {
+      targetDate.setDate(targetDate.getDate() + 10); // 10 days out
+      setTimeInput('10:00');
     }
     setDateInput(targetDate.toISOString().substring(0, 10));
   };
@@ -380,6 +417,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       eventTitle = `${who} Subscription Cancellation`;
     } else if (selectedPreset.id === 'maintenance') {
       eventTitle = `${who}`;
+    } else if (selectedPreset.id === 'kids_school') {
+      eventTitle = `Kids School Event: ${who}`;
+    } else if (selectedPreset.id === 'kids_hobbies') {
+      eventTitle = `Kids Activity & Recital: ${who}`;
+    } else if (selectedPreset.id === 'kids') {
+      eventTitle = `Kids Activity: ${who}`;
     }
 
     // Build natural language descriptive prompt with chosen context
@@ -598,8 +641,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             />
           ) : (
             <InitialPresetsAndFreeform
-              EVENT_PRESETS={EVENT_PRESETS}
-              SMALL_PRESETS={SMALL_PRESETS}
+              primaryPresets={categorizedPresets.primary}
+              secondaryPresets={categorizedPresets.secondary}
+              canImportSpreadsheet={categorizedPresets.canImportSpreadsheet}
+              onboardingProfile={onboardingProfile}
+              onOpenPreferences={onOpenPreferences}
               handleSelectPreset={handleSelectPreset}
               inputText={inputText}
               setInputText={setInputText}
@@ -623,27 +669,24 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         </div>
       )}
 
-      {/* 2. BALLOON 1: WHO & WHEN QUESTIONS POPUP */}
-      {presetStep === 'who_when' && selectedPreset && !isLoading && (
-        <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-[32px] p-5 sm:p-7 shadow-lg shadow-slate-200/40 space-y-6 animate-in fade-in slide-in-from-bottom duration-400">
-          
-          {/* Preset Title Header */}
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+      {/* 2. UNIFIED 3-STAGE STATE MACHINE FOR PRESET WORKFLOW */}
+      {selectedPreset && !isLoading && (
+        <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-[32px] p-5 sm:p-7 shadow-lg shadow-slate-200/40 space-y-6 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
               <span className="text-2xl">{selectedPreset.emoji}</span>
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-900">
-                  Step 1 of 2 • Basic Details
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Preset Workflow
                 </span>
-                <h2 className="text-lg sm:text-xl font-black text-slate-900">
+                <h2 className="text-lg font-black text-slate-900">
                   {selectedPreset.title} Prep
                 </h2>
               </div>
             </div>
-            
             <button
               onClick={() => {
-                setPresetStep('initial');
+                setPresetStep("initial");
                 setSelectedPreset(null);
               }}
               className="text-xs text-slate-400 hover:text-slate-700 flex items-center gap-1 font-semibold px-2.5 py-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
@@ -653,882 +696,23 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             </button>
           </div>
 
-          <form onSubmit={handleProceedToRefinements} className="space-y-5">
-            
-            {/* 1. Who Question */}
-            <div className="space-y-2">
-              <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <span>{selectedPreset.whoLabel}</span>
-              </label>
-              <input
-                ref={whoInputRef}
-                type="text"
-                required
-                value={whoInput}
-                onChange={(e) => setWhoInput(e.target.value)}
-                placeholder={selectedPreset.whoPlaceholder}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm sm:text-base font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800 focus:ring-4 focus:ring-slate-100 transition-all"
-              />
-            </div>
-
-            {/* 2. When Question */}
-            <div className="space-y-2.5">
-              <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-slate-900" />
-                <span>{selectedPreset.whenLabel}</span>
-              </label>
-
-              {/* Date & Time Picker Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Target Date</span>
-                  <input
-                    type="date"
-                    required
-                    value={dateInput}
-                    onChange={(e) => setDateInput(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Time (Optional)</span>
-                  <input
-                    type="time"
-                    value={timeInput}
-                    onChange={(e) => setTimeInput(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Return Date & Time for Trip Preset */}
-            {selectedPreset?.id === 'trip' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Return Date *</span>
-                  <input
-                    type="date"
-                    required
-                    value={tripReturnDate}
-                    onChange={(e) => setTripReturnDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Return Time</span>
-                  <input
-                    type="time"
-                    value={tripReturnTime}
-                    onChange={(e) => setTripReturnTime(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* 3. Role for this Event Module */}
-            <div className="space-y-2 pt-1">
-              <label className="text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <span>👤</span>
-                  <span>Your Role for this Event</span>
-                </span>
-                <span className="text-[11px] font-normal text-slate-500">Expands or limits your tasks</span>
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPresetUserRole('organiser')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                    presetUserRole === 'organiser'
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
-                      : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <span>👑</span>
-                      <span>Organiser</span>
-                    </span>
-                    {presetUserRole === 'organiser' && <Check className="w-3.5 h-3.5" />}
-                  </div>
-                  <p className={`text-[11px] mt-1 leading-snug ${presetUserRole === 'organiser' ? 'text-slate-300' : 'text-slate-500'}`}>
-                    Full runway: group bookings, deposits, reservations & deliverables.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPresetUserRole('co_organiser')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                    presetUserRole === 'co_organiser'
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
-                      : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <span>🤝</span>
-                      <span>Co-Organiser</span>
-                    </span>
-                    {presetUserRole === 'co_organiser' && <Check className="w-3.5 h-3.5" />}
-                  </div>
-                  <p className={`text-[11px] mt-1 leading-snug ${presetUserRole === 'co_organiser' ? 'text-slate-300' : 'text-slate-500'}`}>
-                    Support & logistics: assist with activities, dining & headcounts.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPresetUserRole('guest')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                    presetUserRole === 'guest'
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/10'
-                      : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <span>🎟️</span>
-                      <span>Guest</span>
-                    </span>
-                    {presetUserRole === 'guest' && <Check className="w-3.5 h-3.5" />}
-                  </div>
-                  <p className={`text-[11px] mt-1 leading-snug ${presetUserRole === 'guest' ? 'text-slate-300' : 'text-slate-500'}`}>
-                    Attendee runway: RSVP, travel/stay booking, kitty share & personal prep.
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            {/* 4. Optional Location / Venue */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                <span>Location / City (Optional)</span>
-              </label>
-              <input
-                type="text"
-                value={locationInput}
-                onChange={(e) => setLocationInput(e.target.value)}
-                placeholder="e.g. London, Home, Central Office"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-800 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-              />
-            </div>
-
-            {/* CTA: Next to Refinements */}
-            <div className="pt-3">
-              <button
-                type="submit"
-                disabled={!whoInput.trim()}
-                className="w-full py-4 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/15 transition-all active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer group"
-              >
-                <span>Continue to Refinement Questions</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-          </form>
-
-        </div>
-      )}
-
-      {/* 3. BALLOON 2: REFINEMENT QUESTIONS & SPECIFIC VARIETIES */}
-      {presetStep === 'refine' && selectedPreset && !isLoading && (
-        <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-[32px] p-5 sm:p-7 shadow-lg shadow-slate-200/40 space-y-6 animate-in fade-in slide-in-from-bottom duration-400">
-          
-          {/* Refinement Stage Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{selectedPreset.emoji}</span>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-900 border border-slate-200">
-                  Step 2 of 2 • Refinement Questions
-                </span>
-              </div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900">
-                {whoInput.trim() ? `${whoInput}'s ${selectedPreset.title}` : selectedPreset.title}
-              </h2>
-              <p className="text-xs text-slate-500">
-                Target date: <span className="font-semibold text-slate-800">{dateInput} at {timeInput}</span>
-              </p>
-            </div>
-
-            <button
-              onClick={() => setPresetStep('who_when')}
-              className="text-xs text-slate-400 hover:text-slate-700 font-semibold px-2.5 py-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              Edit Details
-            </button>
-          </div>
-
-          <div className="space-y-5">
-            
-            {/* BIRTHDAY REFINEMENTS */}
-            {selectedPreset.id === 'birthday' && (
-              <>
-                {/* 1. Gift Question */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Gift className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Do you need a gift?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: 'Group Gift', value: 'group', desc: 'T-30d pot rally + T-10d purchase' },
-                      { label: 'Solo Gift', value: 'solo', desc: 'T-14d order + T-2d wrap check' },
-                      { label: '🚫 No Gift', value: 'none', desc: 'No gift tasks scheduled' },
-                    ].map((opt) => {
-                      const isSelected = refinements['gift']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('gift', 'giftType', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md shadow-slate-900/20 font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                            {opt.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 2. Costume / Theme Question */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Shirt className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Do you need a costume or theme outfit?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      { label: 'Themed / Costume Required', value: 'true', desc: 'T-14d costume sourcing & outfit prep' },
-                      { label: 'Standard Attire / Casual', value: 'false', desc: 'No costume lead times scheduled' },
-                    ].map((opt) => {
-                      const isSelected = refinements['costume']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('costume', 'isThemed', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md shadow-slate-900/20 font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                            {opt.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 3. Transport Question */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Car className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Do you need transport?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      { label: 'Taxi / Rideshare', value: 'taxi', desc: 'T-2h pre-booking & travel buffer' },
-                      { label: 'Carpooling / Vehicle Rental', value: 'carpool', desc: 'T-7d ride coordination & parking check' },
-                      { label: 'Public Transit / Train', value: 'transit', desc: 'T-1d schedule verification & tickets' },
-                      { label: '🚫 No Transport Needed', value: 'none', desc: 'Self-arranged or walking distance' },
-                    ].map((opt) => {
-                      const isSelected = refinements['transport']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('transport', 'transportType', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md shadow-slate-900/20 font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                            {opt.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 4. Food & Drinks Question */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Utensils className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Food & Drinks</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: 'Custom Bakery Cake', value: 'custom_cake', desc: 'T-7d bakery design & T-4h pickup' },
-                      { label: 'Standard Cake', value: 'standard_cake', desc: 'T-1d store or bakery pickup' },
-                      { label: 'Restaurant Table Reservation', value: 'restaurant', desc: 'T-14d table booking for group' },
-                      { label: 'Bar / Lounge Booking', value: 'bar', desc: 'T-14d drinks area reservation' },
-                      { label: 'Catering / Home Cooking', value: 'catering', desc: 'T-2d grocery run & food prep' },
-                      { label: '🚫 No Food Booking Needed', value: 'none', desc: 'Handled by venue / guests' },
-                    ].map((opt) => {
-                      const isSelected = refinements['food']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('food', 'foodPlan', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md shadow-slate-900/20 font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                            {opt.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 5. Other Reservations or Party Vendors */}
-                <div className="space-y-3 pt-1">
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <SlidersHorizontal className="w-4 h-4 text-slate-900" />
-                      <span>Popular Party Vendors & Bookings</span>
-                    </label>
-                    <p className="text-xs text-slate-500">
-                      Quickly include standard vendor booking lead times in your schedule.
-                    </p>
-                  </div>
-
-                  {/* Vendor toggle buttons */}
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      'Photographer',
-                      'DJ',
-                      'Balloons',
-                      'Projector',
-                      'Table reservation',
-                    ].map((item) => {
-                      const isSelected = partyItems.includes(item);
-                      return (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() => handleTogglePartyItem(item)}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-sm shadow-slate-900/20'
-                              : 'bg-slate-50 hover:bg-white border-slate-200 text-slate-700'
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3.5 h-3.5" />}
-                          <span>{item}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 6. Anything Specific (Multi Entry Custom Items) */}
-                {renderCustomItemsSection("Add custom task, vendor or item (e.g. Helium balloons, cake order, DJ hire, magician...)")}
-              </>
-            )}
-
-            {/* FRIENDS VISITING REFINEMENTS */}
-            {selectedPreset.id === 'friends' && (
-              <>
-                {/* 1. Multi-Select Dining Options */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Utensils className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Select Dining & Meal Plans (Multiple OK)</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-dining-rest"
-                        checked={diningRestaurant}
-                        onChange={(e) => setDiningRestaurant(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-dining-rest" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🍽️ Restaurant / Pub Dinner Reservations (T-30d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-dining-break"
-                        checked={diningBreakfastHouse}
-                        onChange={(e) => setDiningBreakfastHouse(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-dining-break" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🍳 Breakfast & Coffee In-House Groceries (T-3d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-dining-home"
-                        checked={diningHomeCooked}
-                        onChange={(e) => setDiningHomeCooked(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-dining-home" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🍷 Home-Cooked / Catered Dinners (T-7d)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Activities & Itinerary */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Select Activities & Entertainment</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-act-tourist"
-                        checked={activityTouristSpots}
-                        onChange={(e) => setActivityTouristSpots(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-act-tourist" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🗺️ Tourist Spots, City Walks & Museum Tickets (T-14d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-act-hiking"
-                        checked={activityHiking}
-                        onChange={(e) => setActivityHiking(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-act-hiking" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🥾 Hiking Trails & Outdoor Excursions (T-14d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-act-games"
-                        checked={activityBoardGames}
-                        onChange={(e) => setActivityBoardGames(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-act-games" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🎲 Board Games, Movie Night & Pub Trivia (T-7d)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Accommodations */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Home className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Accommodation & Room Prep</h3>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      id="preset-chk-stay-guest"
-                      checked={stayGuestRoom}
-                      onChange={(e) => setStayGuestRoom(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                    />
-                    <label htmlFor="preset-chk-stay-guest" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                      🛏️ Guest Room Turnover (Clean Sheets, Towels & Wi-Fi) (T-1d)
-                    </label>
-                  </div>
-                </div>
-
-                {/* 4. Anything Specific (Multi Entry Custom Items) */}
-                {renderCustomItemsSection("Add custom task or item (e.g. spare keys, airport pickup, dietary allergies, city tour tickets...)")}
-              </>
-            )}
-
-            {/* TRIP / HOLIDAY REFINEMENTS */}
-            {selectedPreset.id === 'trip' && (
-              <>
-                {/* 1. Passports & Visas (Multi Entry List) */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🛂</span>
-                    <h3 className="text-sm font-bold text-slate-900">Select Passport, Visa & Activity Actions</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-passport"
-                        checked={needPassportRenewal}
-                        onChange={(e) => setNeedPassportRenewal(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-passport" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🛂 Passport Validity Check & Renewal (T-60d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-visa"
-                        checked={needVisa}
-                        onChange={(e) => setNeedVisa(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-visa" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        📋 Entry Visa / e-Visa Application (T-45d)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Booking Status (Multi Entry List) */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">✈️</span>
-                    <h3 className="text-sm font-bold text-slate-900">Booking Status (Multi Entry List)</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-flights"
-                        checked={needFlights}
-                        onChange={(e) => setNeedFlights(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-flights" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🛫 Flights & Airline Price Lock (T-45d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-hotel"
-                        checked={needHotel}
-                        onChange={(e) => setNeedHotel(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-hotel" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🏨 Hotel / Accommodation & Cancellation (T-30d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-rental"
-                        checked={needRentalCar}
-                        onChange={(e) => setNeedRentalCar(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-rental" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🚗 Rental Car & Insurance Verification (T-30d)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Activities */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🎯</span>
-                    <h3 className="text-sm font-bold text-slate-900">Activities</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-lock-activities"
-                        checked={lockActivities}
-                        onChange={(e) => setLockActivities(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-lock-activities" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🎯 Lock in Activities & Excursions (T-21d)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Packing Extra's (Multi Entry List) */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🎒</span>
-                    <h3 className="text-sm font-bold text-slate-900">Packing Extra's (Multi Entry List)</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-sunscreen"
-                        checked={gearSunscreen}
-                        onChange={(e) => setGearSunscreen(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-sunscreen" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🧴 Sunscreen & Beach Essentials (e.g. SPF 50, hats) (T-14d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-hiking-boots"
-                        checked={gearHikingBoots}
-                        onChange={(e) => setGearHikingBoots(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-hiking-boots" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🥾 Hiking Boots & Outdoor Gear (e.g. wool socks) (T-14d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-snorkel"
-                        checked={gearSnorkelGear}
-                        onChange={(e) => setGearSnorkelGear(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-snorkel" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🤿 Snorkel Gear & Water Accessories (T-14d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-ski"
-                        checked={gearSkiGear}
-                        onChange={(e) => setGearSkiGear(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-ski" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🎿 Ski Gear & Thermal Layers (e.g. goggles, base layers, helmets) (T-14d)
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id="preset-chk-adapters"
-                        checked={gearAdapters}
-                        onChange={(e) => setGearAdapters(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 bg-white cursor-pointer"
-                      />
-                      <label htmlFor="preset-chk-adapters" className="text-xs sm:text-sm text-slate-700 font-medium cursor-pointer">
-                        🔌 Universal Power Adapters & Chargers (T-14d)
-                      </label>
-                    </div>
-
-
-                  </div>
-                </div>
-
-                {/* 5. Anything Specific (Multi Entry Custom Items) */}
-                {renderCustomItemsSection("Add custom task or item (e.g. dog sitter, eSIM, ski pass, gear rental...)")}
-              </>
-            )}
-
-            {/* PROJECT MANAGEMENT REFINEMENTS */}
-            {selectedPreset.id === 'project' && (
-              <>
-                {/* 1. Stakeholder Review */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">What stakeholder review is required?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: 'Formal Client Sign-Off', value: 'client', desc: 'T-14d draft milestone lock' },
-                      { label: 'Internal Team Demo', value: 'internal', desc: 'T-7d cross-team review sprint' },
-                      { label: '🚫 Solo / No Review', value: 'none', desc: 'Direct execution & launch' },
-                    ].map((opt) => {
-                      const isSelected = refinements['review']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('review', 'stakeholderReview', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>{opt.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 2. Marketing / Collateral */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Megaphone className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Marketing & launch collateral?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      { label: 'Public Launch Assets & Press', value: 'press', desc: 'T-3d release collateral & social copy' },
-                      { label: 'Release Notes & Docs Only', value: 'docs', desc: 'T-2d changelog & internal guides' },
-                      { label: '🚫 No Marketing Needed', value: 'none', desc: 'Skip marketing milestones' },
-                    ].map((opt) => {
-                      const isSelected = refinements['marketing']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('marketing', 'marketingCollateral', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>{opt.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 3. Anything Specific (Multi Entry Custom Items) */}
-                {renderCustomItemsSection("Add custom milestone or task (e.g. Figma wireframes, staging DB migration, security audit...)")}
-              </>
-            )}
-
-            {/* SUBSCRIPTION CANCELLATION REFINEMENTS */}
-            {selectedPreset.id === 'subscription' && (
-              <>
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <FileCheck className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Cancellation Notice Period?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: '30-Day Notice Policy', value: '30d', desc: 'T-30d early notification reminder' },
-                      { label: '14-Day Notice Policy', value: '14d', desc: 'Standard 2-week cancellation notice' },
-                      { label: 'Immediate / Online', value: 'immediate', desc: 'Click-to-cancel anytime' },
-                    ].map((opt) => {
-                      const isSelected = refinements['notice']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('notice', 'noticePeriod', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>{opt.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Anything Specific (Multi Entry Custom Items) */}
-                {renderCustomItemsSection("Add custom task or requirement (e.g. export contacts, download invoices, remove payment card...)")}
-              </>
-            )}
-
-            {/* MAINTENANCE REFINEMENTS */}
-            {selectedPreset.id === 'maintenance' && (
-              <>
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Wrench className="w-4 h-4 text-slate-900" />
-                    <h3 className="text-sm font-bold text-slate-900">Service Provider or DIY?</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      { label: 'Professional Service / Garage', value: 'pro', desc: 'T-10d booking & quote confirmation' },
-                      { label: 'DIY / Self-Service', value: 'diy', desc: 'Order replacement filters & parts in advance' },
-                    ].map((opt) => {
-                      const isSelected = refinements['serviceType']?.value === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleToggleRefinement('serviceType', 'serviceType', opt.value, opt.label)}
-                          className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                            isSelected
-                              ? 'bg-[#0f172a] border-[#0f172a] text-white shadow-md font-bold'
-                              : 'bg-slate-50/70 border-slate-200/80 text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{opt.label}</span>
-                          <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>{opt.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Anything Specific (Multi Entry Custom Items) */}
-                {renderCustomItemsSection("Add custom task or inspection (e.g. check tire pressure, replace air filter, oil check, warranty lookup...)")}
-              </>
-            )}
-
-          </div>
-
-          {/* Primary CTA: Generate Ahead Of Time Schedule */}
-          <div className="pt-4">
-            <button
-              onClick={handleGeneratePresetSchedule}
-              className="w-full py-4 sm:py-5 rounded-3xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-base sm:text-lg shadow-xl shadow-slate-900/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 cursor-pointer group"
-            >
-              <span>Build Ahead Of Time Milestones</span>
-              <Target className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-            </button>
-          </div>
-
+          <EventCreationWizard
+            initialPresetCategory={mapPresetIdToCanonicalCategory(selectedPreset.id)}
+            onComplete={(createdEvent) => {
+              if (onSaveEvent) {
+                onSaveEvent(createdEvent);
+              } else {
+                onSendMessage(`Created event "${createdEvent.title}" with AheadOfTime milestones`, false);
+              }
+              setSelectedPreset(null);
+              setPresetStep("initial");
+            }}
+            onCancel={() => {
+              setSelectedPreset(null);
+              setPresetStep("initial");
+            }}
+            isModalMode={false}
+          />
         </div>
       )}
 
@@ -1714,9 +898,38 @@ const CustomClarificationCard = ({
   );
 };
 
-const InitialPresetsAndFreeform = ({
-  EVENT_PRESETS,
-  SMALL_PRESETS = [],
+interface InitialPresetsAndFreeformProps {
+  primaryPresets?: PromptPreset[];
+  secondaryPresets?: PromptPreset[];
+  canImportSpreadsheet?: boolean;
+  onboardingProfile?: OnboardingProfile | null;
+  onOpenPreferences?: () => void;
+  handleSelectPreset: (preset: PromptPreset) => void;
+  inputText: string;
+  setInputText: (text: string) => void;
+  isInputFocused: boolean;
+  setIsInputFocused: (focused: boolean) => void;
+  onFocusChange?: (focused: boolean) => void;
+  handleFreeformSubmit: (e: React.FormEvent) => void;
+  isRecording: boolean;
+  startVoiceRecording: () => void;
+  stopVoiceRecording: () => void;
+  isLoading: boolean;
+  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  savedPresets?: CustomPreset[];
+  activePresetExplorerTab?: 'core' | 'saved';
+  setActivePresetExplorerTab?: (tab: 'core' | 'saved') => void;
+  onOpenImporter?: () => void;
+  onStartLaunch?: (preset: CustomPreset) => void;
+  onPresetsUpdated?: (presets: CustomPreset[]) => void;
+}
+
+const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
+  primaryPresets = [],
+  secondaryPresets = [],
+  canImportSpreadsheet = true,
+  onboardingProfile,
+  onOpenPreferences,
   handleSelectPreset,
   inputText,
   setInputText,
@@ -1735,7 +948,7 @@ const InitialPresetsAndFreeform = ({
   onOpenImporter,
   onStartLaunch,
   onPresetsUpdated,
-}: any) => {
+}) => {
   return (
     <div className="space-y-6">
       {/* Dual Track Navigation Bar: Core Presets vs. My Saved Presets + Import Button */}
@@ -1773,7 +986,8 @@ const InitialPresetsAndFreeform = ({
           </button>
         </div>
 
-        {onOpenImporter && (
+        {/* Import Template Button - Retained for Mixed & Business intent per Rule C */}
+        {canImportSpreadsheet && onOpenImporter && (
           <button
             type="button"
             onClick={onOpenImporter}
@@ -1795,9 +1009,9 @@ const InitialPresetsAndFreeform = ({
         />
       ) : (
         <div className="space-y-3">
-          {/* 4 Big Presets: Party / Friends visiting / Trip / Project management */}
+          {/* Primary Presets Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
-            {EVENT_PRESETS.map((preset: any) => (
+            {primaryPresets.map((preset: PromptPreset) => (
               <button
                 key={preset.id}
                 onClick={() => handleSelectPreset(preset)}
@@ -1824,10 +1038,10 @@ const InitialPresetsAndFreeform = ({
             ))}
           </div>
 
-          {/* 2 Small Presets: Subscription cancellation / Maintenance (require less preparation) */}
-          {SMALL_PRESETS && SMALL_PRESETS.length > 0 && (
+          {/* Secondary Presets Row (e.g. Subscription, Maintenance in Mixed/Business) */}
+          {secondaryPresets && secondaryPresets.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              {SMALL_PRESETS.map((preset: any) => (
+              {secondaryPresets.map((preset: PromptPreset) => (
                 <button
                   key={preset.id}
                   onClick={() => handleSelectPreset(preset)}

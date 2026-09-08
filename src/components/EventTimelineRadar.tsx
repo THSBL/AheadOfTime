@@ -178,7 +178,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       eventTime: clarifyTime,
       location: clarifyLocation,
       status: 'milestones_active',
-      milestones: activeEvent.milestones.length > 0 && !isEditingEvent ? activeEvent.milestones : newMilestones,
+      milestones: (activeEvent.milestones || []).length > 0 && !isEditingEvent ? activeEvent.milestones : newMilestones,
       updatedAt: new Date().toISOString(),
     };
 
@@ -257,7 +257,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
   const handleDeleteTask = (milestoneId: string) => {
     if (activeEvent) {
-      const ms = activeEvent.milestones.find((m) => m.id === milestoneId);
+      const ms = (activeEvent.milestones || []).find((m) => m.id === milestoneId);
       const token = getStoredAccessToken();
       if (token && ms) {
         // Also cleanup this individual milestone from Google Calendar in background
@@ -292,14 +292,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     );
   }
 
+  const rawMilestones = activeEvent.milestones || [];
   const countdown = getCountdownStatus(activeEvent.eventDate, currentReferenceDate);
-  const completedCount = activeEvent.milestones.filter((m) => m.status === 'completed').length;
-  const totalCount = activeEvent.milestones.length;
-  const hasMicroTasks = activeEvent.milestones.some((m) => m.scope === 'micro');
-  const microCount = activeEvent.milestones.filter((m) => m.scope === 'micro').length;
+  const completedCount = rawMilestones.filter((m) => m.status === 'completed').length;
+  const totalCount = rawMilestones.length;
+  const hasMicroTasks = rawMilestones.some((m) => m.scope === 'micro');
+  const microCount = rawMilestones.filter((m) => m.scope === 'micro').length;
   const macroCount = totalCount - microCount;
 
-  const displayedMilestones = activeEvent.milestones.filter((ms) => {
+  const displayedMilestones = rawMilestones.filter((ms) => {
     if (scopeFilter === 'all') return true;
     if (scopeFilter === 'macro') return ms.scope !== 'micro';
     if (scopeFilter === 'micro') return ms.scope === 'micro';
@@ -621,7 +622,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   <p className="text-[11px] text-slate-500">Specify details for this event to auto-generate the complete prep checklist.</p>
                 </div>
               </div>
-              {activeEvent.milestones.length > 0 && (
+              {rawMilestones.length > 0 && (
                 <button
                   onClick={() => setIsEditingEvent(false)}
                   className="text-xs text-slate-400 hover:text-slate-700 font-bold px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
@@ -709,7 +710,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               </div>
             </form>
           </div>
-        ) : activeEvent.milestones.length === 0 ? (
+        ) : rawMilestones.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs sm:text-sm bg-white rounded-2xl border border-sky-200/80 space-y-3 shadow-xs">
             <p>No preparation tasks created for this event yet.</p>
             <button

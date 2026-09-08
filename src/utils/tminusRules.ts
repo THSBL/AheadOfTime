@@ -21,6 +21,12 @@ import { inferTaskTimingLocally } from './timingAI';
 export function detectEventCategory(title: string, description?: string): EventCategory {
   const combined = `${title || ''} ${description || ''}`.toLowerCase();
   
+  if (/\b(soccer|football|basketball|baseball|softball|hockey|lacrosse|rugby|tennis|swimming|swim|karate|judo|taekwondo|martial arts|dance|ballet|gymnastics|cheerleading|piano|violin|guitar|choir|band|recital|tournament|championship|match|meet|game|practice|rehearsal|scouts?|athletics|cross country|track)\b/i.test(combined)) {
+    return 'kids_hobbies';
+  }
+  if (/\b(school|science fair|book week|spirit day|spelling bee|math olympiad|open house|pta|parent-teacher|report card|homework|field trip|class project|grade|kindergarten|elementary|high school|exam|school play|costume parade|revision)\b/i.test(combined)) {
+    return 'kids_school';
+  }
   if (/wedding|marriage|matrimony|ceremony|reception|anniversary|celebration|gala|graduation|baptism|christening|shower|party|birthday|bday|b-day|turning \d+|sweet 16|bar mitzvah|bat mitzvah|\bparty\b/i.test(combined)) {
     return 'birthday_party';
   }
@@ -765,6 +771,18 @@ export function generateHeuristicMilestones(
     addMilestone('T-1d', -1 * 24 * 60, 'Prep ingredients & playlist', 'prep', 'Marinate, chop aromatics, set mood lighting and music');
     addMilestone('T-2h', -120, 'Chilling drinks & table setting', 'prep', 'Ice wine, set table, warm serving dishes');
   } 
+  else if (category === 'kids_hobbies') {
+    addMilestone('T-14d', -14 * 24 * 60, 'Confirm Registration & Submit Waivers', 'booking', 'Submit player registration and sign medical emergency waiver');
+    addMilestone('T-7d', -7 * 24 * 60, 'RSVP & Arrange Transport', 'logistics', 'Coordinate carpooling, venue route, and arrival schedule');
+    addMilestone('T-2d', -2 * 24 * 60, 'Pack Uniform & Shinguards', 'prep', 'Clean game jersey, inspect boots/shinguards, and pack snacks');
+    addMilestone('T-2h', -120, 'Departure Buffer & Check-In', 'logistics', 'Arrive early at pitch/court for warmups and coach check-in');
+  }
+  else if (category === 'kids_school') {
+    addMilestone('T-14d', -14 * 24 * 60, 'Buy Project Materials & Supplies', 'shopping', 'Buy poster boards, craft supplies, and review rubric requirements');
+    addMilestone('T-7d', -7 * 24 * 60, 'Assemble Display Board & Complete Draft', 'prep', 'Mount summaries, graphs, and photos on presentation board');
+    addMilestone('T-2d', -2 * 24 * 60, 'Rehearse Presentation & Pack Display', 'prep', 'Run through timed speech rehearsal and pack project securely');
+    addMilestone('T-1d', -1 * 24 * 60, 'Sign Permission Slip & Final Pack', 'admin', 'Sign teacher permission form and pack folder into backpack');
+  } 
   else {
     // Custom generic event
     addMilestone('T-14d', -14 * 24 * 60, 'Initial planning & calendar lock', 'booking', 'Confirm agenda, reservations, and participant availability');
@@ -1021,7 +1039,7 @@ export function generateICSContent(event: CalendarEvent): string {
   ics.push('END:VEVENT');
 
   // Milestone Events
-  event.milestones.forEach((ms) => {
+  (event.milestones || []).forEach((ms) => {
     const msStart = ms.calculatedDate;
     const msEnd = calculateOffsetDate(
       ms.calculatedDate.substring(0, 10),
@@ -1069,7 +1087,8 @@ export function formatMessagingSummary(event: CalendarEvent): string {
   lines.push('');
   lines.push(`⏳ *REVERSE-ENGINEERED T-MINUS TIMELINE:*`);
   
-  if (event.milestones.length === 0) {
+  const milestones = event.milestones || [];
+  if (milestones.length === 0) {
     if (event.watchpoint) {
       lines.push(`🔍 *Watchpoint Active:* ${event.watchpoint.expectedAction}`);
       lines.push(`⏰ *Target Window:* ${event.watchpoint.targetAnnouncementWindow}`);
@@ -1077,7 +1096,7 @@ export function formatMessagingSummary(event: CalendarEvent): string {
       lines.push(`• Milestone schedule pending intake confirmation.`);
     }
   } else {
-    event.milestones.forEach((ms) => {
+    milestones.forEach((ms) => {
       const check = ms.status === 'completed' ? '✅' : '⏳';
       const formattedDate = formatDisplayDate(ms.calculatedDate, true);
       lines.push(`${check} *${ms.tMinusLabel}* (${formattedDate}) — ${ms.title}`);

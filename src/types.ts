@@ -10,6 +10,8 @@ export type EventCategory =
   | 'booking_trip'
   | 'subscription'
   | 'maintenance'
+  | 'kids_school'
+  | 'kids_hobbies'
   | 'custom';
 
 export type MilestoneCategory = 
@@ -287,14 +289,25 @@ export interface EvaluationTopicGroup {
 }
 
 export type AgeRange = '18–25' | '26–35' | '36–50' | '51+';
-export type FamilyStatus = 'Single' | 'Couple' | 'Couple with kids';
-export type CalendarType = 'Personal only' | 'Business only' | 'Mixed (Personal & Work)';
+
+// Technical specification schema types
+export type FamilyStructure = 'single' | 'couple' | 'family_with_kids';
+export type CalendarTypeScope = 'personal' | 'mixed' | 'business';
+
+// Questionnaire & UI display labels
+export type FamilyStatus = 'Single' | 'Couple' | 'Family with kids' | 'Couple with kids';
+export type CalendarType = 'Personal' | 'Mixed (Personal & Work)' | 'Business' | 'Personal only' | 'Business only';
 
 export interface OnboardingProfile {
-  ageRange: AgeRange;
-  familyStatus: FamilyStatus;
-  calendarType: CalendarType;
-  privacyConsentAccepted: boolean;
+  ageRange?: AgeRange;
+  // Core technical schema
+  family_structure?: FamilyStructure;
+  calendar_type?: CalendarTypeScope;
+
+  // Display & legacy backwards compatibility
+  familyStatus?: FamilyStatus;
+  calendarType?: CalendarType;
+  privacyConsentAccepted?: boolean;
   completedAt?: string;
 }
 

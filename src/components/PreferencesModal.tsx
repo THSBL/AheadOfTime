@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   CheckCircle2
 } from 'lucide-react';
-import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType } from '../types';
+import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
 import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
 
 interface PreferencesModalProps {
@@ -40,8 +40,27 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   if (!isOpen) return null;
 
   const [ageRange, setAgeRange] = useState<AgeRange>(profile?.ageRange || '26–35');
-  const [familyStatus, setFamilyStatus] = useState<FamilyStatus>(profile?.familyStatus || 'Couple with kids');
-  const [calendarType, setCalendarType] = useState<CalendarType>(profile?.calendarType || 'Mixed (Personal & Work)');
+  const [familyStatus, setFamilyStatus] = useState<FamilyStatus>(() => {
+    if (profile?.family_structure === 'family_with_kids' || profile?.familyStatus === 'Family with kids' || profile?.familyStatus === 'Couple with kids') {
+      return 'Family with kids';
+    }
+    if (profile?.family_structure === 'couple' || profile?.familyStatus === 'Couple') {
+      return 'Couple';
+    }
+    if (profile?.family_structure === 'single' || profile?.familyStatus === 'Single') {
+      return 'Single';
+    }
+    return 'Family with kids';
+  });
+  const [calendarType, setCalendarType] = useState<CalendarType>(() => {
+    if (profile?.calendar_type === 'personal' || profile?.calendarType === 'Personal' || profile?.calendarType === 'Personal only') {
+      return 'Personal';
+    }
+    if (profile?.calendar_type === 'business' || profile?.calendarType === 'Business' || profile?.calendarType === 'Business only') {
+      return 'Business';
+    }
+    return 'Mixed (Personal & Work)';
+  });
   const [horizon, setHorizon] = useState<number>(agendaHorizonMonths || 6);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -50,8 +69,19 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const family_structure: FamilyStructure = 
+      familyStatus === 'Family with kids' ? 'family_with_kids' :
+      familyStatus === 'Couple' ? 'couple' : 'single';
+
+    const calendar_type: CalendarTypeScope = 
+      calendarType === 'Personal' ? 'personal' :
+      calendarType === 'Business' ? 'business' : 'mixed';
+
     const updated: OnboardingProfile = {
       ageRange,
+      family_structure,
+      calendar_type,
       familyStatus,
       calendarType,
       privacyConsentAccepted: true,
@@ -96,19 +126,19 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
         {/* Form */}
         <form onSubmit={handleSave} className="p-6 space-y-5 overflow-y-auto">
           
-          {/* Family / Household Status */}
+          {/* Family Structure */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-sky-600" />
-              <span>Household &amp; Family Context</span>
+              <span>Family Structure</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['Single / Solo', 'Couple (No kids)', 'Couple with kids', 'Single Parent'] as FamilyStatus[]).map((st) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(['Single', 'Couple', 'Family with kids'] as FamilyStatus[]).map((st) => (
                 <button
                   key={st}
                   type="button"
                   onClick={() => setFamilyStatus(st)}
-                  className={`p-2.5 rounded-xl text-xs font-semibold border text-left transition-all cursor-pointer ${
+                  className={`p-2.5 rounded-xl text-xs font-semibold border text-center transition-all cursor-pointer truncate ${
                     familyStatus === st
                       ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -127,7 +157,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
               <span>Age Demographic</span>
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {(['18–25', '26–35', '36–50', '50+'] as AgeRange[]).map((range) => (
+              {(['18–25', '26–35', '36–50', '51+'] as AgeRange[]).map((range) => (
                 <button
                   key={range}
                   type="button"
@@ -144,14 +174,14 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
             </div>
           </div>
 
-          {/* Calendar Type */}
+          {/* Calendar Type / Scope */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Briefcase className="w-3.5 h-3.5 text-sky-600" />
-              <span>Calendar Context</span>
+              <span>Calendar Type / Scope</span>
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {(['Personal Only', 'Mixed (Personal & Work)', 'Family Shared'] as CalendarType[]).map((cal) => (
+              {(['Personal', 'Mixed (Personal & Work)', 'Business'] as CalendarType[]).map((cal) => (
                 <button
                   key={cal}
                   type="button"
