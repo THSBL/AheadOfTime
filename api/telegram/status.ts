@@ -1,5 +1,5 @@
-import { TelegramService } from '../../server/telegramService';
-import { TelegramSessionStore } from '../../server/telegramStore';
+import { TelegramService } from '../_lib/telegramService.js';
+import { TelegramSessionStore } from '../_lib/telegramStore.js';
 
 export default async function handler(req: any, res: any) {
   const isConfigured = TelegramService.isConfigured();
@@ -15,8 +15,8 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  const host = req.headers['host'] || 'aheadoftime.app';
-  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers?.['host'] || 'aheadoftime.app';
+  const protocol = req.headers?.['x-forwarded-proto'] || 'https';
   const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
 
   return res.status(200).json({

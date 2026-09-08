@@ -1,4 +1,4 @@
-import { TelegramService } from '../../server/telegramService';
+import { TelegramService } from '../_lib/telegramService.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -6,8 +6,8 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const host = req.headers['host'] || 'aheadoftime.app';
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers?.['host'] || 'aheadoftime.app';
+    const protocol = req.headers?.['x-forwarded-proto'] || 'https';
     const defaultUrl = `${protocol}://${host}/api/telegram/webhook`;
     const targetUrl = req.body?.webhookUrl || defaultUrl;
 
