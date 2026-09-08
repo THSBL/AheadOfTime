@@ -1688,8 +1688,8 @@ app.delete("/api/whatsapp/sessions/:sessionId", (req: Request, res: Response) =>
 // -----------------------------------------------------------------------------
 
 // 1. Telegram Incoming Webhook (supports both /webhook/telegram and /api/telegram/webhook)
-app.post("/webhook/telegram", TelegramWebhookHandler.handleWebhook);
-app.post("/api/telegram/webhook", TelegramWebhookHandler.handleWebhook);
+app.post("/webhook/telegram", (req: Request, res: Response) => TelegramWebhookHandler.handleWebhook(req, res));
+app.post("/api/telegram/webhook", (req: Request, res: Response) => TelegramWebhookHandler.handleWebhook(req, res));
 app.get("/api/telegram/webhook", (req: Request, res: Response) => {
   res.json({ ok: true, message: "Ahead Of Time Telegram webhook is active and ready to receive POST updates from Telegram." });
 });
@@ -1743,6 +1743,64 @@ app.post("/api/telegram/set-webhook", async (req: Request, res: Response) => {
   }
 });
 
+// 3b. Pairing Code Generation & Account Linking
+app.post("/api/telegram/pair-code", async (req: Request, res: Response) => {
+  try {
+    const { userId = "user_default", email } = req.body || {};
+    const pairingCode = TelegramSessionStore.createPairingCode(userId, email);
+    let botUsername = "AheadTimebot";
+    try {
+      const botMe = await TelegramService.getMe();
+      if (botMe.ok && botMe.result?.username) {
+        botUsername = botMe.result.username;
+      }
+    } catch (e) {
+      // Fallback
+    }
+    const deepLink = `https://t.me/${botUsername}?start=${pairingCode}`;
+    res.json({
+      ok: true,
+      pairingCode,
+      botUsername,
+      deepLink,
+      expiresInSeconds: 86400,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message || "Failed to create pairing code" });
+  }
+});
+
+app.get("/api/telegram/pair-code", (req: Request, res: Response) => {
+  try {
+    const userId = (req.query.userId as string) || "user_default";
+    const session = TelegramSessionStore.getLinkedSessionForWebUser(userId);
+    res.json({
+      ok: true,
+      isLinked: Boolean(session?.isLinked),
+      session: session || null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message || "Failed to check pairing status" });
+  }
+});
+
+app.delete("/api/telegram/pair-code", (req: Request, res: Response) => {
+  try {
+    const { chatId, userId } = req.body || {};
+    if (chatId) {
+      TelegramSessionStore.unlinkSession(chatId);
+    } else if (userId) {
+      const session = TelegramSessionStore.getLinkedSessionForWebUser(userId);
+      if (session) {
+        TelegramSessionStore.unlinkSession(session.chatId);
+      }
+    }
+    res.json({ ok: true, message: "Unlinked successfully" });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message || "Failed to unlink" });
+  }
+});
+
 // 4. Send Refinement Prompt for an Event to Telegram (Multi-tenant: requires chatId)
 app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
   try {
@@ -1778,7 +1836,16 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
 
 // 5. Get Events created via Telegram
 app.get("/api/telegram/events", (_req: Request, res: Response) => {
-  res.json({ events: TelegramSessionStore.getAllEvents() });
+  res.json({ ok: true, events: TelegramSessionStore.getAllEvents() });
+});
+
+app.get("/api/telegram/event/:id", (req: Request, res: Response) => {
+  const event = TelegramSessionStore.getEvent(req.params.id);
+  if (event) {
+    res.json({ ok: true, event });
+  } else {
+    res.status(404).json({ ok: false, error: "Event not found" });
+  }
 });
 
 // Setup Vite middleware for development or static serving for production

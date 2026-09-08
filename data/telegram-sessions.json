@@ -10,6 +10,15 @@
         "evt-tg-1788863786082"
       ],
       "lastCreatedEventId": "evt-tg-1788863786082"
+    },
+    {
+      "chatId": 8226601425,
+      "createdAt": "2026-09-08T12:05:59.114Z",
+      "lastActiveAt": "2026-09-08T12:06:17.042Z",
+      "eventsCreated": [
+        "evt-tg-1788869177039"
+      ],
+      "lastCreatedEventId": "evt-tg-1788869177039"
     }
   ],
   "events": [
@@ -280,7 +289,108 @@
       "rawInputSnippet": "Trip to Scottish Highlands on October 14",
       "createdAt": "2026-09-08T10:36:26.088Z",
       "updatedAt": "2026-09-08T10:36:26.088Z"
+    },
+    {
+      "id": "evt-tg-1788869177039",
+      "title": "Schedule a sprint demo next Friday",
+      "category": "project_deadline",
+      "eventDate": "2026-09-17",
+      "eventTime": "15:00",
+      "status": "milestones_active",
+      "needsRefinement": true,
+      "context": {
+        "customNote": "Schedule a sprint demo next Friday at 3pm"
+      },
+      "milestones": [
+        {
+          "id": "ms-evt-tg-1788869177039-t10d-77042-cei",
+          "eventId": "evt-tg-1788869177039",
+          "tMinusLabel": "T-10d",
+          "tMinusOffsetMinutes": -14400,
+          "calculatedDate": "2026-09-07T15:00:00.000Z",
+          "title": "Deliverable draft & progress sync",
+          "description": "Review milestone progress against delivery targets",
+          "category": "review",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788869177039-t10d-77042-cei_1",
+              "title": "Completed action item artifact for Deliverable draft & progress sync",
+              "type": "coordination",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788869177039-t7d-77042-ac5",
+          "eventId": "evt-tg-1788869177039",
+          "tMinusLabel": "T-7d",
+          "tMinusOffsetMinutes": -10080,
+          "calculatedDate": "2026-09-10T15:00:00.000Z",
+          "title": "Feature freeze & QA regression cycle",
+          "description": "Lock code changes, execute critical test suites, and patch high-priority bugs",
+          "category": "work",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788869177039-t7d-77042-ac5_1",
+              "title": "Completed action item artifact for Feature freeze & QA regression cycle",
+              "type": "coordination",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788869177039-t1d-77042-pmb",
+          "eventId": "evt-tg-1788869177039",
+          "tMinusLabel": "T-1d",
+          "tMinusOffsetMinutes": -1440,
+          "calculatedDate": "2026-09-16T15:00:00.000Z",
+          "title": "Deployment runbook & roll-back rehearsal",
+          "description": "Verify staging environment, database migrations, credentials, and backup status",
+          "category": "logistics",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788869177039-t1d-77042-pmb_1",
+              "title": "Completed action item artifact for Deployment runbook & roll-back rehearsal",
+              "type": "document",
+              "is_completed": false
+            }
+          ]
+        },
+        {
+          "id": "ms-evt-tg-1788869177039-t2h-77042-y83",
+          "eventId": "evt-tg-1788869177039",
+          "tMinusLabel": "T-2h",
+          "tMinusOffsetMinutes": -120,
+          "calculatedDate": "2026-09-17T13:00:00.000Z",
+          "title": "Go/No-Go launch check & team standup",
+          "description": "Conduct final operational sync, monitor alarms, and execute release sequence",
+          "category": "logistics",
+          "status": "pending",
+          "kind": "milestone",
+          "needsRefinement": false,
+          "deliverables": [
+            {
+              "deliverable_id": "del_ms-evt-tg-1788869177039-t2h-77042-y83_1",
+              "title": "Completed action item artifact for Go/No-Go launch check & team standup",
+              "type": "document",
+              "is_completed": false
+            }
+          ]
+        }
+      ],
+      "rawInputSnippet": "Schedule a sprint demo next Friday",
+      "createdAt": "2026-09-08T12:06:17.042Z",
+      "updatedAt": "2026-09-08T12:06:17.042Z"
     }
   ],
-  "updatedAt": "2026-09-08T10:36:26.088Z"
+  "updatedAt": "2026-09-08T12:06:17.043Z"
 }

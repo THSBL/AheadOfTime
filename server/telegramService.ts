@@ -48,13 +48,24 @@ export class TelegramService {
 
     try {
       const url = `${this.getApiBase()}/sendMessage`;
-      const payload = {
+      const parseMode = options.parse_mode !== undefined ? options.parse_mode : 'Markdown';
+      const payload: Record<string, any> = {
         chat_id: chatId,
         text,
-        parse_mode: options.parse_mode ?? 'Markdown',
-        reply_markup: options.reply_markup,
         disable_web_page_preview: options.disable_web_page_preview ?? false,
       };
+
+      if (parseMode) {
+        payload.parse_mode = parseMode;
+      }
+      if (options.reply_markup) {
+        payload.reply_markup = options.reply_markup;
+      }
+
+      console.log(`📤 Telegram sendMessage -> chat ${chatId}:`, {
+        textSnippet: text.slice(0, 60),
+        parse_mode: parseMode,
+      });
 
       const res = await fetch(url, {
         method: 'POST',
@@ -62,7 +73,22 @@ export class TelegramService {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      let data = await res.json();
+      console.log('📥 Telegram sendMessage response:', JSON.stringify(data));
+
+      // Automatic fallback: If Markdown entity parsing fails, retry in plain text so message is NEVER lost
+      if (!data.ok && parseMode && data.description?.includes("can't parse entities")) {
+        console.warn('⚠️ Telegram markdown parsing failed, retrying immediately in plain text...');
+        delete payload.parse_mode;
+        const retryRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        data = await retryRes.json();
+        console.log('📥 Telegram sendMessage fallback response:', JSON.stringify(data));
+      }
+
       if (!data.ok) {
         console.error('❌ Telegram API error:', data);
       }
@@ -110,7 +136,7 @@ export class TelegramService {
     customText?: string
   ): Promise<{ ok: boolean; result?: any }> {
     const cleanUrl = appBaseUrl.replace(/\/+$/, '');
-    const refineDeepLink = `${cleanUrl}/?eventId=${encodeURIComponent(event.id)}&stage=refine`;
+    const refineDeepLink = `${cleanUrl}/?event_id=${encodeURIComponent(event.id)}&action=refine`;
 
     let text = customText;
     if (!text) {
@@ -175,14 +201,17 @@ export class TelegramService {
 
     try {
       const url = `${this.getApiBase()}/setWebhook`;
+      const token = secretToken || process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
       const body: any = {
         url: webhookUrl,
         allowed_updates: ['message', 'callback_query'],
         drop_pending_updates: false,
       };
-      if (secretToken) {
-        body.secret_token = secretToken;
+      if (token) {
+        body.secret_token = token;
       }
+
+      console.log(`Setting Telegram webhook to ${webhookUrl} (secret configured: ${Boolean(token)})`);
 
       const res = await fetch(url, {
         method: 'POST',

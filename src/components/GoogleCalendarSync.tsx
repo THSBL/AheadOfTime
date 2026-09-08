@@ -38,20 +38,25 @@ import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from '../services/goo
 import { formatDisplayDate } from '../utils/tminusRules';
 
 interface GoogleCalendarSyncProps {
-  events: CalendarEvent[];
+  events?: CalendarEvent[];
+  existingEvents?: CalendarEvent[];
   selectedEventId?: string;
   onUpdateEvent?: (updated: CalendarEvent) => void;
   onUpdateAllEvents?: (updatedEvents: CalendarEvent[]) => void;
+  onSyncComplete?: (syncedEvents: CalendarEvent[]) => void;
   onClose?: () => void;
 }
 
 export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
-  events,
+  events: propEvents,
+  existingEvents,
   selectedEventId,
   onUpdateEvent,
   onUpdateAllEvents,
+  onSyncComplete,
   onClose,
 }) => {
+  const events = propEvents || existingEvents || [];
   const [accessToken, setAccessToken] = useState<string | null>(getStoredAccessToken());
   const [calendarProfile, setCalendarProfile] = useState<GoogleCalendarProfile | null>(() => {
     const saved = sessionStorage.getItem('gcal_profile');

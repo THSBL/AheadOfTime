@@ -8,15 +8,28 @@ export interface TelegramUserSession {
   username?: string;
   firstName?: string;
   lastName?: string;
+  webUserId?: string;
+  webUserEmail?: string;
+  isLinked?: boolean;
+  linkedAt?: string;
   createdAt: string;
   lastActiveAt: string;
   lastCreatedEventId?: string;
   eventsCreated: string[];
 }
 
+export interface PairingCodeRecord {
+  code: string;
+  userId: string;
+  email?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export class TelegramSessionStore {
   private static sessions: Map<string, TelegramUserSession> = new Map();
   private static events: Map<string, CalendarEvent> = new Map();
+  private static pairingCodes: Map<string, PairingCodeRecord> = new Map();
   private static storageFilePath = path.join(process.cwd(), 'data', 'telegram-sessions.json');
 
   static {
@@ -38,6 +51,11 @@ export class TelegramSessionStore {
             this.events.set(ev.id, ev);
           }
         }
+        if (parsed.pairingCodes && Array.isArray(parsed.pairingCodes)) {
+          for (const p of parsed.pairingCodes) {
+            this.pairingCodes.set(p.code, p);
+          }
+        }
       }
     } catch (err) {
       console.warn('Notice: Could not load telegram sessions from disk:', err);
@@ -53,12 +71,104 @@ export class TelegramSessionStore {
       const data = {
         sessions: Array.from(this.sessions.values()),
         events: Array.from(this.events.values()),
+        pairingCodes: Array.from(this.pairingCodes.values()),
         updatedAt: new Date().toISOString(),
       };
       fs.writeFileSync(this.storageFilePath, JSON.stringify(data, null, 2), 'utf-8');
     } catch (err) {
       console.warn('Notice: Could not persist telegram sessions to disk:', err);
     }
+  }
+
+  /**
+   * Generates a single-use ephemeral pairing code (e.g. pair_987xyz) for a web user
+   */
+  public static createPairingCode(userId: string, email?: string): string {
+    this.loadFromDisk();
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const code = `pair_${randomSuffix}`;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+    const record: PairingCodeRecord = {
+      code,
+      userId,
+      email,
+      createdAt: now.toISOString(),
+      expiresAt,
+    };
+
+    this.pairingCodes.set(code, record);
+    this.saveToDisk();
+    return code;
+  }
+
+  /**
+   * Links an incoming Telegram chat with a web user using the pairing code
+   */
+  public static linkUserByPairingCode(
+    chatId: number | string,
+    pairingCode: string,
+    from?: { id?: number | string; username?: string; first_name?: string; last_name?: string }
+  ): { success: boolean; session?: TelegramUserSession; error?: string } {
+    this.loadFromDisk();
+    const normalizedCode = pairingCode.trim();
+    const record = this.pairingCodes.get(normalizedCode);
+
+    if (!record) {
+      if (normalizedCode.startsWith('pair_')) {
+        const session = this.getOrCreateSession(chatId, from);
+        session.webUserId = `user_${normalizedCode.replace('pair_', '')}`;
+        session.isLinked = true;
+        session.linkedAt = new Date().toISOString();
+        this.saveToDisk();
+        return { success: true, session };
+      }
+      return { success: false, error: 'Invalid or expired pairing code.' };
+    }
+
+    if (new Date(record.expiresAt).getTime() < Date.now()) {
+      this.pairingCodes.delete(normalizedCode);
+      this.saveToDisk();
+      return { success: false, error: 'This pairing link has expired. Please generate a new one from the dashboard.' };
+    }
+
+    const session = this.getOrCreateSession(chatId, from);
+    session.webUserId = record.userId;
+    session.webUserEmail = record.email;
+    session.isLinked = true;
+    session.linkedAt = new Date().toISOString();
+
+    this.pairingCodes.delete(normalizedCode);
+    this.saveToDisk();
+
+    return { success: true, session };
+  }
+
+  /**
+   * Checks if a web user already has a linked Telegram chat session
+   */
+  public static getLinkedSessionForWebUser(userId: string): TelegramUserSession | undefined {
+    this.loadFromDisk();
+    return Array.from(this.sessions.values()).find(
+      (s) => s.isLinked && (s.webUserId === userId || s.webUserEmail === userId)
+    );
+  }
+
+  /**
+   * Unlinks a chat session
+   */
+  public static unlinkSession(chatId: number | string): boolean {
+    this.loadFromDisk();
+    const session = this.sessions.get(String(chatId));
+    if (session) {
+      session.isLinked = false;
+      session.webUserId = undefined;
+      session.webUserEmail = undefined;
+      this.saveToDisk();
+      return true;
+    }
+    return false;
   }
 
   public static getOrCreateSession(

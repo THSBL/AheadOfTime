@@ -198,7 +198,7 @@ export class GeminiCalendarAgent {
       };
     }
 
-    const eventId = `evt-tg-${Date.now()}`;
+    const eventId = `evt_${Date.now()}`;
     const category = detectEventCategory(summary);
     const dateStr = start_iso.substring(0, 10);
     const timeMatch = start_iso.match(/T(\d{2}:\d{2})/);

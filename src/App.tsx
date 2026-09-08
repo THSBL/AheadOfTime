@@ -357,34 +357,74 @@ function App() {
     setIsManualModalOpen(isNewEventRoute || isEditRoute);
   }, [location.pathname, location.search]);
 
-  // Deep-link handler for Telegram & external refinement: ?eventId=...&stage=refine
+  // Deep-link handler for Telegram & external refinement: ?event_id=...&action=refine
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
-    const eventIdParam = sp.get('eventId');
-    const stageParam = sp.get('stage');
+    const eventIdParam = sp.get('event_id') || sp.get('eventId');
+    const actionParam = sp.get('action') || sp.get('stage');
 
-    if (eventIdParam && (stageParam === 'refine' || stageParam === 'step2_refinement')) {
+    if (eventIdParam) {
       // 1. Check local state
       const target = events.find((e) => e.id === eventIdParam);
       if (target) {
-        setRefinementEvent(target);
-        setWizardStage('step2_refinement');
         setSelectedEventId(target.id);
-        setIsManualModalOpen(true);
+        setMobileDashboardView('detail');
         setActiveTab('tasks');
+        if (actionParam === 'refine' || actionParam === 'step2_refinement') {
+          setRefinementEvent(target);
+          setWizardStage('step2_refinement');
+          setIsManualModalOpen(true);
+        }
+        // Clean URL parameters so manual refresh doesn't trap user
+        window.history.replaceState({}, document.title, window.location.pathname);
       } else {
         // 2. Fetch from Telegram server events store
-        fetch('/api/telegram/events')
+        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}`)
           .then((r) => r.json())
           .then((data) => {
-            const found = (data.events || []).find((e: CalendarEvent) => e.id === eventIdParam);
+            const found = data.event;
             if (found) {
-              setEvents((prev) => [found, ...prev.filter((e) => e.id !== found.id)]);
-              setRefinementEvent(found);
-              setWizardStage('step2_refinement');
+              setEvents((prev) => {
+                const updated = [found, ...prev.filter((e) => e.id !== found.id)];
+                try {
+                  localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
+                } catch (e) {}
+                return updated;
+              });
               setSelectedEventId(found.id);
-              setIsManualModalOpen(true);
+              setMobileDashboardView('detail');
               setActiveTab('tasks');
+              if (actionParam === 'refine' || actionParam === 'step2_refinement') {
+                setRefinementEvent(found);
+                setWizardStage('step2_refinement');
+                setIsManualModalOpen(true);
+              }
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+              // Fallback to searching all events
+              return fetch('/api/telegram/events')
+                .then((r) => r.json())
+                .then((allData) => {
+                  const f = (allData.events || []).find((e: CalendarEvent) => e.id === eventIdParam);
+                  if (f) {
+                    setEvents((prev) => {
+                      const updated = [f, ...prev.filter((e) => e.id !== f.id)];
+                      try {
+                        localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
+                      } catch (e) {}
+                      return updated;
+                    });
+                    setSelectedEventId(f.id);
+                    setMobileDashboardView('detail');
+                    setActiveTab('tasks');
+                    if (actionParam === 'refine' || actionParam === 'step2_refinement') {
+                      setRefinementEvent(f);
+                      setWizardStage('step2_refinement');
+                      setIsManualModalOpen(true);
+                    }
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  }
+                });
             }
           })
           .catch((err) => console.warn('Could not fetch telegram event for refinement:', err));
@@ -1630,8 +1670,24 @@ function App() {
 // Landing Route Component
 function LandingRoute() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const returnTo = searchParams.get('returnTo');
+  const hasDeepLinkEvent = searchParams.has('event_id') || searchParams.has('eventId');
+
+  useEffect(() => {
+    if (hasDeepLinkEvent) {
+      try {
+        localStorage.setItem('aot_onboarding_completed', 'true');
+        localStorage.setItem('has_completed_onboarding', 'true');
+      } catch (e) {}
+      navigate('/dashboard' + location.search, { replace: true });
+    }
+  }, [hasDeepLinkEvent, location.search, navigate]);
+
+  if (hasDeepLinkEvent) {
+    return null;
+  }
 
   const hasCompleted = typeof window !== 'undefined' && (
     localStorage.getItem('aot_onboarding_completed') === 'true' ||

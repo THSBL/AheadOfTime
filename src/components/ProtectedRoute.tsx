@@ -21,7 +21,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ isAuthenticated,
     Boolean(getStoredAccessToken() && !isTokenExpired())
   );
 
-  const authenticated = isAuthenticated ?? (hasCompletedOnboarding || isConnected);
+  const searchParams = new URLSearchParams(location.search);
+  const hasDeepLinkEvent = searchParams.has('event_id') || searchParams.has('eventId');
+
+  if (hasDeepLinkEvent && typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('aot_onboarding_completed', 'true');
+      localStorage.setItem('has_completed_onboarding', 'true');
+    } catch (e) {
+      console.warn('Failed to set onboarding flag:', e);
+    }
+  }
+
+  const authenticated = isAuthenticated ?? (hasCompletedOnboarding || isConnected || hasDeepLinkEvent);
 
   if (!authenticated) {
     const returnTo = encodeURIComponent(location.pathname + location.search + location.hash);

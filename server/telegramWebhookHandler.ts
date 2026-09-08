@@ -5,53 +5,109 @@ import { CalendarEvent } from '../src/types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 
 export class TelegramWebhookHandler {
+  // Deduplication cache: stores update_id -> timestamp (ms)
+  private static processedUpdateIds: Map<number, number> = new Map();
+
+  static {
+    // Periodically clean up update_ids older than 2 minutes
+    setInterval(() => {
+      const cutoff = Date.now() - 120000;
+      for (const [id, time] of TelegramWebhookHandler.processedUpdateIds.entries()) {
+        if (time < cutoff) {
+          TelegramWebhookHandler.processedUpdateIds.delete(id);
+        }
+      }
+    }, 60000);
+  }
+
   /**
    * Primary entry point for POST /api/telegram/webhook and /webhook/telegram
    */
   public static async handleWebhook(req: Request, res: Response): Promise<void> {
-    // 1. Return 200 OK immediately to satisfy Telegram timeout requirements (< 5000ms)
-    res.status(200).json({ ok: true });
-
     try {
-      // 2. Webhook secret verification (if configured)
+      // 1. Webhook secret verification (if configured & supplied)
       const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
-      if (expectedSecret) {
-        const receivedSecret = req.headers['x-telegram-bot-api-secret-token'];
+      const receivedSecret =
+        req.headers['x-telegram-bot-api-secret-token'] ||
+        req.headers['X-Telegram-Bot-Api-Secret-Token'];
+      
+      if (expectedSecret && receivedSecret) {
         if (receivedSecret !== expectedSecret) {
           console.warn('⚠️ Telegram webhook secret mismatch, ignoring update.');
+          res.status(403).json({ error: 'Secret mismatch' });
           return;
         }
       }
 
       const update = req.body;
-      if (!update) return;
+      if (!update || typeof update !== 'object') {
+        res.status(200).json({ ok: true });
+        return;
+      }
 
+      // 2. Update Deduplication Check
+      const updateId = update.update_id;
+      if (typeof updateId === 'number') {
+        if (TelegramWebhookHandler.processedUpdateIds.has(updateId)) {
+          console.log(`⚠️ Telegram duplicate update_id ${updateId} discarded.`);
+          res.status(200).json({ ok: true, duplicate: true });
+          return;
+        }
+        TelegramWebhookHandler.processedUpdateIds.set(updateId, Date.now());
+      }
+
+      // 3. Fast Webhook Acknowledgment: Immediately respond HTTP 200 so Telegram never retries
+      res.status(200).json({ ok: true });
+
+      // 4. Resolve application base URL
       const appBaseUrl =
         process.env.APP_URL ||
         process.env.PUBLIC_URL ||
-        `https://${req.get('host')}` ||
-        'http://localhost:3000';
+        (req.headers['x-forwarded-host'] ? `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host']}` : '') ||
+        (req.get('host') ? `https://${req.get('host')}` : '') ||
+        'https://aheadoftime.app';
 
-      // 3. Handle Callback Query (Button clicks)
-      if (update.callback_query) {
-        await this.handleCallbackQuery(update.callback_query, appBaseUrl);
-        return;
-      }
+      console.log('📥 Telegram update received & ACKed:', {
+        update_id: update.update_id,
+        has_message: Boolean(update.message),
+        has_callback: Boolean(update.callback_query),
+        chat_id: update.message?.chat?.id || update.callback_query?.message?.chat?.id,
+        text: update.message?.text?.slice(0, 40),
+      });
 
-      // 4. Handle Incoming Message (standard, edited, or channel post)
-      const incomingMessage = update.message || update.edited_message || update.channel_post;
-      if (incomingMessage) {
-        await this.handleIncomingMessage(incomingMessage, appBaseUrl);
-        return;
-      }
+      // 5. Run processing asynchronously in background
+      setImmediate(async () => {
+        try {
+          // Handle Callback Query (Button clicks)
+          if (update.callback_query) {
+            await TelegramWebhookHandler.handleCallbackQuery(update.callback_query, appBaseUrl);
+            return;
+          }
 
-      // 5. Handle update with effective_chat fallback if present
-      if (update.effective_chat?.id && update.text) {
-        await this.handleIncomingMessage({ chat: update.effective_chat, text: update.text, from: update.effective_user }, appBaseUrl);
-        return;
-      }
+          // Handle Incoming Message (standard, edited, or channel post)
+          const incomingMessage = update.message || update.edited_message || update.channel_post;
+          if (incomingMessage) {
+            await TelegramWebhookHandler.handleIncomingMessage(incomingMessage, appBaseUrl);
+            return;
+          }
+
+          // Handle update with effective_chat fallback if present
+          if (update.effective_chat?.id && update.text) {
+            await TelegramWebhookHandler.handleIncomingMessage(
+              { chat: update.effective_chat, text: update.text, from: update.effective_user },
+              appBaseUrl
+            );
+            return;
+          }
+        } catch (bgErr) {
+          console.error('❌ Error in background Telegram update processing:', bgErr);
+        }
+      });
     } catch (err) {
       console.error('❌ Error handling Telegram webhook update:', err);
+      if (!res.headersSent) {
+        res.status(200).json({ ok: true, error: (err as any)?.message });
+      }
     }
   }
 
@@ -67,8 +123,68 @@ export class TelegramWebhookHandler {
 
     const session = TelegramSessionStore.getOrCreateSession(chatId, from);
 
-    // Command: /start
-    if (text === '/start' || text.startsWith('/start ')) {
+    // Command: /start (with pairing code support)
+    if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start=')) {
+      // 1. Check for deep-linked pairing code: e.g. "/start pair_987xyz"
+      const match = text.match(/^\/start(?:=|\s+)(pair_[a-zA-Z0-9_-]+)/);
+      if (match) {
+        const pairingCode = match[1];
+        console.log(`🔗 Attempting to link Telegram chat ${chatId} with pairing code ${pairingCode}...`);
+        const linkResult = TelegramSessionStore.linkUserByPairingCode(chatId, pairingCode, from);
+
+        if (linkResult.success) {
+          const successMsg = [
+            `✅ *Successfully connected to Ahead Of Time!*`,
+            ``,
+            `Your Telegram chat is now paired with your executive calendar account.`,
+            ``,
+            `*What you can do right now*:`,
+            `• Schedule events with reverse runways (e.g. _"Trip to Scottish Highlands Oct 14-18 with 4 friends"_ or _"Sprint demo next Friday at 3pm"_)`,
+            `• Check availability (e.g. _"What is on my schedule tomorrow morning?"_)`,
+            `• Receive prep notifications directly on Telegram as milestones approach.`,
+            ``,
+            `Type /status anytime to inspect your active connection.`,
+          ].join('\n');
+
+          await TelegramService.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
+          return;
+        } else {
+          const errorMsg = [
+            `⚠️ *Pairing Failed*: ${linkResult.error || 'The connection link is invalid or has expired.'}`,
+            ``,
+            `Please visit the settings page on your web dashboard to generate a fresh pairing link:`,
+            `${appBaseUrl}/settings/credentials`,
+          ].join('\n');
+
+          await TelegramService.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
+          return;
+        }
+      }
+
+      // 2. Standard /start without pairing code
+      if (!session.isLinked) {
+        const onboardingMsg = [
+          `👋 *Welcome to Ahead Of Time!*`,
+          ``,
+          `I am your executive calendar assistant communicating via Telegram. I schedule your events and calculate backward preparation runways so you are never rushed.`,
+          ``,
+          `🔗 *Link Your Calendar Account*:`,
+          `To pair this chat with your web dashboard, open your settings and click *Connect Telegram Account*:`,
+          `${appBaseUrl}/settings/credentials`,
+          ``,
+          `*Quick Test*:`,
+          `You can also start prompting me right now in plain English:`,
+          `• _"Alex 30th birthday dinner Oct 24 at 8pm"_`,
+          `• _"Trip to Scottish Highlands Oct 14-18 with 4 friends"_`,
+          `• _"What is my schedule next Monday?"_`,
+          ``,
+          `*Commands*: /events, /status, /help`,
+        ].join('\n');
+
+        await TelegramService.sendMessage(chatId, onboardingMsg, { parse_mode: 'Markdown' });
+        return;
+      }
+
       const welcome = [
         `*Ahead Of Time* — Active Executive Calendar Assistant`,
         ``,
@@ -92,6 +208,17 @@ export class TelegramWebhookHandler {
       return;
     }
 
+    // Command: /unlink
+    if (text === '/unlink') {
+      TelegramSessionStore.unlinkSession(chatId);
+      await TelegramService.sendMessage(
+        chatId,
+        `🔌 *Account Unlinked*\n\nYour Telegram chat has been disconnected from your web account. You can reconnect anytime via ${appBaseUrl}/settings/credentials.`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
     // Command: /help
     if (text === '/help') {
       const helpText = [
@@ -105,6 +232,7 @@ export class TelegramWebhookHandler {
         `*Available Commands*:`,
         `• /events — List recently drafted events`,
         `• /status — Connection and timezone status`,
+        `• /unlink — Disconnect from web dashboard`,
         `• /sync — Trigger bidirectional calendar sync`,
       ].join('\n');
 
@@ -115,10 +243,12 @@ export class TelegramWebhookHandler {
     // Command: /status
     if (text === '/status') {
       const events = TelegramSessionStore.getRecentEventsForChat(chatId);
+      const isLinked = Boolean(session.isLinked);
       const statusText = [
         `*System Status*:`,
         `• *Bot*: Online & Connected`,
         `• *Chat ID*: \`${chatId}\``,
+        `• *Account Link*: ${isLinked ? `✅ Paired (${session.webUserEmail || session.webUserId || 'Active'})` : `⚠️ Unlinked — [Pair at ${appBaseUrl}/settings/credentials](${appBaseUrl}/settings/credentials)`}`,
         `• *User*: ${session.firstName || session.username || 'User'}`,
         `• *Tracked Events*: ${events.length} active in session`,
         `• *Webapp URL*: ${appBaseUrl}`,
@@ -142,7 +272,7 @@ export class TelegramWebhookHandler {
       const listText = [
         `*Active Events & Runways* (${events.length}):`,
         ...events.slice(0, 5).map((ev) => {
-          const refineUrl = `${appBaseUrl}/?eventId=${encodeURIComponent(ev.id)}&stage=refine`;
+          const refineUrl = `${appBaseUrl}/?event_id=${encodeURIComponent(ev.id)}&action=refine`;
           return `• *${ev.title}* (${ev.eventDate})\n  [Refine in App](${refineUrl})`;
         }),
       ].join('\n\n');
@@ -220,7 +350,7 @@ export class TelegramWebhookHandler {
       if (chatId) {
         await TelegramService.sendMessage(
           chatId,
-          `💬 To add tasks or details to this event, type it directly or open the webapp:\n${appBaseUrl}/?eventId=${encodeURIComponent(eventId)}&stage=refine`
+          `💬 To add tasks or details to this event, type it directly or open the webapp:\n${appBaseUrl}/?event_id=${encodeURIComponent(eventId)}&action=refine`
         );
       }
       return;
