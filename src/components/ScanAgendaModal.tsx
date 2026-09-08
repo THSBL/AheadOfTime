@@ -321,7 +321,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   };
 
   const getFilteredEvents = (filter: typeof activeFilter) => {
-    return scannedEvents.filter((e) => {
+    const list = scannedEvents.filter((e) => {
       // If not explicitly toggled to show already imported items, hide them
       if (!showAlreadyImported && e.isAlreadyInDashboard) return false;
 
@@ -333,6 +333,12 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       if (filter === 'deadlines') return e.detectedCategory === 'project_deadline';
       if (filter === 'routine') return e.isRoutine;
       return true;
+    });
+
+    return [...list].sort((a, b) => {
+      const timeA = new Date(a.start?.dateTime || a.start?.date || '').getTime() || 0;
+      const timeB = new Date(b.start?.dateTime || b.start?.date || '').getTime() || 0;
+      return timeA - timeB;
     });
   };
 

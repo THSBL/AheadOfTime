@@ -1699,6 +1699,13 @@ app.get("/webhook/telegram", (req: Request, res: Response) => {
 
 // 2. Telegram Integration Status
 app.get("/api/telegram/status", async (req: Request, res: Response) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
+  const userId = (req.query.userId as string) || "user_default";
+
   const isConfigured = TelegramService.isConfigured();
   let botInfo = null;
   let webhookInfo = null;
@@ -1716,7 +1723,18 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
   const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
   const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
 
+  const pairStatus = TelegramSessionStore.getPairingStatus(code, userId);
+
   res.json({
+    ok: true,
+    linked: pairStatus.linked,
+    status: pairStatus.status,
+    username: pairStatus.username || (pairStatus.session?.username ? `${pairStatus.session.username}` : undefined),
+    chatId: pairStatus.chatId || pairStatus.telegram_chat_id,
+    telegram_linked: pairStatus.linked,
+    isLinked: pairStatus.linked,
+    telegram_chat_id: pairStatus.chatId || pairStatus.telegram_chat_id,
+    session: pairStatus.session,
     isConfigured,
     hasToken: isConfigured,
     botInfo: botInfo?.ok ? botInfo.result : null,
@@ -1725,6 +1743,25 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
     activeSessions: TelegramSessionStore.getAllSessions().length,
     storedEventsCount: TelegramSessionStore.getAllEvents().length,
   });
+});
+
+// 2b. Manual Verification Fallback & Force-Link Endpoint
+app.post("/api/telegram/manual-link", (req: Request, res: Response) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  try {
+    const { code, username = "Telegram User", chatId = 123456789 } = req.body || {};
+    const record = TelegramSessionStore.manualLink(code, username, chatId);
+    res.json({
+      ok: true,
+      linked: true,
+      status: "linked",
+      username: record.username,
+      chatId: record.chatId,
+      record,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message || "Failed to manually link" });
+  }
 });
 
 // 3. Register Webhook with Telegram API

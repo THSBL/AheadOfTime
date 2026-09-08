@@ -99,6 +99,69 @@ export function formatDisplayDate(isoString: string, includeTime: boolean = fals
 }
 
 /**
+ * Safely parses the event date & time into a millisecond epoch timestamp for chronological calculations.
+ */
+export function getEventDateTimestamp(event: { eventDate?: string; eventTime?: string }): number {
+  if (!event.eventDate) return Number.MAX_SAFE_INTEGER;
+  // If eventDate is already a full ISO string (with T or Z)
+  if (event.eventDate.includes('T')) {
+    const ts = new Date(event.eventDate).getTime();
+    if (!isNaN(ts)) return ts;
+  }
+  // Otherwise parse date + optional time (default to 09:00 if not specified)
+  const time = event.eventTime && event.eventTime.length >= 4 ? event.eventTime : '09:00';
+  const ts = new Date(`${event.eventDate}T${time.length === 5 ? time : '09:00'}:00`).getTime();
+  if (!isNaN(ts)) return ts;
+  const fallback = new Date(event.eventDate).getTime();
+  return isNaN(fallback) ? Number.MAX_SAFE_INTEGER : fallback;
+}
+
+/**
+ * Sorts active calendar events chronologically from shortly upcoming (nearest in time)
+ * to further away in the future.
+ * Upcoming events are sorted ascending (nearest upcoming first).
+ * Past events are placed afterwards in descending order (most recent past first).
+ */
+export function sortEventsUpcomingFirst<T extends CalendarEvent>(events: T[], referenceDateStr?: string): T[] {
+  if (!events || events.length <= 1) return events;
+
+  let refTimestamp = Date.now();
+  if (referenceDateStr) {
+    const parsedRef = referenceDateStr.includes('T') 
+      ? new Date(referenceDateStr).getTime() 
+      : new Date(`${referenceDateStr}T00:00:00`).getTime();
+    if (!isNaN(parsedRef)) {
+      refTimestamp = parsedRef;
+    }
+  }
+
+  // Grace threshold for "today" (beginning of the reference day minus 12 hours buffer)
+  const todayThreshold = refTimestamp - (12 * 60 * 60 * 1000);
+
+  return [...events].sort((a, b) => {
+    const timeA = getEventDateTimestamp(a);
+    const timeB = getEventDateTimestamp(b);
+
+    const isUpcomingA = timeA >= todayThreshold;
+    const isUpcomingB = timeB >= todayThreshold;
+
+    // Both are upcoming: sort ascending (closest upcoming first, further away later)
+    if (isUpcomingA && isUpcomingB) {
+      return timeA - timeB;
+    }
+    // Upcoming event comes before past event
+    if (isUpcomingA && !isUpcomingB) {
+      return -1;
+    }
+    if (!isUpcomingA && isUpcomingB) {
+      return 1;
+    }
+    // Both are in the past: sort descending (most recent past first)
+    return timeB - timeA;
+  });
+}
+
+/**
  * Return human-readable event topic / category name
  */
 export function getEventTopicLabel(category?: string, context?: any): string {

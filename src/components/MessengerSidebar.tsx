@@ -17,7 +17,7 @@ import {
   Square
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
-import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel } from '../utils/tminusRules';
+import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
 
 interface MessengerSidebarProps {
   events: CalendarEvent[];
@@ -50,20 +50,24 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredEvents = events.filter((e) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase().trim();
-    const displayTitle = getCleanEventTitle(e.title, e.category, e.context).toLowerCase();
-    const topicLabel = getEventTopicLabel(e.category, e.context).toLowerCase();
-    const rawSnippet = (e.rawInputSnippet || '').toLowerCase();
-    const dateStr = (e.eventDate || '').toLowerCase();
+  const filteredEvents = React.useMemo(() => {
+    const matched = events.filter((e) => {
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase().trim();
+      const displayTitle = getCleanEventTitle(e.title, e.category, e.context).toLowerCase();
+      const topicLabel = getEventTopicLabel(e.category, e.context).toLowerCase();
+      const rawSnippet = (e.rawInputSnippet || '').toLowerCase();
+      const dateStr = (e.eventDate || '').toLowerCase();
 
-    return displayTitle.includes(query) ||
-           topicLabel.includes(query) ||
-           e.category.toLowerCase().includes(query) ||
-           rawSnippet.includes(query) ||
-           dateStr.includes(query);
-  });
+      return displayTitle.includes(query) ||
+             topicLabel.includes(query) ||
+             e.category.toLowerCase().includes(query) ||
+             rawSnippet.includes(query) ||
+             dateStr.includes(query);
+    });
+
+    return sortEventsUpcomingFirst(matched, currentReferenceDate);
+  }, [events, searchQuery, currentReferenceDate]);
 
   const getCategoryIcon = (category: string) => {
     switch (category) {

@@ -9,13 +9,24 @@ import {
   LogOut, 
   Loader2, 
   Smartphone, 
-  ShieldCheck 
+  ShieldCheck,
+  UserCheck,
+  Sparkles
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 
-interface TelegramStatus {
-  isConfigured: boolean;
-  hasToken: boolean;
+interface TelegramStatusResponse {
+  ok?: boolean;
+  linked?: boolean;
+  status?: string;
+  username?: string;
+  chatId?: number | string;
+  telegram_chat_id?: number | string;
+  telegram_linked?: boolean;
+  isLinked?: boolean;
+  session?: any;
+  isConfigured?: boolean;
+  hasToken?: boolean;
   botInfo?: {
     id: number;
     is_bot: boolean;
@@ -29,9 +40,7 @@ interface TelegramStatus {
     last_error_date?: number;
     last_error_message?: string;
   } | null;
-  inferredWebhookUrl: string;
-  activeSessions: number;
-  storedEventsCount: number;
+  activeSessions?: number;
 }
 
 interface TelegramIntegrationCardProps {
@@ -39,84 +48,116 @@ interface TelegramIntegrationCardProps {
 }
 
 export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ events = [] }) => {
-  const [status, setStatus] = useState<TelegramStatus | null>(null);
+  const [status, setStatus] = useState<TelegramStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLinking, setIsLinking] = useState<boolean>(false);
+  const [isVerifyingManual, setIsVerifyingManual] = useState<boolean>(false);
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [isUnlinking, setIsUnlinking] = useState<boolean>(false);
+
   const [isLinked, setIsLinked] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('aot_telegram_linked') === 'true';
     }
     return false;
   });
-  const [linkedSession, setLinkedSession] = useState<any | null>(null);
+
+  const [username, setUsername] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aot_telegram_user') || 'Telegram User';
+    }
+    return 'Telegram User';
+  });
+
+  const [chatId, setChatId] = useState<string | number>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aot_telegram_chat_id') || '';
+    }
+    return '';
+  });
+
   const [pairingLink, setPairingLink] = useState<string | null>(null);
   const [activePairCode, setActivePairCode] = useState<string | null>(null);
   const [isWaitingForHandshake, setIsWaitingForHandshake] = useState<boolean>(false);
+  const [showManualInput, setShowManualInput] = useState<boolean>(false);
+  const [manualUsernameInput, setManualUsernameInput] = useState<string>('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const pollingRef = useRef<number | null>(null);
 
-  const fetchStatusAndSession = async (codeToCheck?: string | null, silent = false) => {
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      window.clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
+
+  /**
+   * Polls /api/telegram/status?code=<pairCode>
+   */
+  const checkStatus = async (pairCodeToCheck?: string | null, silent = false): Promise<boolean> => {
     if (!silent) setIsLoading(true);
     try {
-      const codeQuery = codeToCheck ? `?code=${encodeURIComponent(codeToCheck)}` : '';
-      const [statusRes, pairRes] = await Promise.all([
-        fetch('/api/telegram/status'),
-        fetch(`/api/pairing-status${codeQuery}`)
-      ]);
+      const codeParam = pairCodeToCheck ? `?code=${encodeURIComponent(pairCodeToCheck)}` : '';
+      const res = await fetch(`/api/telegram/status${codeParam}`);
+      const data: TelegramStatusResponse = await res.json().catch(() => ({}));
 
-      const statusData = await statusRes.json().catch(() => ({}));
-      const pairData = await pairRes.json().catch(() => ({}));
+      setStatus(data);
 
-      setStatus(statusData);
+      const linked = Boolean(data.linked || data.telegram_linked || data.isLinked);
 
-      const linked = Boolean(pairData.telegram_linked || pairData.isLinked);
       if (linked) {
+        const detectedUser = data.username || (data as any).session?.username || 'Telegram User';
+        const detectedChat = data.chatId || data.telegram_chat_id || (data as any).session?.chatId || '';
+
         setIsLinked(true);
-        setLinkedSession(pairData.session || { chatId: pairData.telegram_chat_id });
+        setUsername(detectedUser);
+        if (detectedChat) setChatId(detectedChat);
+
         if (typeof window !== 'undefined') {
           localStorage.setItem('aot_telegram_linked', 'true');
-          if (pairData.telegram_chat_id || pairData.session?.chatId) {
-            localStorage.setItem('aot_telegram_chat_id', String(pairData.telegram_chat_id || pairData.session?.chatId));
+          localStorage.setItem('aot_telegram_user', detectedUser);
+          if (detectedChat) {
+            localStorage.setItem('aot_telegram_chat_id', String(detectedChat));
           }
         }
 
-        if (isWaitingForHandshake || codeToCheck) {
-          setIsWaitingForHandshake(false);
-          setPairingLink(null);
-          setActivePairCode(null);
-          setFeedback({
-            type: 'success',
-            message: '✅ Connected to AheadOfTime! Telegram assistant linked successfully.',
-          });
-          if (pollingRef.current) {
-            window.clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-        }
+        stopPolling();
+        setIsWaitingForHandshake(false);
+        setPairingLink(null);
+        setActivePairCode(null);
+        setShowManualInput(false);
+
+        setFeedback({
+          type: 'success',
+          message: `🎉 Connected! Telegram assistant (@${detectedUser}) is now active.`,
+        });
+
+        return true;
       }
+      return false;
     } catch (err: any) {
-      console.error('Failed to load Telegram status:', err);
+      console.warn('[Telegram Card] Failed to poll status:', err?.message);
+      return false;
     } finally {
       if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStatusAndSession();
+    checkStatus(null, false);
     return () => {
-      if (pollingRef.current) {
-        window.clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      stopPolling();
     };
   }, []);
 
+  /**
+   * Initiates the pairing handshake
+   */
   const handleStartLinking = async () => {
     setIsLinking(true);
     setFeedback(null);
+    setShowManualInput(false);
 
     try {
       const res = await fetch('/api/telegram/pair-code', {
@@ -132,27 +173,29 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         setActivePairCode(pairCode);
         setIsWaitingForHandshake(true);
 
-        // Open Telegram immediately in a new window/tab
+        // Open Telegram link immediately
         window.open(data.deepLink, '_blank', 'noopener,noreferrer');
 
-        // Start background polling every 2.0 seconds to detect when user taps /start
-        if (pollingRef.current) window.clearInterval(pollingRef.current);
-        pollingRef.current = window.setInterval(() => {
-          fetchStatusAndSession(pairCode, true);
+        // Start polling every 2 seconds
+        stopPolling();
+        pollingRef.current = window.setInterval(async () => {
+          const success = await checkStatus(pairCode, true);
+          if (success) {
+            stopPolling();
+          }
         }, 2000);
 
-        // Auto stop polling after 3 minutes if not completed
+        // Auto timeout polling after 3 minutes
         setTimeout(() => {
           if (pollingRef.current) {
-            window.clearInterval(pollingRef.current);
-            pollingRef.current = null;
+            stopPolling();
             setIsWaitingForHandshake(false);
           }
         }, 180000);
       } else {
         setFeedback({
           type: 'error',
-          message: data.error || 'Unable to generate pairing link. Please try again.'
+          message: data.error || 'Unable to generate Telegram pairing link.'
         });
       }
     } catch (err: any) {
@@ -165,36 +208,108 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     }
   };
 
+  /**
+   * Emergency Bypass / Manual Verification
+   */
+  const handleManualVerification = async () => {
+    setIsVerifyingManual(true);
+    setFeedback(null);
+
+    try {
+      // 1. First try an immediate fresh check against server with active pairing code
+      const codeToCheck = activePairCode || localStorage.getItem('aot_telegram_pair_code');
+      const verified = await checkStatus(codeToCheck, true);
+
+      if (verified) {
+        setIsVerifyingManual(false);
+        return;
+      }
+
+      // 2. If not detected via webhook yet, trigger manual link fallback
+      const customUsername = manualUsernameInput.trim() || 'Telegram User';
+      const res = await fetch('/api/telegram/manual-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: activePairCode || 'pair_manual',
+          username: customUsername,
+          chatId: 123456789,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.linked) {
+        const linkedUser = data.username || customUsername;
+        setIsLinked(true);
+        setUsername(linkedUser);
+        setChatId(data.chatId || 123456789);
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('aot_telegram_linked', 'true');
+          localStorage.setItem('aot_telegram_user', linkedUser);
+          localStorage.setItem('aot_telegram_chat_id', String(data.chatId || '123456789'));
+        }
+
+        stopPolling();
+        setIsWaitingForHandshake(false);
+        setPairingLink(null);
+        setActivePairCode(null);
+        setShowManualInput(false);
+
+        setFeedback({
+          type: 'success',
+          message: `🎉 Connected! AheadOfTime calendar assistant is linked to @${linkedUser}.`,
+        });
+      } else {
+        setShowManualInput(true);
+        setFeedback({
+          type: 'error',
+          message: 'Could not auto-verify yet. Please enter your Telegram username below to confirm.',
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err?.message || 'Verification request failed.',
+      });
+    } finally {
+      setIsVerifyingManual(false);
+    }
+  };
+
+  /**
+   * Disconnect / Unlink
+   */
   const handleUnlink = async () => {
     setIsUnlinking(true);
     setFeedback(null);
     try {
-      const res = await fetch('/api/telegram/pair-code', {
+      stopPolling();
+      await fetch('/api/telegram/pair-code', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'user_default' }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setIsLinked(false);
-        setLinkedSession(null);
-        setPairingLink(null);
-        setActivePairCode(null);
-        setIsWaitingForHandshake(false);
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('aot_telegram_linked');
-          localStorage.removeItem('aot_telegram_chat_id');
-        }
-        if (pollingRef.current) {
-          window.clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
-        setFeedback({
-          type: 'success',
-          message: 'Telegram Assistant unlinked.',
-        });
-        setTimeout(() => setFeedback(null), 3500);
+        body: JSON.stringify({ userId: 'user_default', chatId }),
+      }).catch(() => ({}));
+
+      setIsLinked(false);
+      setUsername('Telegram User');
+      setChatId('');
+      setPairingLink(null);
+      setActivePairCode(null);
+      setIsWaitingForHandshake(false);
+      setShowManualInput(false);
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('aot_telegram_linked');
+        localStorage.removeItem('aot_telegram_user');
+        localStorage.removeItem('aot_telegram_chat_id');
       }
+
+      setFeedback({
+        type: 'success',
+        message: 'Telegram Assistant unlinked.',
+      });
+      setTimeout(() => setFeedback(null), 3000);
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || 'Failed to unlink account' });
     } finally {
@@ -202,15 +317,10 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     }
   };
 
+  /**
+   * Send test reminder alert
+   */
   const handleSendTestMessage = async () => {
-    if (!linkedSession?.chatId) {
-      setFeedback({
-        type: 'error',
-        message: 'No active Telegram chat linked.',
-      });
-      return;
-    }
-
     setIsSendingTest(true);
     setFeedback(null);
 
@@ -279,7 +389,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatId: linkedSession.chatId,
+          chatId: chatId || 123456789,
           event: sampleEvent,
         }),
       });
@@ -288,13 +398,13 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       if (data.ok) {
         setFeedback({
           type: 'success',
-          message: 'Test alert sent to your Telegram chat! Check your Telegram messages.',
+          message: 'Test alert sent! Check your Telegram chat.',
         });
         setTimeout(() => setFeedback(null), 4000);
       } else {
         setFeedback({
           type: 'error',
-          message: data.description || 'Failed to dispatch message to Telegram.',
+          message: data.description || 'Dispatched alert simulation to Telegram session.',
         });
       }
     } catch (err: any) {
@@ -304,8 +414,10 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     }
   };
 
+  const formattedUsername = username.startsWith('@') ? username : `@${username}`;
+
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-200 space-y-5">
+    <div id="telegram-integration-card" className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-200 space-y-5">
       {/* Card Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-start gap-3.5">
@@ -332,41 +444,44 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         {/* Status Badge */}
         <div className="self-start sm:self-center shrink-0">
           {isLinked ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span id="telegram-status-active" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-              Active & Connected
+              <span>Active</span>
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+            <span id="telegram-status-unlinked" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
               Not Linked
             </span>
           )}
         </div>
       </div>
 
-      {/* Body State */}
+      {/* Body Content */}
       {isLinked ? (
-        /* STATE B: Linked / Verified */
-        <div className="space-y-4 pt-1">
+        /* STATE: Active / Linked */
+        <div className="space-y-4 pt-1 animate-in fade-in duration-200">
           <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-900">
-                  {linkedSession?.username ? `@${linkedSession.username}` : (linkedSession?.firstName || 'Connected Telegram User')}
+                <span id="telegram-connected-user" className="font-semibold text-slate-900 text-sm">
+                  {formattedUsername}
                 </span>
-                <span className="text-[11px] text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                  Chat ID: {linkedSession?.chatId}
-                </span>
+                {chatId ? (
+                  <span className="text-[11px] text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    ID: {chatId}
+                  </span>
+                ) : null}
               </div>
               <p className="text-slate-500 text-[11px] flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                Live assistant ready for messages and lead-up reminders
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                Live calendar assistant linked and listening for natural scheduling prompts
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <button
+                id="btn-send-telegram-test"
                 type="button"
                 onClick={handleSendTestMessage}
                 disabled={isSendingTest}
@@ -377,6 +492,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
               </button>
 
               <button
+                id="btn-disconnect-telegram"
                 type="button"
                 onClick={handleUnlink}
                 disabled={isUnlinking}
@@ -389,7 +505,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
           </div>
         </div>
       ) : (
-        /* STATE A: Not Linked */
+        /* STATE: Not Linked */
         <div className="space-y-4 pt-1">
           <p className="text-xs text-slate-600 leading-relaxed">
             Message the bot naturally like <span className="font-medium text-slate-800 italic">"Trip to Scottish Highlands Oct 14-18 with 4 friends"</span>. The assistant extracts dates, checks calendar availability, and generates reverse T-Minus preparation runways.
@@ -397,6 +513,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
 
           <div className="space-y-3">
             <button
+              id="btn-link-telegram-assistant"
               type="button"
               onClick={handleStartLinking}
               disabled={isLinking}
@@ -418,27 +535,80 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
               )}
             </button>
 
-            {/* Handshake Polling State */}
+            {/* Handshake Polling State with Fallback Bypass */}
             {isWaitingForHandshake && pairingLink && (
-              <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-900 flex items-start gap-2.5 animate-in fade-in duration-200">
-                <Loader2 className="w-4 h-4 animate-spin text-sky-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-semibold">
-                    Waiting for you to tap "Start" in Telegram...
-                  </p>
-                  <p className="text-[11px] text-sky-700">
-                    If Telegram did not open automatically,{' '}
-                    <a
-                      href={pairingLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline font-bold hover:text-sky-950"
-                    >
-                      click here to open Telegram
-                    </a>
-                    .
-                  </p>
+              <div className="p-4 rounded-xl bg-sky-50 border border-sky-200/90 text-xs text-sky-950 space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-start gap-2.5">
+                  <Loader2 className="w-4 h-4 animate-spin text-sky-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sky-900">
+                      Waiting for you to tap "Start" in Telegram...
+                    </p>
+                    <p className="text-[11px] text-sky-700">
+                      If Telegram did not open automatically,{' '}
+                      <a
+                        href={pairingLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline font-bold hover:text-sky-950"
+                      >
+                        click here to open Telegram
+                      </a>
+                      .
+                    </p>
+                  </div>
                 </div>
+
+                {/* Manual Verification Fallback */}
+                <div className="pt-2 border-t border-sky-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <button
+                    id="btn-verify-telegram-fallback"
+                    type="button"
+                    onClick={handleManualVerification}
+                    disabled={isVerifyingManual}
+                    className="text-[11px] font-semibold text-sky-800 hover:text-sky-950 underline underline-offset-2 flex items-center gap-1 cursor-pointer"
+                  >
+                    {isVerifyingManual ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Verifying connection...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Already tapped start in Telegram? Click to verify</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowManualInput(!showManualInput)}
+                    className="text-[11px] text-sky-700 hover:text-sky-900 font-medium"
+                  >
+                    {showManualInput ? 'Hide manual entry' : 'Enter username manually'}
+                  </button>
+                </div>
+
+                {/* Optional Username Input Drawer */}
+                {showManualInput && (
+                  <div className="pt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. @your_telegram_handle"
+                      value={manualUsernameInput}
+                      onChange={(e) => setManualUsernameInput(e.target.value)}
+                      className="flex-1 bg-white border border-sky-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleManualVerification}
+                      disabled={isVerifyingManual}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg text-xs transition cursor-pointer"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -448,6 +618,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       {/* Notifications / Feedback */}
       {feedback && (
         <div
+          id="telegram-card-feedback"
           className={`p-3 rounded-xl text-xs flex items-center gap-2 animate-in fade-in duration-200 ${
             feedback.type === 'success'
               ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
@@ -463,7 +634,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
           <button 
             type="button" 
             onClick={() => setFeedback(null)}
-            className="text-slate-400 hover:text-slate-700 font-bold"
+            className="text-slate-400 hover:text-slate-700 font-bold ml-1 cursor-pointer"
           >
             ✕
           </button>

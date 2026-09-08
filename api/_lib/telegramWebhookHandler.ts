@@ -130,11 +130,11 @@ export class TelegramWebhookHandler {
       const pairCode = parts.length > 1 ? parts[1].trim() : '';
 
       if (pairCode) {
-        console.log(`🔗 Linking Telegram chat ${chatId} with pairing token "${pairCode}"...`);
+        console.log(`[Telegram Webhook] Received pairing attempt for code:`, pairCode);
         const linkResult = TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
 
         if (linkResult.success) {
-          const successMsg = `✅ *Connected to AheadOfTime!* Any trip or event you mention here will sync to your dashboard.`;
+          const successMsg = `🎉 *Connected!* Your AheadOfTime calendar assistant is now linked.`;
           await TelegramService.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
           return;
         } else {

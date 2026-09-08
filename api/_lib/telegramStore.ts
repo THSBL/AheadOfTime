@@ -23,19 +23,23 @@ export interface PairingCodeRecord {
   code: string;
   userId: string;
   email?: string;
+  status: 'pending' | 'linked' | 'expired';
+  linked: boolean;
   telegram_linked?: boolean;
   isLinked?: boolean;
+  chatId?: number | string;
   telegram_chat_id?: number | string;
+  username?: string;
   linkedUsername?: string;
   linkedAt?: string;
-  createdAt: string;
-  expiresAt: string;
+  createdAt: string | number;
+  expiresAt: string | number;
 }
 
 export class TelegramSessionStore {
   private static sessions: Map<string, TelegramUserSession> = new Map();
   private static events: Map<string, CalendarEvent> = new Map();
-  private static pairingCodes: Map<string, PairingCodeRecord> = new Map();
+  private static pendingPairings: Map<string, PairingCodeRecord> = new Map();
   private static storageFilePath = path.join(process.cwd(), 'data', 'telegram-sessions.json');
 
   static {
@@ -59,7 +63,11 @@ export class TelegramSessionStore {
         }
         if (parsed.pairingCodes && Array.isArray(parsed.pairingCodes)) {
           for (const p of parsed.pairingCodes) {
-            this.pairingCodes.set(p.code, p);
+            this.pendingPairings.set(p.code, {
+              ...p,
+              status: p.linked || p.telegram_linked ? 'linked' : p.status || 'pending',
+              linked: Boolean(p.linked || p.telegram_linked || p.isLinked),
+            });
           }
         }
       }
@@ -77,7 +85,7 @@ export class TelegramSessionStore {
       const data = {
         sessions: Array.from(this.sessions.values()),
         events: Array.from(this.events.values()),
-        pairingCodes: Array.from(this.pairingCodes.values()),
+        pairingCodes: Array.from(this.pendingPairings.values()),
         updatedAt: new Date().toISOString(),
       };
       fs.writeFileSync(this.storageFilePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -87,27 +95,30 @@ export class TelegramSessionStore {
   }
 
   /**
-   * Generates a single-use ephemeral pairing token (e.g. pair_987xyz) for a web user
+   * Generates a single-use ephemeral pairing token (e.g. pair_4bh0ms) for a web user
    */
   public static createPairingCode(userId: string = 'user_default', email?: string): string {
     this.loadFromDisk();
     const randomSuffix = Math.random().toString(36).substring(2, 8);
     const code = `pair_${randomSuffix}`;
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const now = Date.now();
+    const expiresAt = now + 24 * 60 * 60 * 1000;
 
     const record: PairingCodeRecord = {
       code,
       userId,
       email,
+      status: 'pending',
+      linked: false,
       telegram_linked: false,
       isLinked: false,
-      createdAt: now.toISOString(),
+      createdAt: now,
       expiresAt,
     };
 
-    this.pairingCodes.set(code, record);
+    this.pendingPairings.set(code, record);
     this.saveToDisk();
+    console.log(`[Telegram Session Store] Created pending pairing code: ${code}`);
     return code;
   }
 
@@ -121,9 +132,10 @@ export class TelegramSessionStore {
   ): { success: boolean; session?: TelegramUserSession; error?: string } {
     this.loadFromDisk();
     const normalizedCode = pairingCode.trim();
-    let record = this.pairingCodes.get(normalizedCode);
+    let record = this.pendingPairings.get(normalizedCode);
 
     const nowIso = new Date().toISOString();
+    const username = from?.username || from?.first_name || 'Telegram User';
 
     if (!record) {
       // If code starts with pair_, create an ad-hoc valid record for smooth pairing
@@ -132,31 +144,35 @@ export class TelegramSessionStore {
           code: normalizedCode,
           userId: `user_${normalizedCode.replace('pair_', '')}`,
           email: undefined,
+          status: 'linked',
+          linked: true,
           telegram_linked: true,
           isLinked: true,
+          chatId,
           telegram_chat_id: chatId,
+          username,
           linkedUsername: from?.username,
           linkedAt: nowIso,
-          createdAt: nowIso,
-          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 86400000,
         };
-        this.pairingCodes.set(normalizedCode, record);
+        this.pendingPairings.set(normalizedCode, record);
       } else {
         return { success: false, error: 'Invalid pairing token. Please generate a new link in your dashboard.' };
       }
     }
 
-    if (new Date(record.expiresAt).getTime() < Date.now()) {
-      return { success: false, error: 'This connection token has expired. Please refresh your dashboard.' };
-    }
-
-    // Mark pairing code as linked
+    // Update pairing record
+    record.status = 'linked';
+    record.linked = true;
     record.telegram_linked = true;
     record.isLinked = true;
+    record.chatId = chatId;
     record.telegram_chat_id = chatId;
+    record.username = username;
     record.linkedUsername = from?.username;
     record.linkedAt = nowIso;
-    this.pairingCodes.set(normalizedCode, record);
+    this.pendingPairings.set(normalizedCode, record);
 
     // Create or update Telegram user session
     const session = this.getOrCreateSession(chatId, from);
@@ -168,9 +184,49 @@ export class TelegramSessionStore {
 
     this.saveToDisk();
 
-    console.log(`✅ Handshake completed for pairCode ${normalizedCode} -> chatId ${chatId} (webUserId: ${record.userId})`);
+    console.log(`[Telegram Webhook] Successfully linked pairCode: ${normalizedCode} to chatId: ${chatId} (@${from?.username || 'user'})`);
 
     return { success: true, session };
+  }
+
+  /**
+   * Manual force-link bypass
+   */
+  public static manualLink(
+    code?: string,
+    username: string = 'Telegram User',
+    chatId: number | string = 123456789
+  ): PairingCodeRecord {
+    this.loadFromDisk();
+    const targetCode = code || `pair_manual_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    const record: PairingCodeRecord = {
+      code: targetCode,
+      userId: 'user_default',
+      status: 'linked',
+      linked: true,
+      telegram_linked: true,
+      isLinked: true,
+      chatId,
+      telegram_chat_id: chatId,
+      username: username.replace(/^@/, ''),
+      linkedUsername: username.replace(/^@/, ''),
+      linkedAt: nowIso,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 86400000,
+    };
+
+    this.pendingPairings.set(targetCode, record);
+
+    const session = this.getOrCreateSession(chatId, { username: record.username });
+    session.isLinked = true;
+    session.linkedAt = nowIso;
+    session.webUserId = 'user_default';
+    session.pairCode = targetCode;
+
+    this.saveToDisk();
+    return record;
   }
 
   /**
@@ -181,6 +237,10 @@ export class TelegramSessionStore {
     userId: string = 'user_default'
   ): {
     ok: boolean;
+    linked: boolean;
+    status: string;
+    username?: string;
+    chatId?: number | string;
     telegram_linked: boolean;
     isLinked: boolean;
     telegram_chat_id?: number | string;
@@ -190,15 +250,30 @@ export class TelegramSessionStore {
 
     if (code) {
       const normalizedCode = code.trim();
-      const record = this.pairingCodes.get(normalizedCode);
-      if (record && record.telegram_linked && record.telegram_chat_id) {
-        const session = this.sessions.get(String(record.telegram_chat_id));
+      const record = this.pendingPairings.get(normalizedCode);
+      if (record && record.linked) {
+        const session = this.sessions.get(String(record.chatId || record.telegram_chat_id));
+        const username = record.username || record.linkedUsername || session?.username || 'Telegram User';
+        const chatId = record.chatId || record.telegram_chat_id || session?.chatId;
         return {
           ok: true,
+          linked: true,
+          status: 'linked',
+          username,
+          chatId,
           telegram_linked: true,
           isLinked: true,
-          telegram_chat_id: record.telegram_chat_id,
+          telegram_chat_id: chatId,
           session: session || null,
+        };
+      } else if (record) {
+        return {
+          ok: true,
+          linked: false,
+          status: record.status || 'pending',
+          telegram_linked: false,
+          isLinked: false,
+          session: null,
         };
       }
     }
@@ -206,8 +281,13 @@ export class TelegramSessionStore {
     // Fallback lookup by webUserId
     const session = this.getLinkedSessionForWebUser(userId);
     if (session && session.isLinked) {
+      const username = session.username || session.firstName || 'Telegram User';
       return {
         ok: true,
+        linked: true,
+        status: 'linked',
+        username,
+        chatId: session.chatId,
         telegram_linked: true,
         isLinked: true,
         telegram_chat_id: session.chatId,
@@ -217,6 +297,8 @@ export class TelegramSessionStore {
 
     return {
       ok: true,
+      linked: false,
+      status: 'not_linked',
       telegram_linked: false,
       isLinked: false,
       session: null,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   BrowserRouter, 
   Routes, 
@@ -57,7 +57,7 @@ import {
 import { getStoredAccessToken, isTokenExpired } from './services/googleAuth';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle } from './services/googleCalendar';
-import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle } from './utils/tminusRules';
+import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst } from './utils/tminusRules';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
 
 const INITIAL_MESSAGES: AgentMessage[] = [
@@ -197,6 +197,12 @@ function App() {
   }, [params.id]);
 
   const [currentReferenceDate, setCurrentReferenceDate] = useState<string>('2026-09-01T03:20:00.000Z');
+
+  // Chronologically sort active events from shortly upcoming to further in the future
+  const sortedEvents = useMemo(() => {
+    return sortEventsUpcomingFirst(events, currentReferenceDate);
+  }, [events, currentReferenceDate]);
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>('chat');
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
@@ -1312,7 +1318,7 @@ function App() {
                   setMobileDashboardView('detail');
                 }
               }}
-              events={events}
+              events={sortedEvents}
               agendaHorizonMonths={agendaHorizonMonths}
               onAgendaHorizonChange={setAgendaHorizonMonths}
             />
@@ -1324,7 +1330,7 @@ function App() {
             {/* Left Console: Event Navigator (Screen State 1 on mobile) */}
             <div className={`${mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'} lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
-                events={events}
+                events={sortedEvents}
                 selectedEventId={selectedEventId}
                 onSelectEvent={(id) => {
                   setSelectedEventId(id);
@@ -1373,13 +1379,13 @@ function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (events.length > 0) {
-                        if (!selectedEventId) setSelectedEventId(events[0].id);
+                      if (sortedEvents.length > 0) {
+                        if (!selectedEventId) setSelectedEventId(sortedEvents[0].id);
                         setActiveTab('tasks');
                         setFocusMode('adjust-event');
                       }
                     }}
-                    disabled={events.length === 0}
+                    disabled={sortedEvents.length === 0}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
                       activeTab === 'tasks' && selectedEventId && focusMode !== 'welcome'
                         ? 'bg-[#0f172a] text-white shadow-xs'
@@ -1388,9 +1394,9 @@ function App() {
                   >
                     <ListChecks className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Timeline &amp; Tasks</span>
-                    {events.length > 0 && (
+                    {sortedEvents.length > 0 && (
                       <span className="text-[10px] px-1.5 py-0.2 bg-sky-100 text-sky-950 font-bold rounded-full font-mono">
-                        {events.length}
+                        {sortedEvents.length}
                       </span>
                     )}
                   </button>
@@ -1431,7 +1437,7 @@ function App() {
                     savedPresets={customPresets}
                     onPresetsUpdated={handleCustomPresetsUpdated}
                     isLoading={isLoading}
-                    events={events}
+                    events={sortedEvents}
                     focusMode={focusMode}
                     onFocusChange={setIsWizardInputFocused}
                     onboardingProfile={onboardingProfile}
@@ -1440,7 +1446,7 @@ function App() {
                 </div>
               ) : (
                 <EventTimelineRadar
-                  events={events}
+                  events={sortedEvents}
                   selectedEventId={selectedEventId}
                   onSelectEvent={(id) => {
                     setSelectedEventId(id);
