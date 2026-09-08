@@ -40,17 +40,27 @@ export class TelegramService {
     chatId: number | string,
     text: string,
     options: TelegramSendMessageOptions = {}
-  ): Promise<{ ok: boolean; result?: any; description?: string }> {
+  ): Promise<{ ok: boolean; result?: any; description?: string; error_code?: number }> {
     if (!this.isConfigured()) {
       console.warn('⚠️ TelegramService: Cannot send message, TELEGRAM_BOT_TOKEN is missing.');
       return { ok: false, description: 'TELEGRAM_BOT_TOKEN is not configured.' };
+    }
+
+    const cleanChatId = typeof chatId === 'string' ? chatId.trim() : chatId;
+    if (!cleanChatId || cleanChatId === '123456789' || cleanChatId === 123456789 || cleanChatId === 'demo' || cleanChatId === 'null' || cleanChatId === 'undefined') {
+      console.warn(`⚠️ TelegramService: Aborted sending message to uninitialized or placeholder chat ID: "${chatId}". User must initiate a chat with the bot first.`);
+      return {
+        ok: false,
+        error_code: 400,
+        description: 'Telegram chat is not connected. Please click "Connect Telegram" and start @AheadTimebot to link your account.',
+      };
     }
 
     try {
       const url = `${this.getApiBase()}/sendMessage`;
       const parseMode = options.parse_mode !== undefined ? options.parse_mode : 'Markdown';
       const payload: Record<string, any> = {
-        chat_id: chatId,
+        chat_id: cleanChatId,
         text,
         disable_web_page_preview: options.disable_web_page_preview ?? false,
       };
@@ -62,7 +72,7 @@ export class TelegramService {
         payload.reply_markup = options.reply_markup;
       }
 
-      console.log(`📤 Telegram sendMessage -> chat ${chatId}:`, {
+      console.log(`📤 Telegram sendMessage -> chat ${cleanChatId}:`, {
         textSnippet: text.slice(0, 60),
         parse_mode: parseMode,
       });
@@ -90,11 +100,19 @@ export class TelegramService {
       }
 
       if (!data.ok) {
-        console.error('❌ Telegram API error:', data);
+        if (data.description?.includes('chat not found')) {
+          console.warn(`ℹ️ Telegram note: Chat ID ${cleanChatId} not found by Telegram. (The user has not clicked /start or authorized the bot yet).`);
+          return {
+            ok: false,
+            error_code: 400,
+            description: 'Chat not found on Telegram. Please open @AheadTimebot and click Start to enable notifications.',
+          };
+        }
+        console.warn('⚠️ Telegram API response notice:', data);
       }
       return data;
     } catch (err: any) {
-      console.error('❌ Telegram sendMessage network error:', err);
+      console.warn('⚠️ Telegram sendMessage network error:', err?.message || err);
       return { ok: false, description: err?.message || 'Network error' };
     }
   }

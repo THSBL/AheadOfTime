@@ -1749,8 +1749,9 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
 app.post("/api/telegram/manual-link", (req: Request, res: Response) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   try {
-    const { code, username = "Telegram User", chatId = 123456789 } = req.body || {};
-    const record = TelegramSessionStore.manualLink(code, username, chatId);
+    const { code, username = "Telegram User", chatId } = req.body || {};
+    const cleanChatId = chatId && chatId !== 123456789 && chatId !== '123456789' ? chatId : undefined;
+    const record = TelegramSessionStore.manualLink(code, username, cleanChatId);
     res.json({
       ok: true,
       linked: true,
@@ -1839,13 +1840,23 @@ app.delete("/api/telegram/pair-code", (req: Request, res: Response) => {
 // 4. Send Refinement Prompt for an Event to Telegram (Multi-tenant: requires chatId)
 app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
   try {
-    const { chatId, event } = req.body;
-    const targetChatId = chatId;
+    const { chatId, event } = req.body || {};
+    let targetChatId = chatId;
 
-    if (!targetChatId) {
+    // If targetChatId is a placeholder or not provided, try resolving from active linked sessions
+    if (!targetChatId || targetChatId === 123456789 || targetChatId === '123456789' || targetChatId === 'demo') {
+      const activeSessions = TelegramSessionStore.getAllSessions();
+      const linkedSession = activeSessions.find(s => s.isLinked && s.chatId && s.chatId !== 123456789 && s.chatId !== '123456789');
+      if (linkedSession) {
+        targetChatId = linkedSession.chatId;
+      }
+    }
+
+    if (!targetChatId || targetChatId === 123456789 || targetChatId === '123456789' || targetChatId === 'demo') {
       res.status(400).json({
         ok: false,
-        error: "chatId is required. Ahead Of Time is multi-tenant; please provide the destination Telegram chatId.",
+        error: "Valid Telegram Chat ID required. Please click 'Connect Telegram' and tap Start in @AheadTimebot first.",
+        description: "Valid Telegram Chat ID required. Please click 'Connect Telegram' and tap Start in @AheadTimebot first.",
       });
       return;
     }

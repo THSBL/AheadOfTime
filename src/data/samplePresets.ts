@@ -4,7 +4,7 @@ export interface PromptPreset {
   id: string;
   title: string;
   shortTitle?: string;
-  category: 'birthday_party' | 'hosting_visitors' | 'travel_trip' | 'project_deadline' | 'booking_trip' | 'subscription' | 'maintenance' | 'kids_school' | 'kids_hobbies' | 'custom';
+  category: 'birthday_party' | 'hosting_visitors' | 'friends_family' | 'hobbies' | 'travel_trip' | 'project_deadline' | 'booking_trip' | 'subscription' | 'maintenance' | 'kids_school' | 'kids_hobbies' | 'custom';
   modeExpected: 'CREATE_AND_INTAKE' | 'RESOLVE_MILESTONES' | 'RESEARCH_REQUIRED';
   prompt: string;
   icon: string;
@@ -18,8 +18,12 @@ export interface PromptPreset {
 }
 
 /**
- * 1. BASELINE PRESETS CATALOGUE
+ * =========================================================================
+ * 1. UPDATED CORE PRESET CATALOGUE
+ * =========================================================================
  */
+
+// 1. Party (Birthdays, weddings, dinners, milestone celebrations)
 export const PRESET_PARTY: PromptPreset = {
   id: 'birthday',
   title: 'Party',
@@ -29,27 +33,97 @@ export const PRESET_PARTY: PromptPreset = {
   prompt: 'Party celebration for [who] on [date]',
   icon: 'Cake',
   emoji: '🎉',
-  description: 'Celebrations, birthdays, dinners & party lead times.',
+  description: 'Birthdays, weddings, dinners & milestone celebrations.',
   whoLabel: 'Who or what occasion is the party for?',
-  whoPlaceholder: 'e.g. Maya & Liam Wedding, Dad 60th, Sarah Anniversary',
+  whoPlaceholder: 'e.g. Maya & Liam Wedding, Dad 60th, Sarah Birthday Dinner',
   whenLabel: 'When is the party date?'
 };
 
-export const PRESET_FRIENDS: PromptPreset = {
+// 2. Friends / Family Visit (with Hosting vs Visiting contextual discriminator)
+export const PRESET_FRIENDS_FAMILY: PromptPreset = {
   id: 'friends',
-  title: 'Friends Visiting',
-  shortTitle: 'Friends',
+  title: 'Friends / Family Visit',
+  shortTitle: 'Friends / Family',
   category: 'hosting_visitors',
   modeExpected: 'CREATE_AND_INTAKE',
-  prompt: 'Friends visiting: [who] staying from [date]',
+  prompt: 'Friends & family visit: [who] starting [date]',
   icon: 'Users',
-  emoji: '👥',
-  description: 'Hosting, house prep, dining spots & guest arrivals.',
-  whoLabel: 'Who is visiting?',
-  whoPlaceholder: 'e.g. Alex & Sarah, College friends',
-  whenLabel: 'When are they arriving?'
+  emoji: '🏡',
+  description: 'Hosting guests at home, or visiting & staying with friends/family.',
+  whoLabel: 'Who is visiting or who are you staying with?',
+  whoPlaceholder: 'e.g. Alex & Sarah, Grandparents, College friends',
+  whenLabel: 'When does the visit begin?'
 };
 
+export const PRESET_FRIENDS = PRESET_FRIENDS_FAMILY;
+
+// 3. Hobbies (Sports tournaments, race prep, outdoor trips, musical gigs, craft workshops)
+export const PRESET_HOBBIES: PromptPreset = {
+  id: 'hobbies',
+  title: 'Hobbies',
+  shortTitle: 'Hobbies',
+  category: 'hobbies',
+  modeExpected: 'CREATE_AND_INTAKE',
+  prompt: 'Hobby event prep for [who] on [date]',
+  icon: 'Trophy',
+  emoji: '🏅',
+  description: 'Sports tournaments, race prep, outdoor trips, musical gigs & workshops.',
+  whoLabel: 'What tournament, race, gig, or workshop is this?',
+  whoPlaceholder: 'e.g. Half Marathon Prep, Tennis Club Championship, Jazz Gig, Pottery Workshop',
+  whenLabel: 'When is the event or competition date?'
+};
+
+// 4. Work / Projects (Launches, sprints, onboarding runways, deterministic CSV/XLSX workflows)
+export const PRESET_WORK_PROJECTS: PromptPreset = {
+  id: 'project',
+  title: 'Work / Projects',
+  shortTitle: 'Work (Projects)',
+  category: 'project_deadline',
+  modeExpected: 'CREATE_AND_INTAKE',
+  prompt: 'Work project milestone for [who] on [date]',
+  icon: 'Rocket',
+  emoji: '📊',
+  description: 'Launches, sprints, onboarding runways & deterministic CSV/XLSX workflows.',
+  whoLabel: 'What is the project milestone / deliverable?',
+  whoPlaceholder: 'e.g. Mobile App v2.0 Release, Q4 Sales Kickoff Deck, SOC2 Audit',
+  whenLabel: 'When is the target deadline date?'
+};
+
+export const PRESET_PROJECT = PRESET_WORK_PROJECTS;
+
+// 5. Subscriptions (Trial cancellation cutoffs, annual renewal review milestones)
+export const PRESET_SUBSCRIPTION: PromptPreset = {
+  id: 'subscription',
+  title: 'Subscriptions',
+  shortTitle: 'Subscriptions',
+  category: 'subscription',
+  modeExpected: 'CREATE_AND_INTAKE',
+  prompt: 'Subscription cancellation check for [who] before renewal on [date]',
+  icon: 'CreditCard',
+  emoji: '💳',
+  description: 'Trial cancellation cutoffs & annual renewal review milestones.',
+  whoLabel: 'Which subscription or recurring service?',
+  whoPlaceholder: 'e.g. Netflix, Equinox Gym, Adobe Creative Cloud, Amazon Prime',
+  whenLabel: 'When does the renewal or billing cycle end?'
+};
+
+// 6. Maintenance (Vehicle service, home inspections, seasonal upkeep checkpoints)
+export const PRESET_MAINTENANCE: PromptPreset = {
+  id: 'maintenance',
+  title: 'Maintenance',
+  shortTitle: 'Maintenance',
+  category: 'maintenance',
+  modeExpected: 'CREATE_AND_INTAKE',
+  prompt: 'Maintenance service for [who] on [date]',
+  icon: 'Wrench',
+  emoji: '🔧',
+  description: 'Vehicle service, home inspections & seasonal upkeep checkpoints.',
+  whoLabel: 'What requires service or maintenance?',
+  whoPlaceholder: 'e.g. Car 30k Mile Service & MOT, HVAC Annual Inspection, Boiler Check',
+  whenLabel: 'Target service or maintenance date?'
+};
+
+// Travel / Trip (Auxiliary / Backwards-compatible)
 export const PRESET_TRIP: PromptPreset = {
   id: 'trip',
   title: 'Trip',
@@ -65,53 +139,10 @@ export const PRESET_TRIP: PromptPreset = {
   whenLabel: 'When is the departure date?'
 };
 
-export const PRESET_PROJECT: PromptPreset = {
-  id: 'project',
-  title: 'Project Management',
-  shortTitle: 'Project',
-  category: 'project_deadline',
-  modeExpected: 'CREATE_AND_INTAKE',
-  prompt: 'Project launch for [who] on [date]',
-  icon: 'Rocket',
-  emoji: '🚀',
-  description: 'Launches, sprints, onboarding runways & code freezes.',
-  whoLabel: 'What is the project milestone / deliverable?',
-  whoPlaceholder: 'e.g. Mobile App v2.0 Launch, Q3 Investor Deck',
-  whenLabel: 'When is the target deadline date?'
-};
-
-export const PRESET_SUBSCRIPTION: PromptPreset = {
-  id: 'subscription',
-  title: 'Subscription',
-  shortTitle: 'Subscription',
-  category: 'subscription',
-  modeExpected: 'CREATE_AND_INTAKE',
-  prompt: 'Subscription cancellation check for [who] before renewal on [date]',
-  icon: 'CreditCard',
-  emoji: '💳',
-  description: 'Trial reviews, renewal cancellation windows & billing cycles.',
-  whoLabel: 'Which subscription or service?',
-  whoPlaceholder: 'e.g. Netflix, Equinox Gym, Adobe Creative Cloud, Amazon Prime',
-  whenLabel: 'When does the renewal or billing cycle end?'
-};
-
-export const PRESET_MAINTENANCE: PromptPreset = {
-  id: 'maintenance',
-  title: 'Maintenance',
-  shortTitle: 'Maintenance',
-  category: 'maintenance',
-  modeExpected: 'CREATE_AND_INTAKE',
-  prompt: 'Maintenance service for [who] on [date]',
-  icon: 'Wrench',
-  emoji: '🔧',
-  description: 'Home/car service checkpoints, routine upkeep & inspections.',
-  whoLabel: 'What requires maintenance?',
-  whoPlaceholder: 'e.g. Car Oil Change & Inspection, Home AC Filter & Coil Check',
-  whenLabel: 'Target service or maintenance date?'
-};
-
 /**
- * KIDS SUB-PRESETS (Rule A)
+ * =========================================================================
+ * DEDICATED KIDS SUB-PRESETS (Rule A - Injected for Family with Kids)
+ * =========================================================================
  */
 export const PRESET_KIDS_SCHOOL: PromptPreset = {
   id: 'kids_school',
@@ -122,7 +153,7 @@ export const PRESET_KIDS_SCHOOL: PromptPreset = {
   prompt: 'Kids school event: [who] on [date]',
   icon: 'GraduationCap',
   emoji: '🎒',
-  description: 'Book Week, spirit days, science projects, parent-teacher reviews.',
+  description: 'Theme days, science fairs, presentations & parent-teacher reviews.',
   whoLabel: 'Which child and school event / project?',
   whoPlaceholder: 'e.g. Leo Book Week costume, Maya Science Fair project, Term 3 Review',
   whenLabel: 'When is the school event or project deadline?'
@@ -131,14 +162,14 @@ export const PRESET_KIDS_SCHOOL: PromptPreset = {
 export const PRESET_KIDS_HOBBIES: PromptPreset = {
   id: 'kids_hobbies',
   title: 'Kids: Hobbies',
-  shortTitle: 'Hobbies',
+  shortTitle: 'Kids Hobbies',
   category: 'kids_hobbies',
   modeExpected: 'CREATE_AND_INTAKE',
   prompt: 'Kids hobby / sports event: [who] on [date]',
   icon: 'Trophy',
   emoji: '⚽',
-  description: 'Tournaments, gear checks, recital prep, transport pooling.',
-  whoLabel: 'Which child, tournament, or recital?',
+  description: 'Youth matches, tournaments, kit checks & transport pooling.',
+  whoLabel: 'Which child, tournament, match, or recital?',
   whoPlaceholder: 'e.g. Maya Soccer Tournament, Leo Piano Recital, Swim Club Finals',
   whenLabel: 'When is the tournament or recital date?'
 };
@@ -152,7 +183,7 @@ export const PRESET_KIDS: PromptPreset = {
   prompt: 'Kids activity prep for [who] on [date]',
   icon: 'Sparkles',
   emoji: '🧸',
-  description: 'School events, costume days, sports tournaments & recital runways.',
+  description: 'School events, costume days, youth tournaments & recital runways.',
   whoLabel: 'Which child and activity?',
   whoPlaceholder: 'e.g. Leo Book Week, Maya Soccer Finals, Science Project',
   whenLabel: 'When is the target event date?',
@@ -213,7 +244,27 @@ export interface CategorizedPresets {
 }
 
 /**
- * Dynamic Preset Categorization Engine
+ * =========================================================================
+ * 2. DEMOGRAPHIC FILTERING & ADAPTIVE PRESET ENGINE
+ * =========================================================================
+ *
+ * Rules:
+ * Rule A (Family Structure):
+ * - family_structure === "family_with_kids" / "Family with kids":
+ *   * Inject dedicated "Kids" category into the primary view with dual sub-selections:
+ *     - Kids: School (Theme days, science fairs, parent-teacher reviews)
+ *     - Kids: Hobbies (Youth matches, tournaments, kit checks, transport pooling)
+ *   * Keep adult "Hobbies" preset accessible for parent's personal interests.
+ * - family_structure === "single" / "Single" or "couple" / "Couple":
+ *   * Suppress and hide "Kids" preset entirely.
+ *   * Elevate personal "Hobbies" preset.
+ *
+ * Rule B (Calendar Scope):
+ * - calendar_type === "personal" / "Personal":
+ *   * Completely hide "Work / Projects".
+ *   * Promote "Subscriptions" and "Maintenance" into high-priority visible primary slots.
+ * - calendar_type === "mixed" or "business" / "Mixed" or "Business":
+ *   * Retain "Work / Projects" as a primary preset alongside custom template import options.
  */
 export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | null): CategorizedPresets {
   const { family_structure, calendar_type } = normalizeProfile(profile);
@@ -222,16 +273,16 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
   const hasProject = !isPersonalOnly;
   const canImportSpreadsheet = !isPersonalOnly;
 
-  // Baseline primary presets
+  // Baseline primary presets present across profiles
   const primary: PromptPreset[] = [
     PRESET_PARTY,
-    PRESET_FRIENDS,
-    PRESET_TRIP,
+    PRESET_FRIENDS_FAMILY,
+    PRESET_HOBBIES,
   ];
 
-  // Rule C: Retain Project Management for Mixed or Business
+  // Rule B: Retain Work / Projects for Mixed or Business
   if (hasProject) {
-    primary.push(PRESET_PROJECT);
+    primary.push(PRESET_WORK_PROJECTS);
   }
 
   // Rule A: Kids Profiling (Inject into primary when family with kids)
@@ -243,11 +294,11 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
   let secondary: PromptPreset[] = [];
 
   if (isPersonalOnly) {
-    // Rule B: Suppress Project Management & Elevate Subscription and Maintenance
+    // Rule B: For Personal calendars, suppress Work and elevate Subscriptions & Maintenance to primary
     primary.push(PRESET_SUBSCRIPTION);
     primary.push(PRESET_MAINTENANCE);
   } else {
-    // Keep Subscription & Maintenance in high-utility secondary slot
+    // For Mixed / Business calendars, keep Subscriptions & Maintenance in secondary quick-access slots
     secondary = [PRESET_SUBSCRIPTION, PRESET_MAINTENANCE];
   }
 
@@ -267,20 +318,26 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
 }
 
 /**
- * Pure selector function that returns the filtered, ordered array of presets
- * strictly based on Rules A, B, and C
+ * Pure selector function returning the adaptive list of presets based on profile
  */
-export function getVisiblePresets(profile?: Partial<OnboardingProfile> | null): PromptPreset[] {
+export function getAdaptivePresets(profile?: Partial<OnboardingProfile> | null): PromptPreset[] {
   const { primary, secondary } = getCategorizedPresets(profile);
   return [...primary, ...secondary];
+}
+
+/**
+ * Backwards-compatible alias for getAdaptivePresets
+ */
+export function getVisiblePresets(profile?: Partial<OnboardingProfile> | null): PromptPreset[] {
+  return getAdaptivePresets(profile);
 }
 
 // Backwards-compatible legacy exports
 export const EVENT_PRESETS: PromptPreset[] = [
   PRESET_PARTY,
-  PRESET_FRIENDS,
-  PRESET_TRIP,
-  PRESET_PROJECT,
+  PRESET_FRIENDS_FAMILY,
+  PRESET_HOBBIES,
+  PRESET_WORK_PROJECTS,
 ];
 
 export const SMALL_PRESETS: PromptPreset[] = [
@@ -291,27 +348,26 @@ export const SMALL_PRESETS: PromptPreset[] = [
 export const QUICK_OPTIONS = [
   {
     id: 'subscription',
-    title: 'Subscription cancellation',
+    title: 'Subscriptions',
     emoji: '💳',
     prompt: 'Subscription cancellation check for unused streaming, gym, or SaaS services.',
     category: 'custom'
   },
   {
     id: 'maintenance',
-    title: 'Maintenance (car, AC)',
+    title: 'Maintenance',
     emoji: '🔧',
-    prompt: 'Schedule car oil change, AC filter check, and home maintenance reminder.',
+    prompt: 'Schedule car service, AC filter check, and home maintenance inspection.',
     category: 'custom'
   },
   {
-    id: 'investment',
-    title: 'Investment plan review',
-    emoji: '📈',
-    prompt: 'Review investment portfolio, rebalance assets, and check retirement contributions.',
+    id: 'hobbies',
+    title: 'Hobbies',
+    emoji: '🏅',
+    prompt: 'Plan gear, registration, and logistics for upcoming tournament or race.',
     category: 'custom'
   }
 ];
 
 export const SAMPLE_PRESETS: PromptPreset[] = EVENT_PRESETS;
 export const INITIAL_EVENTS: any[] = [];
-

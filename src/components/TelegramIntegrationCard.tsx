@@ -14,6 +14,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
+import { db } from '@/lib/firebase';
+import { doc, setDoc, onSnapshot, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 interface TelegramStatusResponse {
   ok?: boolean;
@@ -45,9 +47,10 @@ interface TelegramStatusResponse {
 
 interface TelegramIntegrationCardProps {
   events?: CalendarEvent[];
+  userId?: string;
 }
 
-export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ events = [] }) => {
+export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ events = [], userId = 'user_default' }) => {
   const [status, setStatus] = useState<TelegramStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLinking, setIsLinking] = useState<boolean>(false);
@@ -84,11 +87,16 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const pollingRef = useRef<number | null>(null);
+  const firestoreUnsubRef = useRef<(() => void) | null>(null);
 
   const stopPolling = () => {
     if (pollingRef.current) {
       window.clearInterval(pollingRef.current);
       pollingRef.current = null;
+    }
+    if (firestoreUnsubRef.current) {
+      firestoreUnsubRef.current();
+      firestoreUnsubRef.current = null;
     }
   };
 
@@ -145,11 +153,51 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
   };
 
   useEffect(() => {
+    let isMounted = true;
     checkStatus(null, false);
+
+    // Also check Firestore telegram_users collection on mount
+    const checkFirestoreUser = async () => {
+      try {
+        if (!userId) return;
+        const userDocRef = doc(db, 'telegram_users', userId);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists() && userSnap.data()?.linked && isMounted) {
+          const user = userSnap.data()?.username || userSnap.data()?.telegram_username || 'Telegram User';
+          setIsLinked(true);
+          setUsername(user);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('aot_telegram_linked', 'true');
+            localStorage.setItem('aot_telegram_user', user);
+          }
+          return;
+        }
+
+        const q = query(collection(db, 'telegram_users'), where('user_id', '==', userId));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty && isMounted) {
+          const docData = qSnap.docs[0].data();
+          if (docData.linked !== false) {
+            const user = docData.username || docData.telegram_username || 'Telegram User';
+            setIsLinked(true);
+            setUsername(user);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('aot_telegram_linked', 'true');
+              localStorage.setItem('aot_telegram_user', user);
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback gracefully
+      }
+    };
+    checkFirestoreUser();
+
     return () => {
+      isMounted = false;
       stopPolling();
     };
-  }, []);
+  }, [userId]);
 
   /**
    * Initiates the pairing handshake
@@ -159,53 +207,126 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     setFeedback(null);
     setShowManualInput(false);
 
+    let pairingUrl = '';
+    let randomToken = '';
+
+    // 1. Request pairing link directly from live Cloud Run pairing endpoint
     try {
-      const res = await fetch('/api/telegram/pair-code', {
+      const response = await fetch('https://telegram-webhook-705347156449.europe-west1.run.app/pair', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.url || data.deepLink) {
+          pairingUrl = data.url || data.deepLink;
+          const match = pairingUrl.match(/[?&]start=([^&]+)/);
+          if (match && match[1]) {
+            randomToken = match[1];
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[TelegramCard] Cloud Run direct pair endpoint fetch fallback:', err);
+    }
+
+    // Fallback if needed
+    if (!randomToken) {
+      randomToken = `pair_${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`;
+    }
+    if (!pairingUrl) {
+      pairingUrl = `https://t.me/AheadTimebot?start=${randomToken}`;
+    }
+
+    setActivePairCode(randomToken);
+    setPairingLink(pairingUrl);
+    setIsWaitingForHandshake(true);
+
+    // 2. Write staging doc to Firestore at pairings/<randomToken>
+    try {
+      await setDoc(doc(db, 'pairings', randomToken), {
+        user_id: userId,
+        linked: false,
+        created_at: new Date()
+      });
+    } catch (err) {
+      console.warn('Firestore setDoc staging notice (using backend synchronization):', err);
+    }
+
+    // 3. Register pairing on local backend server for dual-stack support
+    try {
+      await fetch('/api/telegram/pair-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'user_default', email: 'Th.blanckaert@gmail.com' }),
+        body: JSON.stringify({ userId, code: randomToken }),
       });
-      const data = await res.json();
-
-      if (data.ok && data.deepLink) {
-        const pairCode = data.pairCode || data.pairingCode;
-        setPairingLink(data.deepLink);
-        setActivePairCode(pairCode);
-        setIsWaitingForHandshake(true);
-
-        // Open Telegram link immediately
-        window.open(data.deepLink, '_blank', 'noopener,noreferrer');
-
-        // Start polling every 2 seconds
-        stopPolling();
-        pollingRef.current = window.setInterval(async () => {
-          const success = await checkStatus(pairCode, true);
-          if (success) {
-            stopPolling();
-          }
-        }, 2000);
-
-        // Auto timeout polling after 3 minutes
-        setTimeout(() => {
-          if (pollingRef.current) {
-            stopPolling();
-            setIsWaitingForHandshake(false);
-          }
-        }, 180000);
-      } else {
-        setFeedback({
-          type: 'error',
-          message: data.error || 'Unable to generate Telegram pairing link.'
-        });
-      }
-    } catch (err: any) {
-      setFeedback({
-        type: 'error',
-        message: err?.message || 'Network error while connecting to Telegram.'
-      });
-    } finally {
-      setIsLinking(false);
+    } catch (e) {
+      // Offline fallback
     }
+
+    // Open Telegram Bot with deep link
+    try {
+      window.open(pairingUrl, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      console.warn('window.open notice:', e);
+    }
+
+    // 4. Set up real-time Firestore listener (onSnapshot) on that specific pairings/<randomToken> document
+    try {
+      const unsub = onSnapshot(doc(db, 'pairings', randomToken), (docSnap) => {
+        if (docSnap.exists() && docSnap.data().linked) {
+          const detectedUser = docSnap.data().username || 'Telegram User';
+          const detectedChat = docSnap.data().chat_id || docSnap.data().chatId || '';
+
+          setIsLinked(true);
+          setUsername(detectedUser);
+          if (detectedChat) setChatId(detectedChat);
+
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('aot_telegram_linked', 'true');
+            localStorage.setItem('aot_telegram_user', detectedUser);
+            if (detectedChat) {
+              localStorage.setItem('aot_telegram_chat_id', String(detectedChat));
+            }
+          }
+
+          stopPolling();
+          setIsWaitingForHandshake(false);
+          setPairingLink(null);
+          setActivePairCode(null);
+          setShowManualInput(false);
+          setIsLinking(false);
+
+          setFeedback({
+            type: 'success',
+            message: `🎉 Connected! Telegram assistant (@${detectedUser}) is now active.`,
+          });
+        }
+      });
+      firestoreUnsubRef.current = unsub;
+    } catch (err) {
+      console.warn('Firestore onSnapshot notice:', err);
+    }
+
+    // Start dual-layer polling every 2 seconds
+    if (pollingRef.current) window.clearInterval(pollingRef.current);
+    pollingRef.current = window.setInterval(async () => {
+      const success = await checkStatus(randomToken, true);
+      if (success) {
+        stopPolling();
+        setIsLinking(false);
+      }
+    }, 2000);
+
+    // Auto timeout polling after 3 minutes
+    setTimeout(() => {
+      if (pollingRef.current) {
+        stopPolling();
+        setIsWaitingForHandshake(false);
+        setIsLinking(false);
+      }
+    }, 180000);
   };
 
   /**
@@ -233,7 +354,6 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         body: JSON.stringify({
           code: activePairCode || 'pair_manual',
           username: customUsername,
-          chatId: 123456789,
         }),
       });
 
@@ -242,12 +362,16 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         const linkedUser = data.username || customUsername;
         setIsLinked(true);
         setUsername(linkedUser);
-        setChatId(data.chatId || 123456789);
+        if (data.chatId) {
+          setChatId(data.chatId);
+        }
 
         if (typeof window !== 'undefined') {
           localStorage.setItem('aot_telegram_linked', 'true');
           localStorage.setItem('aot_telegram_user', linkedUser);
-          localStorage.setItem('aot_telegram_chat_id', String(data.chatId || '123456789'));
+          if (data.chatId) {
+            localStorage.setItem('aot_telegram_chat_id', String(data.chatId));
+          }
         }
 
         stopPolling();
@@ -321,6 +445,14 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
    * Send test reminder alert
    */
   const handleSendTestMessage = async () => {
+    if (!chatId || chatId === '123456789' || chatId === 123456789) {
+      setFeedback({
+        type: 'error',
+        message: 'No active Telegram chat linked yet. Click "Connect Telegram" and tap Start in @AheadTimebot first to link your chat.',
+      });
+      return;
+    }
+
     setIsSendingTest(true);
     setFeedback(null);
 
@@ -389,7 +521,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatId: chatId || 123456789,
+          chatId,
           event: sampleEvent,
         }),
       });
@@ -522,14 +654,14 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
               {isLinking ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Connecting to Telegram...</span>
+                  <span>Waiting for Telegram...</span>
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .39z" />
                   </svg>
-                  <span>Link Telegram Assistant</span>
+                  <span>Connect Telegram</span>
                   <ExternalLink className="w-3.5 h-3.5 opacity-80" />
                 </>
               )}

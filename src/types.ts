@@ -3,6 +3,8 @@ export type OperationalMode = 'CREATE_AND_INTAKE' | 'RESOLVE_MILESTONES' | 'RESE
 export type EventCategory = 
   | 'birthday_party' 
   | 'hosting_visitors' 
+  | 'friends_family'
+  | 'hobbies'
   | 'festival_concert' 
   | 'travel_trip' 
   | 'dinner_social' 

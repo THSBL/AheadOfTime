@@ -46,14 +46,15 @@ import { EventCreationWizard } from './EventCreationWizard';
 import { CanonicalCategory } from '../utils/creationStateMachine';
 
 function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
+  if (presetId === 'hobbies') return 'hobbies';
   if (presetId === 'kids_hobbies') return 'kids_hobbies';
   if (presetId === 'kids_school' || presetId === 'kids') return 'kids_school';
   if (presetId === 'trip') return 'trip';
-  if (presetId === 'friends') return 'friends_visiting';
+  if (presetId === 'friends' || presetId === 'friends_family' || presetId === 'friends_visiting') return 'friends_visiting';
   if (presetId === 'birthday' || presetId === 'party') return 'party';
   if (presetId === 'subscription') return 'subscription';
   if (presetId === 'maintenance') return 'maintenance';
-  if (presetId === 'project') return 'project_management';
+  if (presetId === 'project' || presetId === 'work_projects') return 'project_management';
   return 'party';
 }
 
