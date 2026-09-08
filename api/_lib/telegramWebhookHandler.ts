@@ -125,37 +125,20 @@ export class TelegramWebhookHandler {
 
     // Command: /start (with pairing code support)
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start=')) {
-      // 1. Check for deep-linked pairing code: e.g. "/start pair_987xyz"
-      const match = text.match(/^\/start(?:=|\s+)(pair_[a-zA-Z0-9_-]+)/);
-      if (match) {
-        const pairingCode = match[1];
-        console.log(`🔗 Attempting to link Telegram chat ${chatId} with pairing code ${pairingCode}...`);
-        const linkResult = TelegramSessionStore.linkUserByPairingCode(chatId, pairingCode, from);
+      // 1. Extract payload after /start: e.g. "/start pair_987xyz" or "/start=pair_987xyz"
+      const parts = text.split(/[\s=]+/);
+      const pairCode = parts.length > 1 ? parts[1].trim() : '';
+
+      if (pairCode) {
+        console.log(`🔗 Linking Telegram chat ${chatId} with pairing token "${pairCode}"...`);
+        const linkResult = TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
 
         if (linkResult.success) {
-          const successMsg = [
-            `✅ *Successfully connected to Ahead Of Time!*`,
-            ``,
-            `Your Telegram chat is now paired with your executive calendar account.`,
-            ``,
-            `*What you can do right now*:`,
-            `• Schedule events with reverse runways (e.g. _"Trip to Scottish Highlands Oct 14-18 with 4 friends"_ or _"Sprint demo next Friday at 3pm"_)`,
-            `• Check availability (e.g. _"What is on my schedule tomorrow morning?"_)`,
-            `• Receive prep notifications directly on Telegram as milestones approach.`,
-            ``,
-            `Type /status anytime to inspect your active connection.`,
-          ].join('\n');
-
+          const successMsg = `✅ *Connected to AheadOfTime!* Any trip or event you mention here will sync to your dashboard.`;
           await TelegramService.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
           return;
         } else {
-          const errorMsg = [
-            `⚠️ *Pairing Failed*: ${linkResult.error || 'The connection link is invalid or has expired.'}`,
-            ``,
-            `Please visit the settings page on your web dashboard to generate a fresh pairing link:`,
-            `${appBaseUrl}/settings/credentials`,
-          ].join('\n');
-
+          const errorMsg = `⚠️ *Connection Issue*: ${linkResult.error || 'The connection link is invalid or has expired.'}\n\nPlease refresh your dashboard settings to generate a new link.`;
           await TelegramService.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
           return;
         }

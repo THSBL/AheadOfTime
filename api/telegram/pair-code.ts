@@ -23,6 +23,7 @@ export default async function handler(req: Request, res: Response) {
       res.status(200).json({
         ok: true,
         pairingCode,
+        pairCode: pairingCode,
         botUsername,
         deepLink,
         expiresInSeconds: 86400,
@@ -35,14 +36,11 @@ export default async function handler(req: Request, res: Response) {
 
   if (req.method === 'GET') {
     try {
+      const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
       const userId = (req.query.userId as string) || 'user_default';
-      const session = TelegramSessionStore.getLinkedSessionForWebUser(userId);
 
-      res.status(200).json({
-        ok: true,
-        isLinked: Boolean(session?.isLinked),
-        session: session || null,
-      });
+      const status = TelegramSessionStore.getPairingStatus(code, userId);
+      res.status(200).json(status);
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message || 'Failed to check pairing status' });
     }

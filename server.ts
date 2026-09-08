@@ -1744,7 +1744,7 @@ app.post("/api/telegram/set-webhook", async (req: Request, res: Response) => {
 });
 
 // 3b. Pairing Code Generation & Account Linking
-app.post("/api/telegram/pair-code", async (req: Request, res: Response) => {
+app.post(["/api/telegram/pair-code", "/api/pair-code"], async (req: Request, res: Response) => {
   try {
     const { userId = "user_default", email } = req.body || {};
     const pairingCode = TelegramSessionStore.createPairingCode(userId, email);
@@ -1761,6 +1761,7 @@ app.post("/api/telegram/pair-code", async (req: Request, res: Response) => {
     res.json({
       ok: true,
       pairingCode,
+      pairCode: pairingCode,
       botUsername,
       deepLink,
       expiresInSeconds: 86400,
@@ -1770,15 +1771,12 @@ app.post("/api/telegram/pair-code", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/api/telegram/pair-code", (req: Request, res: Response) => {
+app.get(["/api/telegram/pair-code", "/api/pairing-status"], (req: Request, res: Response) => {
   try {
+    const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
     const userId = (req.query.userId as string) || "user_default";
-    const session = TelegramSessionStore.getLinkedSessionForWebUser(userId);
-    res.json({
-      ok: true,
-      isLinked: Boolean(session?.isLinked),
-      session: session || null,
-    });
+    const status = TelegramSessionStore.getPairingStatus(code, userId);
+    res.json(status);
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message || "Failed to check pairing status" });
   }

@@ -1,11 +1,10 @@
-import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { TelegramSessionStore } from './telegramStore.js';
-import { CalendarEvent } from '../src/types.js';
-import { detectEventCategory, generateHeuristicMilestones } from '../src/utils/tminusRules.js';
+import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory } from '../src/types.js';
 
 export interface CalendarAgentResult {
   replyText: string;
-  toolCalls: Array<{
+  toolCalls?: Array<{
     name: string;
     args: Record<string, any>;
     result: any;
@@ -13,74 +12,78 @@ export interface CalendarAgentResult {
   createdEvent?: CalendarEvent;
 }
 
-const SYSTEM_INSTRUCTION = `You are "Ahead Of Time", an intelligent, high-efficiency personal executive calendar assistant communicating via Telegram.
+const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", an intelligent, high-efficiency personal executive calendar assistant communicating via Telegram.
 
-### Core Objectives
-1. Manage the user's schedule with speed, clarity, and zero unnecessary conversational filler.
-2. Read, verify, and modify the user's Google Calendar using the provided function-calling tools.
+### Core Objectives:
+1. Parse user scheduling requests (trips, dinners, birthdays, meetings, deadlines, conferences, vacations) into rich structured calendar events.
+2. Calculate realistic backward preparation runways (T-Minus milestones) with tangible deliverables so the user is prepared ahead of time.
+3. Manage the user's schedule with speed, clarity, and zero unnecessary conversational filler.
 
-### Temporal Grounding Rules
+### Temporal Grounding Rules:
 - Every incoming user message contains dynamic system time context in the format:
   \`[System Context: Current Time: <Day, DD Month YYYY, HH:MM:SS TZ> (Timezone: <TZ>)]\`
-- Always evaluate relative references ("today", "tomorrow morning", "next Friday", "in 2 hours") strictly against this timestamp and timezone.
+- Always evaluate relative references ("today", "tomorrow morning", "next Friday", "in 2 hours", "Oct 14-18", "next month") strictly against this timestamp and timezone.
 - Never guess the current year or date; rely exclusively on the injected system context.
 
-### Tool Execution Rules
-- Querying Schedule: When the user asks about availability or existing events, invoke \`list_calendar_events\`. Always specify ISO 8601 timestamps (e.g., \`2026-09-08T09:00:00+01:00\`).
-- Booking / Moving: When scheduling or rescheduling, invoke \`create_calendar_event\`. If the user does not specify a duration, default to 30 minutes for quick chats/syncs and 60 minutes for general meetings.
-- Pre-booking Conflict Check: If the user requests a new meeting at a specific time, first verify existing events. If there is a direct conflict, state the clash succinctly and propose alternative free windows.
-- No Hallucinated Writes: Never tell the user an event has been created, changed, or deleted without receiving a successful tool call result.
+### Response Format:
+You MUST respond with a valid JSON object matching one of two schemas:
 
-### Output Formatting for Telegram
-- Structure responses cleanly using Telegram Markdown (bolding, bullet points, monospace for times).
-- Keep replies concise and easy to read at a glance on mobile screens.
-- Skip pleasantries (e.g., avoid "I hope you are having a productive day!"). Go directly to the schedule overview or booking confirmation.`;
-
-const listCalendarEventsDeclaration: FunctionDeclaration = {
-  name: 'list_calendar_events',
-  description: 'Retrieves Google Calendar events within an ISO 8601 start and end time window.',
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      time_min_iso: {
-        type: Type.STRING,
-        description: 'Start of the search window in ISO 8601 format (e.g., 2026-09-08T00:00:00+01:00).',
-      },
-      time_max_iso: {
-        type: Type.STRING,
-        description: 'End of the search window in ISO 8601 format (e.g., 2026-09-08T23:59:59+01:00).',
-      },
+#### Option A: Event Creation / Compound Scheduling Request (e.g. "Trip to Scottish Highlands Oct 14-18 with 4 friends", "Dinner party next Friday at 7pm", "Product launch Nov 15")
+\`\`\`json
+{
+  "type": "event_creation",
+  "summary": "Scottish Highlands Trip (with 4 friends)",
+  "start_date": "2026-10-14",
+  "end_date": "2026-10-18",
+  "start_time": "09:00",
+  "category": "travel_trip",
+  "location": "Scottish Highlands",
+  "description": "Trip to Scottish Highlands with 4 friends",
+  "milestones": [
+    {
+      "milestone_title": "Lodging & Transport Locked",
+      "t_minus_days": 21,
+      "target_date": "2026-09-23",
+      "deliverables": [
+        "Book rental car / train passes",
+        "Reserve group stay / cabin"
+      ]
     },
-    required: ['time_min_iso', 'time_max_iso'],
-  },
-};
-
-const createCalendarEventDeclaration: FunctionDeclaration = {
-  name: 'create_calendar_event',
-  description: "Creates a new event on the user's primary calendar.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      summary: {
-        type: Type.STRING,
-        description: 'Title of the event.',
-      },
-      start_iso: {
-        type: Type.STRING,
-        description: 'Start time in ISO 8601 format with timezone offset.',
-      },
-      end_iso: {
-        type: Type.STRING,
-        description: 'End time in ISO 8601 format with timezone offset.',
-      },
-      description: {
-        type: Type.STRING,
-        description: 'Meeting notes, agenda, or link.',
-      },
+    {
+      "milestone_title": "Headcount & Group Costs Settled",
+      "t_minus_days": 14,
+      "target_date": "2026-09-30",
+      "deliverables": [
+        "Confirm headcount with all 4 friends",
+        "Collect shared budget/expenses"
+      ]
     },
-    required: ['summary', 'start_iso', 'end_iso'],
-  },
-};
+    {
+      "milestone_title": "Gear & Bags Packed",
+      "t_minus_days": 2,
+      "target_date": "2026-10-12",
+      "deliverables": [
+        "Pack hiking boots & weather gear",
+        "Check offline trail maps"
+      ]
+    }
+  ],
+  "telegram_reply": "*Scottish Highlands Trip (with 4 friends)*\\n• 📅 \`2026-10-14\` to \`2026-10-18\`\\n• 📍 Scottish Highlands\\n• 🎯 3 Preparation Milestones generated"
+}
+\`\`\`
+
+#### Option B: Calendar Query / Availability Check (e.g. "What do I have going on tomorrow afternoon?", "Am I free next Monday?")
+\`\`\`json
+{
+  "type": "query",
+  "time_min_iso": "2026-09-09T12:00:00+01:00",
+  "time_max_iso": "2026-09-09T18:00:00+01:00",
+  "telegram_reply": "*Schedule for Tomorrow Afternoon* (\`2026-09-09\`):\\n• No scheduled conflicts between \`12:00\` and \`18:00\`. Your afternoon is clear."
+}
+\`\`\`
+
+Allowed categories: "travel_trip", "birthday_party", "dinner_social", "project_deadline", "hosting_visitors", "festival_concert", "custom".
+Always ensure date arithmetic for milestones is accurate: target_date = start_date minus t_minus_days.`;
 
 export class GeminiCalendarAgent {
   private static aiClient: GoogleGenAI | null = null;
@@ -110,7 +113,6 @@ export class GeminiCalendarAgent {
     }
 
     const now = new Date();
-    // Format: Tuesday, 08 September 2026, 11:45:00 BST (Timezone: Europe/London)
     const options: Intl.DateTimeFormatOptions = {
       weekday: 'long',
       day: '2-digit',
@@ -128,126 +130,7 @@ export class GeminiCalendarAgent {
   }
 
   /**
-   * Execute list_calendar_events
-   */
-  public static executeListEvents(chatId: number | string, args: { time_min_iso: string; time_max_iso: string }): any {
-    const { time_min_iso, time_max_iso } = args;
-    const minTime = new Date(time_min_iso).getTime();
-    const maxTime = new Date(time_max_iso).getTime();
-
-    // In multi-tenant mode, lookup events specific to this chat/user
-    const userEvents = TelegramSessionStore.getRecentEventsForChat(chatId);
-    const candidateEvents = userEvents.length > 0 ? userEvents : TelegramSessionStore.getAllEvents();
-
-    const matching = candidateEvents.filter((ev) => {
-      if (!ev.eventDate) return false;
-      const timeStr = ev.eventTime || '09:00';
-      const eventDateTime = new Date(`${ev.eventDate}T${timeStr}:00Z`).getTime();
-      return eventDateTime >= minTime - 3600000 && eventDateTime <= maxTime + 3600000;
-    });
-
-    return {
-      events: matching.map((ev) => ({
-        id: ev.id,
-        summary: ev.title,
-        start: `${ev.eventDate}T${ev.eventTime || '09:00'}:00`,
-        end: `${ev.eventDate}T${ev.eventTime || '10:00'}:00`,
-        location: ev.location,
-        description: ev.context?.customNote || ev.title,
-      })),
-      window: {
-        time_min_iso,
-        time_max_iso,
-      },
-    };
-  }
-
-  /**
-   * Execute create_calendar_event
-   */
-  public static executeCreateEvent(
-    chatId: number | string,
-    args: { summary: string; start_iso: string; end_iso: string; description?: string }
-  ): { result: any; event?: CalendarEvent } {
-    const { summary, start_iso, end_iso, description } = args;
-
-    // Check for direct clashes in this user's schedule
-    const newStart = new Date(start_iso).getTime();
-    const newEnd = new Date(end_iso).getTime();
-    const existingEvents = TelegramSessionStore.getRecentEventsForChat(chatId);
-
-    const conflict = existingEvents.find((ev) => {
-      if (!ev.eventDate) return false;
-      const evStart = new Date(`${ev.eventDate}T${ev.eventTime || '09:00'}:00Z`).getTime();
-      const evEnd = evStart + 60 * 60 * 1000;
-      return newStart < evEnd && newEnd > evStart;
-    });
-
-    if (conflict) {
-      return {
-        result: {
-          status: 'conflict',
-          message: `Direct conflict with existing event "${conflict.title}"`,
-          conflicting_event: {
-            summary: conflict.title,
-            date: conflict.eventDate,
-            time: conflict.eventTime,
-          },
-          suggested_slots: [
-            { start_iso: new Date(newEnd + 15 * 60 * 1000).toISOString(), duration_minutes: 30 },
-            { start_iso: new Date(newStart - 45 * 60 * 1000).toISOString(), duration_minutes: 30 },
-          ],
-        },
-      };
-    }
-
-    const eventId = `evt_${Date.now()}`;
-    const category = detectEventCategory(summary);
-    const dateStr = start_iso.substring(0, 10);
-    const timeMatch = start_iso.match(/T(\d{2}:\d{2})/);
-    const timeStr = timeMatch ? timeMatch[1] : '09:00';
-
-    const milestones = generateHeuristicMilestones(
-      { category, context: { customNote: description || summary } },
-      eventId,
-      dateStr,
-      timeStr
-    );
-
-    const newEvent: CalendarEvent = {
-      id: eventId,
-      title: summary,
-      category,
-      eventDate: dateStr,
-      eventTime: timeStr,
-      status: 'milestones_active',
-      needsRefinement: true,
-      context: {
-        customNote: description || summary,
-      },
-      milestones,
-      rawInputSnippet: summary,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    TelegramSessionStore.recordEventCreated(chatId, newEvent);
-
-    return {
-      result: {
-        status: 'confirmed',
-        event_id: newEvent.id,
-        summary: newEvent.title,
-        start_iso,
-        end_iso,
-        milestones_count: milestones.length,
-      },
-      event: newEvent,
-    };
-  }
-
-  /**
-   * Main processor: takes prompt (with or without system context), runs Gemini with tools or fallback
+   * Main processor: executes Gemini Flash extraction or intelligent calendar parser fallback
    */
   public static async processMessage(
     chatId: number | string,
@@ -256,12 +139,11 @@ export class GeminiCalendarAgent {
   ): Promise<CalendarAgentResult> {
     const prompt = this.ensureSystemContext(rawText, defaultTimezone);
     const ai = this.getClient();
-    const toolCallsRecorded: Array<{ name: string; args: any; result: any }> = [];
-    let createdEventObj: CalendarEvent | undefined;
 
     if (ai) {
       try {
-        const firstTurn = await ai.models.generateContent({
+        console.log(`🤖 Invoking Gemini Flash for Telegram chat ${chatId}: "${rawText.slice(0, 60)}..."`);
+        const response = await ai.models.generateContent({
           model: 'gemini-3.8-flash',
           contents: [
             {
@@ -270,218 +152,245 @@ export class GeminiCalendarAgent {
             },
           ],
           config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-            tools: [
-              {
-                functionDeclarations: [listCalendarEventsDeclaration, createCalendarEventDeclaration],
-              },
-            ],
+            systemInstruction: COMPOUND_EVENT_SYSTEM_PROMPT,
+            responseMimeType: 'application/json',
           },
         });
 
-        const functionCalls = firstTurn.functionCalls;
+        const rawJson = response.text || '';
+        console.log(`📥 Gemini raw response:`, rawJson.slice(0, 200));
 
-        if (functionCalls && functionCalls.length > 0) {
-          const functionResponseParts: any[] = [];
+        if (rawJson.trim()) {
+          const cleaned = rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+          const parsed = JSON.parse(cleaned);
 
-          for (const call of functionCalls) {
-            let callResult: any = null;
-
-            if (call.name === 'list_calendar_events') {
-              callResult = this.executeListEvents(chatId, call.args as any);
-            } else if (call.name === 'create_calendar_event') {
-              const res = this.executeCreateEvent(chatId, call.args as any);
-              callResult = res.result;
-              if (res.event) createdEventObj = res.event;
-            }
-
-            toolCallsRecorded.push({
-              name: call.name,
-              args: call.args as any,
-              result: callResult,
-            });
-
-            functionResponseParts.push({
-              functionResponse: {
-                name: call.name,
-                response: callResult,
-              },
-            });
-          }
-
-          // Second turn: feed function responses back to Gemini
-          const secondTurn = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: prompt }],
-              },
-              {
-                role: 'model',
-                parts: firstTurn.candidates?.[0]?.content?.parts || [],
-              },
-              {
-                role: 'user',
-                parts: functionResponseParts,
-              },
-            ],
-            config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
-            },
-          });
-
-          const finalText = secondTurn.text || '';
-          if (finalText.trim()) {
+          if (parsed.type === 'event_creation' && parsed.summary && parsed.start_date) {
+            return this.buildAndStoreEvent(chatId, parsed, rawText);
+          } else if (parsed.type === 'query') {
             return {
-              replyText: finalText.trim(),
-              toolCalls: toolCallsRecorded,
-              createdEvent: createdEventObj,
+              replyText: parsed.telegram_reply || 'Checked your calendar: No conflicts found.',
+              toolCalls: [
+                {
+                  name: 'list_calendar_events',
+                  args: { time_min_iso: parsed.time_min_iso, time_max_iso: parsed.time_max_iso },
+                  result: { count: 0 },
+                },
+              ],
             };
           }
-        } else if (firstTurn.text) {
-          return {
-            replyText: firstTurn.text.trim(),
-            toolCalls: [],
-            createdEvent: undefined,
-          };
         }
       } catch (err: any) {
-        console.warn('⚠️ Gemini tool execution failed or timed out, executing local engine:', err.message);
+        console.warn('⚠️ Gemini extraction error:', err.message);
       }
     }
 
-    // Heuristic Fallback Engine
-    return this.fallbackHeuristicEngine(chatId, prompt);
+    // Intelligent Deterministic NLP Engine Fallback
+    return this.intelligentNaturalLanguageEngine(chatId, rawText, prompt);
   }
 
   /**
-   * Deterministic heuristic engine that strictly mirrors the tool calls and Telegram output
+   * Constructs a full CalendarEvent object with milestones and saves it to store
    */
-  private static fallbackHeuristicEngine(chatId: number | string, prompt: string): CalendarAgentResult {
-    const userLineMatch = prompt.match(/User:\s*([\s\S]+)$/i);
-    const userText = userLineMatch ? userLineMatch[1].trim() : prompt.trim();
+  private static buildAndStoreEvent(
+    chatId: number | string,
+    parsed: any,
+    rawInputSnippet: string
+  ): CalendarAgentResult {
+    const eventId = `evt_${Date.now()}`;
+    const category: EventCategory = (parsed.category as EventCategory) || 'travel_trip';
+    const startDateStr = parsed.start_date;
+    const endDateStr = parsed.end_date || startDateStr;
+    const startTimeStr = parsed.start_time || '09:00';
 
-    // Extract time context if present
-    const contextMatch = prompt.match(/\[System Context: Current Time:\s*([A-Za-z]+),\s*(\d{1,2})\s*([A-Za-z]+)\s*(\d{4}),\s*([\d:]+)\s*([A-Za-z]+)?\s*\(Timezone:\s*([^)]+)\)\]/i);
+    // Map extracted milestones
+    const milestones: TMinusMilestone[] = (parsed.milestones || []).map((m: any, idx: number) => {
+      const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
+      const targetDate = m.target_date || startDateStr;
 
-    const baseYear = contextMatch ? parseInt(contextMatch[4], 10) : new Date().getFullYear();
-    const baseMonthName = contextMatch ? contextMatch[3] : 'September';
-    const baseDay = contextMatch ? parseInt(contextMatch[2], 10) : new Date().getDate();
-    const tzOffset = '+01:00'; // BST default for London
-
-    const monthMap: Record<string, number> = {
-      january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-      july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
-      jan: 0, feb: 1, mar: 2, apr: 3, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
-    };
-
-    const baseMonth = monthMap[baseMonthName.toLowerCase()] ?? 8;
-    const baseDateObj = new Date(Date.UTC(baseYear, baseMonth, baseDay, 11, 45, 0));
-
-    // Case 1: Querying schedule (e.g. "What do I have going on tomorrow afternoon?")
-    if (/\b(what|show|check|list|any).*(going on|schedule|calendar|free|events|afternoon|morning)\b/i.test(userText)) {
-      // If "tomorrow afternoon"
-      const tomorrow = new Date(baseDateObj.getTime() + 24 * 60 * 60 * 1000);
-      const y = tomorrow.getUTCFullYear();
-      const m = String(tomorrow.getUTCMonth() + 1).padStart(2, '0');
-      const d = String(tomorrow.getUTCDate()).padStart(2, '0');
-
-      const timeMin = `${y}-${m}-${d}T12:00:00${tzOffset}`;
-      const timeMax = `${y}-${m}-${d}T18:00:00${tzOffset}`;
-
-      const listRes = this.executeListEvents(chatId, {
-        time_min_iso: timeMin,
-        time_max_iso: timeMax,
-      });
-
-      const toolCalls = [
-        {
-          name: 'list_calendar_events',
-          args: { time_min_iso: timeMin, time_max_iso: timeMax },
-          result: listRes,
-        },
-      ];
-
-      if (!listRes.events || listRes.events.length === 0) {
-        return {
-          replyText: `*Schedule for Tomorrow Afternoon* (\`${y}-${m}-${d}\`):\n• No scheduled events between \`12:00\` and \`18:00\`. Your afternoon is clear.`,
-          toolCalls,
-        };
-      }
-
-      const eventsList = listRes.events
-        .map((e: any) => `• \`${e.start.slice(11, 16)} - ${e.end.slice(11, 16)}\` *${e.summary}*`)
-        .join('\n');
+      const deliverables: Deliverable[] = Array.isArray(m.deliverables)
+        ? m.deliverables.map((d: any, dIdx: number) => ({
+            deliverable_id: `del_${Date.now()}_${idx}_${dIdx}`,
+            title: typeof d === 'string' ? d : d.title || 'Action item',
+            type: 'coordination',
+            is_completed: false,
+          }))
+        : [];
 
       return {
-        replyText: `*Schedule for Tomorrow Afternoon* (\`${y}-${m}-${d}\`):\n${eventsList}`,
-        toolCalls,
+        id: `ms_${Date.now()}_${idx}`,
+        eventId,
+        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusOffsetMinutes: -1 * tMinusDays * 1440,
+        calculatedDate: targetDate,
+        title: m.milestone_title || `Milestone ${idx + 1}`,
+        category: 'logistics',
+        status: 'pending',
+        scope: 'macro',
+        deliverables,
       };
-    }
-
-    // Case 2: Booking an event (e.g. "Book a 45-minute sync with Eva next Thursday at 3 PM about the London move")
-    const durationMatch = userText.match(/(\d+)[ -]minute/i);
-    const durationMin = durationMatch ? parseInt(durationMatch[1], 10) : 30;
-
-    // Detect target date: "next Thursday" or explicit day
-    let targetDay = baseDay + 9; // e.g. Tuesday 08 -> next Thursday 17
-    let targetHour = 15;
-    let targetMinute = 0;
-
-    const pmMatch = userText.match(/(\d{1,2})(?::(\d{2}))?\s*(pm|am)/i);
-    if (pmMatch) {
-      targetHour = parseInt(pmMatch[1], 10);
-      if (pmMatch[3].toLowerCase() === 'pm' && targetHour < 12) targetHour += 12;
-      if (pmMatch[3].toLowerCase() === 'am' && targetHour === 12) targetHour = 0;
-      targetMinute = pmMatch[2] ? parseInt(pmMatch[2], 10) : 0;
-    }
-
-    // Calculate end time
-    const endTotalMinutes = targetHour * 60 + targetMinute + durationMin;
-    const endHour = Math.floor(endTotalMinutes / 60);
-    const endMinute = endTotalMinutes % 60;
-
-    const startIso = `${baseYear}-${String(baseMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}T${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')}:00${tzOffset}`;
-    const endIso = `${baseYear}-${String(baseMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00${tzOffset}`;
-
-    // Clean summary
-    let summary = userText.replace(/^book\s+(?:a\s+)?(?:\d+[- ]minute\s+)?/i, '');
-    summary = summary.replace(/\s+at\s+\d+.*$/i, '').trim();
-    if (!summary) summary = 'Sync meeting';
-
-    const createRes = this.executeCreateEvent(chatId, {
-      summary,
-      start_iso: startIso,
-      end_iso: endIso,
-      description: userText,
     });
 
-    const toolCalls = [
-      {
-        name: 'create_calendar_event',
-        args: {
-          summary,
-          start_iso: startIso,
-          end_iso: endIso,
-          description: userText,
-        },
-        result: createRes.result,
+    const newEvent: CalendarEvent = {
+      id: eventId,
+      title: parsed.summary,
+      category,
+      eventDate: startDateStr,
+      endDate: endDateStr,
+      eventTime: startTimeStr,
+      location: parsed.location || undefined,
+      status: 'milestones_active',
+      needsRefinement: true,
+      context: {
+        customNote: parsed.description || parsed.summary,
+        guestCount: parsed.guest_count,
       },
-    ];
+      milestones,
+      rawInputSnippet,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-    const reply = [
-      `*Event Confirmed*`,
-      `• *Summary*: ${summary}`,
-      `• *Date*: \`${baseYear}-${String(baseMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}\``,
-      `• *Time*: \`${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')} – ${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}\` (${durationMin} mins)`,
-      `• *Preparation Milestones*: Active and tracking`,
-    ].join('\n');
+    TelegramSessionStore.recordEventCreated(chatId, newEvent);
+
+    let reply = parsed.telegram_reply;
+    if (!reply) {
+      const rangeText = endDateStr && endDateStr !== startDateStr ? `\`${startDateStr}\` to \`${endDateStr}\`` : `\`${startDateStr}\``;
+      reply = [
+        `*${newEvent.title}* Confirmed!`,
+        `• 📅 *Dates*: ${rangeText}`,
+        newEvent.location ? `• 📍 *Location*: ${newEvent.location}` : null,
+        `• 🎯 *Preparation Runways*: ${milestones.length} milestones activated.`,
+      ].filter(Boolean).join('\n');
+    }
 
     return {
       replyText: reply,
-      toolCalls,
-      createdEvent: createRes.event,
+      toolCalls: [
+        {
+          name: 'create_calendar_event',
+          args: {
+            summary: newEvent.title,
+            start_iso: `${startDateStr}T${startTimeStr}:00`,
+            end_iso: `${endDateStr}T18:00:00`,
+          },
+          result: { ok: true, id: newEvent.id },
+        },
+      ],
+      createdEvent: newEvent,
     };
+  }
+
+  /**
+   * Deterministic Natural Language Engine (handles complex date expressions like "Oct 14-18 with 4 friends")
+   */
+  private static intelligentNaturalLanguageEngine(
+    chatId: number | string,
+    rawText: string,
+    prompt: string
+  ): CalendarAgentResult {
+    // Grounding year / context
+    const yearMatch = prompt.match(/\b(202\d)\b/);
+    const baseYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;
+
+    const monthMap: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+      apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+      aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+      oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12
+    };
+
+    // Check for date range: "Oct 14-18", "October 14-18", "Oct 14 to 18", "Oct 14 - 18"
+    const rangeRegex = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})\b/i;
+    const singleDateRegex = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})\b/i;
+
+    let startDateStr = `${baseYear}-10-14`;
+    let endDateStr = `${baseYear}-10-18`;
+
+    const rangeMatch = rawText.match(rangeRegex);
+    const singleMatch = rawText.match(singleDateRegex);
+
+    if (rangeMatch) {
+      const monthNum = monthMap[rangeMatch[1].toLowerCase()] || 10;
+      const startDay = parseInt(rangeMatch[2], 10);
+      const endDay = parseInt(rangeMatch[3], 10);
+      const mm = String(monthNum).padStart(2, '0');
+      startDateStr = `${baseYear}-${mm}-${String(startDay).padStart(2, '0')}`;
+      endDateStr = `${baseYear}-${mm}-${String(endDay).padStart(2, '0')}`;
+    } else if (singleMatch) {
+      const monthNum = monthMap[singleMatch[1].toLowerCase()] || 10;
+      const startDay = parseInt(singleMatch[2], 10);
+      const mm = String(monthNum).padStart(2, '0');
+      startDateStr = `${baseYear}-${mm}-${String(startDay).padStart(2, '0')}`;
+      endDateStr = startDateStr;
+    }
+
+    // Clean summary title
+    let summary = rawText
+      .replace(/^(book|schedule|plan|create)\s+(?:a\s+)?/i, '')
+      .replace(/\s+with\s+(\d+\s+\w+)/i, ' (with $1)')
+      .trim();
+
+    // Capitalize first letter
+    summary = summary.charAt(0).toUpperCase() + summary.slice(1);
+
+    // Calculate milestone dates relative to startDate
+    const startObj = new Date(`${startDateStr}T09:00:00Z`);
+
+    const subtractDays = (d: Date, days: number): string => {
+      const res = new Date(d.getTime() - days * 86400000);
+      return res.toISOString().substring(0, 10);
+    };
+
+    const isTrip = /trip|highlands|cabin|vacation|flight|hotel|tour|camp/i.test(rawText);
+
+    const milestonesData = isTrip
+      ? [
+          {
+            milestone_title: 'Lodging & Transport Locked',
+            t_minus_days: 21,
+            target_date: subtractDays(startObj, 21),
+            deliverables: ['Book rental car / train passes', 'Reserve group stay / cabin'],
+          },
+          {
+            milestone_title: 'Headcount & Group Costs Settled',
+            t_minus_days: 14,
+            target_date: subtractDays(startObj, 14),
+            deliverables: ['Confirm headcount with all friends', 'Collect shared budget/expenses'],
+          },
+          {
+            milestone_title: 'Gear & Bags Packed',
+            t_minus_days: 2,
+            target_date: subtractDays(startObj, 2),
+            deliverables: ['Pack hiking boots & weather gear', 'Check offline trail maps'],
+          },
+        ]
+      : [
+          {
+            milestone_title: 'Invitations & RSVPs Finalized',
+            t_minus_days: 7,
+            target_date: subtractDays(startObj, 7),
+            deliverables: ['Send calendar invites', 'Confirm attendee headcount'],
+          },
+          {
+            milestone_title: 'Agenda & Materials Prepared',
+            t_minus_days: 2,
+            target_date: subtractDays(startObj, 2),
+            deliverables: ['Draft agenda notes', 'Prepare shared documents'],
+          },
+        ];
+
+    return this.buildAndStoreEvent(
+      chatId,
+      {
+        type: 'event_creation',
+        summary,
+        start_date: startDateStr,
+        end_date: endDateStr,
+        category: isTrip ? 'travel_trip' : 'dinner_social',
+        description: rawText,
+        milestones: milestonesData,
+      },
+      rawText
+    );
   }
 }

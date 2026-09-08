@@ -259,6 +259,36 @@ function App() {
     };
   }, []);
 
+  // Periodically sync and merge events created via Telegram Assistant
+  useEffect(() => {
+    const syncTelegramEvents = async () => {
+      try {
+        const res = await fetch('/api/telegram/events');
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.events) && data.events.length > 0) {
+          setEvents((prev) => {
+            const merged = mergeEvents(prev, data.events);
+            try {
+              localStorage.setItem('tminus_events_v2', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+      } catch (e) {
+        // Silently catch background polling errors
+      }
+    };
+
+    syncTelegramEvents();
+    const interval = window.setInterval(syncTelegramEvents, 8000);
+    window.addEventListener('focus', syncTelegramEvents);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', syncTelegramEvents);
+    };
+  }, []);
+
   // Check for auto-scan trigger from onboarding, login, or redirect
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);

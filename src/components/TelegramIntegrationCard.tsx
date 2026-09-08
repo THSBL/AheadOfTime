@@ -6,10 +6,10 @@ import {
   RefreshCw, 
   Check, 
   ExternalLink, 
-  LogOut,
-  Loader2,
-  Smartphone,
-  ShieldCheck
+  LogOut, 
+  Loader2, 
+  Smartphone, 
+  ShieldCheck 
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 
@@ -44,35 +44,52 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
   const [isLinking, setIsLinking] = useState<boolean>(false);
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [isUnlinking, setIsUnlinking] = useState<boolean>(false);
-  const [isLinked, setIsLinked] = useState<boolean>(false);
+  const [isLinked, setIsLinked] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aot_telegram_linked') === 'true';
+    }
+    return false;
+  });
   const [linkedSession, setLinkedSession] = useState<any | null>(null);
   const [pairingLink, setPairingLink] = useState<string | null>(null);
+  const [activePairCode, setActivePairCode] = useState<string | null>(null);
   const [isWaitingForHandshake, setIsWaitingForHandshake] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const pollingRef = useRef<number | null>(null);
 
-  const fetchStatusAndSession = async (silent = false) => {
+  const fetchStatusAndSession = async (codeToCheck?: string | null, silent = false) => {
     if (!silent) setIsLoading(true);
     try {
+      const codeQuery = codeToCheck ? `?code=${encodeURIComponent(codeToCheck)}` : '';
       const [statusRes, pairRes] = await Promise.all([
         fetch('/api/telegram/status'),
-        fetch('/api/telegram/pair-code')
+        fetch(`/api/pairing-status${codeQuery}`)
       ]);
 
-      const statusData = await statusRes.json();
-      const pairData = await pairRes.json();
+      const statusData = await statusRes.json().catch(() => ({}));
+      const pairData = await pairRes.json().catch(() => ({}));
 
       setStatus(statusData);
 
-      if (pairData.ok) {
-        setIsLinked(Boolean(pairData.isLinked));
-        setLinkedSession(pairData.session || null);
-        if (pairData.isLinked && isWaitingForHandshake) {
+      const linked = Boolean(pairData.telegram_linked || pairData.isLinked);
+      if (linked) {
+        setIsLinked(true);
+        setLinkedSession(pairData.session || { chatId: pairData.telegram_chat_id });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('aot_telegram_linked', 'true');
+          if (pairData.telegram_chat_id || pairData.session?.chatId) {
+            localStorage.setItem('aot_telegram_chat_id', String(pairData.telegram_chat_id || pairData.session?.chatId));
+          }
+        }
+
+        if (isWaitingForHandshake || codeToCheck) {
           setIsWaitingForHandshake(false);
+          setPairingLink(null);
+          setActivePairCode(null);
           setFeedback({
             type: 'success',
-            message: 'Telegram Assistant connected successfully!'
+            message: '✅ Connected to AheadOfTime! Telegram assistant linked successfully.',
           });
           if (pollingRef.current) {
             window.clearInterval(pollingRef.current);
@@ -92,6 +109,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     return () => {
       if (pollingRef.current) {
         window.clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
     };
   }, []);
@@ -109,17 +127,19 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       const data = await res.json();
 
       if (data.ok && data.deepLink) {
+        const pairCode = data.pairCode || data.pairingCode;
         setPairingLink(data.deepLink);
+        setActivePairCode(pairCode);
         setIsWaitingForHandshake(true);
 
         // Open Telegram immediately in a new window/tab
         window.open(data.deepLink, '_blank', 'noopener,noreferrer');
 
-        // Start background polling every 2.5 seconds to detect when user taps /start
+        // Start background polling every 2.0 seconds to detect when user taps /start
         if (pollingRef.current) window.clearInterval(pollingRef.current);
         pollingRef.current = window.setInterval(() => {
-          fetchStatusAndSession(true);
-        }, 2500);
+          fetchStatusAndSession(pairCode, true);
+        }, 2000);
 
         // Auto stop polling after 3 minutes if not completed
         setTimeout(() => {
@@ -159,7 +179,12 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         setIsLinked(false);
         setLinkedSession(null);
         setPairingLink(null);
+        setActivePairCode(null);
         setIsWaitingForHandshake(false);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('aot_telegram_linked');
+          localStorage.removeItem('aot_telegram_chat_id');
+        }
         if (pollingRef.current) {
           window.clearInterval(pollingRef.current);
           pollingRef.current = null;
@@ -191,31 +216,61 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
 
     try {
       const sampleEvent: CalendarEvent = events[0] || {
-        id: `evt-test-${Date.now()}`,
-        title: 'Executive Strategy Offsite',
-        eventDate: '2026-10-15',
+        id: `evt_${Date.now()}`,
+        title: 'Scottish Highlands Trip (with 4 friends)',
+        eventDate: '2026-10-14',
+        endDate: '2026-10-18',
         eventTime: '09:00',
-        location: 'Chamonix, France',
+        location: 'Scottish Highlands',
         status: 'milestones_active',
         category: 'travel_trip',
+        context: {
+          customNote: 'Scottish Highlands trip with friends',
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         milestones: [
           {
             id: 'ms-1',
-            eventId: 'evt-test-1',
-            title: 'Secure Mountain Chalet & Transport',
-            targetDate: '2026-09-20',
-            category: 'bookings',
-            status: 'completed',
-            urgency: 'high',
+            eventId: `evt_${Date.now()}`,
+            title: 'Lodging & Transport Locked',
+            tMinusLabel: 'T-21d',
+            tMinusOffsetMinutes: -30240,
+            calculatedDate: '2026-09-23',
+            category: 'logistics',
+            status: 'pending',
+            deliverables: [
+              { deliverable_id: 'del-1', title: 'Book rental car / train passes', type: 'coordination', is_completed: false },
+              { deliverable_id: 'del-2', title: 'Reserve group stay / cabin', type: 'coordination', is_completed: false }
+            ]
           },
           {
             id: 'ms-2',
-            eventId: 'evt-test-1',
-            title: 'Verify Alpine Gear & Weather Kit',
-            targetDate: '2026-10-05',
-            category: 'packing',
+            eventId: `evt_${Date.now()}`,
+            title: 'Headcount & Group Costs Settled',
+            tMinusLabel: 'T-14d',
+            tMinusOffsetMinutes: -20160,
+            calculatedDate: '2026-09-30',
+            category: 'logistics',
             status: 'pending',
-            urgency: 'critical',
+            deliverables: [
+              { deliverable_id: 'del-3', title: 'Confirm headcount with all 4 friends', type: 'coordination', is_completed: false },
+              { deliverable_id: 'del-4', title: 'Collect shared budget/expenses', type: 'coordination', is_completed: false }
+            ]
+          },
+          {
+            id: 'ms-3',
+            eventId: `evt_${Date.now()}`,
+            title: 'Gear & Bags Packed',
+            tMinusLabel: 'T-2d',
+            tMinusOffsetMinutes: -2880,
+            calculatedDate: '2026-10-12',
+            category: 'logistics',
+            status: 'pending',
+            deliverables: [
+              { deliverable_id: 'del-5', title: 'Pack hiking boots & weather gear', type: 'coordination', is_completed: false },
+              { deliverable_id: 'del-6', title: 'Check offline trail maps', type: 'coordination', is_completed: false }
+            ]
           }
         ]
       };
@@ -280,7 +335,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-              Active
+              Active & Connected
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
@@ -318,7 +373,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
                 className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
               >
                 <Send className={`w-3.5 h-3.5 ${isSendingTest ? 'animate-spin text-sky-600' : 'text-slate-500'}`} />
-                <span>{isSendingTest ? 'Sending...' : 'Send Test Message'}</span>
+                <span>{isSendingTest ? 'Sending...' : 'Send Test Alert'}</span>
               </button>
 
               <button
@@ -337,7 +392,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         /* STATE A: Not Linked */
         <div className="space-y-4 pt-1">
           <p className="text-xs text-slate-600 leading-relaxed">
-            Message the bot naturally like <span className="font-medium text-slate-800 italic">"Trip to Dolomites Oct 12-16"</span>. The assistant coordinates dates, checks calendar availability, and creates reverse lead-up checklists.
+            Message the bot naturally like <span className="font-medium text-slate-800 italic">"Trip to Scottish Highlands Oct 14-18 with 4 friends"</span>. The assistant extracts dates, checks calendar availability, and generates reverse T-Minus preparation runways.
           </p>
 
           <div className="space-y-3">
