@@ -12,7 +12,8 @@ import {
   Sliders,
   ChevronDown,
   Check,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import { formatDisplayDate } from '../utils/tminusRules';
 import { CalendarEvent } from '../types';
@@ -26,6 +27,7 @@ interface HeaderProps {
   onOpenScanAgenda?: () => void;
   onOpenGoogleCalendarSync?: () => void;
   onOpenOnboarding?: () => void;
+  onOpenWhatsAppModal?: () => void;
   isGoogleConnected?: boolean;
   isSyncingWithGoogle?: boolean;
   onTriggerGoogleSync?: () => void;
@@ -48,6 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenScanAgenda,
   onOpenGoogleCalendarSync,
   onOpenOnboarding,
+  onOpenWhatsAppModal,
   isGoogleConnected,
   isSyncingWithGoogle,
   onTriggerGoogleSync,
@@ -164,15 +167,6 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Logo & Navigation - only icon on mobile, full on desktop */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {focusMode !== 'welcome' && (
-              <button
-                onClick={() => onSetFocusMode('welcome')}
-                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-                title="Back to Planner Home"
-              >
-                <Home className="w-4 h-4" />
-              </button>
-            )}
             <div 
               className="cursor-pointer flex items-center" 
               onClick={() => onSetFocusMode('welcome')} 
@@ -431,15 +425,29 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
+            {/* WhatsApp Reminder Tool */}
+            {onOpenWhatsAppModal && (
+              <button
+                onClick={onOpenWhatsAppModal}
+                id="btn-whatsapp-tool"
+                className="flex bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs sm:text-sm font-semibold px-2.5 sm:px-3 py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                title="WhatsApp Reminder & Completion Tool (Meta Cloud API & Webhook Simulator)"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">WhatsApp Tool</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              </button>
+            )}
+
             {/* Scan for existing events in your agenda (Desktop only) */}
             {onOpenScanAgenda && (
               <button
                 onClick={onOpenScanAgenda}
                 id="btn-scan-agenda"
-                className="hidden md:flex bg-sky-50/90 hover:bg-sky-100/90 text-sky-950 border border-sky-200/90 text-xs sm:text-sm font-bold px-3 py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                className="hidden md:flex bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white border border-[#3f7962]/50 text-xs sm:text-sm font-bold px-3.5 py-1.5 rounded-full items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
                 title="Scan for existing events in your agenda"
               >
-                <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
                 <span>Scan agenda</span>
               </button>
             )}

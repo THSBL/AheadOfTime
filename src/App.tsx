@@ -1244,18 +1244,8 @@ function App() {
                   </button>
                 </div>
 
-                {/* Quick actions for manual modal and template importer */}
+                {/* Quick actions for manual modal */}
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsImportTemplateModalOpen(true)}
-                    className="text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/90 font-bold px-2.5 py-1 rounded-xl cursor-pointer inline-flex items-center gap-1.5 transition-all shadow-2xs active:scale-95"
-                    title="Import template from spreadsheet (.csv / .xlsx)"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-                    <span className="hidden sm:inline">Import Template</span>
-                    <span className="sm:hidden">Import</span>
-                  </button>
                   <button
                     type="button"
                     onClick={() => setIsManualModalOpen(true)}

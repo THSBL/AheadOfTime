@@ -198,6 +198,38 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     onToggleMilestoneStatus(eventId, milestone.id);
   };
 
+  const handleToggleDeliverable = (milestone: TMinusMilestone, deliverableId: string) => {
+    if (!activeEvent || !onUpdateMilestone) return;
+    const currentDeliverables = milestone.deliverables || [];
+    const updatedDeliverables = currentDeliverables.map((d) =>
+      d.deliverable_id === deliverableId ? { ...d, is_completed: !d.is_completed } : d
+    );
+
+    const allCompleted =
+      updatedDeliverables.length > 0 && updatedDeliverables.every((d) => d.is_completed);
+
+    const updatedMilestone: TMinusMilestone = {
+      ...milestone,
+      deliverables: updatedDeliverables,
+      status: allCompleted
+        ? 'completed'
+        : milestone.status === 'completed' && !allCompleted
+        ? 'pending'
+        : milestone.status,
+    };
+
+    if (allCompleted && milestone.status !== 'completed') {
+      confetti({
+        particleCount: 30,
+        spread: 50,
+        origin: { y: 0.7 },
+        colors: ['#0e1d2c', '#529479', '#3b82f6'],
+      });
+    }
+
+    onUpdateMilestone(activeEvent.id, updatedMilestone);
+  };
+
   const handleCopySchedule = (event: CalendarEvent) => {
     const text = formatMessagingSummary(event);
     navigator.clipboard.writeText(text);
@@ -308,11 +340,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <h3 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight leading-snug break-words">
                 {activeEvent.title}
               </h3>
-              {(activeEvent.macroEvent?.archetype || activeEvent.macroEvent?.type) && (
-                <span className="text-[10px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 shadow-2xs shrink-0">
-                  {activeEvent.macroEvent.archetype || activeEvent.macroEvent.type}
-                </span>
-              )}
               {activeEvent.needsRefinement && !activeEvent.refinedAt && (!activeEvent.context || Object.keys(activeEvent.context).length === 0) && (
                 <span className="text-[10px] font-mono font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
                   <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
@@ -379,12 +406,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {onOpenApplyPreset && (
               <button
                 onClick={() => onOpenApplyPreset(activeEvent)}
-                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-950 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
-                title="Apply custom spreadsheet template or saved runway preset"
+                className="bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border border-purple-200 flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                title="Import spreadsheet template or saved runway preset"
               >
-                <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span className="hidden md:inline">Apply Template</span>
-                <span className="md:hidden">Template</span>
+                <Layers className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                <span className="hidden md:inline">Import Template</span>
+                <span className="md:hidden">Import</span>
               </button>
             )}
 
@@ -411,10 +438,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                           onOpenApplyPreset(activeEvent);
                           setIsMoreMenuOpen(false);
                         }}
-                        className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-950 flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-950 flex items-center gap-2 cursor-pointer"
                       >
-                        <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Apply Template Preset...</span>
+                        <Layers className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Import Template Preset...</span>
                       </button>
                     )}
 
@@ -707,6 +734,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             const isCompleted = ms.status === 'completed';
             const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
             const isOverdue = !isCompleted && msCountdown.isOverdue;
+            const isDeliverable = ms.kind === 'deliverable';
+            const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
 
             return (
               <div
@@ -716,7 +745,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     ? 'bg-slate-50/90 border-slate-200 text-slate-400'
                     : isOverdue
                     ? 'bg-rose-50/60 border-rose-300 hover:border-rose-400 text-slate-800 shadow-2xs ring-1 ring-rose-200/60'
-                    : 'bg-white border-sky-100/90 hover:border-sky-300 text-slate-800 shadow-2xs hover:shadow-xs'
+                    : isDeliverable
+                    ? 'bg-white border-slate-200/90 hover:border-[#0e1d2c]/50 text-slate-800 shadow-xs border-l-4 border-l-[#0e1d2c]'
+                    : hasDeliverables
+                    ? 'bg-white border-slate-200/90 hover:border-[#0e1d2c]/40 text-slate-800 shadow-xs border-l-4 border-l-[#0e1d2c]/70'
+                    : 'bg-white/80 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-2xs'
                 }`}
               >
                 {/* Checkbox & Task Information */}
@@ -728,6 +761,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         ? 'bg-emerald-600 text-white shadow-2xs'
                         : isOverdue
                         ? 'border-2 border-rose-400 hover:border-rose-600 text-transparent'
+                        : isDeliverable || hasDeliverables
+                        ? 'border-2 border-[#0e1d2c]/40 hover:border-[#0e1d2c] text-transparent'
                         : 'border-2 border-slate-300 hover:border-sky-600 text-transparent'
                     }`}
                     title={isCompleted ? 'Mark as pending' : 'Mark as completed'}
@@ -747,9 +782,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       </span>
 
                       {/* Milestone vs Deliverable Badge */}
-                      {ms.kind === 'deliverable' ? (
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/90 px-1.5 py-0.5 rounded shrink-0">
-                          Deliverable
+                      {isDeliverable ? (
+                        <span className="text-[10px] font-bold text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#0e1d2c]" />
+                          <span>Deliverable</span>
                         </span>
                       ) : (
                         <span className="text-[10px] font-medium text-slate-500 bg-slate-100/90 border border-slate-200/60 px-1.5 py-0.5 rounded shrink-0 hidden sm:inline">
@@ -809,6 +845,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         ? 'line-through text-slate-400' 
                         : isOverdue
                         ? 'text-rose-950 font-black'
+                        : isDeliverable
+                        ? 'text-[#0e1d2c]'
                         : 'text-slate-900'
                     }`}>
                       {ms.title}
@@ -819,6 +857,69 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       <p className={`text-[11px] sm:text-xs font-medium leading-relaxed break-words ${isOverdue ? 'text-rose-700/80' : 'text-slate-500'}`}>
                         {ms.description}
                       </p>
+                    )}
+
+                    {/* Attached Deliverables (1-3 actionable items under this Milestone Gate) */}
+                    {hasDeliverables && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-1.5 w-full">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c] px-2 py-0.5 rounded-md shadow-2xs inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#0e1d2c]" />
+                              <span>Deliverables</span>
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-600">
+                              ({ms.deliverables!.filter((d) => d.is_completed).length}/{ms.deliverables!.length} completed)
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-400">Actionable artifacts</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-1.5 pt-0.5 w-full">
+                          {ms.deliverables!.map((deliv) => {
+                            const isDelivDone = deliv.is_completed;
+                            return (
+                              <div
+                                key={deliv.deliverable_id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleDeliverable(ms, deliv.deliverable_id);
+                                }}
+                                className={`group/deliv flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                                  isDelivDone
+                                    ? 'bg-slate-50/80 border-slate-200 text-slate-400'
+                                    : 'bg-white hover:bg-slate-50/90 border-[#0e1d2c]/20 hover:border-[#0e1d2c]/60 text-slate-800 shadow-2xs'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    className={`w-4 h-4 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                                      isDelivDone
+                                        ? 'bg-[#0e1d2c] text-white shadow-2xs'
+                                        : 'border border-[#0e1d2c]/40 hover:border-[#0e1d2c] text-transparent'
+                                    }`}
+                                    title={isDelivDone ? 'Mark deliverable as pending' : 'Mark deliverable as complete'}
+                                  >
+                                    <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                  </button>
+                                  <span className={`text-xs font-medium truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                    {deliv.title}
+                                  </span>
+                                </div>
+
+                                <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${
+                                  isDelivDone
+                                    ? 'text-slate-400 bg-slate-100 border-slate-200'
+                                    : 'text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c]/40'
+                                }`}>
+                                  {deliv.type}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
 
                     {/* Mobile-only Bottom Meta & Actions Row */}
@@ -877,18 +978,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     )}
                   </div>
 
-                  {/* Desktop Task Actions (Refine, Edit & Delete) */}
+                  {/* Desktop Task Actions (Edit & Delete) */}
                   <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity pt-1">
-                    {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
-                      <button
-                        onClick={() => setRefiningDeliverable(ms)}
-                        className="p-1 px-2 rounded-lg text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs mr-0.5"
-                        title="Refine deliverable specifics & options"
-                      >
-                        <Sparkles className="w-3 h-3 text-amber-600" />
-                        <span>Refine</span>
-                      </button>
-                    )}
                     <button
                       onClick={() => setEditingMilestone(ms)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"

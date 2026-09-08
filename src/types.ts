@@ -64,6 +64,28 @@ export interface SubEvent {
 
 export type UserEventRole = 'organiser' | 'co_organiser' | 'guest';
 export type TaskItemKind = 'milestone' | 'deliverable';
+export type DeliverableType = 'booking' | 'purchase' | 'document' | 'coordination';
+
+export interface Deliverable {
+  deliverable_id: string;
+  title: string; // Tangible output (e.g., "Confirmed Airbnb reservation code")
+  type: DeliverableType;
+  is_completed: boolean;
+}
+
+export interface RunwayMilestoneGate {
+  milestone_title: string; // State checkpoint (e.g., "Lodging & Transit Locked")
+  t_minus_days: number;
+  target_date: string; // YYYY-MM-DD
+  status: 'pending' | 'completed';
+  deliverables: Deliverable[];
+}
+
+export interface EventRunwayPlan {
+  event_title: string;
+  target_date: string;
+  runway: RunwayMilestoneGate[];
+}
 
 export interface StructuredMilestone {
   task: string;
@@ -77,6 +99,7 @@ export interface StructuredMilestone {
   deliverableType?: 'reservation' | 'activity' | 'booking' | 'shopping' | 'logistics' | 'general' | string;
   refinementOptions?: string[];
   applicableRoles?: UserEventRole[];
+  deliverables?: Deliverable[];
 }
 
 export interface StructuredPlanningPayload {
@@ -85,6 +108,7 @@ export interface StructuredPlanningPayload {
   milestones: StructuredMilestone[];
   conversational_response: string;
   tailored_options?: string[];
+  runway?: RunwayMilestoneGate[];
 }
 
 export interface TMinusMilestone {
@@ -108,6 +132,7 @@ export interface TMinusMilestone {
   deliverableType?: 'reservation' | 'activity' | 'booking' | 'shopping' | 'logistics' | 'general' | string;
   refinementOptions?: string[];
   applicableRoles?: UserEventRole[];
+  deliverables?: Deliverable[];
 }
 
 export interface WatchpointData {

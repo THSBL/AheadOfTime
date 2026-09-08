@@ -309,10 +309,14 @@ export async function pushSingleMilestoneToGoogleCalendar(
   const shouldCreateCalBlock = options?.createCalendarEventBlock || options?.milestoneFormat === 'timed' || options?.milestoneFormat === 'all_day';
 
   // 1. Create in Google Tasks (native Google Calendar task layer)
+  const deliverablesSummary = milestone.deliverables && milestone.deliverables.length > 0
+    ? `\n\nDeliverables (${milestone.deliverables.length}):\n` + milestone.deliverables.map(d => `• [${d.is_completed ? '✓' : ' '}] ${d.title} (${d.type})`).join('\n')
+    : '';
+
   try {
     const taskRes = await createGoogleTask(accessToken, {
       title: `[${milestone.tMinusLabel}] ${milestone.title} (${eventTitle})`,
-      notes: `Ahead Of Time Milestone for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}`,
+      notes: `Ahead Of Time Milestone for "${eventTitle}"\nLead Time: ${milestone.tMinusLabel}\nDue Date: ${dateOnly}\nCategory: ${milestone.category}\nDetails: ${milestone.description || ''}${deliverablesSummary}`,
       due: `${dateOnly}T00:00:00.000Z`,
       taskListId: options?.taskListId || '@default',
     });
@@ -327,7 +331,7 @@ export async function pushSingleMilestoneToGoogleCalendar(
     const isTimed = options?.milestoneFormat === 'timed';
     const calPayload = {
       summary: `📋 [${milestone.tMinusLabel}] ${milestone.title}`,
-      description: `Preparation milestone for "${eventTitle}".\n\nLead Time: ${milestone.tMinusLabel}\nCategory: ${milestone.category}\nAction Required: ${milestone.description || 'Complete advance preparation.'}\nTarget Event Date: ${dateOnly}`,
+      description: `Preparation milestone for "${eventTitle}".\n\nLead Time: ${milestone.tMinusLabel}\nCategory: ${milestone.category}\nAction Required: ${milestone.description || 'Complete advance preparation.'}${deliverablesSummary}\nTarget Event Date: ${dateOnly}`,
       start: isTimed 
         ? { dateTime: formatStartEndDateTime(dateOnly, '09:00', 30).startDateTime, timeZone }
         : { date: dateOnly },

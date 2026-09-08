@@ -14,8 +14,7 @@ import {
   AlertTriangle,
   Trash2,
   CheckSquare,
-  Square,
-  Tag
+  Square
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel } from '../utils/tminusRules';
@@ -105,10 +104,10 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             {onOpenScanAgenda && (
               <button
                 onClick={onOpenScanAgenda}
-                className="px-2.5 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100 text-sky-900 transition-colors cursor-pointer border border-sky-200/90 shadow-2xs flex items-center gap-1.5 text-xs font-bold"
+                className="px-3 py-1.5 rounded-full bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white transition-all cursor-pointer border border-[#3f7962]/50 shadow-xs flex items-center gap-1.5 text-xs font-bold active:scale-95"
                 title="Scan for existing events in your agenda"
               >
-                <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
                 <span className="hidden sm:inline">Scan agenda</span>
                 <span className="sm:hidden">Scan</span>
               </button>
@@ -242,13 +241,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     </div>
                   </div>
 
-                  {/* Middle Row: Event Topic Tag + Deadline Date */}
+                  {/* Middle Row: Deadline Date */}
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
-                    <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-100/80 border border-sky-200 px-1.5 py-0.5 rounded-md shrink-0">
-                      <Tag className="w-2.5 h-2.5 text-sky-600 shrink-0" />
-                      <span className="truncate max-w-[110px] sm:max-w-[140px]">{topicLabel}</span>
-                    </span>
-
                     <span className="inline-flex items-center gap-1 text-slate-600 font-medium shrink-0">
                       <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
                       <span>Deadline: <strong className="text-slate-800 font-semibold">{formattedDeadline}</strong></span>

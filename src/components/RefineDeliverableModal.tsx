@@ -88,8 +88,9 @@ export const RefineDeliverableModal: React.FC<RefineDeliverableModalProps> = ({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 font-mono">
                   {milestone.tMinusLabel}
                 </span>
-                <span className="text-[10px] bg-indigo-100 text-indigo-900 px-1.5 py-0.2 rounded font-semibold">
-                  Deliverable
+                <span className="text-[10px] font-bold text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c] px-2 py-0.5 rounded-md inline-flex items-center gap-1 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0e1d2c]" />
+                  <span>Deliverable</span>
                 </span>
               </div>
               <h3 className="text-xs font-bold text-slate-800 truncate max-w-[240px]">

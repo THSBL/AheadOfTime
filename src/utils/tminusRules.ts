@@ -9,7 +9,9 @@ import {
   StructuredMilestone,
   StructuredPlanningPayload,
   UserEventRole,
-  TaskItemKind
+  TaskItemKind,
+  Deliverable,
+  DeliverableType
 } from '../types';
 import { inferTaskTimingLocally } from './timingAI';
 
@@ -791,7 +793,184 @@ export function generateHeuristicMilestones(
   }
 
   // Sort milestones chronologically (earliest first, which means largest negative offset first)
-  return milestones.sort((a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime());
+  const sorted = milestones.sort((a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime());
+  return attachDeliverablesToMilestones(sorted);
+}
+
+/**
+ * Attaches 1 to 3 explicit Deliverables (tangible outputs) to each Milestone Checkpoint gate
+ * and formats raw imperative titles into state checkpoint titles.
+ */
+export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[]): TMinusMilestone[] {
+  return rawMilestones.map((ms) => {
+    // If deliverables already explicitly provided, ensure maximum rule of 1-3 deliverables
+    if (ms.deliverables && ms.deliverables.length > 0) {
+      return {
+        ...ms,
+        deliverables: ms.deliverables.slice(0, 3),
+      };
+    }
+
+    const tLower = (ms.title || '').toLowerCase();
+    const deliverables: Deliverable[] = [];
+
+    // Derive 1 to 3 tangible outputs based on the checkpoint topic
+    if (tLower.includes('invite') || tLower.includes('rsvp') || tLower.includes('headcount') || tLower.includes('guest')) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Dispatched invitation link & active RSVP tracker',
+        type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Confirmed headcount & dietary restrictions sheet',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (
+      tLower.includes('venue') ||
+      tLower.includes('lodging') ||
+      tLower.includes('hotel') ||
+      tLower.includes('airbnb') ||
+      tLower.includes('restaurant') ||
+      tLower.includes('table') ||
+      tLower.includes('reserve') ||
+      tLower.includes('deposit')
+    ) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Signed rental contract or confirmed booking reference',
+        type: 'booking',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Deposit receipt & arrival access code archived',
+        type: 'purchase',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (
+      tLower.includes('flight') ||
+      tLower.includes('transit') ||
+      tLower.includes('carpool') ||
+      tLower.includes('train') ||
+      tLower.includes('tickets')
+    ) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Electronic transit tickets & boarding passes downloaded',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Terminal / station departure schedule shared with crew',
+        type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (
+      tLower.includes('gift') ||
+      tLower.includes('present') ||
+      tLower.includes('card') ||
+      tLower.includes('kitty') ||
+      tLower.includes('funds')
+    ) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Purchased gift receipt & order tracking confirmed',
+        type: 'purchase',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Handwritten card & presentation wrap prepared',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (
+      tLower.includes('cake') ||
+      tLower.includes('food') ||
+      tLower.includes('drink') ||
+      tLower.includes('catering') ||
+      tLower.includes('beverage') ||
+      tLower.includes('grocery')
+    ) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Bakery or caterer order confirmation with pickup time',
+        type: 'purchase',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Party refreshments, ice & glassware inventory ready',
+        type: 'purchase',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (
+      tLower.includes('pack') ||
+      tLower.includes('luggage') ||
+      tLower.includes('outfit') ||
+      tLower.includes('costume') ||
+      tLower.includes('wardrobe')
+    ) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Event attire & required garments packed in suitcase',
+        type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Passport, roaming eSIM, & essential toiletries loaded',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (tLower.includes('activity') || tLower.includes('tour') || tLower.includes('excursion') || tLower.includes('boat')) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Reserved excursion slots & paid group admission vouchers',
+        type: 'booking',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Participant liability waivers & meeting point details distributed',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: `Completed action item artifact for ${ms.title}`,
+        type: ms.category === 'booking' ? 'booking' : ms.category === 'shopping' ? 'purchase' : ms.category === 'logistics' ? 'document' : 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+    }
+
+    // Convert raw imperative verbs into past-participle / state checkpoint titles:
+    let stateCheckpointTitle = ms.title;
+    if (/^book\s+/i.test(stateCheckpointTitle)) {
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^book\s+/i, '') + ' Booked & Confirmed';
+    } else if (/^reserve\s+/i.test(stateCheckpointTitle)) {
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^reserve\s+/i, '') + ' Reserved & Locked';
+    } else if (/^order\s+/i.test(stateCheckpointTitle)) {
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^order\s+/i, '') + ' Ordered & Tracked';
+    } else if (/^buy\s+/i.test(stateCheckpointTitle)) {
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^buy\s+/i, '') + ' Purchased';
+    } else if (/^send\s+/i.test(stateCheckpointTitle)) {
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^send\s+/i, '') + ' Dispatched';
+    } else if (/^pack\s+/i.test(stateCheckpointTitle)) {
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^pack\s+/i, '') + ' Packed & Ready';
+    }
+
+    return {
+      ...ms,
+      title: stateCheckpointTitle,
+      deliverables: deliverables.slice(0, 3),
+    };
+  });
 }
 
 /**
@@ -856,7 +1035,10 @@ export function generateICSContent(event: CalendarEvent): string {
     ics.push(`DTSTART:${formatDateToICS(msStart)}`);
     ics.push(`DTEND:${formatDateToICS(msEnd)}`);
     ics.push(`SUMMARY:[${ms.tMinusLabel}] ${ms.title} (${event.title})`);
-    ics.push(`DESCRIPTION:Ahead Of Time Milestone for ${event.title}\\nCategory: ${ms.category}\\nDetail: ${ms.description || 'Milestone action'}`);
+    const delivText = ms.deliverables && ms.deliverables.length > 0
+      ? `\\n\\nDELIVERABLES:\\n` + ms.deliverables.map((d) => `• [${d.is_completed ? 'X' : ' '}] ${d.title} (${d.type})`).join('\\n')
+      : '';
+    ics.push(`DESCRIPTION:Ahead Of Time Milestone for ${event.title}\\nCategory: ${ms.category}\\nCheckpoint: ${ms.description || 'Milestone gate'}${delivText}`);
     ics.push('STATUS:CONFIRMED');
     ics.push('BEGIN:VALARM');
     ics.push('ACTION:DISPLAY');

@@ -14,7 +14,9 @@ import {
   StructuredPlanningPayload,
   StructuredMilestone,
   MacroEventData,
-  SubEvent
+  SubEvent,
+  Deliverable,
+  DeliverableType
 } from "./src/types";
 import { 
   generateHeuristicMilestones, 
@@ -22,10 +24,15 @@ import {
   detectEventCategory, 
   getCleanEventTitle, 
   getEventTopicLabel,
-  decomposeComplexTripIntent
+  decomposeComplexTripIntent,
+  attachDeliverablesToMilestones
 } from "./src/utils/tminusRules";
 import { inferTaskTimingLocally } from "./src/utils/timingAI";
 import { deepRefineEventLocally } from "./src/utils/deepRefine";
+import { WhatsAppWebhookHandler } from "./server/whatsappWebhookHandler";
+import { WhatsAppSessionStore } from "./server/whatsappStore";
+import { WhatsAppService } from "./server/whatsappService";
+import { AgendaScannerService } from "./server/agendaScanner";
 
 dotenv.config();
 
@@ -686,6 +693,23 @@ async function processWithGemini(params: {
   activeEvents: CalendarEvent[];
 }): Promise<ProcessAgentResponsePayload> {
   const systemInstruction = `You are the AheadOfTime Conversational Planning Engine.
+
+CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
+1. Milestone (State Checkpoint - 0-day duration):
+   - Represents a condition of readiness or gate (e.g., "Venue Secured", "Headcount Locked", "Luggage Packed", "Beta Cutoff").
+   - This is what gets plotted directly on the user's Google Calendar as an all-day anchor or notification flag.
+   - Naming convention: Milestones MUST be named as past-participle or state-change achievements ("X Secured", "Y Finalized", "Z Packed"), NOT raw verbs ("Buy X", "Call Y").
+2. Deliverable (Tangible Artifact / Actionable Item):
+   - The concrete output produced to satisfy the milestone (e.g., "Signed rental contract", "Wrapped gift", "Packed suitcase", "Bug triage report").
+   - MAXIMUM RULE: Each Milestone must contain NO MORE than 1 to 3 explicit Deliverables.
+
+TASK FOR GEMINI ENGINE:
+When evaluating any event (Wedding, Birthday, Holiday, Conference, or Project Management):
+1. Break the runway into 3 to 5 chronological Milestones (T-minus gates).
+2. Attach 1 to 3 essential Deliverables under each Milestone.
+3. Keep milestones named as past-participle or state-change achievements ("X Secured", "Y Finalized", "Z Packed").
+4. Populate the "runway" array in your JSON output.
+
 When processing free-text user plans:
 1. Detect Date Ranges: If dates span multiple days (e.g., Friday to Sunday, or [Date X] to [Date Y]), establish the parent trip horizon (macro_event with start_date and end_date).
 2. Unpack Embedded Sub-Tasks: Explicitly scan for sub-events, side-quests, bookings, or activities mentioned within the dates (e.g., "activity for the 2nd day", "Saturday group dinner", "Costume theme night").
@@ -754,6 +778,45 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
             description: { type: Type.STRING },
           },
           required: ["title", "target_date"],
+        },
+      },
+      event_title: {
+        type: Type.STRING,
+        description: "Event title",
+      },
+      target_date: {
+        type: Type.STRING,
+        description: "Target event date in YYYY-MM-DD",
+      },
+      runway: {
+        type: Type.ARRAY,
+        description: "3 to 5 chronological Milestones (T-minus gates) with 1 to 3 attached Deliverables per milestone",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            milestone_title: {
+              type: Type.STRING,
+              description: "State checkpoint named as past-participle or state-change achievement (e.g. 'Lodging & Transit Locked')",
+            },
+            t_minus_days: { type: Type.INTEGER },
+            target_date: { type: Type.STRING, description: "YYYY-MM-DD" },
+            status: { type: Type.STRING, description: "pending or completed" },
+            deliverables: {
+              type: Type.ARRAY,
+              description: "1 to 3 explicit Deliverables (tangible outputs)",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  deliverable_id: { type: Type.STRING },
+                  title: { type: Type.STRING, description: "Tangible output (e.g. 'Confirmed Airbnb reservation code')" },
+                  type: { type: Type.STRING, description: "booking, purchase, document, or coordination" },
+                  is_completed: { type: Type.BOOLEAN },
+                },
+                required: ["deliverable_id", "title", "type", "is_completed"],
+              },
+            },
+          },
+          required: ["milestone_title", "t_minus_days", "target_date", "status", "deliverables"],
         },
       },
       milestones: {
@@ -925,11 +988,11 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   }
 
   const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-  const eventDate = structuredPayload?.macro_event.start_date || parsed.eventDate || params.existingEvent?.eventDate || params.refDateStr;
+  const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || params.existingEvent?.eventDate || params.refDateStr;
   const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || params.existingEvent?.endDate || undefined;
   const eventTime = parsed.eventTime || params.existingEvent?.eventTime || "19:00";
 
-  let title = structuredPayload?.macro_event.title || parsed.eventTitle || params.existingEvent?.title || 'Upcoming Event';
+  let title = structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || params.existingEvent?.title || 'Upcoming Event';
   let finalCategory = structuredPayload ? 'travel_trip' : (parsed.category || params.existingEvent?.category || detectEventCategory(title, params.message));
   title = getCleanEventTitle(title, finalCategory, params.existingEvent?.context);
 
@@ -1007,7 +1070,45 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
 
   // Generate or map milestones
   let milestones: TMinusMilestone[] = [];
-  if (structuredPayload && Array.isArray(structuredPayload.milestones) && structuredPayload.milestones.length > 0) {
+  if (parsed.runway && Array.isArray(parsed.runway) && parsed.runway.length > 0) {
+    milestones = parsed.runway.map((gate: any, idx: number) => {
+      const tMinusDays = typeof gate.t_minus_days === 'number' ? gate.t_minus_days : 7;
+      const offsetMinutes = -tMinusDays * 24 * 60;
+      const calcDate = gate.target_date || calculateOffsetDate(eventDate, '10:00', offsetMinutes);
+      const rawDeliverables = Array.isArray(gate.deliverables) ? gate.deliverables : [];
+      const deliverables: Deliverable[] = rawDeliverables.slice(0, 3).map((d: any, dIdx: number) => ({
+        deliverable_id: d.deliverable_id || `del_${idx + 1}_${dIdx + 1}`,
+        title: d.title || 'Tangible output artifact',
+        type: (['booking', 'purchase', 'document', 'coordination'].includes(d.type) ? d.type : 'coordination') as DeliverableType,
+        is_completed: Boolean(d.is_completed),
+      }));
+
+      const titleLower = (gate.milestone_title || '').toLowerCase();
+      const cat: MilestoneCategory = 
+        titleLower.includes('venue') || titleLower.includes('lodging') || titleLower.includes('flight') || titleLower.includes('transit') || titleLower.includes('hotel') ? 'booking' :
+        titleLower.includes('rsvp') || titleLower.includes('headcount') || titleLower.includes('invitation') ? 'booking' :
+        titleLower.includes('gift') || titleLower.includes('cake') || titleLower.includes('supplies') || titleLower.includes('purchase') ? 'shopping' :
+        titleLower.includes('pack') || titleLower.includes('luggage') || titleLower.includes('outfit') || titleLower.includes('wardrobe') ? 'prep' :
+        titleLower.includes('logistics') || titleLower.includes('final') ? 'logistics' : 'prep';
+
+      return {
+        id: `ms-${eventId}-${idx + 1}-${Date.now() % 100000}`,
+        eventId,
+        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusOffsetMinutes: offsetMinutes,
+        calculatedDate: calcDate,
+        title: gate.milestone_title,
+        description: deliverables.length > 0
+          ? `${deliverables.length} deliverable(s) attached to satisfy checkpoint.`
+          : 'Milestone state checkpoint gate',
+        category: cat,
+        status: (gate.status === 'completed' ? 'completed' : 'pending'),
+        kind: 'milestone',
+        deliverables,
+      };
+    });
+    milestones = attachDeliverablesToMilestones(milestones);
+  } else if (structuredPayload && Array.isArray(structuredPayload.milestones) && structuredPayload.milestones.length > 0) {
     milestones = structuredPayload.milestones.map((m: any, idx: number) => {
       const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
       const offsetMinutes = -tMinusDays * 24 * 60;
@@ -1040,6 +1141,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         deliverableType: m.deliverableType,
       };
     });
+    milestones = attachDeliverablesToMilestones(milestones);
   } else {
     milestones = generateHeuristicMilestones(
       { 
@@ -1140,6 +1242,7 @@ function processWithDeterministicRules(params: {
         deliverableType: m.deliverableType,
       };
     });
+    const finalMappedMilestones = attachDeliverablesToMilestones(mappedMilestones);
 
     const focusText = `I scheduled a hierarchical multi-track plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
     const additionText = tripDecomposition.conversational_response || `Track A covers macro travel logistics; Track B sets up dedicated lead time for your in-trip activity.`;
@@ -1165,7 +1268,7 @@ function processWithDeterministicRules(params: {
         ...extractContextFromMessage(params.message, params.existingEvent?.context),
         archetype: macro.type,
       },
-      milestones: mappedMilestones,
+      milestones: finalMappedMilestones,
       rawInputSnippet: params.message,
       createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1402,6 +1505,166 @@ function processWithDeterministicRules(params: {
     transcribedText: params.transcribedVoiceText,
   };
 }
+
+// -----------------------------------------------------------------------------
+// WhatsApp Reminder & Completion Tool - Webhook & API Routes
+// -----------------------------------------------------------------------------
+
+// 1. Meta Webhook Verification (supports both /webhook/whatsapp and /api/webhook/whatsapp)
+app.get("/webhook/whatsapp", WhatsAppWebhookHandler.handleVerification);
+app.get("/api/webhook/whatsapp", WhatsAppWebhookHandler.handleVerification);
+
+// 2. Meta Incoming Messages Receiver (supports both /webhook/whatsapp and /api/webhook/whatsapp)
+app.post("/webhook/whatsapp", WhatsAppWebhookHandler.handleIncomingMessage);
+app.post("/api/webhook/whatsapp", WhatsAppWebhookHandler.handleIncomingMessage);
+
+// 3. WhatsApp Integration Status & Config
+app.get("/api/whatsapp/status", (_req: Request, res: Response) => {
+  res.json({
+    webhookUrl: "/webhook/whatsapp",
+    isVerifyTokenConfigured: Boolean(process.env.WHATSAPP_VERIFY_TOKEN),
+    isCloudApiConfigured: Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID),
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "Not Configured",
+    businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "Not Configured",
+    approvedTemplateName: "ahead_of_time_event_alert",
+    activeSessionsCount: WhatsAppSessionStore.getAllSessions().length,
+  });
+});
+
+// 4. List Active WhatsApp Sessions
+app.get("/api/whatsapp/sessions", (_req: Request, res: Response) => {
+  const sessions = WhatsAppSessionStore.getAllSessions();
+  res.json({ sessions });
+});
+
+// 5. Trigger Outbound Proactive Template Outreach for a Specific Event
+app.post("/api/whatsapp/outreach", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { toPhone, userFirstName = "there", eventId, eventTitle, eventDate, eventLocation, notes } = req.body;
+
+    if (!toPhone || !eventId || !eventTitle || !eventDate) {
+      res.status(400).json({ error: "toPhone, eventId, eventTitle, and eventDate are required" });
+      return;
+    }
+
+    const [year, month, day] = String(eventDate).split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    const formattedDate = dateObj.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    // 1. Format Meta Utility Template Payload
+    const templatePayload = WhatsAppService.buildProactiveTemplatePayload(
+      toPhone,
+      userFirstName,
+      eventTitle,
+      formattedDate,
+      eventId
+    );
+
+    // 2. Dispatch via Meta Cloud API (or simulated if credentials missing)
+    const result = await WhatsAppService.sendMetaApiMessage(templatePayload);
+
+    // 3. Persist Event Session
+    const sessionId = WhatsAppSessionStore.generateSessionId(toPhone, eventId);
+    const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    const session = WhatsAppSessionStore.saveSession({
+      sessionId,
+      phoneNumber: toPhone,
+      userFirstName,
+      eventId,
+      eventTitle,
+      eventDate,
+      eventLocation,
+      status: "OUTREACH_SENT",
+      createdAt: new Date().toISOString(),
+      lastInteractionAt: new Date().toISOString(),
+      sessionExpiresAt,
+      messagesTranscript: [
+        {
+          id: `wa-msg-${Date.now()}`,
+          sender: "bot",
+          text: `Hi ${userFirstName}! AheadOfTime spotted a new event on your calendar: *${eventTitle}* on *${formattedDate}*. To build your custom runway (bookings, packing, gifts), what are the key details or extra plans for this?`,
+          timestamp: new Date().toISOString(),
+          type: "template",
+        },
+      ],
+      gatheredContext: {
+        userRawNotes: notes || "",
+      },
+      metadata: {
+        mode: result.mode,
+        messageId: result.messageId,
+      },
+    });
+
+    res.json({
+      success: true,
+      result,
+      session,
+      templatePayload,
+    });
+  } catch (err: any) {
+    console.error("Outreach dispatch error:", err);
+    res.status(500).json({ error: err.message || "Failed to trigger WhatsApp outreach" });
+  }
+});
+
+// 6. Run Daily Agenda Background Scan
+app.post("/api/whatsapp/scan-agenda", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { events = [], userPhone, userFirstName = "there" } = req.body;
+
+    if (!userPhone) {
+      res.status(400).json({ error: "userPhone is required for WhatsApp background scan" });
+      return;
+    }
+
+    const scanResult = await AgendaScannerService.scanAndTriggerOutreach(
+      events,
+      userPhone,
+      userFirstName
+    );
+
+    res.json(scanResult);
+  } catch (err: any) {
+    console.error("Agenda scan error:", err);
+    res.status(500).json({ error: err.message || "Failed to execute agenda scan" });
+  }
+});
+
+// 7. Developer & UI In-App Simulation: Simulate Incoming User Reply or Button Tap
+app.post("/api/whatsapp/simulate-incoming", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { fromPhone, text, buttonPayload } = req.body;
+
+    if (!fromPhone || (!text && !buttonPayload)) {
+      res.status(400).json({ error: "fromPhone and either text or buttonPayload are required" });
+      return;
+    }
+
+    const simResult = await WhatsAppWebhookHandler.simulateIncomingMessage(
+      fromPhone,
+      text || "",
+      buttonPayload
+    );
+
+    res.json(simResult);
+  } catch (err: any) {
+    console.error("Simulation error:", err);
+    res.status(500).json({ error: err.message || "Failed to simulate incoming message" });
+  }
+});
+
+// 8. Delete / Clear a Session
+app.delete("/api/whatsapp/sessions/:sessionId", (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const deleted = WhatsAppSessionStore.deleteSession(sessionId);
+  res.json({ success: deleted });
+});
 
 // Setup Vite middleware for development or static serving for production
 async function startServer() {

@@ -86,35 +86,6 @@ export const MySavedPresetsView: React.FC<MySavedPresetsViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Top Banner / Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-indigo-50/70 via-white to-violet-50/70 p-4 rounded-2xl border border-indigo-100 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-              <span>Saved T-Minus Runways</span>
-              <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                Zero-LLM Cost
-              </span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              Apply domain-specific project templates with deterministic dates in under 1 second.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpenImporter}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all shrink-0"
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>Import Template (.csv / .xlsx)</span>
-        </button>
-      </div>
-
       {/* Tag Filters */}
       {allTags.length > 2 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">

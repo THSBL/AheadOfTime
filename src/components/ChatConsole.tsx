@@ -1777,11 +1777,11 @@ const InitialPresetsAndFreeform = ({
           <button
             type="button"
             onClick={onOpenImporter}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/90 flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95 shrink-0"
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95 shrink-0"
             title="Import existing spreadsheet (.csv / .xlsx) with workflows"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Import Template (.csv / .xlsx)</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-purple-700" />
+            <span>Import Template</span>
           </button>
         )}
       </div>
