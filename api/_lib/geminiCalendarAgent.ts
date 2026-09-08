@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { TelegramSessionStore } from './telegramStore.js';
-import type { CalendarEvent } from '../../src/types.js';
-import { detectEventCategory, generateHeuristicMilestones } from '../../src/utils/tminusRules.js';
+import type { CalendarEvent } from './types.js';
+import { detectEventCategory, generateHeuristicMilestones } from './tminusRules.js';
 
 export interface CalendarAgentResult {
   replyText: string;

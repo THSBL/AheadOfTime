@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService } from './telegramService.js';
-import type { CalendarEvent } from '../../src/types.js';
+import type { CalendarEvent } from './types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 
 export class TelegramWebhookHandler {

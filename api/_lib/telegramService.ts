@@ -1,4 +1,4 @@
-import type { CalendarEvent, TMinusMilestone } from '../../src/types.js';
+import type { CalendarEvent, TMinusMilestone } from './types.js';
 
 export interface TelegramSendMessageOptions {
   parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML';
