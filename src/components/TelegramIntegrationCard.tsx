@@ -11,7 +11,8 @@ import {
   Smartphone, 
   ShieldCheck,
   UserCheck,
-  Sparkles
+  Sparkles,
+  Copy
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { db } from '@/lib/firebase';
@@ -135,6 +136,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         setPairingLink(null);
         setActivePairCode(null);
         setShowManualInput(false);
+        setIsLinking(false);
 
         setFeedback({
           type: 'success',
@@ -339,9 +341,10 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     try {
       // 1. First try an immediate fresh check against server with active pairing code
       const codeToCheck = activePairCode || localStorage.getItem('aot_telegram_pair_code');
-      const verified = await checkStatus(codeToCheck, true);
+      const verified = await checkStatus(codeToCheck, false);
 
       if (verified) {
+        setIsLinking(false);
         setIsVerifyingManual(false);
         return;
       }
@@ -379,6 +382,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         setPairingLink(null);
         setActivePairCode(null);
         setShowManualInput(false);
+        setIsLinking(false);
 
         setFeedback({
           type: 'success',
@@ -398,6 +402,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       });
     } finally {
       setIsVerifyingManual(false);
+      setIsLinking(false);
     }
   };
 
@@ -670,25 +675,57 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
             {/* Handshake Polling State with Fallback Bypass */}
             {isWaitingForHandshake && pairingLink && (
               <div className="p-4 rounded-xl bg-sky-50 border border-sky-200/90 text-xs text-sky-950 space-y-3 animate-in fade-in duration-200">
-                <div className="flex items-start gap-2.5">
-                  <Loader2 className="w-4 h-4 animate-spin text-sky-600 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-semibold text-sky-900">
-                      Waiting for you to tap "Start" in Telegram...
-                    </p>
-                    <p className="text-[11px] text-sky-700">
-                      If Telegram did not open automatically,{' '}
-                      <a
-                        href={pairingLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline font-bold hover:text-sky-950"
-                      >
-                        click here to open Telegram
-                      </a>
-                      .
-                    </p>
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <Loader2 className="w-4 h-4 animate-spin text-sky-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-sky-900">
+                        Waiting for Telegram Handshake...
+                      </p>
+                      <p className="text-[11px] text-sky-700">
+                        Tap "Start" in Telegram or send the pairing command directly to <strong>@AheadTimebot</strong>.
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopPolling();
+                      setIsWaitingForHandshake(false);
+                      setIsLinking(false);
+                      setPairingLink(null);
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                {/* Direct Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <a
+                    href={pairingLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#24A1DE] hover:bg-[#1E8EC5] text-white font-semibold rounded-lg text-xs transition shadow-2xs"
+                  >
+                    <span>Open in Telegram</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+
+                  {activePairCode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`/start ${activePairCode}`);
+                        setFeedback({ type: 'success', message: `Copied: /start ${activePairCode}` });
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-sky-200 hover:bg-sky-100 text-sky-900 font-medium rounded-lg text-xs transition cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copy: /start {activePairCode.slice(0, 10)}...</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Manual Verification Fallback */}

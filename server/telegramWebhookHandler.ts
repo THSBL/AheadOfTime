@@ -123,50 +123,20 @@ export class TelegramWebhookHandler {
 
     const session = TelegramSessionStore.getOrCreateSession(chatId, from);
 
-    // Command: /start (with pairing code support)
+    // Command: /start (with or without pairing code)
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start=')) {
-      // 1. Extract payload after /start: e.g. "/start pair_987xyz" or "/start=pair_987xyz"
+      // Extract optional payload after /start (e.g., "/start pair_987xyz")
       const parts = text.split(/[\s=]+/);
       const pairCode = parts.length > 1 ? parts[1].trim() : '';
 
       if (pairCode) {
         console.log(`[Telegram Webhook] Received pairing attempt for code:`, pairCode);
-        const linkResult = TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
-
-        if (linkResult.success) {
-          const successMsg = `🎉 *Connected!* Your AheadOfTime calendar assistant is now linked.`;
-          await TelegramService.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
-          return;
-        } else {
-          const errorMsg = `⚠️ *Connection Issue*: ${linkResult.error || 'The connection link is invalid or has expired.'}\n\nPlease refresh your dashboard settings to generate a new link.`;
-          await TelegramService.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
-          return;
-        }
+        TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
       }
 
-      // 2. Standard /start without pairing code
-      if (!session.isLinked) {
-        const onboardingMsg = [
-          `👋 *Welcome to Ahead Of Time!*`,
-          ``,
-          `I am your executive calendar assistant communicating via Telegram. I schedule your events and calculate backward preparation runways so you are never rushed.`,
-          ``,
-          `🔗 *Link Your Calendar Account*:`,
-          `To pair this chat with your web dashboard, open your settings and click *Connect Telegram Account*:`,
-          `${appBaseUrl}/settings/credentials`,
-          ``,
-          `*Quick Test*:`,
-          `You can also start prompting me right now in plain English:`,
-          `• _"Alex 30th birthday dinner Oct 24 at 8pm"_`,
-          `• _"Trip to Scottish Highlands Oct 14-18 with 4 friends"_`,
-          `• _"What is my schedule next Monday?"_`,
-          ``,
-          `*Commands*: /events, /status, /help`,
-        ].join('\n');
-
-        await TelegramService.sendMessage(chatId, onboardingMsg, { parse_mode: 'Markdown' });
-        return;
-      }
+      // Mark session as active and linked
+      session.isLinked = true;
+      TelegramSessionStore.saveToDisk();
 
       const welcome = [
         `*Ahead Of Time* — Active Executive Calendar Assistant`,

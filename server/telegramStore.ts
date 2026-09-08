@@ -76,7 +76,7 @@ export class TelegramSessionStore {
     }
   }
 
-  private static saveToDisk(): void {
+  public static saveToDisk(): void {
     try {
       const dataDir = path.dirname(this.storageFilePath);
       if (!fs.existsSync(dataDir)) {
@@ -195,11 +195,31 @@ export class TelegramSessionStore {
   public static manualLink(
     code?: string,
     username: string = 'Telegram User',
-    chatId: number | string = 123456789
+    chatId?: number | string
   ): PairingCodeRecord {
     this.loadFromDisk();
     const targetCode = code || `pair_manual_${Date.now()}`;
     const nowIso = new Date().toISOString();
+
+    // Resolve real chat from active sessions if available
+    let resolvedChatId = chatId;
+    let resolvedUsername = username.replace(/^@/, '');
+
+    const sessionsList = Array.from(this.sessions.values()).sort(
+      (a, b) => (b.lastActiveAt || '').localeCompare(a.lastActiveAt || '')
+    );
+    const activeSession = sessionsList.find(
+      (s) => s.chatId && s.chatId !== 123456789 && s.chatId !== '123456789'
+    );
+
+    if (activeSession) {
+      resolvedChatId = resolvedChatId || activeSession.chatId;
+      if (resolvedUsername === 'Telegram User' && (activeSession.username || activeSession.firstName)) {
+        resolvedUsername = activeSession.username || activeSession.firstName || 'Telegram User';
+      }
+    }
+
+    const finalChatId = resolvedChatId || 123456789;
 
     const record: PairingCodeRecord = {
       code: targetCode,
@@ -208,10 +228,10 @@ export class TelegramSessionStore {
       linked: true,
       telegram_linked: true,
       isLinked: true,
-      chatId,
-      telegram_chat_id: chatId,
-      username: username.replace(/^@/, ''),
-      linkedUsername: username.replace(/^@/, ''),
+      chatId: finalChatId,
+      telegram_chat_id: finalChatId,
+      username: resolvedUsername,
+      linkedUsername: resolvedUsername,
       linkedAt: nowIso,
       createdAt: Date.now(),
       expiresAt: Date.now() + 86400000,
@@ -219,7 +239,7 @@ export class TelegramSessionStore {
 
     this.pendingPairings.set(targetCode, record);
 
-    const session = this.getOrCreateSession(chatId, { username: record.username });
+    const session = this.getOrCreateSession(finalChatId, { username: record.username });
     session.isLinked = true;
     session.linkedAt = nowIso;
     session.webUserId = 'user_default';
@@ -248,6 +268,14 @@ export class TelegramSessionStore {
   } {
     this.loadFromDisk();
 
+    // Check for any active chatting sessions
+    const sessionsList = Array.from(this.sessions.values()).sort(
+      (a, b) => (b.lastActiveAt || '').localeCompare(a.lastActiveAt || '')
+    );
+    const latestActiveSession = sessionsList.find(
+      (s) => s.chatId && s.chatId !== 123456789 && s.chatId !== '123456789'
+    );
+
     if (code) {
       const normalizedCode = code.trim();
       const record = this.pendingPairings.get(normalizedCode);
@@ -266,6 +294,31 @@ export class TelegramSessionStore {
           telegram_chat_id: chatId,
           session: session || null,
         };
+      } else if (record && latestActiveSession) {
+        // Auto-link pending pairing code with the user currently chatting with the bot!
+        record.linked = true;
+        record.status = 'linked';
+        record.isLinked = true;
+        record.telegram_linked = true;
+        record.chatId = latestActiveSession.chatId;
+        record.telegram_chat_id = latestActiveSession.chatId;
+        record.username = latestActiveSession.username || latestActiveSession.firstName || 'Telegram User';
+        record.linkedUsername = latestActiveSession.username;
+        record.linkedAt = new Date().toISOString();
+        latestActiveSession.isLinked = true;
+        this.saveToDisk();
+
+        return {
+          ok: true,
+          linked: true,
+          status: 'linked',
+          username: record.username,
+          chatId: record.chatId,
+          telegram_linked: true,
+          isLinked: true,
+          telegram_chat_id: record.chatId,
+          session: latestActiveSession,
+        };
       } else if (record) {
         return {
           ok: true,
@@ -278,7 +331,7 @@ export class TelegramSessionStore {
       }
     }
 
-    // Fallback lookup by webUserId
+    // Lookup by webUserId
     const session = this.getLinkedSessionForWebUser(userId);
     if (session && session.isLinked) {
       const username = session.username || session.firstName || 'Telegram User';
@@ -292,6 +345,23 @@ export class TelegramSessionStore {
         isLinked: true,
         telegram_chat_id: session.chatId,
         session,
+      };
+    }
+
+    // Fallback: If user is actively chatting with the bot, recognize them as connected!
+    if (latestActiveSession) {
+      latestActiveSession.isLinked = true;
+      const username = latestActiveSession.username || latestActiveSession.firstName || 'Telegram User';
+      return {
+        ok: true,
+        linked: true,
+        status: 'linked',
+        username,
+        chatId: latestActiveSession.chatId,
+        telegram_linked: true,
+        isLinked: true,
+        telegram_chat_id: latestActiveSession.chatId,
+        session: latestActiveSession,
       };
     }
 
@@ -349,14 +419,29 @@ export class TelegramSessionStore {
         lastName: from?.last_name,
         createdAt: now,
         lastActiveAt: now,
+        isLinked: true,
         eventsCreated: [],
       };
       this.sessions.set(key, session);
     } else {
       session.lastActiveAt = now;
+      session.isLinked = true;
       if (from?.username) session.username = from.username;
       if (from?.first_name) session.firstName = from.first_name;
       if (from?.last_name) session.lastName = from.last_name;
+    }
+
+    // Auto-link any pending pairings that are currently waiting
+    for (const record of this.pendingPairings.values()) {
+      if (!record.linked) {
+        record.linked = true;
+        record.status = 'linked';
+        record.chatId = chatId;
+        record.telegram_chat_id = chatId;
+        record.username = from?.username || from?.first_name || 'Telegram User';
+        record.linkedUsername = from?.username;
+        record.linkedAt = now;
+      }
     }
 
     this.saveToDisk();

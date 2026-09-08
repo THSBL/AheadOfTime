@@ -273,6 +273,38 @@ function App() {
         const data = await res.json();
         if (data.ok && Array.isArray(data.events) && data.events.length > 0) {
           setEvents((prev) => {
+            const prevIds = new Set(prev.map((e) => e.id));
+            const newIncoming = data.events.filter((e: CalendarEvent) => !prevIds.has(e.id));
+
+            if (newIncoming.length > 0) {
+              // Add notification message to agent chat console for newly detected Telegram events
+              const newMessages: AgentMessage[] = newIncoming.map((newEvent: CalendarEvent) => ({
+                id: `msg-tg-${newEvent.id}-${Date.now()}`,
+                sender: 'agent',
+                text: `📥 **New Event from Telegram**: "${newEvent.title}" (${newEvent.eventDate}). Generated ${newEvent.milestones?.length || 0} backward preparation milestones.`,
+                associatedEventId: newEvent.id,
+                focusText: `Parsed from Telegram chat: ${newEvent.title}`,
+                additionText: `Activated ${newEvent.milestones?.length || 0} T-Minus milestones for ${newEvent.eventDate}.`,
+                timestamp: new Date().toISOString(),
+                mode: 'EVENT_FOCUS',
+              }));
+
+              setMessages((prevMsgs) => {
+                const existingMsgIds = new Set(prevMsgs.map((m) => m.id));
+                const filteredNew = newMessages.filter((m) => !existingMsgIds.has(m.id));
+                const updated = [...prevMsgs, ...filteredNew];
+                try {
+                  localStorage.setItem('tminus_messages_v2', JSON.stringify(updated));
+                } catch (e) {}
+                return updated;
+              });
+
+              // Select the newest incoming event if none is currently selected
+              if (!selectedEventId && newIncoming[0]) {
+                setSelectedEventId(newIncoming[0].id);
+              }
+            }
+
             const merged = mergeEvents(prev, data.events);
             try {
               localStorage.setItem('tminus_events_v2', JSON.stringify(merged));
@@ -286,14 +318,14 @@ function App() {
     };
 
     syncTelegramEvents();
-    const interval = window.setInterval(syncTelegramEvents, 8000);
+    const interval = window.setInterval(syncTelegramEvents, 4000);
     window.addEventListener('focus', syncTelegramEvents);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', syncTelegramEvents);
     };
-  }, []);
+  }, [selectedEventId]);
 
   // Check for auto-scan trigger from onboarding, login, or redirect
   useEffect(() => {
