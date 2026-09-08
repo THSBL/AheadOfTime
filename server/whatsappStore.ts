@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { WhatsAppEventSessionState, WhatsAppSessionStatus, WhatsAppTranscriptMessage } from '../src/types/whatsapp';
-import { TMinusMilestone } from '../src/types';
+import { WhatsAppEventSessionState, WhatsAppSessionStatus, WhatsAppTranscriptMessage } from '../src/types/whatsapp.js';
+import { TMinusMilestone } from '../src/types.js';
 
 const SESSIONS_FILE_PATH = path.join(process.cwd(), 'data', 'whatsapp_sessions.json');
 

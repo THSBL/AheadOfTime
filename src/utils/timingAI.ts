@@ -1,4 +1,4 @@
-import { MilestoneCategory } from '../types';
+import { MilestoneCategory } from '../types.js';
 
 export type TimeUnit = 'weeks' | 'days' | 'hours';
 

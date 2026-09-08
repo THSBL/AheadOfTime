@@ -12,8 +12,8 @@ import {
   TaskItemKind,
   Deliverable,
   DeliverableType
-} from '../types';
-import { inferTaskTimingLocally } from './timingAI';
+} from '../types.js';
+import { inferTaskTimingLocally } from './timingAI.js';
 
 /**
  * Automatically detects an event category from its title, summary, or description

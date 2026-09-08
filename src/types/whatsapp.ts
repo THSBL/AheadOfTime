@@ -1,4 +1,4 @@
-import { TMinusMilestone } from '../types';
+import { TMinusMilestone } from '../types.js';
 
 export type WhatsAppSessionStatus = 
   | 'OUTREACH_SENT'                   // Template sent, waiting for user quick reply or message

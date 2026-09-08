@@ -3,8 +3,8 @@ import {
   MetaInteractiveButtonsPayload, 
   MetaTextMessagePayload,
   WhatsAppEventSessionState 
-} from '../src/types/whatsapp';
-import { TMinusMilestone } from '../src/types';
+} from '../src/types/whatsapp.js';
+import { TMinusMilestone } from '../src/types.js';
 
 export class WhatsAppService {
   /**

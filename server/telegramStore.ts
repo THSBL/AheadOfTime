@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { CalendarEvent } from '../src/types';
+import { CalendarEvent } from '../src/types.js';
 
 export interface TelegramUserSession {
   chatId: number | string;

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { CustomPreset, CustomPresetMilestone, SpreadsheetColumnMapping, TMinusMilestone, MilestoneCategory } from '../types';
+import { CustomPreset, CustomPresetMilestone, SpreadsheetColumnMapping, TMinusMilestone, MilestoneCategory } from '../types.js';
 
 const STORAGE_KEY = 'ahead_custom_presets_v1';
 

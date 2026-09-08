@@ -1,7 +1,7 @@
-import { CalendarEvent, TMinusMilestone } from '../src/types';
-import { WhatsAppSessionStore } from './whatsappStore';
-import { WhatsAppService } from './whatsappService';
-import { WhatsAppEventSessionState } from '../src/types/whatsapp';
+import { CalendarEvent, TMinusMilestone } from '../src/types.js';
+import { WhatsAppSessionStore } from './whatsappStore.js';
+import { WhatsAppService } from './whatsappService.js';
+import { WhatsAppEventSessionState } from '../src/types/whatsapp.js';
 
 export interface EventEvaluationResult {
   isEligible: boolean;

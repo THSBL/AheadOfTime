@@ -1,6 +1,6 @@
-import { CalendarEvent, TMinusMilestone, MilestoneCategory } from '../types';
-import { calculateOffsetDate, getCleanEventTitle } from './tminusRules';
-import { inferTaskTimingLocally } from './timingAI';
+import { CalendarEvent, TMinusMilestone, MilestoneCategory } from '../types.js';
+import { calculateOffsetDate, getCleanEventTitle } from './tminusRules.js';
+import { inferTaskTimingLocally } from './timingAI.js';
 
 /**
  * Generates an intelligent, domain-tailored T-Minus milestone plan for any calendar event.

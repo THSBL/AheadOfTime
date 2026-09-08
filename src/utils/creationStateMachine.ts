@@ -1,5 +1,5 @@
-import { Deliverable, EventCategory, TMinusMilestone } from '../types';
-import { calculateOffsetDate } from './tminusRules';
+import { Deliverable, EventCategory, TMinusMilestone } from '../types.js';
+import { calculateOffsetDate } from './tminusRules.js';
 
 export type CanonicalCategory =
   | 'party'

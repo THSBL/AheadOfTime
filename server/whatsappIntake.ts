@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { WhatsAppEventSessionState } from '../src/types/whatsapp';
-import { TMinusMilestone, MilestoneCategory } from '../src/types';
+import { WhatsAppEventSessionState } from '../src/types/whatsapp.js';
+import { TMinusMilestone, MilestoneCategory } from '../src/types.js';
 
 let aiClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI {

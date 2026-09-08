@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import { WhatsAppSessionStore } from './whatsappStore';
-import { WhatsAppService } from './whatsappService';
-import { WhatsAppIntakeService } from './whatsappIntake';
-import { MetaWebhookPayload } from '../src/types/whatsapp';
+import { WhatsAppSessionStore } from './whatsappStore.js';
+import { WhatsAppService } from './whatsappService.js';
+import { WhatsAppIntakeService } from './whatsappIntake.js';
+import { MetaWebhookPayload } from '../src/types/whatsapp.js';
 
 export class WhatsAppWebhookHandler {
   /**

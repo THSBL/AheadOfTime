@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import { TelegramSessionStore } from './telegramStore';
-import { TelegramService } from './telegramService';
-import { CalendarEvent } from '../src/types';
-import { GeminiCalendarAgent } from './geminiCalendarAgent';
+import { TelegramSessionStore } from './telegramStore.js';
+import { TelegramService } from './telegramService.js';
+import { CalendarEvent } from '../src/types.js';
+import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 
 export class TelegramWebhookHandler {
   /**
