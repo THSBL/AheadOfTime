@@ -1,17 +1,6 @@
 import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-
-declare global {
-  interface Window {
-    gtag?: (...args: any[]) => void;
-    posthog?: {
-      capture: (eventName: string, properties?: Record<string, any>) => void;
-    };
-    analytics?: {
-      page: (name?: string, properties?: Record<string, any>) => void;
-    };
-  }
-}
+import { initAnalytics, trackPageView } from '../services/analytics';
 
 /**
  * AnalyticsTracker listens to route changes via react-router-dom location
@@ -21,17 +10,15 @@ export const AnalyticsTracker: React.FC = () => {
   const location = useLocation();
 
   useEffect(() => {
+    initAnalytics();
+  }, []);
+
+  useEffect(() => {
     const pagePath = location.pathname + location.search + location.hash;
     const pageTitle = document.title || 'Ahead Of Time';
 
     // 1. Google Analytics 4 (gtag.js)
-    if (typeof window.gtag === 'function') {
-      window.gtag('event', 'page_view', {
-        page_path: pagePath,
-        page_title: pageTitle,
-        page_location: window.location.href,
-      });
-    }
+    trackPageView(pagePath, pageTitle);
 
     // 2. PostHog Analytics
     if (window.posthog && typeof window.posthog.capture === 'function') {

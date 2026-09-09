@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, ArrowRight, Calendar, CheckCircle2, MessageSquare, ShieldCheck, Clock, Play, LayoutDashboard } from 'lucide-react';
 import { Logo } from './Logo';
+import { trackButtonClick } from '../services/analytics';
 
 interface LandingUSPPageProps {
   onGetStarted: () => void;
@@ -25,7 +26,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         <div className="flex items-center gap-3 sm:gap-4">
           {onGoToDashboard && (
             <button
-              onClick={onGoToDashboard}
+              onClick={() => {
+                trackButtonClick('Go to Dashboard', 'landing_header');
+                onGoToDashboard();
+              }}
               className="bg-white/90 hover:bg-white text-slate-800 border border-slate-200/90 font-bold text-xs sm:text-sm px-3.5 py-2 rounded-xl shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
               title="Return to your active events dashboard"
             >
@@ -37,6 +41,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           <a
             href="/privacy"
             onClick={(e) => {
+              trackButtonClick('Privacy Notice', 'landing_header');
               if (onOpenPrivacyPolicy) {
                 e.preventDefault();
                 onOpenPrivacyPolicy();
@@ -49,7 +54,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           </a>
 
           <button
-            onClick={onGetStarted}
+            onClick={() => {
+              trackButtonClick('Get Started For Free', 'landing_header');
+              onGetStarted();
+            }}
             className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
           >
             <span>Get Started For Free</span>
@@ -81,7 +89,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         <div className="pt-2 flex flex-wrap items-center justify-center gap-3.5 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
           {onGoToDashboard ? (
             <button
-              onClick={onGoToDashboard}
+              onClick={() => {
+                trackButtonClick('Open My Dashboard', 'landing_hero');
+                onGoToDashboard();
+              }}
               className="px-8 py-3.5 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <LayoutDashboard className="w-4 h-4 text-sky-300" />
@@ -89,7 +100,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             </button>
           ) : (
             <button
-              onClick={onGetStarted}
+              onClick={() => {
+                trackButtonClick('Get Started For Free', 'landing_hero');
+                onGetStarted();
+              }}
               className="px-8 py-3.5 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <span>Get Started For Free</span>
@@ -97,7 +111,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           )}
 
           <button
-            onClick={() => alert("Watch Demo Video: Ahead Of Time workflow walkthrough.")}
+            onClick={() => {
+              trackButtonClick('Watch Demo Video', 'landing_hero');
+              alert("Watch Demo Video: Ahead Of Time workflow walkthrough.");
+            }}
             className="px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm border border-slate-200 shadow-sm transition-all cursor-pointer flex items-center gap-2"
           >
             <Play className="w-4 h-4 text-[#447463] fill-[#447463]" />
@@ -169,7 +186,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
 
           <div className="pt-2 relative z-10">
             <button
-              onClick={onGetStarted}
+              onClick={() => {
+                trackButtonClick('Get Started For Free', 'landing_footer_cta');
+                onGetStarted();
+              }}
               className="px-8 py-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-black text-base shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
             >
               <Sparkles className="w-4 h-4 text-sky-700" />
@@ -183,6 +203,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           <a
             href="/privacy"
             onClick={(e) => {
+              trackButtonClick('Privacy Policy Link', 'landing_footer');
               if (onOpenPrivacyPolicy) {
                 e.preventDefault();
                 onOpenPrivacyPolicy();
