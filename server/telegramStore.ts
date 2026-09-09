@@ -455,6 +455,16 @@ export class TelegramSessionStore {
     if (!session.eventsCreated.includes(event.id)) {
       session.eventsCreated.push(event.id);
     }
+
+    // Attach creator context if session is linked to a web account
+    if (session.webUserId || session.webUserEmail) {
+      event.context = {
+        ...(event.context || {}),
+        webUserId: session.webUserId,
+        creatorEmail: session.webUserEmail,
+      };
+    }
+
     this.events.set(event.id, event);
     this.saveToDisk();
     console.log(`💾 Recorded event ${event.id} ("${event.title}") for chat ${chatId}. Total stored: ${this.events.size}`);
@@ -465,9 +475,42 @@ export class TelegramSessionStore {
     return this.events.get(eventId);
   }
 
-  public static getAllEvents(): CalendarEvent[] {
+  public static getAllEvents(userId?: string): CalendarEvent[] {
     this.loadFromDisk();
-    return Array.from(this.events.values());
+    const all = Array.from(this.events.values());
+    if (!userId || userId === 'all') {
+      return all;
+    }
+
+    const normUserId = userId.toLowerCase().trim();
+
+    // If querying as guest, do not return events belonging to authenticated users
+    if (normUserId === 'guest' || normUserId === 'anonymous') {
+      return all.filter((ev) => !ev.context?.creatorEmail && !ev.context?.webUserId);
+    }
+
+    // Find sessions belonging to this user
+    const userChatIds = new Set<string>();
+    for (const session of this.sessions.values()) {
+      if (
+        (session.webUserId && session.webUserId.toLowerCase() === normUserId) ||
+        (session.webUserEmail && session.webUserEmail.toLowerCase() === normUserId)
+      ) {
+        userChatIds.add(String(session.chatId));
+      }
+    }
+
+    // Return events either explicitly tagged with this user or created in their chat
+    return all.filter((ev) => {
+      if (ev.context?.creatorEmail && ev.context.creatorEmail.toLowerCase() === normUserId) return true;
+      if (ev.context?.webUserId && ev.context.webUserId.toLowerCase() === normUserId) return true;
+      
+      for (const chatId of userChatIds) {
+        const session = this.sessions.get(chatId);
+        if (session && session.eventsCreated.includes(ev.id)) return true;
+      }
+      return false;
+    });
   }
 
   public static getRecentEventsForChat(chatId: number | string): CalendarEvent[] {

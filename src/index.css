@@ -1,5 +1,44 @@
 @import "tailwindcss";
 
+@theme {
+  --color-aot-green: #447463;
+  --color-aot-green-50: #f2f7f5;
+  --color-aot-green-100: #e1ece7;
+  --color-aot-green-200: #c4dcd2;
+  --color-aot-green-300: #9ec6b7;
+  --color-aot-green-400: #6ea793;
+  --color-aot-green-500: #447463;
+  --color-aot-green-600: #376052;
+  --color-aot-green-700: #2e4f43;
+  --color-aot-green-800: #264138;
+  --color-aot-green-900: #21362f;
+  --color-aot-green-950: #101e1a;
+
+  --color-emerald-50: #f2f7f5;
+  --color-emerald-100: #e1ece7;
+  --color-emerald-200: #c4dcd2;
+  --color-emerald-300: #9ec6b7;
+  --color-emerald-400: #6ea793;
+  --color-emerald-500: #447463;
+  --color-emerald-600: #376052;
+  --color-emerald-700: #2e4f43;
+  --color-emerald-800: #264138;
+  --color-emerald-900: #21362f;
+  --color-emerald-950: #101e1a;
+
+  --color-green-50: #f2f7f5;
+  --color-green-100: #e1ece7;
+  --color-green-200: #c4dcd2;
+  --color-green-300: #9ec6b7;
+  --color-green-400: #6ea793;
+  --color-green-500: #447463;
+  --color-green-600: #376052;
+  --color-green-700: #2e4f43;
+  --color-green-800: #264138;
+  --color-green-900: #21362f;
+  --color-green-950: #101e1a;
+}
+
 @layer base {
   body {
     @apply bg-[#eef6fc] text-slate-900 antialiased selection:bg-[#0f172a] selection:text-white;

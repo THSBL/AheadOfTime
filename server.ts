@@ -208,16 +208,22 @@ Task Action: "${taskTitle}"
 Task Notes: "${taskDescription || "None"}"
 
 CRITICAL INSTRUCTIONS FOR REASONING & ACCURACY:
-- Tailor the rationale explicitly and specifically to "${taskTitle}". Mention the real-world logistical realities and constraints for this exact activity or item.
-  * For example:
-    - Karaoke booths, private karaoke rooms, escape rooms, bowling: explain that private entertainment booths and weekend evening slots have high peak demand and frequently sell out 2 to 4 weeks ahead.
-    - Custom gifts, monogramming, custom crafting: explain artisan production lead times and parcel delivery buffers.
-    - Bakeries & custom cakes: explain decorator reservation minimums and pre-order cutoff dates.
-    - Haircut, salon, barber, makeup: explain weekend booking bottlenecks and letting styling settle.
-    - Fresh groceries, perishable meats, ice, party platters: explain that purchasing 24 hours prior preserves optimal freshness.
-    - Flights, hotels, rental cars: explain surge pricing and securing nearby room availability.
-- NEVER output generic placeholder text like "Standard preparation window" or "Recommended 3-day lead window".
-- The explanation must feel expert, practical, and directly customized to the user's task.
+- Tailor the rationale explicitly and specifically to "${taskTitle}". Mention the real-world logistical realities, manufacturing lead times, and booking windows for this exact activity or item.
+  * Real-World Production & Booking Lead Times:
+    - Wedding dresses / custom gowns / bespoke bridal suits: Require 6 to 9 months (T-8m / 24-36 weeks) for boutique made-to-measure production, shipping, and multiple rounds of alteration fittings.
+    - Wedding venues & reception halls: Require 9 to 12 months (T-9m to T-12m) to secure Saturday dates and preferred venues.
+    - Dog sitters, cat sitters, pet boarding & kennels: Require 4 to 8 weeks (T-4w to T-8w / 4-8 weeks) as quality boarding facilities and sitters reach full capacity weeks in advance.
+    - Passports & visas: Require 8 to 12 weeks (T-8w to T-12w) for government renewals, visas, and 6-month passport validity rules.
+    - International flights & vacation rentals: Require 8 to 16 weeks (T-8w to T-16w) to lock in reasonable fares and spacious villas.
+    - Karaoke booths, escape rooms, private party rooms, bowling: Require 3 to 4 weeks (T-3w to T-4w) due to weekend peak demand.
+    - Custom gifts & personalized monogramming: Require 2 to 4 weeks for artisan production.
+    - Bakeries & custom cakes: Require 1 to 2 weeks for decorator reservation and pre-orders.
+    - Outfits, suits & dry cleaning: Require 1 week (T-7d) for dry cleaners and alterations.
+    - Packing luggage: 2 to 3 days (T-3d).
+    - Fresh groceries, ice, chilled drinks: 1 day (T-1d) for optimal freshness.
+- NEVER suggest buying a wedding dress or arranging a dog sitter only days in advance.
+- NEVER output generic placeholder text like "Standard preparation window".
+- The explanation must feel expert, practical, straightforward, and modern (no archaic language).
 
 Required JSON format:
 {
@@ -1880,9 +1886,11 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
   }
 });
 
-// 5. Get Events created via Telegram
-app.get("/api/telegram/events", (_req: Request, res: Response) => {
-  res.json({ ok: true, events: TelegramSessionStore.getAllEvents() });
+// 5. Get Events created via Telegram (User/Account Scoped)
+app.get("/api/telegram/events", (req: Request, res: Response) => {
+  const userId = (req.query.userId as string) || (req.query.email as string);
+  const events = TelegramSessionStore.getAllEvents(userId);
+  res.json({ ok: true, events });
 });
 
 app.get("/api/telegram/event/:id", (req: Request, res: Response) => {

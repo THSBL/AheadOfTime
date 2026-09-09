@@ -548,24 +548,145 @@ export function generateConcreteEventMilestones(
   switch (category) {
     // 1. PARTY (Birthdays, weddings, dinners, milestone celebrations)
     case 'party': {
+      const isWedding = /\b(wedding|marriage|matrimony|bridal|reception)\b/i.test(title) ||
+        Object.values(answers).some((v) => typeof v === 'string' && /\bwedding|bridal gown|wedding dress\b/i.test(v));
+
+      if (isWedding) {
+        // WEDDING RUNWAY (Realistic 6-12 month preparation lead time)
+        milestones.push(
+          createMilestone(
+            'T-9m',
+            -270 * 24 * 60,
+            'Wedding Venue & Ceremony Location Booked',
+            'booking',
+            'Lock in ceremony and reception venue contracts and schedule deposits.',
+            [
+              { title: 'Sign venue agreement and pay initial deposit', type: 'booking' },
+              { title: 'Confirm ceremony time window and vendor access rules', type: 'document' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-8m',
+            -240 * 24 * 60,
+            'Wedding Dress & Custom Attire Ordered',
+            'shopping',
+            'Order made-to-measure wedding dress and custom suits to allow for production and alterations.',
+            [
+              { title: 'Order wedding dress or custom tuxedo from boutique', type: 'purchase' },
+              { title: 'Schedule first alteration and fitting dates with tailor', type: 'booking' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-8m',
+            -240 * 24 * 60,
+            'Photographer & Videographer Booked',
+            'booking',
+            'Lock in photographer and videographer for ceremony and reception coverage.',
+            [
+              { title: 'Sign photography contract and agree on hours of coverage', type: 'booking' },
+              { title: 'Draft key shot wishlist and schedule engagement shoot', type: 'document' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-6m',
+            -180 * 24 * 60,
+            'Save the Dates Sent',
+            'coordination' as any,
+            'Send save the date cards to give guests time to book travel and lodging.',
+            [
+              { title: 'Send save the dates digitally or via mail', type: 'coordination' },
+              { title: 'Set up wedding website with hotel recommendations', type: 'document' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-8w',
+            -56 * 24 * 60,
+            'First Dress Fitting & Alterations Completed',
+            'shopping',
+            'Attend first major garment fitting with wedding shoes and undergarments.',
+            [
+              { title: 'Complete first tailoring fitting for hem, waist, and bustle', type: 'purchase' },
+              { title: 'Confirm final collection appointment with tailor', type: 'booking' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-6w',
+            -42 * 24 * 60,
+            'Marriage License & Legal Paperwork Filed',
+            'admin',
+            'Submit marriage license application at city hall or civil registry.',
+            [
+              { title: 'Gather certified birth certificates and official photo IDs', type: 'document' },
+              { title: 'Complete marriage registry appointment and obtain license', type: 'document' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-3w',
+            -21 * 24 * 60,
+            'Final RSVPs & Seating Chart Locked',
+            'coordination' as any,
+            'Finalize guest headcount with caterer and arrange table seating plan.',
+            [
+              { title: 'Submit final dietary counts and meal choices to caterer', type: 'coordination' },
+              { title: 'Print final table cards and seating chart display', type: 'document' },
+            ]
+          )
+        );
+
+        milestones.push(
+          createMilestone(
+            'T-1d',
+            -1 * 24 * 60,
+            'Wedding Rehearsal & Rings Ready',
+            'prep',
+            'Run ceremony rehearsal with wedding party and prep rings and vows.',
+            [
+              { title: 'Pack wedding rings, vows, marriage license, and emergency kit', type: 'document' },
+              { title: 'Rehearse ceremony walk-through with wedding party', type: 'coordination' },
+            ]
+          )
+        );
+
+        break;
+      }
+
+      // STANDARD CELEBRATIONS & PARTIES
       // T-21d: Invites & Headcount
       const rsvpItems = extractAnswerList(answers.rsvps);
       const inviteDelivs: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [
         {
           title: rsvpItems.length > 0
-            ? `Dispatched invitations: ${rsvpItems.join(', ')}`
+            ? `Sent invitations: ${rsvpItems.join(', ')}`
             : 'Send digital invitations and track group RSVPs',
           type: 'coordination',
         },
-        { title: 'Track dietary restrictions and headcount', type: 'document' },
+        { title: 'Track dietary requirements and headcount', type: 'document' },
       ];
       milestones.push(
         createMilestone(
           'T-21d',
           -21 * 24 * 60,
-          'Invitations & RSVPs Dispatched',
+          'Invitations & RSVPs Sent',
           'booking',
-          'Dispatch invitations to guests and coordinate attendee headcount.',
+          'Send invitations to guests and coordinate attendee headcount.',
           inviteDelivs
         )
       );
@@ -580,11 +701,11 @@ export function generateConcreteEventMilestones(
             type: 'purchase',
           });
         });
-        giftDelivs.push({ title: 'Write heartfelt celebratory card & prepare wrap', type: 'document' });
+        giftDelivs.push({ title: 'Write celebratory card & wrap gift', type: 'document' });
       } else {
         giftDelivs.push(
-          { title: 'Order celebration gift online with parcel tracking', type: 'purchase' },
-          { title: 'Write heartfelt celebratory card & prepare wrap', type: 'document' }
+          { title: 'Order celebration gift online with tracking', type: 'purchase' },
+          { title: 'Write celebratory card & wrap gift', type: 'document' }
         );
       }
       milestones.push(
@@ -593,7 +714,7 @@ export function generateConcreteEventMilestones(
           -10 * 24 * 60,
           'Celebratory Gift & Card Purchased',
           'shopping',
-          'Order celebratory gift online and write handwritten card.',
+          'Order celebratory gift online and write card.',
           giftDelivs
         )
       );
@@ -840,7 +961,7 @@ export function generateConcreteEventMilestones(
           -2 * 24 * 60,
           'Gear & Equipment Checked',
           'prep',
-          'Ensure competition apparel, safety gear, and nutrition are packed.',
+          'Ensure sports kit, uniform, safety gear, and nutrition are packed.',
           gearDelivs
         )
       );
@@ -1202,7 +1323,7 @@ export function generateConcreteEventMilestones(
           -2 * 24 * 60,
           'Uniform & Competition Kit Packed',
           'prep',
-          'Ensure clean competition apparel, safety equipment, and nutrition are packed.',
+          'Ensure clean sports jersey, shin guards, and water bottle are packed.',
           gearDelivs
         )
       );

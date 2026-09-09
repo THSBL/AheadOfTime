@@ -1,4 +1,5 @@
 import { MilestoneCategory } from '../types.js';
+import { lookupTaskTiming } from '../data/prepTimelineDatabase.js';
 
 export type TimeUnit = 'weeks' | 'days' | 'hours';
 
@@ -21,7 +22,7 @@ export interface TimingSuggestion {
 
 /**
  * Intelligent local semantic parser that analyzes the task action and context
- * to determine the optimal lead-time preparation window.
+ * against our preparation timeline knowledge base to determine realistic lead times.
  */
 export function inferTaskTimingLocally(
   taskTitle: string,
@@ -30,7 +31,128 @@ export function inferTaskTimingLocally(
 ): TimingSuggestion {
   const text = `${taskTitle} ${taskDescription} ${eventTitle}`.toLowerCase().trim();
 
-  // 1. Karaoke booths, private rooms, escape rooms, bowling, arcades, laser tag (2 - 4 weeks)
+  // 1. First check the comprehensive Prep Knowledge Base
+  const dbMatch = lookupTaskTiming(taskTitle, `${taskDescription} ${eventTitle}`);
+  if (dbMatch) {
+    const idealDays = dbMatch.idealLeadDays;
+    let unit: TimeUnit = 'days';
+    let amount = idealDays;
+
+    if (idealDays >= 14 && idealDays % 7 === 0) {
+      unit = 'weeks';
+      amount = idealDays / 7;
+    } else if (idealDays >= 14) {
+      unit = 'weeks';
+      amount = Math.round(idealDays / 7);
+    }
+
+    const mappedAlternatives: AlternativeTiming[] = dbMatch.alternatives.map((alt) => {
+      let mappedUnit: TimeUnit = 'days';
+      let mappedAmount = alt.amount;
+      if (alt.unit === 'months') {
+        mappedUnit = 'weeks';
+        mappedAmount = alt.amount * 4;
+      } else if (alt.unit === 'weeks') {
+        mappedUnit = 'weeks';
+      } else if (alt.unit === 'hours') {
+        mappedUnit = 'hours';
+      }
+      return {
+        amount: mappedAmount,
+        unit: mappedUnit,
+        badge: alt.badge,
+        label: alt.label,
+        reason: alt.reason,
+      };
+    });
+
+    return {
+      amount,
+      unit,
+      badge: dbMatch.badge,
+      category: dbMatch.category,
+      reason: dbMatch.reason,
+      alternatives: mappedAlternatives,
+    };
+  }
+
+  // 2. Wedding dresses & custom bridal attire (6 - 8 months out)
+  if (text.match(/\b(wedding dress|bridal gown|wedding gown|bridal dress|custom suit|wedding tuxedo|bridesmaid dress|veil)\b/)) {
+    return {
+      amount: 32,
+      unit: 'weeks',
+      badge: 'T-8m',
+      category: 'shopping',
+      reason: 'Made-to-order wedding dresses and tailored suits take 4 to 6 months for manufacture plus 6 to 8 weeks for alterations and fittings.',
+      alternatives: [
+        { amount: 36, unit: 'weeks', badge: 'T-9m', label: '9 Months before', reason: 'Custom boutique made-to-measure orders' },
+        { amount: 24, unit: 'weeks', badge: 'T-6m', label: '6 Months before', reason: 'Standard bridal shop order window' },
+        { amount: 8, unit: 'weeks', badge: 'T-8w', label: '8 Weeks before', reason: 'Off-the-rack dress requiring alterations only' },
+      ],
+    };
+  }
+
+  // 3. Dog sitter, cat sitter, pet boarding & kennels (4 - 8 weeks out)
+  if (text.match(/\b(dog sitter|cat sitter|pet sitter|dog boarding|pet boarding|kennel|cattery|dog hotel|pet hotel|doggy daycare)\b/)) {
+    return {
+      amount: 6,
+      unit: 'weeks',
+      badge: 'T-6w',
+      category: 'booking',
+      reason: 'Reputable pet sitters and boarding kennels reach full capacity weeks in advance, especially during holiday and weekend periods.',
+      alternatives: [
+        { amount: 8, unit: 'weeks', badge: 'T-8w', label: '8 Weeks before', reason: 'Peak summer holidays, Christmas and bank holiday getaways' },
+        { amount: 4, unit: 'weeks', badge: 'T-4w', label: '4 Weeks before', reason: 'Regular trusted sitter or standard weekend trip' },
+      ],
+    };
+  }
+
+  // 4. Passports, visas, renewals (8 - 12 weeks out)
+  if (text.match(/\b(passport|visa|renew passport|e-visa|esta|travel visa|passport validity)\b/)) {
+    return {
+      amount: 10,
+      unit: 'weeks',
+      badge: 'T-10w',
+      category: 'admin',
+      reason: 'Most countries require 6 months of passport validity past departure, and government passport processing requires 6 to 10 weeks.',
+      alternatives: [
+        { amount: 12, unit: 'weeks', badge: 'T-12w', label: '12 Weeks before', reason: 'Standard passport renewal processing window' },
+        { amount: 6, unit: 'weeks', badge: 'T-6w', label: '6 Weeks before', reason: 'Online e-visa and electronic travel authorization' },
+      ],
+    };
+  }
+
+  // 5. Flights, international travel, long-haul (8 - 12 weeks out)
+  if (text.match(/\b(flight|international flight|airline|plane ticket|long haul)\b/)) {
+    return {
+      amount: 12,
+      unit: 'weeks',
+      badge: 'T-12w',
+      category: 'booking',
+      reason: 'Securing flights 2 to 3 months early secures significantly lower fares and preferred seating options.',
+      alternatives: [
+        { amount: 16, unit: 'weeks', badge: 'T-16w', label: '16 Weeks before', reason: 'Peak summer vacation flights' },
+        { amount: 6, unit: 'weeks', badge: 'T-6w', label: '6 Weeks before', reason: 'Short domestic or European flights' },
+      ],
+    };
+  }
+
+  // 6. Vacation rentals, villas, hotels (6 - 8 weeks out)
+  if (text.match(/\b(hotel|airbnb|vacation rental|villa|resort|cabin|chalet)\b/)) {
+    return {
+      amount: 8,
+      unit: 'weeks',
+      badge: 'T-8w',
+      category: 'booking',
+      reason: 'Top vacation homes and central hotels get booked months ahead during peak seasons.',
+      alternatives: [
+        { amount: 12, unit: 'weeks', badge: 'T-12w', label: '12 Weeks before', reason: 'Large group villas and holiday houses' },
+        { amount: 4, unit: 'weeks', badge: 'T-4w', label: '4 Weeks before', reason: 'Standard city hotels with free cancellation' },
+      ],
+    };
+  }
+
+  // 7. Karaoke booths, private rooms, escape rooms, bowling (3 - 4 weeks)
   if (
     text.match(/\b(karaoke|karaoke booth|karaoke room|singing room|escape room|bowling|arcade|laser tag|vr lounge|axe throwing|mini golf|topgolf)\b/)
   ) {
@@ -39,7 +161,7 @@ export function inferTaskTimingLocally(
       unit: 'weeks',
       badge: 'T-3w',
       category: 'booking',
-      reason: 'Private karaoke booths and entertainment rooms experience high weekend peak demand; booking 2 to 4 weeks in advance secures private rooms and your preferred time slot before they sell out.',
+      reason: 'Private karaoke rooms and activity spaces experience high weekend peak demand; booking 3 to 4 weeks ahead locks in your preferred time slot.',
       alternatives: [
         { amount: 4, unit: 'weeks', badge: 'T-4w', label: '4 Weeks before', reason: 'Prime weekend evening slots and larger party groups' },
         { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Standard weekday or off-peak booking window' },
@@ -47,92 +169,41 @@ export function inferTaskTimingLocally(
     };
   }
 
-  // 2. Long Lead: Custom gifts, passports, visas, international shipping (3 - 4 weeks)
-  if (
-    text.match(/\b(passport|visa|renew passport|custom gift|personalized gift|engrav|monogram|craft|handmade|order gift from abroad|shipping|ship gift|order present)\b/)
-  ) {
-    return {
-      amount: 3,
-      unit: 'weeks',
-      badge: 'T-3w',
-      category: 'gift',
-      reason: 'Personalized orders and custom engraved gifts require dedicated production time and parcel shipping delivery buffers.',
-      alternatives: [
-        { amount: 4, unit: 'weeks', badge: 'T-4w', label: '4 Weeks before', reason: 'Maximum buffer for international shipping & artisan crafting' },
-        { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Expedited domestic delivery' },
-      ],
-    };
-  }
-
-  // 3. Invites & RSVPs & Headcounts (3 - 4 weeks)
+  // 8. Invites & RSVPs & Headcounts (3 - 4 weeks)
   if (
     text.match(/\b(invit|send invite|send rsvp|gather headcount|survey|evite|save the date|guest list|collect rsvp)\b/)
   ) {
     return {
-      amount: 3,
+      amount: 4,
       unit: 'weeks',
-      badge: 'T-3w',
+      badge: 'T-4w',
       category: 'prep',
-      reason: 'Guests require several weeks of advance notice to clear their personal calendars, arrange transport, and confirm attendance.',
+      reason: 'Guests require 3 to 4 weeks of advance notice to clear their personal calendars, arrange transport, and confirm attendance.',
       alternatives: [
-        { amount: 4, unit: 'weeks', badge: 'T-4w', label: '4 Weeks before', reason: 'Formal events & busy holiday seasons' },
+        { amount: 6, unit: 'weeks', badge: 'T-6w', label: '6 Weeks before', reason: 'Formal milestone events and busy holiday periods' },
         { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Casual get-togethers' },
       ],
     };
   }
 
-  // 4. Travel, Flights, Hotels & Car Rentals (3 - 4 weeks)
+  // 9. Restaurant tables, private dining rooms, venues & performers (3 - 4 weeks)
   if (
-    text.match(/\b(flight|plane|airline|hotel|airbnb|rental car|train ticket|book transport)\b/)
+    text.match(/\b(reserve table|book restaurant|venue|hire dj|photographer|hire band|chef table|private room|rooftop bar|brunch table|reserve venue)\b/)
   ) {
     return {
       amount: 4,
       unit: 'weeks',
       badge: 'T-4w',
       category: 'booking',
-      reason: 'Securing flights and accommodations at least a month early prevents steep last-minute price hikes and ensures room availability.',
+      reason: 'Popular venues, top-rated restaurants, and group dining tables fill their books weeks early for weekend seatings.',
       alternatives: [
-        { amount: 6, unit: 'weeks', badge: 'T-6w', label: '6 Weeks before', reason: 'Peak travel seasons & international holidays' },
-        { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Short domestic trips & flex travel' },
+        { amount: 6, unit: 'weeks', badge: 'T-6w', label: '6 Weeks before', reason: 'Milestone celebrations and private rooms' },
+        { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Casual dining & off-peak tables' },
       ],
     };
   }
 
-  // 5. Restaurant tables, private dining rooms, venues & performers (2 - 3 weeks)
-  if (
-    text.match(/\b(reserve table|book restaurant|venue|hire dj|photographer|hire band|chef table|private room|rooftop bar|brunch table|reserve venue)\b/)
-  ) {
-    return {
-      amount: 3,
-      unit: 'weeks',
-      badge: 'T-3w',
-      category: 'booking',
-      reason: 'Popular venues, top-rated restaurants, and group dining tables fill their booking books weeks early for weekend seatings.',
-      alternatives: [
-        { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Standard group dinner reservations' },
-        { amount: 1, unit: 'weeks', badge: 'T-1w', label: '1 Week before', reason: 'Casual dining & off-peak tables' },
-      ],
-    };
-  }
-
-  // 6. Party Rentals & AV equipment (2 - 3 weeks)
-  if (
-    text.match(/\b(rent table|rent chair|bouncy castle|photo booth|sound system|projector|lighting|party rental|generator|tent rental)\b/)
-  ) {
-    return {
-      amount: 3,
-      unit: 'weeks',
-      badge: 'T-3w',
-      category: 'logistics',
-      reason: 'Party rental vendors require 2 to 3 weeks notice to schedule equipment delivery routes, lock in inventory, and collect safety deposits.',
-      alternatives: [
-        { amount: 4, unit: 'weeks', badge: 'T-4w', label: '4 Weeks before', reason: 'Peak summer & graduation party seasons' },
-        { amount: 1, unit: 'weeks', badge: 'T-1w', label: '1 Week before', reason: 'Local pickup of small equipment' },
-      ],
-    };
-  }
-
-  // 7. Standard Gifts, Flowers, Gift Baskets (1 - 2 weeks)
+  // 10. Standard Gifts, Flowers, Gift Baskets (1 - 2 weeks)
   if (
     text.match(/\b(gift|present|birthday card|gift card|voucher|flower delivery|order flowers|wrap gift|gift basket)\b/)
   ) {
@@ -141,7 +212,7 @@ export function inferTaskTimingLocally(
       unit: 'weeks',
       badge: 'T-2w',
       category: 'gift',
-      reason: 'Allows enough time to buy the ideal gift, write a meaningful card, handle gift wrapping, and avoid rush shipping surcharges.',
+      reason: 'Allows enough time to buy the ideal gift, write a card, handle gift wrapping, and avoid rush shipping charges.',
       alternatives: [
         { amount: 1, unit: 'weeks', badge: 'T-1w', label: '1 Week before', reason: 'Quick online or in-store purchase' },
         { amount: 3, unit: 'days', badge: 'T-3d', label: '3 Days before', reason: 'In-person boutique shopping & card writing' },
@@ -149,26 +220,26 @@ export function inferTaskTimingLocally(
     };
   }
 
-  // 8. Bakery, Custom Cakes & Catering (5 - 7 days)
+  // 11. Bakery, Custom Cakes & Catering (1 - 2 weeks)
   if (
     text.match(/\b(order cake|bakery|cupcake|custom cake|caterer|catering|order food|party platter)\b/)
   ) {
     return {
-      amount: 1,
+      amount: 2,
       unit: 'weeks',
-      badge: 'T-7d',
+      badge: 'T-2w',
       category: 'shopping',
-      reason: 'Bakeries and catering services require pre-orders 5 to 7 days in advance to schedule custom decoration and ingredient prep.',
+      reason: 'Bakeries and catering services require pre-orders 1 to 2 weeks in advance to schedule custom decoration and ingredient prep.',
       alternatives: [
-        { amount: 10, unit: 'days', badge: 'T-10d', label: '10 Days before', reason: 'Elaborate multi-tier custom themed cakes' },
-        { amount: 3, unit: 'days', badge: 'T-3d', label: '3 Days before', reason: 'Standard bakery pre-orders' },
+        { amount: 3, unit: 'weeks', badge: 'T-3w', label: '3 Weeks before', reason: 'Elaborate multi-tier custom themed cakes' },
+        { amount: 4, unit: 'days', badge: 'T-4d', label: '4 Days before', reason: 'Standard bakery pre-orders' },
       ],
     };
   }
 
-  // 9. Outfits, Formal Wear, Costumes, Salons & Dry Cleaning (5 - 7 days)
+  // 12. Outfits, Suits, Salons & Dry Cleaning (1 week)
   if (
-    text.match(/\b(suit|tuxedo|dress|costume|fancy dress|dry clean|dry cleaning|iron shirt|steaming|tailor|alteration|theme outfit|shoes|haircut|salon|barber|nails|makeup)\b/)
+    text.match(/\b(suit|tuxedo|dress|costume|dry clean|dry cleaning|iron shirt|tailor|alteration|haircut|salon|barber|nails|makeup)\b/)
   ) {
     return {
       amount: 1,
@@ -177,73 +248,39 @@ export function inferTaskTimingLocally(
       category: 'costume',
       reason: 'Dry cleaners, tailoring alterations, and salon appointments typically require 5 to 7 days to guarantee you look sharp without rush stress.',
       alternatives: [
-        { amount: 3, unit: 'days', badge: 'T-3d', label: '3 Days before', reason: 'Home steaming, trying on attire & fresh trims' },
-        { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Complex costume ordering & tailoring alterations' },
+        { amount: 2, unit: 'weeks', badge: 'T-2w', label: '2 Weeks before', reason: 'Tailoring alterations & custom fittings' },
+        { amount: 3, unit: 'days', badge: 'T-3d', label: '3 Days before', reason: 'Home steaming & trying on outfits' },
       ],
     };
   }
 
-  // 10. Playlists, Speeches, Slideshows & Toasts (4 - 5 days)
+  // 13. Luggage, Packing & Equipment (2 - 3 days)
   if (
-    text.match(/\b(playlist|speech|toast|slideshow|slide deck|photo video|presentation|montage|music list|dj setlist)\b/)
-  ) {
-    return {
-      amount: 5,
-      unit: 'days',
-      badge: 'T-5d',
-      category: 'prep',
-      reason: 'Curating playlists, speeches, or photo slideshows 5 days early gives you time to review song flow, practice speaking, and test AV playback.',
-      alternatives: [
-        { amount: 1, unit: 'weeks', badge: 'T-1w', label: '1 Week before', reason: 'Comprehensive slide deck & video editing' },
-        { amount: 2, unit: 'days', badge: 'T-2d', label: '2 Days before', reason: 'Quick track sequencing & speech cue cards' },
-      ],
-    };
-  }
-
-  // 11. Home Cleaning, Guest Room & Deep Tidying (3 days)
-  if (
-    text.match(/\b(clean guest|guest room|bedding|towels|sheets|deep clean|vacuum|tidy house|mow lawn|clean bathroom|dust|declutter|air out)\b/)
+    text.match(/\b(pack bag|pack luggage|pack suitcase|pack clothes|packing|charge battery|charge camera|toiletries|sunscreen|swimsuit)\b/)
   ) {
     return {
       amount: 3,
       unit: 'days',
       badge: 'T-3d',
-      category: 'prep',
-      reason: 'Gives ample time to wash linens and clean without the house getting dusty or cluttered again before arrival.',
-      alternatives: [
-        { amount: 5, unit: 'days', badge: 'T-5d', label: '5 Days before', reason: 'Major deep cleaning & reorganizing' },
-        { amount: 1, unit: 'days', badge: 'T-1d', label: '1 Day before', reason: 'Quick surface dusting & fresh towel setup' },
-      ],
-    };
-  }
-
-  // 12. Luggage, Packing & Equipment (2 days)
-  if (
-    text.match(/\b(pack bag|pack luggage|pack suitcase|pack clothes|packing|charge battery|charge camera|toiletries|sunscreen|swimsuit|passport check)\b/)
-  ) {
-    return {
-      amount: 2,
-      unit: 'days',
-      badge: 'T-2d',
       category: 'logistics',
-      reason: 'Packing 2 days early leaves time to do laundry and spot any missing items before departing.',
+      reason: 'Packing 3 days early leaves time to do laundry and spot any missing items before departing.',
       alternatives: [
-        { amount: 3, unit: 'days', badge: 'T-3d', label: '3 Days before', reason: 'Major holiday or international trip packing' },
+        { amount: 5, unit: 'days', badge: 'T-5d', label: '5 Days before', reason: 'Major international vacation packing' },
         { amount: 1, unit: 'days', badge: 'T-1d', label: '1 Day before', reason: 'Light weekend trip packing' },
       ],
     };
   }
 
-  // 13. Perishable Groceries, Ice, Drinks & Food Prep (1 day)
+  // 14. Perishable Groceries, Ice, Drinks (1 - 2 days)
   if (
-    text.match(/\b(grocery|groceries|supermarket|ice|drinks|fresh produce|fruit|marinate|wine|beer|soft drinks|buy food|snack|meat|cheese board)\b/)
+    text.match(/\b(grocery|groceries|supermarket|ice|drinks|fresh produce|fruit|marinate|wine|beer|buy food|snack|meat|cheese board)\b/)
   ) {
     return {
       amount: 1,
       unit: 'days',
       badge: 'T-1d',
       category: 'shopping',
-      reason: 'Perishable ingredients, fresh ice, and beverages stay in prime condition when purchased 24 hours prior.',
+      reason: 'Perishable ingredients, fresh ice, and beverages stay in prime condition when purchased 24 to 48 hours prior.',
       alternatives: [
         { amount: 2, unit: 'days', badge: 'T-2d', label: '2 Days before', reason: 'Non-perishable bulk pantry shopping' },
         { amount: 4, unit: 'hours', badge: 'T-4h', label: '4 Hours before', reason: 'Ice bag pickup & chilled items' },
@@ -251,9 +288,9 @@ export function inferTaskTimingLocally(
     };
   }
 
-  // 14. Final Day-of Logistics & Immediate Readiness (2 - 4 hours)
+  // 15. Final Day-of Logistics (2 - 4 hours)
   if (
-    text.match(/\b(uber|taxi|petrol|gas|fill tank|warm up|set table|sound check|check in online|boarding pass|drive|leave house|greet)\b/)
+    text.match(/\b(uber|taxi|petrol|gas|fill tank|set table|sound check|check in online|boarding pass|drive|leave house)\b/)
   ) {
     return {
       amount: 3,

@@ -70,10 +70,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         {/* Hero Headline / USP Statement */}
         <div className="space-y-3 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700 delay-100">
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-[1.2]">
-            Calendars tell you when an event starts. Ahead Of Time makes sure you're ready when it does.
+            Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does.
           </h1>
           <p className="text-sm sm:text-base text-slate-600 font-medium leading-relaxed">
-            Drop an entry onto your calendar or plan with our assistant, and Ahead Of Time automatically builds backward preparation milestones. Whether you’re organizing a birthday celebration, packing for a trip, or prepping a school theme day for your kids, we build in the breathing room.
+            Drop an entry onto your calendar or plan with our assistant, and Ahead Of Time automatically builds backward preparation milestones. Whether you are organizing a birthday celebration, packing for a trip, or prepping a school theme day for your kids, we build in the breathing room.
           </p>
         </div>
 
@@ -100,7 +100,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             onClick={() => alert("Watch Demo Video: Ahead Of Time workflow walkthrough.")}
             className="px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm border border-slate-200 shadow-sm transition-all cursor-pointer flex items-center gap-2"
           >
-            <Play className="w-4 h-4 text-[#529479] fill-[#529479]" />
+            <Play className="w-4 h-4 text-[#447463] fill-[#447463]" />
             <span>Watch Demo Video</span>
           </button>
         </div>
@@ -110,9 +110,6 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       {/* How the Assistant Works - Two Elements */}
       <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-10 border-t border-slate-200/60">
         <div className="text-center space-y-2 mb-8">
-          <span className="text-xs font-black uppercase tracking-widest text-sky-800 bg-sky-100/80 px-3 py-1 rounded-full">
-            Intelligent Prep Engine
-          </span>
           <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight">
             How Ahead Of Time works for you
           </h2>
@@ -124,38 +121,32 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
           
           {/* Element 1 */}
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-200/40 flex flex-col justify-between space-y-6 hover:shadow-lg transition-all group">
-            <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-800 group-hover:scale-110 transition-transform">
-                <Calendar className="w-6 h-6" />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">1</span>
-                  <h3 className="text-base sm:text-lg font-black text-slate-900">Automatic Calendar Sync</h3>
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-200/40 flex flex-col justify-between space-y-4 hover:shadow-lg transition-all group">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-800 group-hover:scale-110 transition-transform shrink-0">
+                  <Calendar className="w-6 h-6" />
                 </div>
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                  Link your calendar, and the assistant determines which events need extra preparation.
-                </p>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">Automatic Calendar Sync</h3>
               </div>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
+                Link your calendar, and the assistant determines which events need extra preparation.
+              </p>
             </div>
           </div>
 
           {/* Element 2 */}
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-200/40 flex flex-col justify-between space-y-6 hover:shadow-lg transition-all group">
-            <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800 group-hover:scale-110 transition-transform">
-                <MessageSquare className="w-6 h-6" />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">2</span>
-                  <h3 className="text-base sm:text-lg font-black text-slate-900">Interactive Assistant &amp; Planner</h3>
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-200/40 flex flex-col justify-between space-y-4 hover:shadow-lg transition-all group">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800 group-hover:scale-110 transition-transform shrink-0">
+                  <MessageSquare className="w-6 h-6" />
                 </div>
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                  Use the assistant to add a new event or refine your existing events.
-                </p>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">Interactive Assistant &amp; Planner</h3>
               </div>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
+                Use the assistant to add a new event or refine your existing events.
+              </p>
             </div>
           </div>
 

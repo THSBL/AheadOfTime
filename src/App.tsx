@@ -54,17 +54,29 @@ import {
   Check,
   FileSpreadsheet
 } from 'lucide-react';
-import { getStoredAccessToken, isTokenExpired } from './services/googleAuth';
+import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clearGoogleSession, getStoredClientId } from './services/googleAuth';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
-import { updateMilestoneCompletionOnGoogle } from './services/googleCalendar';
+import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst } from './utils/tminusRules';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
+import { 
+  AuthUser, 
+  getCurrentUser, 
+  setCurrentUser as setGlobalCurrentUser, 
+  loadUserEvents, 
+  saveUserEvents, 
+  loadUserMessages, 
+  saveUserMessages, 
+  loadUserOnboardingProfile, 
+  saveUserOnboardingProfile, 
+  logoutAndClearAccountSession 
+} from './services/accountManager';
 
 const INITIAL_MESSAGES: AgentMessage[] = [
   {
     id: 'msg-welcome-1',
     sender: 'agent',
-    text: `Hello! I'm Ahead Of Time, your assistant for busy calendars. Tell me about any upcoming event (a dinner, birthday, trip, or hosting friends), or scan your Google Calendar, and I will build your backward preparation milestones so you're ready when it starts.`,
+    text: `Hello! I'm Ahead Of Time, your assistant for busy calendars. Tell me about any upcoming event (a dinner, birthday, trip, or hosting friends), or scan your Google Calendar, and I will build your backward preparation milestones so you are ready when it starts.`,
     focusText: 'Ahead Of Time is ready for your events.',
     additionText: 'Tell me about an upcoming event or connect your calendar.',
     timestamp: new Date('2026-09-01T03:20:00.000Z').toISOString(),
@@ -123,7 +135,9 @@ function App() {
     return false;
   };
 
-  // 1. State & Storage Initialization: Check storage before mounting view
+  // 1. Account & Multi-Tenant State Isolation
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getCurrentUser());
+
   const hasCompleted = typeof window !== 'undefined' && (
     localStorage.getItem('aot_onboarding_completed') === 'true' ||
     localStorage.getItem('has_completed_onboarding') === 'true'
@@ -143,20 +157,10 @@ function App() {
   // 2. Prevent Layout Flash: loading state during verification
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
-  // Local storage or default initial state
+  // User-isolated events state
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
-    const saved = localStorage.getItem('tminus_events_v2');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      } catch (e) {
-        console.error('Failed to parse saved events', e);
-      }
-    }
-    return INITIAL_EVENTS;
+    const user = getCurrentUser();
+    return loadUserEvents(user?.id);
   });
 
   const eventsRef = useRef(events);
@@ -164,23 +168,25 @@ function App() {
     eventsRef.current = events;
   }, [events]);
 
-  const [messages, setMessages] = useState<AgentMessage[]>(() => {
-    const saved = localStorage.getItem('tminus_messages_v2');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const filtered = parsed.filter(
-            (m: any) => m.associatedEventId !== 'evt-alex-sarah' && m.associatedEventId !== 'evt-maya-birthday' && !m.text?.includes('Alex & Sarah')
-          );
-          if (filtered.length > 0) return filtered;
-        }
-      } catch (e) {
-        console.error('Failed to parse saved messages', e);
-      }
+  // Persist events to user-scoped storage whenever events change
+  useEffect(() => {
+    if (!isInitializing) {
+      saveUserEvents(events, currentUser?.id);
     }
-    return INITIAL_MESSAGES;
+  }, [events, currentUser?.id, isInitializing]);
+
+  // User-isolated messages state
+  const [messages, setMessages] = useState<AgentMessage[]>(() => {
+    const user = getCurrentUser();
+    return loadUserMessages(user?.id, user?.name);
   });
+
+  // Persist messages to user-scoped storage whenever messages change
+  useEffect(() => {
+    if (!isInitializing) {
+      saveUserMessages(messages, currentUser?.id);
+    }
+  }, [messages, currentUser?.id, isInitializing]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -208,7 +214,7 @@ function App() {
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
   const [isWizardInputFocused, setIsWizardInputFocused] = useState(false);
 
-  // Onboarding profile
+  // User-isolated onboarding profile
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
     try {
       return (
@@ -221,13 +227,67 @@ function App() {
   });
 
   const [onboardingProfile, setOnboardingProfile] = useState<OnboardingProfile | null>(() => {
-    try {
-      const saved = localStorage.getItem('onboarding_profile');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+    const user = getCurrentUser();
+    return loadUserOnboardingProfile(user?.id);
   });
+
+  // Save onboarding profile to user-scoped storage
+  useEffect(() => {
+    if (onboardingProfile && !isInitializing) {
+      saveUserOnboardingProfile(onboardingProfile, currentUser?.id);
+    }
+  }, [onboardingProfile, currentUser?.id, isInitializing]);
+
+  // Account switch event listener & verification on mount
+  useEffect(() => {
+    const handleAccountSwitched = (e: any) => {
+      const nextUser: AuthUser | null = e.detail?.user || null;
+      setCurrentUser(nextUser);
+      
+      const freshEvents = loadUserEvents(nextUser?.id);
+      const freshMessages = loadUserMessages(nextUser?.id, nextUser?.name);
+      const freshProfile = loadUserOnboardingProfile(nextUser?.id);
+
+      setEvents(freshEvents);
+      setMessages(freshMessages);
+      setOnboardingProfile(freshProfile);
+      setSelectedEventId(null);
+    };
+
+    window.addEventListener('aot_account_switched', handleAccountSwitched as EventListener);
+
+    // Verify current Google Auth token against current stored profile
+    const token = getStoredAccessToken();
+    if (token && !isTokenExpired()) {
+      fetchPrimaryCalendarProfile(token).then((profile) => {
+        if (profile?.id) {
+          const userEmail = profile.id.toLowerCase().trim();
+          const active = getCurrentUser();
+          if (!active || active.id !== userEmail) {
+            const newUser: AuthUser = {
+              id: userEmail,
+              email: userEmail,
+              name: profile.summary || profile.id,
+              timeZone: profile.timeZone,
+              provider: 'google',
+              connectedAt: new Date().toISOString(),
+            };
+            setGlobalCurrentUser(newUser);
+            setCurrentUser(newUser);
+            setEvents(loadUserEvents(newUser.id));
+            setMessages(loadUserMessages(newUser.id, newUser.name));
+            setOnboardingProfile(loadUserOnboardingProfile(newUser.id));
+          }
+        }
+      }).catch((err) => {
+        console.warn('Google Profile check on mount notice:', err);
+      });
+    }
+
+    return () => {
+      window.removeEventListener('aot_account_switched', handleAccountSwitched as EventListener);
+    };
+  }, []);
 
   // Verify auth / storage on initial mount & handle browser back/forward buttons
   useEffect(() => {
@@ -265,11 +325,12 @@ function App() {
     };
   }, []);
 
-  // Periodically sync and merge events created via Telegram Assistant
+  // Periodically sync and merge events created via Telegram Assistant (Strictly User-Scoped)
   useEffect(() => {
     const syncTelegramEvents = async () => {
       try {
-        const res = await fetch('/api/telegram/events');
+        const userParam = currentUser?.id ? `?userId=${encodeURIComponent(currentUser.id)}` : '?userId=guest';
+        const res = await fetch(`/api/telegram/events${userParam}`);
         const data = await res.json();
         if (data.ok && Array.isArray(data.events) && data.events.length > 0) {
           setEvents((prev) => {
@@ -293,9 +354,7 @@ function App() {
                 const existingMsgIds = new Set(prevMsgs.map((m) => m.id));
                 const filteredNew = newMessages.filter((m) => !existingMsgIds.has(m.id));
                 const updated = [...prevMsgs, ...filteredNew];
-                try {
-                  localStorage.setItem('tminus_messages_v2', JSON.stringify(updated));
-                } catch (e) {}
+                saveUserMessages(updated, currentUser?.id);
                 return updated;
               });
 
@@ -306,9 +365,7 @@ function App() {
             }
 
             const merged = mergeEvents(prev, data.events);
-            try {
-              localStorage.setItem('tminus_events_v2', JSON.stringify(merged));
-            } catch (e) {}
+            saveUserEvents(merged, currentUser?.id);
             return merged;
           });
         }
@@ -325,7 +382,77 @@ function App() {
       window.clearInterval(interval);
       window.removeEventListener('focus', syncTelegramEvents);
     };
-  }, [selectedEventId]);
+  }, [selectedEventId, currentUser?.id]);
+
+  // Account switching and clean logout actions
+  const handleSignIn = async () => {
+    try {
+      const res = await requestGoogleCalendarToken(getStoredClientId());
+      if (res?.accessToken) {
+        const profile = await fetchPrimaryCalendarProfile(res.accessToken);
+        if (profile?.id) {
+          const userEmail = profile.id.toLowerCase().trim();
+          sessionStorage.setItem('gcal_profile', JSON.stringify(profile));
+          const user: AuthUser = {
+            id: userEmail,
+            email: userEmail,
+            name: profile.summary || profile.id,
+            timeZone: profile.timeZone,
+            provider: 'google',
+            connectedAt: new Date().toISOString(),
+          };
+          setGlobalCurrentUser(user);
+          setCurrentUser(user);
+          setEvents(loadUserEvents(user.id));
+          setMessages(loadUserMessages(user.id, user.name));
+          setOnboardingProfile(loadUserOnboardingProfile(user.id));
+          setCurrentView('dashboard');
+        }
+      }
+    } catch (err: any) {
+      console.error('Sign-in error:', err);
+    }
+  };
+
+  const handleSwitchAccount = async () => {
+    try {
+      const res = await requestGoogleCalendarToken(getStoredClientId());
+      if (res?.accessToken) {
+        const profile = await fetchPrimaryCalendarProfile(res.accessToken);
+        if (profile?.id) {
+          const userEmail = profile.id.toLowerCase().trim();
+          sessionStorage.setItem('gcal_profile', JSON.stringify(profile));
+          const user: AuthUser = {
+            id: userEmail,
+            email: userEmail,
+            name: profile.summary || profile.id,
+            timeZone: profile.timeZone,
+            provider: 'google',
+            connectedAt: new Date().toISOString(),
+          };
+          setGlobalCurrentUser(user);
+          setCurrentUser(user);
+          setEvents(loadUserEvents(user.id));
+          setMessages(loadUserMessages(user.id, user.name));
+          setOnboardingProfile(loadUserOnboardingProfile(user.id));
+          setSelectedEventId(null);
+        }
+      }
+    } catch (err: any) {
+      console.error('Account switch error:', err);
+    }
+  };
+
+  const handleSignOut = () => {
+    logoutAndClearAccountSession();
+    clearGoogleSession();
+    setCurrentUser(null);
+    setEvents(loadUserEvents('guest'));
+    setMessages(loadUserMessages('guest'));
+    setOnboardingProfile(null);
+    setSelectedEventId(null);
+    setCurrentView('landing');
+  };
 
   // Check for auto-scan trigger from onboarding, login, or redirect
   useEffect(() => {
@@ -1266,7 +1393,7 @@ function App() {
       const existingKeys = new Set(prev.map((e) => `${e.title.toLowerCase()}_${e.eventDate}`));
       const filtered = newEvents.filter((e) => !existingKeys.has(`${e.title.toLowerCase()}_${e.eventDate}`));
       const updated = [...prev, ...filtered];
-      localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
+      saveUserEvents(updated, currentUser?.id);
       return updated;
     });
 
@@ -1286,14 +1413,14 @@ function App() {
 
   // Reset to bare minimum state
   const handleResetData = () => {
-    if (window.confirm('Reset events and chat history to the clean bare minimum?')) {
-      setEvents(INITIAL_EVENTS);
-      setMessages(INITIAL_MESSAGES);
+    if (window.confirm('Reset events and chat history to the clean bare minimum for this account?')) {
+      const initEvents = INITIAL_EVENTS;
+      const initMessages = INITIAL_MESSAGES;
+      setEvents(initEvents);
+      setMessages(initMessages);
       setSelectedEventId('evt-alex-sarah');
-      localStorage.removeItem('tminus_events_v2');
-      localStorage.removeItem('tminus_messages_v2');
-      localStorage.removeItem('tminus_events');
-      localStorage.removeItem('tminus_messages');
+      saveUserEvents(initEvents, currentUser?.id);
+      saveUserMessages(initMessages, currentUser?.id);
     }
   };
 
@@ -1353,6 +1480,10 @@ function App() {
               events={sortedEvents}
               agendaHorizonMonths={agendaHorizonMonths}
               onAgendaHorizonChange={setAgendaHorizonMonths}
+              currentUser={currentUser}
+              onSwitchAccount={handleSwitchAccount}
+              onSignOut={handleSignOut}
+              onSignIn={handleSignIn}
             />
           </div>
 

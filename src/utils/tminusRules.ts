@@ -455,6 +455,27 @@ export function generateHeuristicMilestones(
     }
   }
 
+  const isWedding = /\b(wedding|marriage|matrimony|bridal|reception)\b/i.test(event.title || '') ||
+    /\b(wedding|marriage|matrimony|bridal)\b/i.test(context.customNote || '') ||
+    (category === 'custom' && /\bwedding\b/i.test(event.title || ''));
+
+  if (isWedding) {
+    // WEDDINGS & MAJOR CEREMONIES: Realistic 6-12 month preparation lead times
+    addMilestone('T-9m', -270 * 24 * 60, 'Book wedding venue & ceremony location', 'booking', 'Sign venue contract, confirm reception hall and pay deposit', undefined, 'deliverable');
+    addMilestone('T-8m', -240 * 24 * 60, 'Buy wedding dress / custom suit & bridal attire', 'shopping', 'Order made-to-measure wedding dress and custom suit to allow 4-6 months production plus alterations', undefined, 'deliverable');
+    addMilestone('T-8m', -240 * 24 * 60, 'Book wedding photographer & videographer', 'booking', 'Lock in full-day photography and videography coverage', undefined, 'deliverable');
+    addMilestone('T-7m', -210 * 24 * 60, 'Book wedding caterer & schedule menu tasting', 'booking', 'Select caterer, review bar packages and schedule tasting session', undefined, 'deliverable');
+    addMilestone('T-6m', -180 * 24 * 60, 'Send Save the Dates & hotel block info', 'prep', 'Give guests 6 months notice to arrange travel and book accommodations', undefined, 'deliverable');
+    addMilestone('T-3m', -90 * 24 * 60, 'Send formal wedding invitations & registry', 'booking', 'Send invitations with RSVP deadline and link gift registry', undefined, 'deliverable');
+    addMilestone('T-8w', -56 * 24 * 60, 'First dress / suit alteration fitting', 'costume', 'Bring wedding shoes and undergarments for initial tailoring fitting', undefined, 'deliverable');
+    addMilestone('T-6w', -42 * 24 * 60, 'Apply for marriage license & legal paperwork', 'admin', 'Submit official marriage license application at city hall / registry', undefined, 'deliverable');
+    addMilestone('T-3w', -21 * 24 * 60, 'Final dress fitting & finalize seating chart', 'costume', 'Collect altered wedding dress/suit and arrange table seating plan', undefined, 'deliverable');
+    addMilestone('T-2w', -14 * 24 * 60, 'Final headcounts to caterer & song playlist', 'prep', 'Lock final guest counts with kitchen and share song choices with DJ/band', undefined, 'deliverable');
+    addMilestone('T-1w', -7 * 24 * 60, 'Rehearsal dinner & wedding party schedule', 'logistics', 'Run ceremony walk-through and host rehearsal dinner', undefined, 'milestone');
+    addMilestone('T-1d', -1 * 24 * 60, 'Emergency kit, rings & day-of schedule check', 'prep', 'Pack rings, marriage license, vow books, and day-of emergency bag', undefined, 'milestone');
+    return milestones;
+  }
+
   if (category === 'birthday_party') {
     // 1. Invitations & RSVPs Baseline
     if (context.skipInvites !== true && context.invitationsSent !== true) {
@@ -465,7 +486,7 @@ export function generateHeuristicMilestones(
     if (context.giftType === 'none' || context.noGift === true) {
       // Skip gift milestones
     } else if (context.giftType === 'group') {
-      addMilestone('T-30d', -30 * 24 * 60, 'Initiate pot & rally team', 'gift', 'Reach out to friends, set up money pool, brainstorm main group present', undefined, 'deliverable', false, undefined, ['organiser', 'co_organiser']);
+      addMilestone('T-30d', -30 * 24 * 60, 'Start group gift pool & collect ideas', 'gift', 'Reach out to friends, set up money pool, brainstorm main group present', undefined, 'deliverable', false, undefined, ['organiser', 'co_organiser']);
       addMilestone('T-10d', -10 * 24 * 60, 'Purchase group gift', 'shopping', 'Finalize collection and place order for group present', undefined, 'deliverable', true, ['Main Experience / Voucher', 'Luxury Tech / Watch', 'Custom Keepsake Gift']);
     } else if (context.giftType === 'solo') {
       addMilestone('T-14d', -14 * 24 * 60, 'Order gift', 'shopping', 'Select and order solo birthday gift online with delivery margin', undefined, 'deliverable');
@@ -678,6 +699,10 @@ export function generateHeuristicMilestones(
     if (context.needPassportRenewal === true || context.needPassportRenewal === 'true') {
       addMilestone('T-60d', -60 * 24 * 60, 'Passport validity & renewal check', 'booking', 'Verify passport has 6+ months validity remaining and initiate renewal if expiring soon', undefined, 'milestone');
     }
+    if (context.hasPet === true || context.hasPet === 'true' || /dog|cat|pet|sitter|kennel/i.test(event.title || '') || /dog|cat|pet|sitter/i.test(context.customNote || '')) {
+      addMilestone('T-45d', -45 * 24 * 60, 'Book dog sitter / pet boarding', 'booking', 'Book pet sitter or kennel boarding 4-6 weeks in advance before holiday slots fill up', undefined, 'deliverable');
+      addMilestone('T-14d', -14 * 24 * 60, 'Pet vaccination check & sitter meet-and-greet', 'prep', 'Verify kennel cough/rabies vaccine records and confirm entry keys with sitter', undefined, 'milestone');
+    }
     if (context.needVisa === true || context.needVisa === 'true') {
       addMilestone('T-45d', -45 * 24 * 60, 'Entry visa & e-visa application', 'booking', 'Submit required travel visa applications and entry permits', undefined, 'deliverable');
     }
@@ -800,7 +825,7 @@ export function generateHeuristicMilestones(
       addMilestone('T-14d', -14 * 24 * 60, 'Buy universal power adapters & chargers', 'shopping', 'Acquire country-specific electrical plug adapters and portable power banks', undefined, 'milestone');
     }
 
-    addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack weather apparel, toiletries, and activate roaming/eSIM', undefined, 'milestone');
+    addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack clothes, toiletries, chargers, and activate roaming/eSIM', undefined, 'milestone');
     addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & out-of-office setup', 'logistics', 'Check in for flights 24h prior, download offline maps, and set email out-of-office', undefined, 'milestone');
     const returnBaseDate = context.returnDate || eventDate;
     addMilestone('T-Return-1d', -1 * 24 * 60, 'Return trip prep & flight status check', 'logistics', 'Verify return flight status, pack return luggage, and plan hotel check-out', returnBaseDate, 'milestone');
@@ -899,13 +924,13 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     if (tLower.includes('invite') || tLower.includes('rsvp') || tLower.includes('headcount') || tLower.includes('guest')) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Dispatched invitation link & active RSVP tracker',
+        title: 'Sent invitation links & RSVPs tracked',
         type: 'coordination',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Confirmed headcount & dietary restrictions sheet',
+        title: 'Confirmed headcount & dietary requirements noted',
         type: 'document',
         is_completed: ms.status === 'completed',
       });
@@ -921,13 +946,13 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     ) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Signed rental contract or confirmed booking reference',
+        title: 'Signed booking confirmation or rental voucher',
         type: 'booking',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Deposit receipt & arrival access code archived',
+        title: 'Deposit receipt & arrival access code saved',
         type: 'purchase',
         is_completed: ms.status === 'completed',
       });
@@ -940,13 +965,13 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     ) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Electronic transit tickets & boarding passes downloaded',
+        title: 'Transit tickets & boarding passes downloaded',
         type: 'document',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Terminal / station departure schedule shared with crew',
+        title: 'Departure times & meeting spot shared with group',
         type: 'coordination',
         is_completed: ms.status === 'completed',
       });
@@ -959,13 +984,13 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     ) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Purchased gift receipt & order tracking confirmed',
+        title: 'Purchased gift receipt & tracking confirmed',
         type: 'purchase',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Handwritten card & presentation wrap prepared',
+        title: 'Handwritten card written & gift wrapped',
         type: 'document',
         is_completed: ms.status === 'completed',
       });
@@ -979,13 +1004,13 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     ) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Bakery or caterer order confirmation with pickup time',
+        title: 'Bakery or catering order confirmed with pickup time',
         type: 'purchase',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Party refreshments, ice & glassware inventory ready',
+        title: 'Drinks, ice, and glassware ready',
         type: 'purchase',
         is_completed: ms.status === 'completed',
       });
@@ -994,37 +1019,51 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
       tLower.includes('luggage') ||
       tLower.includes('outfit') ||
       tLower.includes('costume') ||
-      tLower.includes('wardrobe')
+      tLower.includes('wardrobe') ||
+      tLower.includes('clothes')
     ) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Event attire & required garments packed in suitcase',
+        title: 'Outfits & clothes packed in suitcase',
         type: 'coordination',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Passport, roaming eSIM, & essential toiletries loaded',
+        title: 'Passport, roaming eSIM, & toiletries packed',
         type: 'document',
         is_completed: ms.status === 'completed',
       });
     } else if (tLower.includes('activity') || tLower.includes('tour') || tLower.includes('excursion') || tLower.includes('boat')) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Reserved excursion slots & paid group admission vouchers',
+        title: 'Booked excursion tickets & admission vouchers',
         type: 'booking',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Participant liability waivers & meeting point details distributed',
+        title: 'Waivers signed & meeting point details shared',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (tLower.includes('sitter') || tLower.includes('dog') || tLower.includes('pet') || tLower.includes('boarding') || tLower.includes('kennel')) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Confirmed pet sitter / boarding reservation',
+        type: 'booking',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Vaccination records & feeding instructions prepared',
         type: 'document',
         is_completed: ms.status === 'completed',
       });
     } else {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: `Completed action item artifact for ${ms.title}`,
+        title: `Completed prep step: ${ms.title}`,
         type: ms.category === 'booking' ? 'booking' : ms.category === 'shopping' ? 'purchase' : ms.category === 'logistics' ? 'document' : 'coordination',
         is_completed: ms.status === 'completed',
       });
@@ -1041,7 +1080,7 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     } else if (/^buy\s+/i.test(stateCheckpointTitle)) {
       stateCheckpointTitle = stateCheckpointTitle.replace(/^buy\s+/i, '') + ' Purchased';
     } else if (/^send\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^send\s+/i, '') + ' Dispatched';
+      stateCheckpointTitle = stateCheckpointTitle.replace(/^send\s+/i, '') + ' Sent';
     } else if (/^pack\s+/i.test(stateCheckpointTitle)) {
       stateCheckpointTitle = stateCheckpointTitle.replace(/^pack\s+/i, '') + ' Packed & Ready';
     }
