@@ -15,7 +15,7 @@ declare global {
   }
 }
 
-const DEFAULT_MEASUREMENT_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID as string) || '';
+const DEFAULT_MEASUREMENT_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID as string) || 'G-R1QGR1397K';
 
 let isInitialized = false;
 let activeMeasurementId = '';
