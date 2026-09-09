@@ -25,6 +25,7 @@ import {
   classifySubmittedTitle,
   generateConcreteEventMilestones,
 } from '../utils/creationStateMachine';
+import { parseAndRecognizeLocation } from '../utils/locationHelper';
 
 export interface EventCreationWizardProps {
   initialTitle?: string;
@@ -388,10 +389,41 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g., Civic Sports Complex, Home, Kyoto"
+                  placeholder="e.g., 94107, Civic Sports Complex, Austin TX, London"
                   className="w-full text-sm font-medium px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 shadow-2xs focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none text-slate-900 placeholder:text-slate-400"
                 />
               </div>
+
+              {/* Live Location / Zipcode Recognition Feedback */}
+              {(() => {
+                const locResult = parseAndRecognizeLocation(location);
+                if (!locResult.raw) return null;
+                const cityAndCountry = [locResult.city, locResult.stateOrCountry].filter(Boolean).join(', ');
+                return (
+                  <div className={`mt-2 p-2.5 rounded-xl border flex items-start gap-2 transition-all animate-in fade-in duration-150 ${
+                    locResult.recognized
+                      ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}>
+                    <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${locResult.recognized ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <div className="text-[11px] space-y-0.5">
+                      <div className="flex items-center gap-1 font-bold">
+                        <span>{locResult.recognized ? 'Destination Location Recognized:' : 'Destination Saved:'}</span>
+                        <span className="font-semibold text-emerald-950">{cityAndCountry || locResult.displayLabel}</span>
+                      </div>
+                      {cityAndCountry ? (
+                        <p className="opacity-90 text-[10px] leading-tight text-emerald-800">
+                          ✓ City: {locResult.city || 'Standard Area'}{locResult.stateOrCountry ? ` • Country / Region: ${locResult.stateOrCountry}` : ''}
+                        </p>
+                      ) : (
+                        <p className="opacity-90 text-[10px] leading-tight">
+                          Location stored for event departure planning.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

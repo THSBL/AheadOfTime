@@ -8,11 +8,13 @@ import {
   User, 
   Briefcase,
   MapPin,
-  Loader2
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
 import { Logo } from './Logo';
 import { ensureGisLoaded, requestGoogleCalendarToken, getStoredClientId } from '../services/googleAuth';
+import { parseAndRecognizeLocation } from '../utils/locationHelper';
 
 interface OnboardingPageProps {
   initialProfile?: Partial<OnboardingProfile>;
@@ -230,6 +232,38 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
                 />
               </div>
+
+              {/* Confirmation feedback when recognized */}
+              {(() => {
+                const locResult = parseAndRecognizeLocation(homeZipOrLocation);
+                if (!locResult.raw) return null;
+                const cityAndCountry = [locResult.city, locResult.stateOrCountry].filter(Boolean).join(', ');
+                return (
+                  <div className={`p-2.5 rounded-xl border flex items-start gap-2.5 transition-all animate-in fade-in duration-150 ${
+                    locResult.recognized
+                      ? 'bg-emerald-50/80 border-emerald-200/90 text-emerald-900'
+                      : 'bg-amber-50/70 border-amber-200 text-amber-900'
+                  }`}>
+                    <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${locResult.recognized ? 'text-emerald-600' : 'text-amber-500'}`} />
+                    <div className="text-xs space-y-0.5">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span>{locResult.recognized ? 'Location Recognized:' : 'Location Recorded:'}</span>
+                        <span className="font-semibold text-emerald-950">{cityAndCountry || locResult.displayLabel}</span>
+                      </div>
+                      {cityAndCountry ? (
+                        <p className="text-[11px] opacity-90 leading-tight text-emerald-800">
+                          ✓ City: {locResult.city || 'Standard Area'}{locResult.stateOrCountry ? ` • Country / Region: ${locResult.stateOrCountry}` : ''}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] opacity-90 leading-tight">
+                          Saved for your departure runway estimations and local event travel.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <p className="text-[11px] text-slate-500 leading-normal">
                 This will only be used to improve your T-minus plan by calculating travel distance, drive times, and departure buffers for local and away events.
               </p>

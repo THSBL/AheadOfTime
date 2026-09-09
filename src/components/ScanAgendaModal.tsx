@@ -32,6 +32,7 @@ import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, getSt
 import { detectEventCategory, generateHeuristicMilestones, formatDisplayDate, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { normalizeProfile } from '../data/samplePresets';
+import { getCurrentUser, loadUserEvents } from '../services/accountManager';
 
 /**
  * Robust check to determine if a Google Calendar item is already tracked in the dashboard.
@@ -171,11 +172,9 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       // 3. Evaluate each event with T-Minus rules and deduplicate against existing dashboard events
       let currentDashboardEvents = existingEvents;
       if (!currentDashboardEvents || currentDashboardEvents.length === 0) {
-        try {
-          const stored = localStorage.getItem('tminus_events_v2');
-          if (stored) currentDashboardEvents = JSON.parse(stored);
-        } catch {
-          // ignore
+        const user = getCurrentUser();
+        if (user?.id) {
+          currentDashboardEvents = loadUserEvents(user.id);
         }
       }
       const liveDashboardEvents = currentDashboardEvents || [];

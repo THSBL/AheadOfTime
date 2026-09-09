@@ -25,10 +25,12 @@ import {
   Sparkle,
   ChevronDown,
   Repeat,
+  CheckCircle2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, EventCategory, EventRecurrenceConfig, RecurrenceFrequency, TMinusMilestone, UserEventRole } from '../types';
 import { generateHeuristicMilestones, formatDisplayDate, detectEventCategory } from '../utils/tminusRules';
+import { parseAndRecognizeLocation } from '../utils/locationHelper';
 
 interface EventRefineModalProps {
   isOpen: boolean;
@@ -537,6 +539,37 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Live Location / Zipcode Recognition Feedback */}
+                {(() => {
+                  const locResult = parseAndRecognizeLocation(location);
+                  if (!locResult.raw) return null;
+                  const cityAndCountry = [locResult.city, locResult.stateOrCountry].filter(Boolean).join(', ');
+                  return (
+                    <div className={`p-2 rounded-xl border flex items-start gap-2 transition-all animate-in fade-in duration-150 ${
+                      locResult.recognized
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                        : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}>
+                      <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${locResult.recognized ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <div className="text-[11px] space-y-0.5">
+                        <div className="flex items-center gap-1 font-bold">
+                          <span>{locResult.recognized ? 'Destination Location Recognized:' : 'Destination Recorded:'}</span>
+                          <span className="font-semibold text-emerald-950">{cityAndCountry || locResult.displayLabel}</span>
+                        </div>
+                        {cityAndCountry ? (
+                          <p className="opacity-90 text-[10px] leading-tight text-emerald-800">
+                            ✓ City: {locResult.city || 'Standard Area'}{locResult.stateOrCountry ? ` • Country / Region: ${locResult.stateOrCountry}` : ''}
+                          </p>
+                        ) : (
+                          <p className="opacity-90 text-[10px] leading-tight">
+                            Location recorded for arrival runway planning.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Recurrence Settings Toggle & Inputs */}
                 <div className="p-3 rounded-xl bg-sky-50/60 border border-sky-200/80 space-y-2.5">

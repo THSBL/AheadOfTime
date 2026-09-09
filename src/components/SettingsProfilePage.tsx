@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Clock, Bell, Sliders, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, User, Clock, Bell, Sliders, CheckCircle2, MapPin } from 'lucide-react';
+import { parseAndRecognizeLocation } from '../utils/locationHelper';
 
 export const SettingsProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const [name, setName] = useState(() => localStorage.getItem('aot_user_name') || 'Calendar Host');
   const [timezone, setTimezone] = useState(() => localStorage.getItem('aot_user_timezone') || 'Europe/London (GMT+1)');
   const [defaultLeadWeeks, setDefaultLeadWeeks] = useState(() => localStorage.getItem('aot_default_lead_weeks') || '3');
+  const [homeZipOrLocation, setHomeZipOrLocation] = useState(() => localStorage.getItem('aot_home_location') || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
@@ -14,6 +16,7 @@ export const SettingsProfilePage: React.FC = () => {
     localStorage.setItem('aot_user_name', name);
     localStorage.setItem('aot_user_timezone', timezone);
     localStorage.setItem('aot_default_lead_weeks', defaultLeadWeeks);
+    localStorage.setItem('aot_home_location', homeZipOrLocation);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
   };
@@ -83,6 +86,54 @@ export const SettingsProfilePage: React.FC = () => {
                 <option value="4">4 Weeks Before Event</option>
                 <option value="6">6 Weeks Before Event</option>
               </select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Home Zip Code or City (Optional)</span>
+                </label>
+                <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">Optional</span>
+              </div>
+              <input
+                type="text"
+                value={homeZipOrLocation}
+                onChange={(e) => setHomeZipOrLocation(e.target.value)}
+                placeholder="e.g. 1000 Brussels, 1012 Amsterdam, 75001 Paris, 9000 Gent"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-sky-500 placeholder:text-slate-500"
+              />
+
+              {/* Live Location Recognition Feedback */}
+              {(() => {
+                const locResult = parseAndRecognizeLocation(homeZipOrLocation);
+                if (!locResult.raw) return null;
+                const cityAndCountry = [locResult.city, locResult.stateOrCountry].filter(Boolean).join(', ');
+                return (
+                  <div className={`mt-2 p-2.5 rounded-xl border flex items-start gap-2.5 transition-all animate-in fade-in duration-150 ${
+                    locResult.recognized
+                      ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                      : 'bg-slate-850 border-slate-700 text-slate-300'
+                  }`}>
+                    <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${locResult.recognized ? 'text-emerald-400' : 'text-slate-400'}`} />
+                    <div className="text-xs space-y-0.5">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span>{locResult.recognized ? 'Location Recognized:' : 'Recorded:'}</span>
+                        <span className="text-emerald-300 font-semibold">{cityAndCountry || locResult.displayLabel}</span>
+                      </div>
+                      {cityAndCountry ? (
+                        <p className="text-[11px] text-emerald-300/80 leading-tight">
+                          ✓ City: {locResult.city || 'Standard Area'}{locResult.stateOrCountry ? ` • Country / Region: ${locResult.stateOrCountry}` : ''}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 leading-tight">
+                          Saved for departure runway calculations.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

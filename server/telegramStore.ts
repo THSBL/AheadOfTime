@@ -477,16 +477,20 @@ export class TelegramSessionStore {
 
   public static getAllEvents(userId?: string): CalendarEvent[] {
     this.loadFromDisk();
-    const all = Array.from(this.events.values());
-    if (!userId || userId === 'all') {
-      return all;
+    if (!userId) {
+      return [];
     }
 
     const normUserId = userId.toLowerCase().trim();
 
-    // If querying as guest, do not return events belonging to authenticated users
+    // If querying as guest or anonymous, return empty array so that logged-out users start with a clean slate
     if (normUserId === 'guest' || normUserId === 'anonymous') {
-      return all.filter((ev) => !ev.context?.creatorEmail && !ev.context?.webUserId);
+      return [];
+    }
+
+    const all = Array.from(this.events.values());
+    if (userId === 'all') {
+      return all;
     }
 
     // Find sessions belonging to this user

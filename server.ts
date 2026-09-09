@@ -1889,6 +1889,10 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
 // 5. Get Events created via Telegram (User/Account Scoped)
 app.get("/api/telegram/events", (req: Request, res: Response) => {
   const userId = (req.query.userId as string) || (req.query.email as string);
+  if (!userId || userId.toLowerCase().trim() === 'guest' || userId.toLowerCase().trim() === 'anonymous') {
+    res.json({ ok: true, events: [] });
+    return;
+  }
   const events = TelegramSessionStore.getAllEvents(userId);
   res.json({ ok: true, events });
 });

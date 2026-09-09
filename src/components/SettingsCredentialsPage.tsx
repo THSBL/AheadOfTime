@@ -5,6 +5,7 @@ import { TelegramIntegrationCard } from './TelegramIntegrationCard';
 import { AdvancedDeveloperSettingsDrawer } from './AdvancedDeveloperSettingsDrawer';
 import { ArrowLeft, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
 import { CalendarEvent } from '../types';
+import { getCurrentUser, loadUserEvents } from '../services/accountManager';
 
 interface SettingsCredentialsPageProps {
   onSyncComplete?: (events: CalendarEvent[]) => void;
@@ -18,16 +19,9 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
   const navigate = useNavigate();
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
     if (propEvents && propEvents.length > 0) return propEvents;
-    try {
-      const saved = localStorage.getItem('tminus_events_v2');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to parse saved events:', e);
-    }
-    return [];
+    const user = getCurrentUser();
+    if (!user?.id) return [];
+    return loadUserEvents(user.id);
   });
 
   return (

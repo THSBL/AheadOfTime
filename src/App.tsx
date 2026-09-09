@@ -156,10 +156,11 @@ function App() {
   // 2. Prevent Layout Flash: loading state during verification
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
-  // User-isolated events state
+  // User-isolated events state (strictly empty when logged out)
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
     const user = getCurrentUser();
-    return loadUserEvents(user?.id);
+    if (!user?.id) return [];
+    return loadUserEvents(user.id);
   });
 
   const eventsRef = useRef(events);
@@ -169,10 +170,25 @@ function App() {
 
   // Persist events to user-scoped storage whenever events change
   useEffect(() => {
-    if (!isInitializing) {
-      saveUserEvents(events, currentUser?.id);
+    if (!isInitializing && currentUser?.id) {
+      saveUserEvents(events, currentUser.id);
     }
   }, [events, currentUser?.id, isInitializing]);
+
+  // Strictly enforce empty events state and clean storage when user is logged out
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setEvents([]);
+      setSelectedEventId(null);
+      setSelectedBulkEventIds([]);
+      try {
+        localStorage.removeItem('tminus_events_v2');
+        localStorage.removeItem('tminus_events_v2_guest');
+        localStorage.removeItem('tminus_events_v2:guest');
+        localStorage.removeItem('tminus_events');
+      } catch {}
+    }
+  }, [currentUser?.id]);
 
   // User-isolated messages state
   const [messages, setMessages] = useState<AgentMessage[]>(() => {
@@ -243,7 +259,7 @@ function App() {
       const nextUser: AuthUser | null = e.detail?.user || null;
       setCurrentUser(nextUser);
       
-      const freshEvents = loadUserEvents(nextUser?.id);
+      const freshEvents = nextUser?.id ? loadUserEvents(nextUser.id) : [];
       const freshMessages = loadUserMessages(nextUser?.id, nextUser?.name);
       const freshProfile = loadUserOnboardingProfile(nextUser?.id);
 
@@ -251,6 +267,7 @@ function App() {
       setMessages(freshMessages);
       setOnboardingProfile(freshProfile);
       setSelectedEventId(null);
+      setSelectedBulkEventIds([]);
     };
 
     window.addEventListener('aot_account_switched', handleAccountSwitched as EventListener);
@@ -326,12 +343,20 @@ function App() {
 
   // Periodically sync and merge events created via Telegram Assistant (Strictly User-Scoped)
   useEffect(() => {
+    // If not authenticated, do not poll or sync telegram events
+    if (!currentUser?.id) {
+      return;
+    }
+
     const syncTelegramEvents = async () => {
       try {
-        const userParam = currentUser?.id ? `?userId=${encodeURIComponent(currentUser.id)}` : '?userId=guest';
+        const userParam = `?userId=${encodeURIComponent(currentUser.id)}`;
         const res = await fetch(`/api/telegram/events${userParam}`);
         const data = await res.json();
         if (data.ok && Array.isArray(data.events) && data.events.length > 0) {
+          // Double check user didn't log out while request was in flight
+          if (!currentUser?.id) return;
+
           setEvents((prev) => {
             const prevIds = new Set(prev.map((e) => e.id));
             const newIncoming = data.events.filter((e: CalendarEvent) => !prevIds.has(e.id));
@@ -446,7 +471,8 @@ function App() {
     logoutAndClearAccountSession();
     clearGoogleSession();
     setCurrentUser(null);
-    setEvents(loadUserEvents('guest'));
+    setEvents([]);
+    setSelectedBulkEventIds([]);
     setMessages(loadUserMessages('guest'));
     setOnboardingProfile(null);
     setSelectedEventId(null);
@@ -580,9 +606,9 @@ function App() {
             if (found) {
               setEvents((prev) => {
                 const updated = [found, ...prev.filter((e) => e.id !== found.id)];
-                try {
-                  localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
-                } catch (e) {}
+                if (currentUser?.id) {
+                  saveUserEvents(updated, currentUser.id);
+                }
                 return updated;
               });
               setSelectedEventId(found.id);
@@ -603,9 +629,9 @@ function App() {
                   if (f) {
                     setEvents((prev) => {
                       const updated = [f, ...prev.filter((e) => e.id !== f.id)];
-                      try {
-                        localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
-                      } catch (e) {}
+                      if (currentUser?.id) {
+                        saveUserEvents(updated, currentUser.id);
+                      }
                       return updated;
                     });
                     setSelectedEventId(f.id);
@@ -867,15 +893,6 @@ function App() {
       runGoogleTaskSync(true, false);
     }
   }, []);
-
-  // Sync to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('tminus_events_v2', JSON.stringify(events));
-  }, [events]);
-
-  useEffect(() => {
-    localStorage.setItem('tminus_messages_v2', JSON.stringify(messages));
-  }, [messages]);
 
   // Counts
   const pendingMilestonesCount = (events || []).reduce(
@@ -1358,10 +1375,8 @@ function App() {
       } else {
         updated = [newEvent, ...prev];
       }
-      try {
-        localStorage.setItem('tminus_events_v2', JSON.stringify(updated));
-      } catch (err) {
-        console.warn('Could not persist to local storage:', err);
+      if (currentUser?.id) {
+        saveUserEvents(updated, currentUser.id);
       }
       return updated;
     });

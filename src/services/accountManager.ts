@@ -108,6 +108,10 @@ export function setCurrentUser(user: AuthUser | null): void {
 export function loadUserEvents(userId?: string | null): CalendarEvent[] {
   if (typeof window === 'undefined') return [];
   const normId = normalizeUserId(userId);
+  // Logged-out / guest state must ALWAYS have a clean empty slate with 0 events
+  if (normId === 'guest' || normId === 'anonymous' || !userId) {
+    return [];
+  }
   const scopedKey = getUserStorageKey('tminus_events_v2', normId);
 
   try {
@@ -131,6 +135,10 @@ export function loadUserEvents(userId?: string | null): CalendarEvent[] {
 export function saveUserEvents(events: CalendarEvent[], userId?: string | null): void {
   if (typeof window === 'undefined') return;
   const normId = normalizeUserId(userId);
+  if (normId === 'guest' || normId === 'anonymous' || !userId) {
+    // Never persist events to unauthenticated guest storage
+    return;
+  }
   const scopedKey = getUserStorageKey('tminus_events_v2', normId);
 
   try {
@@ -248,6 +256,9 @@ export function logoutAndClearAccountSession(): void {
     localStorage.removeItem('aot_google_token_expires_at');
     localStorage.removeItem(LEGACY_EVENTS_KEY);
     localStorage.removeItem('tminus_events_v2_guest');
+    localStorage.removeItem('tminus_events_v2');
+    localStorage.removeItem('tminus_events_v2:guest');
+    localStorage.removeItem('tminus_events');
 
     // 3. Dispatch account switch event with null user
     window.dispatchEvent(new CustomEvent('aot_account_switched', { detail: { user: null } }));

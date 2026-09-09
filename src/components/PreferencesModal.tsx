@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
 import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
+import { parseAndRecognizeLocation } from '../utils/locationHelper';
 
 interface PreferencesModalProps {
   isOpen: boolean;
@@ -216,6 +217,38 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
               placeholder="e.g., 94107 or Austin, TX"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
+
+            {/* Live Location Recognition Feedback */}
+            {(() => {
+              const locResult = parseAndRecognizeLocation(homeZipOrLocation);
+              if (!locResult.raw) return null;
+              const cityAndCountry = [locResult.city, locResult.stateOrCountry].filter(Boolean).join(', ');
+              return (
+                <div className={`p-2.5 rounded-xl border flex items-start gap-2 transition-all animate-in fade-in duration-150 ${
+                  locResult.recognized
+                    ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50/70 border-amber-200 text-amber-900'
+                }`}>
+                  <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${locResult.recognized ? 'text-emerald-600' : 'text-amber-500'}`} />
+                  <div className="text-[11px] space-y-0.5">
+                    <div className="flex items-center gap-1 font-bold">
+                      <span>{locResult.recognized ? 'Recognized:' : 'Saved:'}</span>
+                      <span className="font-semibold text-emerald-950">{cityAndCountry || locResult.displayLabel}</span>
+                    </div>
+                    {cityAndCountry ? (
+                      <p className="opacity-90 leading-tight text-emerald-800">
+                        ✓ City: {locResult.city || 'Standard Area'}{locResult.stateOrCountry ? ` • Country / Region: ${locResult.stateOrCountry}` : ''}
+                      </p>
+                    ) : (
+                      <p className="opacity-90 leading-tight">
+                        Stored for your local event transit and T-minus plan calculations.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <p className="text-[11px] text-slate-500">
               Used strictly to calculate travel distance and drive-time buffers for local and away event T-minus plans.
             </p>
