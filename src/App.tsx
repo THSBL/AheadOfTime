@@ -36,7 +36,6 @@ import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { ImportTemplateModal } from './components/ImportTemplateModal';
 import { ApplyPresetModal } from './components/ApplyPresetModal';
 import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings, CustomPreset } from './types';
-import { INITIAL_EVENTS } from './data/samplePresets';
 import { 
   MessageSquare, 
   CalendarDays, 
@@ -1414,11 +1413,11 @@ function App() {
   // Reset to bare minimum state
   const handleResetData = () => {
     if (window.confirm('Reset events and chat history to the clean bare minimum for this account?')) {
-      const initEvents = INITIAL_EVENTS;
+      const initEvents: CalendarEvent[] = [];
       const initMessages = INITIAL_MESSAGES;
       setEvents(initEvents);
       setMessages(initMessages);
-      setSelectedEventId('evt-alex-sarah');
+      setSelectedEventId(null);
       saveUserEvents(initEvents, currentUser?.id);
       saveUserMessages(initMessages, currentUser?.id);
     }

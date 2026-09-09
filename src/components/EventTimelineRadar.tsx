@@ -18,7 +18,8 @@ import {
   AlertTriangle,
   RefreshCw,
   MoreHorizontal,
-  Layers
+  Layers,
+  Repeat,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone } from '../types';
@@ -355,6 +356,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               ) : (
                 <span className="text-[10px] font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200 shadow-2xs shrink-0">
                   {countdown.label}
+                </span>
+              )}
+              {(activeEvent.recurrence?.isRecurring || activeEvent.context?.isRecurring) && (
+                <span className="text-[10px] font-bold text-sky-950 bg-sky-100/90 px-2 py-0.5 rounded-full border border-sky-300 shadow-2xs flex items-center gap-1 shrink-0">
+                  <Repeat className="w-2.5 h-2.5 text-sky-700 shrink-0" />
+                  <span>{activeEvent.recurrence?.recurrencePatternText || activeEvent.context?.recurrencePatternText || 'Recurring'}</span>
                 </span>
               )}
             </div>
@@ -873,7 +880,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                               ({ms.deliverables!.filter((d) => d.is_completed).length}/{ms.deliverables!.length} completed)
                             </span>
                           </div>
-                          <span className="text-[10px] font-mono text-slate-400">Actionable artifacts</span>
+                          <span className="text-[10px] font-mono text-slate-400">Action items</span>
                         </div>
 
                         <div className="grid grid-cols-1 gap-1.5 pt-0.5 w-full">

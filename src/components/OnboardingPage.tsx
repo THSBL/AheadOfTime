@@ -7,6 +7,7 @@ import {
   Users, 
   User, 
   Briefcase,
+  MapPin,
   Loader2
 } from 'lucide-react';
 import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
@@ -46,6 +47,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
     }
     return 'Mixed (Personal & Work)';
   });
+  const [homeZipOrLocation, setHomeZipOrLocation] = useState<string>(initialProfile?.homeZipOrLocation || '');
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
@@ -73,6 +75,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       ageRange,
       family_structure,
       calendar_type,
+      homeZipOrLocation: homeZipOrLocation.trim(),
       familyStatus,
       calendarType,
       privacyConsentAccepted: true,
@@ -205,6 +208,31 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Optional Home Base / Zipcode for Travel & Buffer Calibration */}
+            <div className="space-y-2 pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-sky-700" />
+                  <span>Home Zip Code or City</span>
+                </label>
+                <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                  Optional
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={homeZipOrLocation}
+                  onChange={(e) => setHomeZipOrLocation(e.target.value)}
+                  placeholder="e.g., 94107 or San Francisco, CA"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                This will only be used to improve your T-minus plan by calculating travel distance, drive times, and departure buffers for local and away events.
+              </p>
             </div>
 
           </div>

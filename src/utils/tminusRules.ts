@@ -1015,22 +1015,53 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
         is_completed: ms.status === 'completed',
       });
     } else if (
+      tLower.includes('soccer') ||
+      tLower.includes('shinguard') ||
+      tLower.includes('jersey') ||
+      tLower.includes('cleat') ||
+      tLower.includes('boot') ||
+      tLower.includes('sport') ||
+      tLower.includes('match') ||
+      tLower.includes('game') ||
+      tLower.includes('tournament') ||
+      tLower.includes('uniform') ||
+      tLower.includes('athletic') ||
+      tLower.includes('gear') ||
+      tLower.includes('swimming') ||
+      tLower.includes('gym')
+    ) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Clean uniform / jersey, shorts & socks packed in kit bag',
+        type: 'purchase',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Boots / cleats, shin guards, filled water bottle & match snacks ready',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (
       tLower.includes('pack') ||
       tLower.includes('luggage') ||
       tLower.includes('outfit') ||
       tLower.includes('costume') ||
       tLower.includes('wardrobe') ||
-      tLower.includes('clothes')
+      tLower.includes('clothes') ||
+      tLower.includes('suitcase')
     ) {
+      // Check if it is explicitly an international flight / overseas journey
+      const isInternational = tLower.includes('passport') || tLower.includes('roaming') || tLower.includes('international') || tLower.includes('overseas') || tLower.includes('flight') || tLower.includes('visa');
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: 'Outfits & clothes packed in suitcase',
+        title: 'Outfits & daily clothes selected and packed',
         type: 'coordination',
         is_completed: ms.status === 'completed',
       });
       deliverables.push({
         deliverable_id: `del_${ms.id}_2`,
-        title: 'Passport, roaming eSIM, & toiletries packed',
+        title: isInternational ? 'Passport, roaming eSIM, & travel toiletries packed' : 'Toiletries, phone charger & personal essentials packed',
         type: 'document',
         is_completed: ms.status === 'completed',
       });

@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   Trash2,
   CheckSquare,
-  Square
+  Square,
+  Repeat,
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
@@ -173,8 +174,12 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
       {/* Events List (Plain Milky White Items with Light Blue and Red Accent Borders) */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-sky-50/20">
         {filteredEvents.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-xs sm:text-sm">
-            No events found. Start by typing in the chat!
+          <div className="p-8 text-center text-slate-400 text-xs sm:text-sm flex flex-col items-center justify-center gap-2">
+            <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-400">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <p className="font-bold text-slate-700">No active events</p>
+            <p className="text-xs text-slate-400 max-w-[200px]">Create an event or sync your Google Calendar to see your preparation runways.</p>
           </div>
         ) : (
           filteredEvents.map((evt) => {
@@ -251,6 +256,12 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                       <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
                       <span>Deadline: <strong className="text-slate-800 font-semibold">{formattedDeadline}</strong></span>
                     </span>
+                    {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-900 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded-md">
+                        <Repeat className="w-2.5 h-2.5 text-sky-700" />
+                        <span>{evt.recurrence?.recurrencePatternText || evt.context?.recurrencePatternText || 'Recurring'}</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Bottom Row: Next Preparation Task */}

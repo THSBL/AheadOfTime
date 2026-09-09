@@ -10,6 +10,7 @@ import {
   User, 
   Users, 
   Briefcase,
+  MapPin,
   AlertTriangle,
   CheckCircle2
 } from 'lucide-react';
@@ -61,6 +62,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
     }
     return 'Mixed (Personal & Work)';
   });
+  const [homeZipOrLocation, setHomeZipOrLocation] = useState<string>(profile?.homeZipOrLocation || '');
   const [horizon, setHorizon] = useState<number>(agendaHorizonMonths || 6);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -82,6 +84,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
       ageRange,
       family_structure,
       calendar_type,
+      homeZipOrLocation: homeZipOrLocation.trim(),
       familyStatus,
       calendarType,
       privacyConsentAccepted: true,
@@ -196,6 +199,26 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Home Zip Code or Location */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-sky-600" />
+                <span>Home Zip Code or City (Optional)</span>
+              </label>
+            </div>
+            <input
+              type="text"
+              value={homeZipOrLocation}
+              onChange={(e) => setHomeZipOrLocation(e.target.value)}
+              placeholder="e.g., 94107 or Austin, TX"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <p className="text-[11px] text-slate-500">
+              Used strictly to calculate travel distance and drive-time buffers for local and away event T-minus plans.
+            </p>
           </div>
 
           {/* Agenda Horizon */}

@@ -14,7 +14,8 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
-  AlertTriangle
+  AlertTriangle,
+  Repeat,
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, generateICSContent, formatMessagingSummary, getCountdownStatus, getCleanEventTitle, getEventTopicLabel } from '../utils/tminusRules';
@@ -111,6 +112,12 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
             {(event.macroEvent?.archetype || event.macroEvent?.type) && (
               <span className="text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
                 {event.macroEvent.archetype || event.macroEvent.type}
+              </span>
+            )}
+            {(event.recurrence?.isRecurring || event.context?.isRecurring) && (
+              <span className="text-[10px] font-bold text-sky-950 bg-sky-100/90 border border-sky-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                <Repeat className="w-2.5 h-2.5 text-sky-700" />
+                <span>{event.recurrence?.recurrencePatternText || event.context?.recurrencePatternText || 'Recurring'}</span>
               </span>
             )}
           </div>

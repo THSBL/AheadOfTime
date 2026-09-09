@@ -1,5 +1,4 @@
 import { CalendarEvent, AgentMessage, OnboardingProfile } from '../types';
-import { INITIAL_EVENTS } from '../data/samplePresets';
 
 export interface AuthUser {
   id: string; // Normalized unique ID / email, e.g. "th.blanckaert@gmail.com"
@@ -104,7 +103,7 @@ export function setCurrentUser(user: AuthUser | null): void {
 
 /**
  * Loads events strictly belonging to the given user account.
- * If user is authenticated and has no stored events, returns an empty array (NO cross-account leakage).
+ * If user is not logged in (guest) or has no stored events, returns an empty array (NO preloaded events).
  */
 export function loadUserEvents(userId?: string | null): CalendarEvent[] {
   if (typeof window === 'undefined') return [];
@@ -118,19 +117,7 @@ export function loadUserEvents(userId?: string | null): CalendarEvent[] {
       if (Array.isArray(parsed)) return parsed;
     }
 
-    // If guest / unauthenticated, check legacy key or default sample events
-    if (normId === 'guest') {
-      const legacySaved = localStorage.getItem(LEGACY_EVENTS_KEY);
-      if (legacySaved) {
-        try {
-          const parsed = JSON.parse(legacySaved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        } catch {}
-      }
-      return INITIAL_EVENTS;
-    }
-
-    // Authenticated user with no saved events yet -> return empty array
+    // Never preload dummy or sample events when not logged in or with no saved events
     return [];
   } catch (err) {
     console.error('Failed to load user events:', err);
@@ -254,11 +241,13 @@ export function logoutAndClearAccountSession(): void {
     sessionStorage.removeItem('gcal_profile');
     sessionStorage.removeItem('aot_open_scan_modal');
 
-    // 2. Clear active auth user
+    // 2. Clear active auth user & cached guest data
     localStorage.removeItem(AUTH_USER_KEY);
     localStorage.removeItem('aot_calendar_connected');
     localStorage.removeItem('aot_google_access_token');
     localStorage.removeItem('aot_google_token_expires_at');
+    localStorage.removeItem(LEGACY_EVENTS_KEY);
+    localStorage.removeItem('tminus_events_v2_guest');
 
     // 3. Dispatch account switch event with null user
     window.dispatchEvent(new CustomEvent('aot_account_switched', { detail: { user: null } }));

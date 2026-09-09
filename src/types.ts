@@ -148,6 +148,18 @@ export interface WatchpointData {
 
 export type FocusMode = 'welcome' | 'new-event' | 'adjust-event';
 
+export type RecurrenceFrequency = 'weekly' | 'biweekly' | 'monthly' | 'custom_dates' | 'custom_interval';
+
+export interface EventRecurrenceConfig {
+  isRecurring: boolean;
+  frequency?: RecurrenceFrequency;
+  recurrencePatternText?: string; // e.g., "Every Saturday", "Every 2 weeks", "Every month on the 1st"
+  dayOfWeek?: number; // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+  customDates?: string[]; // list of exact YYYY-MM-DD dates for the recurring occurrences
+  intervalWeeks?: number;
+  occurrencesCount?: number; // how many cycles to project (default e.g. 4)
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -168,6 +180,7 @@ export interface CalendarEvent {
   subEvents?: SubEvent[];
   structuredPayload?: StructuredPlanningPayload;
   tailoredOptions?: string[];
+  recurrence?: EventRecurrenceConfig;
   context: {
     userRole?: UserEventRole;
     giftType?: 'group' | 'solo' | 'none' | string;
@@ -305,6 +318,9 @@ export interface OnboardingProfile {
   // Core technical schema
   family_structure?: FamilyStructure;
   calendar_type?: CalendarTypeScope;
+
+  // Location / home base for travel distance & drive buffer estimation
+  homeZipOrLocation?: string;
 
   // Display & legacy backwards compatibility
   familyStatus?: FamilyStatus;
