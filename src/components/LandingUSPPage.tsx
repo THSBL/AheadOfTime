@@ -70,8 +70,8 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         
         {/* Big Logo Featured Prominently - Flat border with no shading */}
         <div className="flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="bg-white border border-slate-200/90 p-6 sm:p-8 md:p-10 rounded-3xl inline-flex flex-col items-center">
-            <Logo variant="large" size="2xl" />
+          <div className="bg-white border border-slate-200/90 p-5 sm:p-7 md:p-8 rounded-2xl inline-flex flex-col items-center">
+            <Logo variant="large" size="xl" />
           </div>
         </div>
 

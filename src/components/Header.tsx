@@ -208,7 +208,7 @@ export const Header: React.FC<HeaderProps> = ({
               onMouseLeave={handleMouseLeave}
               className="relative"
             >
-              <div className="bg-white/90 hover:bg-white backdrop-blur-md border border-white/95 rounded-full px-2.5 sm:px-3.5 py-1.5 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-700 shadow-xs transition-all">
+              <div className="bg-white/90 hover:bg-white backdrop-blur-md border border-white/95 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 text-xs text-slate-700 shadow-xs transition-all">
                 {isEditingDate ? (
                   <form onSubmit={handleDateSubmit} className="flex items-center gap-1.5">
                     <input
@@ -466,7 +466,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onOpenScanAgenda}
                 id="btn-scan-agenda"
-                className="hidden md:flex bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white border border-[#3f7962]/50 text-xs sm:text-sm font-bold px-3.5 py-1.5 rounded-full items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                className="hidden md:flex bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white border border-[#3f7962]/50 text-xs font-bold px-3 py-1 sm:py-1.5 rounded-full items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
                 title="Scan for existing events in your agenda"
               >
                 <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
@@ -478,7 +478,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenNewEventModal}
               id="btn-manual-event"
-              className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs sm:text-sm font-bold px-2.5 sm:px-3.5 py-1.5 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
+              className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
               title="Create new event using presets or assistant"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />

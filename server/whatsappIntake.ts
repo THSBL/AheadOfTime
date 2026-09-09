@@ -93,7 +93,7 @@ Generate 4 to 6 tailored T-minus milestones for this event and return a JSON obj
     try {
       const ai = getGenAI();
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           systemInstruction,

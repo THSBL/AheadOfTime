@@ -18,7 +18,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
           src={smallImgSrc} 
           alt="Ahead Of Time Icon" 
           onError={() => setSmallImgSrc('/assets/AheadOfTime_Small_logo.png')}
-          className={`${isLg ? 'w-20 h-20' : 'w-12 h-12'} object-contain rounded-2xl`} 
+          className={`${isLg ? 'w-16 h-16' : 'w-10 h-10'} object-contain rounded-xl`} 
         />
       </div>
     );
@@ -31,14 +31,14 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
     const isSm = size === 'sm';
 
     const heightClass = is2xl
-      ? 'h-24 sm:h-32 md:h-40'
+      ? 'h-20 sm:h-28 md:h-32'
       : isXl
-      ? 'h-20 sm:h-28'
+      ? 'h-16 sm:h-22'
       : isLg
-      ? 'h-14 sm:h-16 md:h-20'
+      ? 'h-12 sm:h-14 md:h-16'
       : isSm
-      ? 'h-8 sm:h-9'
-      : 'h-10 sm:h-12 md:h-14';
+      ? 'h-7 sm:h-8'
+      : 'h-9 sm:h-10 md:h-12';
 
     return (
       <div className={`inline-flex items-center select-none ${className}`}>
@@ -46,26 +46,51 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
           src={largeImgSrc} 
           alt="Ahead Of Time Logo" 
           onError={() => setLargeImgSrc('/assets/AheadOfTime_Large-logo-tag (1).png')}
-          className={`${heightClass} w-auto object-contain shrink-0 max-w-[280px] sm:max-w-[360px] md:max-w-none`} 
+          className={`${heightClass} w-auto object-contain shrink-0 max-w-[260px] sm:max-w-[340px] md:max-w-none`} 
         />
       </div>
     );
   }
 
-  // Small / Dark variant
+  // Small / Dark / Header inline title + logo variant
   const isDark = variant === 'dark';
+
+  const imgSize = size === 'sm'
+    ? 'w-6 h-6 sm:w-7 sm:h-7'
+    : size === 'lg'
+    ? 'w-8 h-8 sm:w-9 sm:h-9'
+    : size === 'xl'
+    ? 'w-10 h-10 sm:w-12 sm:h-12'
+    : size === '2xl'
+    ? 'w-12 h-12 sm:w-16 sm:h-16'
+    : 'w-7 h-7 sm:w-8 sm:h-8';
+
+  const textSize = size === 'sm'
+    ? 'text-xs sm:text-sm'
+    : size === 'lg'
+    ? 'text-base sm:text-lg'
+    : size === 'xl'
+    ? 'text-lg sm:text-xl'
+    : size === '2xl'
+    ? 'text-xl sm:text-2xl'
+    : 'text-sm sm:text-base';
+
   return (
     <div className={`inline-flex items-center gap-2 select-none ${className}`}>
-      <img 
-        src={smallImgSrc} 
-        alt="Ahead Of Time Icon" 
-        className="w-8 h-8 sm:w-10 sm:h-10 object-contain rounded-xl shrink-0" 
-      />
-      <span className={`hidden sm:inline text-lg sm:text-xl font-black tracking-tight ${isDark ? 'text-white' : 'text-[#0e1d2c]'} whitespace-nowrap`}>
-        Ahead <span className="text-[#447463]">Of</span> Time
+      <div className="flex items-center justify-center shrink-0">
+        <img 
+          src={smallImgSrc} 
+          alt="Ahead Of Time Icon" 
+          onError={() => setSmallImgSrc('/assets/AheadOfTime_Small_logo.png')}
+          className={`${imgSize} object-contain rounded-lg shrink-0`} 
+        />
+      </div>
+      <span className={`inline-flex items-center font-extrabold tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#0e1d2c]'} whitespace-nowrap`}>
+        Ahead&nbsp;<span className="text-[#447463]">Of</span>&nbsp;Time
       </span>
     </div>
   );
 };
+
 
 

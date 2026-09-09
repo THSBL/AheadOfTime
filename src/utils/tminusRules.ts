@@ -190,18 +190,178 @@ export function getEventTopicLabel(category?: string, context?: any): string {
 }
 
 /**
- * Ensures an event title is never generic 'Upcoming Event'
+ * Formats destination names cleanly (e.g. 'brooklyn ny' -> 'Brooklyn, NY')
+ */
+export function formatDestinationName(dest: string): string {
+  if (!dest) return 'Destination';
+  let formatted = dest.trim();
+  // Handle US state codes like 'brooklyn ny' -> 'Brooklyn, NY'
+  if (/\bny\b/i.test(formatted)) {
+    formatted = formatted.replace(/\bny\b/i, 'NY');
+    if (!formatted.includes(',')) {
+      formatted = formatted.replace(/\s+NY\b/, ', NY');
+    }
+  } else if (/\b(ca|tx|fl|il|pa|oh|ga|nc|mi|nj|va|wa|az|ma|tn|in|mo|md|wi|co|mn|sc|al|la|ky|or|ok|ct|ut|ia|nv|ar|ms|ks|nm|ne|id|wv|hi|nh|me|ri|mt|de|sd|nd|ak|dc)\b/i.test(formatted)) {
+    const stateMatch = formatted.match(/\b(ca|tx|fl|il|pa|oh|ga|nc|mi|nj|va|wa|az|ma|tn|in|mo|md|wi|co|mn|sc|al|la|ky|or|ok|ct|ut|ia|nv|ar|ms|ks|nm|ne|id|wv|hi|nh|me|ri|mt|de|sd|nd|ak|dc)\b/i);
+    if (stateMatch && !formatted.includes(',')) {
+      const code = stateMatch[1].toUpperCase();
+      formatted = formatted.replace(new RegExp(`\\s+${stateMatch[1]}\\b`, 'i'), `, ${code}`);
+    }
+  }
+  // Title-case words
+  return formatted.replace(/\b([a-z])/g, (_, l) => l.toUpperCase());
+}
+
+/**
+ * Robust natural date range parser supporting European (15 to 21 oktober),
+ * multi-language month names, US formats, and single dates.
+ */
+export function parseNaturalDateRange(
+  text: string,
+  referenceDateISO: string = new Date().toISOString()
+): { startDate: string; endDate?: string } | null {
+  if (!text) return null;
+  const raw = text.trim();
+  const baseRef = new Date(referenceDateISO);
+  const currentYear = isNaN(baseRef.getTime()) ? 2026 : baseRef.getFullYear();
+
+  // 1. ISO format: 2026-10-15 to 2026-10-21
+  const isoRangeMatch = raw.match(/\b([0-9]{4}-[0-9]{2}-[0-9]{2})\s+(?:to|-)\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\b/i);
+  if (isoRangeMatch) {
+    return { startDate: isoRangeMatch[1], endDate: isoRangeMatch[2] };
+  }
+
+  // Month dictionary supporting English, Dutch, German, French
+  const monthMap: Record<string, number> = {
+    jan: 0, january: 0, januari: 0, januar: 0, janvier: 0,
+    feb: 1, february: 1, februari: 1, februar: 1, fevrier: 1,
+    mar: 2, march: 2, maart: 2, marz: 2, märz: 2, mars: 2,
+    apr: 3, april: 3, avril: 3,
+    may: 4, mei: 4, mai: 4,
+    jun: 5, june: 5, juni: 5, juin: 5,
+    jul: 6, july: 6, juli: 6, juillet: 6,
+    aug: 7, august: 7, augustus: 7, aout: 7, août: 7,
+    sep: 8, sept: 8, september: 8, septembre: 8,
+    oct: 9, okt: 9, october: 9, oktober: 9, octobre: 9,
+    nov: 10, november: 10, novembre: 10,
+    dec: 11, dez: 11, december: 11, dezember: 11, decembre: 11,
+  };
+
+  const monthRegexPart = Object.keys(monthMap).sort((a, b) => b.length - a.length).join('|');
+
+  // Pattern A: "from 15 to 21 oktober" or "15 to 21 October" or "15 - 21 oct 2026"
+  const patternA = new RegExp(
+    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    'i'
+  );
+  const matchA = raw.match(patternA);
+  if (matchA) {
+    const startDay = parseInt(matchA[1], 10);
+    const endDay = parseInt(matchA[2], 10);
+    const monthKey = matchA[3].toLowerCase();
+    const monthIdx = monthMap[monthKey] ?? 9;
+    const year = matchA[4] ? parseInt(matchA[4], 10) : currentYear;
+
+    const s = new Date(year, monthIdx, startDay, 12, 0, 0);
+    const e = new Date(year, monthIdx, endDay, 12, 0, 0);
+    return {
+      startDate: s.toISOString().substring(0, 10),
+      endDate: e.toISOString().substring(0, 10),
+    };
+  }
+
+  // Pattern B: "from 15 oktober to 21 oktober" or "15 oct to 21 nov"
+  const patternB = new RegExp(
+    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    'i'
+  );
+  const matchB = raw.match(patternB);
+  if (matchB) {
+    const startDay = parseInt(matchB[1], 10);
+    const startMonth = monthMap[matchB[2].toLowerCase()] ?? 9;
+    const endDay = parseInt(matchB[3], 10);
+    const endMonth = monthMap[matchB[4].toLowerCase()] ?? 9;
+    const year = matchB[5] ? parseInt(matchB[5], 10) : currentYear;
+
+    const s = new Date(year, startMonth, startDay, 12, 0, 0);
+    const e = new Date(year, endMonth, endDay, 12, 0, 0);
+    return {
+      startDate: s.toISOString().substring(0, 10),
+      endDate: e.toISOString().substring(0, 10),
+    };
+  }
+
+  // Pattern C: "October 15 to 21" or "Oct 15 - Oct 21"
+  const patternC = new RegExp(
+    `(?:from\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(?:(${monthRegexPart})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
+    'i'
+  );
+  const matchC = raw.match(patternC);
+  if (matchC) {
+    const startMonth = monthMap[matchC[1].toLowerCase()] ?? 9;
+    const startDay = parseInt(matchC[2], 10);
+    const endMonth = matchC[3] ? (monthMap[matchC[3].toLowerCase()] ?? startMonth) : startMonth;
+    const endDay = parseInt(matchC[4], 10);
+    const year = matchC[5] ? parseInt(matchC[5], 10) : currentYear;
+
+    const s = new Date(year, startMonth, startDay, 12, 0, 0);
+    const e = new Date(year, endMonth, endDay, 12, 0, 0);
+    return {
+      startDate: s.toISOString().substring(0, 10),
+      endDate: e.toISOString().substring(0, 10),
+    };
+  }
+
+  // Pattern D: Single date like "on 15 oktober" or "15 October" or "October 15"
+  const patternD1 = new RegExp(`(?:on\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`, 'i');
+  const matchD1 = raw.match(patternD1);
+  if (matchD1) {
+    const day = parseInt(matchD1[1], 10);
+    const month = monthMap[matchD1[2].toLowerCase()] ?? 9;
+    const year = matchD1[3] ? parseInt(matchD1[3], 10) : currentYear;
+    const s = new Date(year, month, day, 12, 0, 0);
+    return { startDate: s.toISOString().substring(0, 10) };
+  }
+
+  const patternD2 = new RegExp(`(?:on\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
+  const matchD2 = raw.match(patternD2);
+  if (matchD2) {
+    const month = monthMap[matchD2[1].toLowerCase()] ?? 9;
+    const day = parseInt(matchD2[2], 10);
+    const year = matchD2[3] ? parseInt(matchD2[3], 10) : currentYear;
+    const s = new Date(year, month, day, 12, 0, 0);
+    return { startDate: s.toISOString().substring(0, 10) };
+  }
+
+  return null;
+}
+
+/**
+ * Ensures an event title is contextual, descriptive, and never generic 'Group Trip Horizon' or 'Upcoming Event'
  */
 export function getCleanEventTitle(title?: string, category?: string, context?: any): string {
   let cleaned = (title || '').trim();
 
-  // Strip leading emojis or icons if followed by 'Upcoming Event'
+  // Strip leading emojis or icons
   cleaned = cleaned.replace(/^[🎯📅🗓️✨🎉🚀🎈🚗✈️👥]\s*/, '');
+
+  // Conversational sentence transformation (e.g. "going to brooklyn NY from 15 to 21 oktober for business trip")
+  if (/^(going to|flying to|traveling to|trip to)\s+/i.test(cleaned)) {
+    const isBusiness = /business|work/i.test(cleaned);
+    const destMatch = cleaned.match(/(?:going to|flying to|traveling to|trip to)\s+([a-zA-Z\s,'-]+?)(?:\s+(?:from|for|on|with|\d|$))/i);
+    const dest = destMatch ? formatDestinationName(destMatch[1].trim()) : '';
+    if (isBusiness) {
+      return dest ? `Business Trip to ${dest}` : 'Business Trip';
+    }
+    return dest ? `Trip to ${dest}` : 'Travel Trip';
+  }
 
   const isGeneric = !cleaned || 
     /^upcoming(\s+event)?$/i.test(cleaned) || 
     /^new(\s+event)?$/i.test(cleaned) ||
-    cleaned.toLowerCase() === 'event';
+    cleaned.toLowerCase() === 'event' ||
+    cleaned.toLowerCase() === 'group trip horizon' ||
+    cleaned.toLowerCase().startsWith('group trip horizon');
 
   if (!isGeneric) {
     return cleaned;
@@ -209,8 +369,20 @@ export function getCleanEventTitle(title?: string, category?: string, context?: 
 
   // Look for custom notes or topic hints in context
   if (context?.customNote && typeof context.customNote === 'string' && context.customNote.length < 50) {
-    return context.customNote;
+    if (!context.customNote.toLowerCase().includes('group trip horizon')) {
+      return context.customNote;
+    }
   }
+
+  // Check destination in context
+  if (context?.destination && typeof context.destination === 'string') {
+    const dest = formatDestinationName(context.destination);
+    if (context?.isBusinessTrip || /business/i.test(context?.archetype || '')) {
+      return `Business Trip to ${dest}`;
+    }
+    return `Trip to ${dest}`;
+  }
+
   if (context?.who && typeof context.who === 'string') {
     return `${context.who}'s Event`;
   }
@@ -405,14 +577,31 @@ export function generateHeuristicMilestones(
 
     const baseDate = customBaseDate || eventDate;
     const calcDate = calculateOffsetDate(baseDate, eventTime, offsetMinutes);
+
+    // Reference planning date (from context or fallback to today)
+    const refDate = context.referenceDate ? new Date(context.referenceDate) : new Date();
+    const calcDateObj = new Date(calcDate);
+    let finalDate = calcDate;
+    let finalLabel = label;
+    let finalDesc = description;
+
+    // If milestone falls in the past relative to the planning time, clamp to planning date (Today) as an Immediate Action
+    if (calcDateObj.getTime() < refDate.getTime()) {
+      const todayClamped = new Date(refDate);
+      todayClamped.setHours(9, 0, 0, 0);
+      finalDate = todayClamped.toISOString();
+      finalLabel = 'Immediate';
+      finalDesc = description ? `[Immediate Priority] ${description}` : '[Immediate Priority] Preparation checkpoint';
+    }
+
     milestones.push({
       id: `ms-${eventId}-${label.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now() % 100000}-${Math.random().toString(36).substring(2, 5)}`,
       eventId,
-      tMinusLabel: label,
+      tMinusLabel: finalLabel,
       tMinusOffsetMinutes: offsetMinutes,
-      calculatedDate: calcDate,
+      calculatedDate: finalDate,
       title,
-      description,
+      description: finalDesc,
       category: cat,
       status: 'pending',
       kind,
@@ -692,33 +881,84 @@ export function generateHeuristicMilestones(
     addMilestone('T-2h', -120, 'Go/No-Go launch check & team standup', 'logistics', 'Conduct final operational sync, monitor alarms, and execute release sequence');
   }
   else if (category === 'travel_trip') {
-    const isStagOrGroupParty = /stag|bachelor|bachelorette|hen|party/i.test(event.title || '') || 
-      /stag|bachelor|bachelorette|hen/i.test(context.theme || '') ||
-      event.macroEvent?.archetype === 'Stag Party / Bachelor Trip';
+    const isBusinessTrip = /business|work\s*trip|conference|summit|corporate|client|pitch|tradeshow/i.test(event.title || '') || 
+      /business|work\s*trip|conference/i.test(context.customNote || '') ||
+      /business/i.test(category || '') ||
+      context.isBusinessTrip === true ||
+      event.macroEvent?.archetype === 'Business Trip';
 
-    if (context.needPassportRenewal === true || context.needPassportRenewal === 'true') {
+    const isStagOrGroupParty = !isBusinessTrip && (/stag|bachelor|bachelorette|hen|party/i.test(event.title || '') || 
+      /stag|bachelor|bachelorette|hen/i.test(context.theme || '') ||
+      event.macroEvent?.archetype === 'Stag Party / Bachelor Trip');
+
+    // For international travel or overseas destination (e.g. Brooklyn NY, international flight)
+    const isInternational = /passport|visa|esta|international|flight|overseas|brooklyn|ny\b|usa|us\b|america|paris|london|tokyo|dublin/i.test(`${event.title} ${event.location || ''} ${context.customNote || ''} ${context.destination || ''}`);
+
+    if (context.needPassportRenewal === true || context.needPassportRenewal === 'true' || isInternational) {
       addMilestone('T-60d', -60 * 24 * 60, 'Passport validity & renewal check', 'booking', 'Verify passport has 6+ months validity remaining and initiate renewal if expiring soon', undefined, 'milestone');
     }
     if (context.hasPet === true || context.hasPet === 'true' || /dog|cat|pet|sitter|kennel/i.test(event.title || '') || /dog|cat|pet|sitter/i.test(context.customNote || '')) {
       addMilestone('T-45d', -45 * 24 * 60, 'Book dog sitter / pet boarding', 'booking', 'Book pet sitter or kennel boarding 4-6 weeks in advance before holiday slots fill up', undefined, 'deliverable');
       addMilestone('T-14d', -14 * 24 * 60, 'Pet vaccination check & sitter meet-and-greet', 'prep', 'Verify kennel cough/rabies vaccine records and confirm entry keys with sitter', undefined, 'milestone');
     }
-    if (context.needVisa === true || context.needVisa === 'true') {
-      addMilestone('T-45d', -45 * 24 * 60, 'Entry visa & e-visa application', 'booking', 'Submit required travel visa applications and entry permits', undefined, 'deliverable');
+    if (context.needVisa === true || context.needVisa === 'true' || (isInternational && /usa|us\b|brooklyn|ny\b|america/i.test(`${event.title} ${event.location || ''} ${context.destination || ''}`))) {
+      addMilestone('T-45d', -45 * 24 * 60, 'US Entry ESTA / travel visa application', 'booking', 'Submit required online ESTA or travel visa application', undefined, 'deliverable');
     }
-    if (context.bookingStatus !== 'done') {
+
+    // BUSINESS TRIP DEDICATED TRACK
+    if (isBusinessTrip) {
+      if (context.bookingStatus !== 'done') {
+        addMilestone(
+          'T-30d',
+          -30 * 24 * 60,
+          'Flights & corporate hotel booking locked',
+          'booking',
+          'Lock corporate flights, hotel near meeting venue, and travel expense approval',
+          undefined,
+          'deliverable'
+        );
+      }
       addMilestone(
-        'T-30d', 
-        -30 * 24 * 60, 
-        isStagOrGroupParty ? 'Book flights / group transit & lodging' : 'Flights, trains & hotel reservation lock', 
-        'booking', 
-        'Lock transport legs, accommodations, and travel insurance coverage',
+        'T-14d',
+        -14 * 24 * 60,
+        'Client meetings & stakeholder agendas confirmed',
+        'booking',
+        'Confirm meeting calendar invites, attendee availability, and discussion objectives',
         undefined,
-        'deliverable',
-        true,
-        isStagOrGroupParty ? ['Group Airbnb / Villa Rental', 'Central Hotel Room Block', 'Budget Hostel Pods', 'Self-booked Individual Lodging'] : ['Hotel / Resort Reservation', 'Airbnb / Vacation Apartment', 'Flight & Hotel Package']
+        'deliverable'
       );
-    }
+      addMilestone(
+        'T-7d',
+        -7 * 24 * 60,
+        'Presentation slide deck & briefing notes finalized',
+        'prep',
+        'Finalize slides, review talking points, and prepare digital handouts / cloud backup',
+        undefined,
+        'deliverable'
+      );
+      addMilestone(
+        'T-3d',
+        -3 * 24 * 60,
+        'Business attire, laptop chargers & corporate expense card setup',
+        'prep',
+        'Pack tailored suit/business clothes, device chargers, adapters, and setup expense receipt tracker',
+        undefined,
+        'milestone'
+      );
+    } else {
+      if (context.bookingStatus !== 'done') {
+        addMilestone(
+          'T-30d', 
+          -30 * 24 * 60, 
+          isStagOrGroupParty ? 'Book flights / group transit & lodging' : 'Flights, trains & hotel reservation lock', 
+          'booking', 
+          'Lock transport legs, accommodations, and travel insurance coverage',
+          undefined,
+          'deliverable',
+          true,
+          isStagOrGroupParty ? ['Group Airbnb / Villa Rental', 'Central Hotel Room Block', 'Budget Hostel Pods', 'Self-booked Individual Lodging'] : ['Hotel / Resort Reservation', 'Airbnb / Vacation Apartment', 'Flight & Hotel Package']
+        );
+      }
 
     if (isStagOrGroupParty) {
       addMilestone(
@@ -824,6 +1064,7 @@ export function generateHeuristicMilestones(
     if (context.gearAdapters !== false && context.gearAdapters !== 'false') {
       addMilestone('T-14d', -14 * 24 * 60, 'Buy universal power adapters & chargers', 'shopping', 'Acquire country-specific electrical plug adapters and portable power banks', undefined, 'milestone');
     }
+  }
 
     addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack clothes, toiletries, chargers, and activate roaming/eSIM', undefined, 'milestone');
     addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & out-of-office setup', 'logistics', 'Check in for flights 24h prior, download offline maps, and set email out-of-office', undefined, 'milestone');
@@ -834,9 +1075,16 @@ export function generateHeuristicMilestones(
       addMilestone('T-5d', -5 * 24 * 60, `Travel prep: ${context.customNote.trim()}`, 'prep', `Travel custom requirement: ${context.customNote.trim()}`, undefined, 'milestone');
     }
     if (Array.isArray(context.customItems)) {
-      context.customItems.forEach((ci: string, idx: number) => {
-        if (ci && ci.trim()) {
-          addMilestone(`T-${4 + idx}d`, -(4 + idx) * 24 * 60, `Task: ${ci.trim()}`, 'prep', `Custom user task: ${ci.trim()}`, undefined, 'milestone');
+      context.customItems.forEach((ci: string) => {
+        if (ci && typeof ci === 'string' && ci.trim()) {
+          const cleanItem = ci.replace(/^task:\s*/i, '').trim();
+          const timing = inferTaskTimingLocally(cleanItem, '', event.title || '');
+          const offsetMins = timing.unit === 'weeks'
+            ? -timing.amount * 7 * 24 * 60
+            : timing.unit === 'hours'
+            ? -timing.amount * 60
+            : -timing.amount * 24 * 60;
+          addMilestone(timing.badge, offsetMins, cleanItem, timing.category, timing.reason, undefined, 'deliverable');
         }
       });
     }
@@ -921,7 +1169,59 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     const deliverables: Deliverable[] = [];
 
     // Derive 1 to 3 tangible outputs based on the checkpoint topic
-    if (tLower.includes('invite') || tLower.includes('rsvp') || tLower.includes('headcount') || tLower.includes('guest')) {
+    if (/\b(passport|passports)\b/i.test(tLower)) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Passport validity verified (6+ months remaining) or renewal submitted',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Color scan / photo page copy stored securely offline',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (/\b(visa|esta|eta|travel\s*authorization|entry\s*permit)\b/i.test(tLower)) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Online ESTA / entry visa application submitted & fee receipt saved',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Approved travel authorization / visa PDF saved to mobile wallet',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (/\b(suit|tuxedo|tailor|tailoring|fitting|dry\s*clean|blazer)\b/i.test(tLower)) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Tailored suit or business attire purchased / fitted',
+        type: 'purchase',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Pressed dress shirts, polished shoes & matching accessories ready',
+        type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (/\b(meeting|client|presentation|deck|slides|pitch|agenda|stakeholder)\b/i.test(tLower)) {
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Confirmed client meeting calendar invites & attendee agenda',
+        type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Presentation slides & executive brief finalized and saved offline',
+        type: 'document',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (tLower.includes('invite') || tLower.includes('rsvp') || tLower.includes('headcount') || tLower.includes('guest')) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
         title: 'Sent invitation links & RSVPs tracked',
@@ -1015,20 +1315,9 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
         is_completed: ms.status === 'completed',
       });
     } else if (
-      tLower.includes('soccer') ||
-      tLower.includes('shinguard') ||
-      tLower.includes('jersey') ||
-      tLower.includes('cleat') ||
-      tLower.includes('boot') ||
-      tLower.includes('sport') ||
-      tLower.includes('match') ||
-      tLower.includes('game') ||
-      tLower.includes('tournament') ||
-      tLower.includes('uniform') ||
-      tLower.includes('athletic') ||
-      tLower.includes('gear') ||
-      tLower.includes('swimming') ||
-      tLower.includes('gym')
+      /\b(soccer|football|cleats?|boots?|jersey|shin\s*guards?|uniform|athletic\s*kit|gym)\b/i.test(tLower) &&
+      !tLower.includes('passport') &&
+      !tLower.includes('transport')
     ) {
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
@@ -1092,16 +1381,17 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
         is_completed: ms.status === 'completed',
       });
     } else {
+      const cleanFallbackTitle = ms.title.replace(/^task:\s*/i, '').trim();
       deliverables.push({
         deliverable_id: `del_${ms.id}_1`,
-        title: `Completed prep step: ${ms.title}`,
+        title: `${cleanFallbackTitle} verified & completed`,
         type: ms.category === 'booking' ? 'booking' : ms.category === 'shopping' ? 'purchase' : ms.category === 'logistics' ? 'document' : 'coordination',
         is_completed: ms.status === 'completed',
       });
     }
 
     // Convert raw imperative verbs into past-participle / state checkpoint titles:
-    let stateCheckpointTitle = ms.title;
+    let stateCheckpointTitle = ms.title.replace(/^task:\s*/i, '').trim();
     if (/^book\s+/i.test(stateCheckpointTitle)) {
       stateCheckpointTitle = stateCheckpointTitle.replace(/^book\s+/i, '') + ' Booked & Confirmed';
     } else if (/^reserve\s+/i.test(stateCheckpointTitle)) {
