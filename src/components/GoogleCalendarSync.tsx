@@ -306,15 +306,21 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
       if (onUpdateAllEvents && summary.updatedEvents) {
         onUpdateAllEvents(summary.updatedEvents);
       }
+      const parts: string[] = [];
       if (summary.completedCount > 0) {
-        setCompletionSyncReport(
-          `Synced ${summary.completedCount} completed task${
-            summary.completedCount > 1 ? 's' : ''
-          } from Google Tasks!`
-        );
-      } else {
-        setCompletionSyncReport('All tasks are in sync with Google Calendar & Tasks.');
+        parts.push(`${summary.completedCount} completed`);
       }
+      if (summary.uncompletedCount > 0) {
+        parts.push(`${summary.uncompletedCount} reopened`);
+      }
+      if (summary.skippedCount > 0) {
+        parts.push(`${summary.skippedCount} skipped (deleted in Google Tasks)`);
+      }
+      setCompletionSyncReport(
+        parts.length > 0
+          ? `Synced from Google Tasks: ${parts.join(', ')}.`
+          : 'All tasks are in sync with Google Calendar & Tasks.'
+      );
     } catch (err: any) {
       console.error('Failed to sync completions from Google:', err);
       setCompletionSyncReport(`Sync failed: ${err?.message || 'Unknown error'}`);

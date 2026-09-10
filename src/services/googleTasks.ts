@@ -15,6 +15,7 @@ export interface GoogleTaskItem {
   updated?: string;
   selfLink?: string;
   webViewLink?: string;
+  deleted?: boolean; // only present when the request was made with includeDeleted
 }
 
 export interface GoogleTaskList {
@@ -27,6 +28,7 @@ export interface TaskSyncSummary {
   updatedEvents: CalendarEvent[];
   completedCount: number;
   uncompletedCount: number;
+  skippedCount: number;
   linkedTasksCount: number;
   syncedTaskTitles: string[];
 }
@@ -53,31 +55,55 @@ export async function fetchGoogleTaskLists(accessToken: string): Promise<GoogleT
 }
 
 /**
- * Fetch tasks from the primary default task list
+ * Fetch tasks from a task list, paging through all results (Google caps a
+ * single page at maxResultsPerPage) instead of silently truncating at
+ * whatever the first page returns - a sync that only ever sees the first
+ * ~50-100 tasks will eventually stop noticing changes to older ones.
  */
 export async function fetchGoogleTasks(
   accessToken: string,
   taskListId = '@default',
-  maxResults = 50
+  maxResultsPerPage = 100,
+  options: { includeDeleted?: boolean } = {}
 ): Promise<GoogleTaskItem[]> {
-  const url = `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(
-    taskListId
-  )}/tasks?showCompleted=true&showHidden=true&maxResults=${maxResults}`;
+  const allItems: GoogleTaskItem[] = [];
+  let pageToken: string | undefined;
+  // Safety cap across all pages combined, so a runaway task list can't turn
+  // this into an unbounded loop.
+  const hardCap = 2000;
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  do {
+    const params = new URLSearchParams({
+      showCompleted: 'true',
+      showHidden: 'true',
+      maxResults: String(maxResultsPerPage),
+    });
+    if (options.includeDeleted) {
+      params.set('showDeleted', 'true');
+    }
+    if (pageToken) {
+      params.set('pageToken', pageToken);
+    }
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error?.message || `Failed to fetch tasks (${response.status})`);
-  }
+    const url = `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(taskListId)}/tasks?${params.toString()}`;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-  const data = await response.json();
-  return data.items || [];
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error?.message || `Failed to fetch tasks (${response.status})`);
+    }
+
+    const data = await response.json();
+    allItems.push(...(data.items || []));
+    pageToken = data.nextPageToken;
+  } while (pageToken && allItems.length < hardCap);
+
+  return allItems;
 }
 
 /**
@@ -251,11 +277,22 @@ export async function updateGoogleTaskStatus(
 
 /**
  * Bidirectional Sync:
- * Fetches all Google Tasks from the user's primary/default task list (including completed ones),
- * inspects all active T-Minus events and their milestones:
- * 1. If a milestone has a matching googleTaskId or matching title in Google Tasks and is completed in Google -> marks local milestone as completed!
- * 2. If a local milestone doesn't have a googleTaskId yet, links it with the Google Task if titles match.
- * 3. Returns the updated events array and a breakdown of completed/updated counts.
+ * Fetches every Google Task from the user's task list (including completed
+ * and deleted ones, across all pages), then reconciles each local
+ * milestone against it:
+ * 1. Already linked (googleTaskId) - reconcile status both ways:
+ *    - completed in Google, still pending locally -> mark completed.
+ *    - reopened in Google, still completed locally -> mark pending again.
+ *    - deleted in Google -> mark skipped (never deleted locally; deleting
+ *      the milestone outright would erase history and could make the
+ *      planning engine think the action never existed).
+ * 2. Not yet linked - try a one-time title-heuristic match to backfill the
+ *    googleTaskId (only against non-deleted tasks, so a fresh milestone
+ *    never gets linked straight to something already gone), then apply the
+ *    same reconciliation above once linked.
+ * googleTaskId is always the source of truth once a milestone has one;
+ * title matching is only ever used to establish that link in the first
+ * place, never to re-decide status for an already-linked milestone.
  */
 export async function syncGoogleTasksWithLocalEvents(
   accessToken: string,
@@ -266,26 +303,29 @@ export async function syncGoogleTasksWithLocalEvents(
     updatedEvents: events,
     completedCount: 0,
     uncompletedCount: 0,
+    skippedCount: 0,
     linkedTasksCount: 0,
     syncedTaskTitles: [],
   };
 
   try {
-    const googleTasks = await fetchGoogleTasks(accessToken, taskListId, 100);
+    const googleTasks = await fetchGoogleTasks(accessToken, taskListId, 100, { includeDeleted: true });
     if (!googleTasks || googleTasks.length === 0) {
       return summary;
     }
 
-    // Build quick lookup maps: by ID and by normalized title
+    // Build quick lookup maps: by ID (includes deleted stubs) and by
+    // normalized title (non-deleted only - see doc comment above).
     const tasksById = new Map<string, GoogleTaskItem>();
     const tasksByTitle = new Map<string, GoogleTaskItem>();
 
     for (const t of googleTasks) {
       tasksById.set(t.id, t);
-      if (t.title) {
-        // Clean title for matching
+      if (t.title && !t.deleted) {
         const normalized = t.title.trim().toLowerCase();
-        tasksByTitle.set(normalized, t);
+        if (!tasksByTitle.has(normalized)) {
+          tasksByTitle.set(normalized, t);
+        }
       }
     }
 
@@ -296,13 +336,19 @@ export async function syncGoogleTasksWithLocalEvents(
       const nextMilestones = (evt.milestones || []).map((ms) => {
         let matchedTask: GoogleTaskItem | undefined;
 
-        // 1. Direct ID match
-        if (ms.googleTaskId && tasksById.has(ms.googleTaskId)) {
+        if (ms.googleTaskId) {
+          // Already linked - googleTaskId is authoritative. If Google no
+          // longer returns it at all (can happen once a deleted task ages
+          // out of Google's own deleted-item retention), there's nothing to
+          // reconcile against this round.
           matchedTask = tasksById.get(ms.googleTaskId);
+          if (!matchedTask) {
+            return ms;
+          }
         } else {
-          // 2. Title heuristic match
+          // Title heuristic match, used only to establish the initial link.
           // Task titles look like: `[T-7d] Order birthday cake (Sarah's 30th Birthday)`
-          // or contain milestone.title
+          // or contain milestone.title.
           const msTitleLower = ms.title.toLowerCase();
           for (const [normTitle, taskItem] of tasksByTitle.entries()) {
             if (
@@ -313,22 +359,28 @@ export async function syncGoogleTasksWithLocalEvents(
               break;
             }
           }
-        }
-
-        if (!matchedTask) {
-          return ms;
+          if (!matchedTask) {
+            return ms;
+          }
         }
 
         let updatedMs: TMinusMilestone = { ...ms };
 
-        // Link ID if missing
         if (!ms.googleTaskId && matchedTask.id) {
           updatedMs.googleTaskId = matchedTask.id;
           summary.linkedTasksCount++;
           eventChanged = true;
         }
 
-        // Check completion status from Google Tasks
+        if (matchedTask.deleted) {
+          if (ms.status !== 'skipped') {
+            updatedMs.status = 'skipped';
+            summary.skippedCount++;
+            eventChanged = true;
+          }
+          return updatedMs;
+        }
+
         const isGoogleCompleted = matchedTask.status === 'completed';
         const isLocalCompleted = ms.status === 'completed';
 
@@ -337,6 +389,13 @@ export async function syncGoogleTasksWithLocalEvents(
           updatedMs.completedAt = matchedTask.completed || new Date().toISOString();
           summary.completedCount++;
           summary.syncedTaskTitles.push(`${ms.title} (${evt.title})`);
+          eventChanged = true;
+        } else if (!isGoogleCompleted && isLocalCompleted) {
+          // Reopened in Google Tasks - reflect that back locally rather
+          // than leaving AOT showing a task as done that the user un-did.
+          updatedMs.status = 'pending';
+          updatedMs.completedAt = undefined;
+          summary.uncompletedCount++;
           eventChanged = true;
         }
 

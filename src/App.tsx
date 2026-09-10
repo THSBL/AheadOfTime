@@ -861,20 +861,23 @@ function App() {
 
       // ONLY show toast popup if forcefully requested by explicit user action
       if (force) {
+        const parts: string[] = [];
         if (summary.completedCount > 0) {
-          setSyncToast({
-            id: Date.now(),
-            message: `${summary.completedCount} task${
-              summary.completedCount > 1 ? 's' : ''
-            } marked complete in Google Calendar!`,
-            count: summary.completedCount,
-          });
-        } else {
-          setSyncToast({
-            id: Date.now(),
-            message: 'Tasks are fully up to date with Google Calendar.',
-          });
+          parts.push(`${summary.completedCount} completed`);
         }
+        if (summary.uncompletedCount > 0) {
+          parts.push(`${summary.uncompletedCount} reopened`);
+        }
+        if (summary.skippedCount > 0) {
+          parts.push(`${summary.skippedCount} skipped (deleted in Google Tasks)`);
+        }
+        setSyncToast({
+          id: Date.now(),
+          message: parts.length > 0
+            ? `Synced from Google Tasks: ${parts.join(', ')}.`
+            : 'Tasks are fully up to date with Google Calendar.',
+          count: summary.completedCount,
+        });
       }
     } catch (e) {
       console.warn('Google bidirectional task sync failed:', e);

@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Layers,
   Repeat,
+  X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone } from '../types';
@@ -296,7 +297,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const rawMilestones = activeEvent.milestones || [];
   const countdown = getCountdownStatus(activeEvent.eventDate, currentReferenceDate);
   const completedCount = rawMilestones.filter((m) => m.status === 'completed').length;
-  const totalCount = rawMilestones.length;
+  // Skipped (e.g. the linked Google Task was deleted) is excluded from the
+  // denominator too - it's no longer an outstanding action, so counting it
+  // against progress would make "X of Y done" misleadingly low.
+  const totalCount = rawMilestones.filter((m) => m.status !== 'skipped').length;
   const hasMicroTasks = rawMilestones.some((m) => m.scope === 'micro');
   const microCount = rawMilestones.filter((m) => m.scope === 'micro').length;
   const macroCount = totalCount - microCount;
@@ -740,8 +744,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         ) : (
           displayedMilestones.map((ms) => {
             const isCompleted = ms.status === 'completed';
+            const isSkipped = ms.status === 'skipped';
             const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
-            const isOverdue = !isCompleted && msCountdown.isOverdue;
+            const isOverdue = !isCompleted && !isSkipped && msCountdown.isOverdue;
             const isDeliverable = ms.kind === 'deliverable';
             const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
 
@@ -749,7 +754,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <div
                 key={ms.id}
                 className={`group p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 w-full ${
-                  isCompleted
+                  isSkipped
+                    ? 'bg-slate-50/60 border-slate-200 text-slate-400 opacity-70'
+                    : isCompleted
                     ? 'bg-slate-50/90 border-slate-200 text-slate-400'
                     : isOverdue
                     ? 'bg-rose-50/60 border-rose-300 hover:border-rose-400 text-slate-800 shadow-2xs ring-1 ring-rose-200/60'
@@ -763,19 +770,22 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 {/* Checkbox & Task Information */}
                 <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0 w-full">
                   <button
-                    onClick={() => handleMilestoneClick(activeEvent.id, ms)}
-                    className={`w-5 h-5 rounded-md mt-0.5 flex items-center justify-center transition-all cursor-pointer shrink-0 ${
-                      isCompleted
-                        ? 'bg-emerald-600 text-white shadow-2xs'
+                    onClick={() => !isSkipped && handleMilestoneClick(activeEvent.id, ms)}
+                    disabled={isSkipped}
+                    className={`w-5 h-5 rounded-md mt-0.5 flex items-center justify-center transition-all shrink-0 ${
+                      isSkipped
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : isCompleted
+                        ? 'bg-emerald-600 text-white shadow-2xs cursor-pointer'
                         : isOverdue
-                        ? 'border-2 border-rose-400 hover:border-rose-600 text-transparent'
+                        ? 'border-2 border-rose-400 hover:border-rose-600 text-transparent cursor-pointer'
                         : isDeliverable || hasDeliverables
-                        ? 'border-2 border-[#0e1d2c]/40 hover:border-[#0e1d2c] text-transparent'
-                        : 'border-2 border-slate-300 hover:border-sky-600 text-transparent'
+                        ? 'border-2 border-[#0e1d2c]/40 hover:border-[#0e1d2c] text-transparent cursor-pointer'
+                        : 'border-2 border-slate-300 hover:border-sky-600 text-transparent cursor-pointer'
                     }`}
-                    title={isCompleted ? 'Mark as pending' : 'Mark as completed'}
+                    title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
                   >
-                    <Check className="w-3 h-3 stroke-[3]" />
+                    {isSkipped ? <X className="w-3 h-3 stroke-[3]" /> : <Check className="w-3 h-3 stroke-[3]" />}
                   </button>
 
                   <div className="space-y-1 min-w-0 flex-1 w-full">
@@ -788,6 +798,13 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       }`}>
                         {ms.tMinusLabel}
                       </span>
+
+                      {isSkipped && (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                          <X className="w-2.5 h-2.5" />
+                          <span>Skipped - removed in Google Tasks</span>
+                        </span>
+                      )}
 
                       {/* Milestone vs Deliverable Badge */}
                       {isDeliverable ? (
