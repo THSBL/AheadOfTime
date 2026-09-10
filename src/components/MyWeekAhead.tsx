@@ -1,13 +1,25 @@
 import React from 'react';
-import { Sparkles, ArrowRight, Plus, CheckCircle2, Calendar as CalendarIcon } from 'lucide-react';
+import { Sparkles, ArrowRight, Plus, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
   computeOverallAheadStatus,
   computeNextBestAction,
   computeAheadStatus,
+  computeThisWeekFocus,
   AheadLevel,
+  ActionTheme,
 } from '../utils/readiness';
+
+const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
+  documents: FileText,
+  packing: Layers,
+  gifts: Gift,
+  money: DollarSign,
+  logistics: Truck,
+  calls_confirmations: PhoneCall,
+  other: Layers,
+};
 
 interface MyWeekAheadProps {
   events: CalendarEvent[];
@@ -55,6 +67,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
   const overall = computeOverallAheadStatus(activeEvents, currentReferenceDate);
   const nextBestAction = computeNextBestAction(activeEvents, currentReferenceDate);
+  const thisWeekFocus = computeThisWeekFocus(activeEvents, currentReferenceDate);
 
   const perEvent = sortEventsUpcomingFirst(activeEvents, currentReferenceDate).map((event) => ({
     event,
@@ -111,6 +124,43 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
               </div>
             </div>
           </button>
+        )}
+
+        {/* This Week's Focus - actions grouped by theme across events, so
+            similar tasks (e.g. everything packing-related) can be batched
+            together instead of only being visible one event at a time. */}
+        {thisWeekFocus.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">This week, focus on</h3>
+            <div className="space-y-2">
+              {thisWeekFocus.map((cluster) => {
+                const Icon = THEME_ICONS[cluster.theme];
+                const eventsPhrase =
+                  cluster.eventTitles.length > 1
+                    ? `across ${cluster.eventTitles.slice(0, 2).join(' and ')}${cluster.eventTitles.length > 2 ? ' and more' : ''}`
+                    : `for ${cluster.eventTitles[0]}`;
+                return (
+                  <button
+                    key={cluster.theme}
+                    type="button"
+                    onClick={() => onSelectEvent(cluster.actions[0].eventId)}
+                    className="w-full text-left p-3 rounded-xl bg-white border border-slate-200/90 hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer"
+                  >
+                    <Icon className="w-4 h-4 text-slate-500 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-bold text-slate-900">{cluster.label}</p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {cluster.count} items {eventsPhrase}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
+                      {cluster.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Needs Attention */}

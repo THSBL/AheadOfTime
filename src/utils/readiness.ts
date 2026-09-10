@@ -255,6 +255,118 @@ export function computeNextBestActionForEvent(event: CalendarEvent, referenceDat
   };
 }
 
+export type ActionTheme = 'documents' | 'packing' | 'gifts' | 'money' | 'calls_confirmations' | 'logistics' | 'other';
+
+const THEME_LABELS: Record<ActionTheme, string> = {
+  documents: 'Documents',
+  packing: 'Packing',
+  gifts: 'Gifts',
+  money: 'Money',
+  calls_confirmations: 'Calls and confirmations',
+  logistics: 'Logistics',
+  other: 'Other',
+};
+
+// Checked in this order (first match wins) - most specific topics before
+// the more generic ones, so e.g. "Book flight" lands in logistics rather
+// than the broader calls_confirmations bucket.
+const THEME_PATTERNS: Array<[ActionTheme, RegExp]> = [
+  ['documents', /\b(passport|visa|esta|eta|permit|licen[cs]e|insurance|waiver|entry\s*authorization|travel\s*authorization)\b/i],
+  ['packing', /\b(pack(?:ing|ed)?|luggage|suitcase|kit\s*bag|gear|uniform|boots|cleats|shin\s*guards?|backpack|outfit|wardrobe|clothes|costume)\b/i],
+  ['gifts', /\b(gift|present|flowers|\bcard\b)\b/i],
+  ['money', /\b(budget|payment|deposit|invoice|kitty|expense)\b/i],
+  ['logistics', /\b(transport|travel|flight|flights|carpool|parking|directions?|address|departure|airport)\b/i],
+  ['calls_confirmations', /\b(confirm(?:ed|ation)?|book(?:ing|ed)?|rsvp|reservation|reserve[d]?|call|phone|appointment)\b/i],
+];
+
+/**
+ * Infers which "kind of thing you'd batch together" an action falls under
+ * (packing, calls, documents...) - the GTD "context" idea (@calls,
+ * @errands) applied to this data, so actions across different events but
+ * of the same practical type can be surfaced together instead of only
+ * grouped per-event.
+ */
+export function inferActionTheme(milestone: TMinusMilestone): ActionTheme {
+  const text = `${milestone.title} ${milestone.description || ''}`.toLowerCase();
+  for (const [theme, pattern] of THEME_PATTERNS) {
+    if (pattern.test(text)) return theme;
+  }
+  return 'other';
+}
+
+export interface ThemeClusterAction {
+  eventId: string;
+  eventTitle: string;
+  milestoneId: string;
+  title: string;
+}
+
+export interface ThemeCluster {
+  theme: ActionTheme;
+  label: string;
+  count: number;
+  eventTitles: string[];
+  actions: ThemeClusterAction[];
+}
+
+/**
+ * Groups outstanding actions across every active event by inferred theme -
+ * "This week, focus on: Packing (3 items across 2 trips)" instead of
+ * listing the same kind of task separately under each event. Only themes
+ * with at least `minClusterSize` items are returned (a lone item isn't a
+ * batching opportunity), sorted largest-first and capped at `maxClusters`
+ * so this stays a short, actionable suggestion rather than a full taxonomy.
+ * `other` is never returned - it's a catch-all with no coherent batching
+ * value by definition.
+ */
+export function computeThisWeekFocus(
+  events: CalendarEvent[],
+  referenceDateISO: string,
+  options: { withinDays?: number; minClusterSize?: number; maxClusters?: number } = {}
+): ThemeCluster[] {
+  const withinDays = options.withinDays ?? 14;
+  const minClusterSize = options.minClusterSize ?? 2;
+  const maxClusters = options.maxClusters ?? 3;
+
+  const clusters = new Map<ActionTheme, ThemeCluster>();
+
+  for (const event of events) {
+    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
+    for (const milestone of outstanding) {
+      const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
+      const withinHorizon = countdown.isOverdue || countdown.diffDays <= withinDays;
+      if (!withinHorizon) continue;
+
+      const theme = inferActionTheme(milestone);
+      if (theme === 'other') continue;
+
+      const existing = clusters.get(theme) || {
+        theme,
+        label: THEME_LABELS[theme],
+        count: 0,
+        eventTitles: [],
+        actions: [],
+      };
+      existing.count += 1;
+      if (!existing.eventTitles.includes(event.title)) {
+        existing.eventTitles.push(event.title);
+      }
+      existing.actions.push({
+        eventId: event.id,
+        eventTitle: event.title,
+        milestoneId: milestone.id,
+        title: milestone.title,
+      });
+      clusters.set(theme, existing);
+    }
+  }
+
+  return Array.from(clusters.values())
+    .filter((c) => c.count >= minClusterSize)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, maxClusters);
+}
+
 /**
  * The single most urgent outstanding action across every active event -
  * the "what should I do now?" answer for a dashboard that spans more than
