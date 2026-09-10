@@ -25,6 +25,7 @@ import {
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones } from '../utils/tminusRules';
+import { computeAheadStatus, computeNextBestActionForEvent } from '../utils/readiness';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
@@ -296,6 +297,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
   const rawMilestones = activeEvent.milestones || [];
   const countdown = getCountdownStatus(activeEvent.eventDate, currentReferenceDate);
+  const aheadStatus = computeAheadStatus(activeEvent, currentReferenceDate);
+  const nextBestAction = computeNextBestActionForEvent(activeEvent, currentReferenceDate);
   const completedCount = rawMilestones.filter((m) => m.status === 'completed').length;
   // Skipped (e.g. the linked Google Task was deleted) is excluded from the
   // denominator too - it's no longer an outstanding action, so counting it
@@ -368,6 +371,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   <span>{activeEvent.recurrence?.recurrencePatternText || activeEvent.context?.recurrencePatternText || 'Recurring'}</span>
                 </span>
               )}
+              <span
+                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shadow-2xs shrink-0 ${
+                  aheadStatus.level === 'at_risk'
+                    ? 'text-rose-800 bg-rose-100 border-rose-300'
+                    : aheadStatus.level === 'attention'
+                    ? 'text-amber-900 bg-amber-100 border-amber-300'
+                    : aheadStatus.level === 'ready'
+                    ? 'text-slate-700 bg-slate-100 border-slate-300'
+                    : 'text-emerald-900 bg-emerald-100 border-emerald-300'
+                }`}
+                title={aheadStatus.summary}
+              >
+                {aheadStatus.emoji} {aheadStatus.label}
+              </span>
             </div>
 
             <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
@@ -516,6 +533,36 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Next Best Action */}
+        {nextBestAction && (
+          <div
+            className={`rounded-xl px-3 py-2 flex items-center gap-2.5 border ${
+              nextBestAction.isOverdue
+                ? 'bg-rose-50/70 border-rose-200'
+                : nextBestAction.importance === 'critical'
+                ? 'bg-amber-50/70 border-amber-200'
+                : 'bg-sky-50/60 border-sky-200/80'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                nextBestAction.isOverdue ? 'bg-rose-500' : nextBestAction.importance === 'critical' ? 'bg-amber-500' : 'bg-sky-500'
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Next best action</p>
+              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">{nextBestAction.title}</p>
+            </div>
+            <span
+              className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                nextBestAction.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-700 bg-white border border-slate-200'
+              }`}
+            >
+              {nextBestAction.dueLabel}
+            </span>
+          </div>
+        )}
 
         {/* Mini Progress Completion Bar */}
         <div className="space-y-1 pt-0.5">
