@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { TelegramWebhookHandler } from '../_lib/telegramWebhookHandler.js';
+import { TelegramWebhookHandler } from '../../server/telegramWebhookHandler.js';
 
 export default async function handler(req: any, res: any) {
   // Support POST for Telegram webhook updates

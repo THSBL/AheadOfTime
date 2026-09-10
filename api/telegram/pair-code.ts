@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
-import { TelegramSessionStore } from '../_lib/telegramStore.js';
-import { TelegramService } from '../_lib/telegramService.js';
+import { TelegramSessionStore } from '../../server/telegramStore.js';
+import { TelegramService } from '../../server/telegramService.js';
 
 export default async function handler(req: Request, res: Response) {
   if (req.method === 'POST') {

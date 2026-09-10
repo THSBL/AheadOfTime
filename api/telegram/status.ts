@@ -1,5 +1,5 @@
-import { TelegramService } from '../_lib/telegramService.js';
-import { TelegramSessionStore } from '../_lib/telegramStore.js';
+import { TelegramService } from '../../server/telegramService.js';
+import { TelegramSessionStore } from '../../server/telegramStore.js';
 
 export default async function handler(req: any, res: any) {
   // CORS Headers
