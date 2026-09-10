@@ -52,6 +52,19 @@ describe('processWithDeterministicRules', () => {
     expect(result.event.eventDate).toBe('2026-11-20');
   });
 
+  it('parses a natural-language date ("15 october"), not just ISO dates', () => {
+    // Regression test: processWithDeterministicRules only ever matched
+    // ISO dates when extracting the event date, so any natural phrasing
+    // silently fell through to an unrelated placeholder-date fallback -
+    // e.g. producing "22 September" for a message that said "15 October".
+    const result = processWithDeterministicRules({
+      message: 'Trip to Paris on 15 october',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    expect(result.event.eventDate).toBe('2026-10-15');
+  });
+
   it('generates at least one milestone for the created event', () => {
     const result = processWithDeterministicRules({
       message: "Maya's birthday party on 2026-11-20",

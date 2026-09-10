@@ -16,7 +16,8 @@ import {
   detectEventCategory,
   getCleanEventTitle,
   decomposeComplexTripIntent,
-  attachDeliverablesToMilestones
+  attachDeliverablesToMilestones,
+  parseNaturalDateRange
 } from "../src/utils/tminusRules.js";
 
 // Lazy initialize Gemini SDK
@@ -766,15 +767,27 @@ export function processWithDeterministicRules(params: {
     .trim();
 
   const dateMatch = rawMsg.match(/^([^\[\n]+?)\s+on\s+(\d{4}-\d{2}-\d{2})(?:\s+at\s+(\d{1,2}:\d{2}))?/i);
+  // Natural-language dates (e.g. "15 october", "15 oktober", "Oct 15 to 21") - the ISO check
+  // above only matches YYYY-MM-DD, so without this any natural date phrase silently fell
+  // through to the placeholder date below instead of being parsed.
+  const naturalRange = dateMatch ? null : parseNaturalDateRange(rawMsg, params.refDateISO);
   if (dateMatch) {
     if (!title) title = dateMatch[1].trim();
     if (!eventDate) eventDate = dateMatch[2];
     if (dateMatch[3]) eventTime = dateMatch[3];
-  } else if (!title && rawMsg) {
-    let firstSentence = rawMsg.split('.')[0].split('\n')[0].trim();
-    firstSentence = firstSentence.replace(/\s+in\s+[A-Z][a-zA-Z\s,]+$/i, '').trim();
-    if (firstSentence && firstSentence.length <= 60) {
-      title = firstSentence;
+  } else {
+    if (!eventDate && naturalRange?.startDate) {
+      eventDate = naturalRange.startDate;
+    }
+    if (!title && rawMsg) {
+      let firstSentence = rawMsg.split('.')[0].split('\n')[0].trim();
+      firstSentence = firstSentence.replace(/\s+in\s+[A-Z][a-zA-Z\s,]+$/i, '').trim();
+      if (naturalRange?.matchedText) {
+        firstSentence = firstSentence.replace(naturalRange.matchedText, '').replace(/\s+(on|from)\s*$/i, '').trim();
+      }
+      if (firstSentence && firstSentence.length <= 60) {
+        title = firstSentence;
+      }
     }
   }
 

@@ -75,7 +75,7 @@ describe('detectEventCategory', () => {
 describe('parseNaturalDateRange', () => {
   it('parses an explicit ISO date range', () => {
     const result = parseNaturalDateRange('2026-10-15 to 2026-10-18', REF_DATE_ISO);
-    expect(result).toEqual({ startDate: '2026-10-15', endDate: '2026-10-18' });
+    expect(result).toMatchObject({ startDate: '2026-10-15', endDate: '2026-10-18' });
   });
 
   it('parses "<day> <Month>" with an ordinal suffix, defaulting to the reference year', () => {
@@ -90,7 +90,7 @@ describe('parseNaturalDateRange', () => {
 
   it('parses a day-to-day range within one month', () => {
     const result = parseNaturalDateRange('from 15 to 21 October', REF_DATE_ISO);
-    expect(result).toEqual({ startDate: '2026-10-15', endDate: '2026-10-21' });
+    expect(result).toMatchObject({ startDate: '2026-10-15', endDate: '2026-10-21' });
   });
 
   it('returns null when no recognizable date is present', () => {
