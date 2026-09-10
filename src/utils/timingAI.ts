@@ -93,7 +93,7 @@ export function inferTaskTimingLocally(
   }
 
   // 3. Dog sitter, cat sitter, pet boarding & kennels (4 - 8 weeks out)
-  if (text.match(/\b(dog sitter|cat sitter|pet sitter|dog boarding|pet boarding|kennel|cattery|dog hotel|pet hotel|doggy daycare)\b/)) {
+  if (text.match(/\b(dog\s*sitter|cat\s*sitter|pet\s*sitter|dog\s*boarding|pet\s*boarding|kennel|cattery|dog\s*hotel|pet\s*hotel|doggy\s*daycare)\b/)) {
     return {
       amount: 6,
       unit: 'weeks',

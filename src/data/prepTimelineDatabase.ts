@@ -170,7 +170,8 @@ export const PREP_KNOWLEDGE_DATABASE: PrepTaskRule[] = [
     name: 'Book Dog Sitter / Cat Sitter / Pet Boarding',
     category: 'booking',
     keywords: [
-      'dog sitter', 'cat sitter', 'pet sitter', 'dog boarding', 'pet boarding',
+      'dog sitter', 'dogsitter', 'cat sitter', 'catsitter', 'pet sitter', 'petsitter',
+      'dog boarding', 'dogboarding', 'pet boarding', 'petboarding',
       'kennel', 'cattery', 'dog hotel', 'pet hotel', 'doggy daycare', 'dog walker',
       'arrange dog sitter', 'book dog sitter', 'find dog sitter'
     ],
