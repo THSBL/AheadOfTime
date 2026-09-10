@@ -348,7 +348,7 @@ export function getCleanEventTitle(title?: string, category?: string, context?: 
   // Conversational sentence transformation (e.g. "going to brooklyn NY from 15 to 21 oktober for business trip")
   if (/^(going to|flying to|traveling to|trip to)\s+/i.test(cleaned)) {
     const isBusiness = /business|work/i.test(cleaned);
-    const destMatch = cleaned.match(/(?:going to|flying to|traveling to|trip to)\s+([a-zA-Z\s,'-]+?)(?:\s+(?:from|for|on|with|\d|$))/i);
+    const destMatch = cleaned.match(/(?:going to|flying to|traveling to|trip to)\s+([a-zA-Z\s,'-]+?)(?:\s+(?:from|for|on|with|\d)|$)/i);
     const dest = destMatch ? formatDestinationName(destMatch[1].trim()) : '';
     if (isBusiness) {
       return dest ? `Business Trip to ${dest}` : 'Business Trip';
@@ -356,12 +356,14 @@ export function getCleanEventTitle(title?: string, category?: string, context?: 
     return dest ? `Trip to ${dest}` : 'Travel Trip';
   }
 
-  const isGeneric = !cleaned || 
-    /^upcoming(\s+event)?$/i.test(cleaned) || 
+  const isGeneric = !cleaned ||
+    /^upcoming(\s+event)?$/i.test(cleaned) ||
     /^new(\s+event)?$/i.test(cleaned) ||
     cleaned.toLowerCase() === 'event' ||
-    cleaned.toLowerCase() === 'group trip horizon' ||
-    cleaned.toLowerCase().startsWith('group trip horizon');
+    // Only the bare sentinel is generic - once a destination has been
+    // appended (e.g. "Group Trip Horizon (New York)"), it's specific
+    // enough to keep and shouldn't be discarded for a vaguer fallback.
+    cleaned.toLowerCase() === 'group trip horizon';
 
   if (!isGeneric) {
     return cleaned;
@@ -1557,8 +1559,9 @@ export function decomposeComplexTripIntent(
   }
 
   // Check if this is a trip, multi-day span, or contains sub-task/activity requirements
-  const isTripIntent = 
+  const isTripIntent =
     /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?|trip|vacation|holiday|getaway|conference|retreat|weekend/i.test(message) ||
+    /^(going|flying|traveling|travelling|heading)\s+to\s+/i.test(message) ||
     /from\s+.*?to\s+/i.test(message) ||
     /day\s*\d+|2nd\s*day|second\s*day|3rd\s*day|third\s*day/i.test(message);
 
@@ -1616,10 +1619,12 @@ export function decomposeComplexTripIntent(
   }
 
   // Check destination
-  const destMatch = message.match(/(?:to|in)\s+([A-Z][a-zA-Z\s]{2,20}?)(?:\s+(?:from|with|for|,|\.|$))/);
+  const destMatch = message.match(/(?:to|in)\s+([A-Z][a-zA-Z\s]{2,20}?)(?:\s+(?:from|with|for|on|,|\.)|$)/);
   const destination = destMatch ? destMatch[1].trim() : undefined;
   if (destination) {
-    macroTitle = `${macroTitle} (${destination})`;
+    // No specific archetype matched (stag/hen/conference/vacation) - use a
+    // plain, user-facing title instead of exposing the internal sentinel.
+    macroTitle = macroTitle === 'Group Trip Horizon' ? `Trip to ${destination}` : `${macroTitle} (${destination})`;
   }
 
   // 2. Unpack Embedded Sub-Events
