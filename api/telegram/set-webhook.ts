@@ -1,4 +1,4 @@
-import { TelegramService } from '../_lib/telegramService.js';
+import { TelegramService } from '../../server/telegramService.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

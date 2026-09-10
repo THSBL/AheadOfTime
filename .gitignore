@@ -10,3 +10,4 @@ credentials.json
 token.json
 *.key
 *.pem
+.claude/

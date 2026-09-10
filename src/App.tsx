@@ -600,9 +600,9 @@ function App() {
         }
         // Clean URL parameters so manual refresh doesn't trap user
         window.history.replaceState({}, document.title, window.location.pathname);
-      } else {
+      } else if (currentUser?.id) {
         // 2. Fetch from Telegram server events store
-        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}`)
+        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?userId=${encodeURIComponent(currentUser.id)}`)
           .then((r) => r.json())
           .then((data) => {
             const found = data.event;
@@ -625,7 +625,7 @@ function App() {
               window.history.replaceState({}, document.title, window.location.pathname);
             } else {
               // Fallback to searching all events
-              return fetch('/api/telegram/events')
+              return fetch(`/api/telegram/events?userId=${encodeURIComponent(currentUser?.id || '')}`)
                 .then((r) => r.json())
                 .then((allData) => {
                   const f = (allData.events || []).find((e: CalendarEvent) => e.id === eventIdParam);
