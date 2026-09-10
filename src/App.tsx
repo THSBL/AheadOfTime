@@ -681,7 +681,11 @@ function App() {
   const [targetEventForMilestone, setTargetEventForMilestone] = useState<CalendarEvent | null>(null);
   const [selectedBulkEventIds, setSelectedBulkEventIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
-  const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>('list');
+  // Defaults to 'detail' so refreshing/landing on the dashboard shows the
+  // workspace (My Week Ahead, since activeTab also defaults to 'feed')
+  // rather than the raw Active Events list - that list is a picker you
+  // drill into a specific event's timeline from, not the landing screen.
+  const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>('detail');
 
   // Custom Presets & Spreadsheet Importer State
   const [isImportTemplateModalOpen, setIsImportTemplateModalOpen] = useState(false);
@@ -1568,6 +1572,7 @@ function App() {
                 }}
                 onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+                onBackToTabs={() => setMobileDashboardView('detail')}
                 currentReferenceDate={currentReferenceDate}
                 selectedEventIds={selectedBulkEventIds}
                 onToggleSelectEvent={handleToggleSelectEvent}
@@ -1621,10 +1626,13 @@ function App() {
                     type="button"
                     onClick={() => {
                       if (sortedEvents.length > 0) {
-                        if (!selectedEventId) setSelectedEventId(sortedEvents[0].id);
                         setActiveTab('tasks');
                         setFocusMode('adjust-event');
-                        setMobileDashboardView('detail');
+                        // Active Events is the starting point for a detailed
+                        // timeline, not a destination of its own - jump
+                        // straight back into whatever event was already
+                        // selected, otherwise show the picker to choose one.
+                        setMobileDashboardView(selectedEventId ? 'detail' : 'list');
                       }
                     }}
                     disabled={sortedEvents.length === 0}

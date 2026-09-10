@@ -16,6 +16,7 @@ import {
   CheckSquare,
   Square,
   Repeat,
+  ArrowLeft,
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
@@ -27,6 +28,7 @@ interface MessengerSidebarProps {
   onOpenNewEventModal: () => void;
   onOpenScanAgenda?: () => void;
   onOpenGoogleCalendarSync?: () => void;
+  onBackToTabs?: () => void;
   currentReferenceDate: string;
   selectedEventIds: string[];
   onToggleSelectEvent: (eventId: string) => void;
@@ -42,6 +44,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onOpenNewEventModal,
   onOpenScanAgenda,
   onOpenGoogleCalendarSync,
+  onBackToTabs,
   currentReferenceDate,
   selectedEventIds,
   onToggleSelectEvent,
@@ -92,6 +95,16 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
       
       {/* Sidebar Header */}
       <div className="p-3.5 sm:p-4 bg-white/60 border-b border-sky-100/90 backdrop-blur-md space-y-3">
+        {onBackToTabs && (
+          <button
+            type="button"
+            onClick={onBackToTabs}
+            className="lg:hidden inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>My Week Ahead</span>
+          </button>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-sky-100/80 border border-sky-200 flex items-center justify-center">
