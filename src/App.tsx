@@ -834,16 +834,26 @@ function App() {
   const [lastGoogleSyncTime, setLastGoogleSyncTime] = useState<Date | null>(null);
   const [syncToast, setSyncToast] = useState<{ id: number; message: string; count?: number } | null>(null);
 
-  // Core Bidirectional Task Completion Sync (only runs daily unless forced by explicit user action)
+  // Minimum gap between automatic (non-forced) syncs. This used to be a 24h
+  // "once a day" gate, which meant a change made in Google Tasks could sit
+  // unreflected in the app for up to a day unless the user knew to hit
+  // "Force Sync Now" - exactly the kind of silent drift that erodes trust in
+  // the sync. Google Tasks quota headroom is generous for a call this cheap,
+  // so this now only exists to stop back-to-back triggers (mount + focus
+  // firing together, etc.) from double-firing, not to throttle freshness.
+  const MIN_AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+  // How often to re-check while the app is open and in the foreground.
+  const BACKGROUND_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
+  // Core Bidirectional Task Completion Sync
   const runGoogleTaskSync = async (silent = true, force = false) => {
     const token = getStoredAccessToken();
     if (!token || isTokenExpired()) return;
 
-    // Daily check guard: unless forcefully requested by user, only check daily (24h threshold)
     if (!force) {
-      const lastSync = localStorage.getItem('aot_last_daily_task_sync_time');
+      const lastSync = localStorage.getItem('aot_last_task_sync_time');
       const now = Date.now();
-      if (lastSync && now - parseInt(lastSync, 10) < 24 * 60 * 60 * 1000) {
+      if (lastSync && now - parseInt(lastSync, 10) < MIN_AUTO_SYNC_INTERVAL_MS) {
         return;
       }
     }
@@ -856,7 +866,7 @@ function App() {
         setEvents((prev) => mergeEvents(prev, summary.updatedEvents));
       }
       const nowTs = Date.now();
-      localStorage.setItem('aot_last_daily_task_sync_time', nowTs.toString());
+      localStorage.setItem('aot_last_task_sync_time', nowTs.toString());
       setLastGoogleSyncTime(new Date(nowTs));
 
       // ONLY show toast popup if forcefully requested by explicit user action
@@ -895,12 +905,36 @@ function App() {
     return () => clearTimeout(timer);
   }, [syncToast]);
 
-  // Initial mount daily check (respects 24h threshold, no polling interval)
+  // Keep Google Tasks sync fresh while the app is in use: once on mount,
+  // again whenever the tab regains focus/visibility (the moment a user is
+  // most likely to have just changed something in Google Tasks elsewhere),
+  // and periodically in the background otherwise. Each call still respects
+  // MIN_AUTO_SYNC_INTERVAL_MS above, so this is cheap even if multiple
+  // triggers fire close together.
   useEffect(() => {
-    const token = getStoredAccessToken();
-    if (token && !isTokenExpired()) {
-      runGoogleTaskSync(true, false);
-    }
+    const trySync = () => {
+      const token = getStoredAccessToken();
+      if (token && !isTokenExpired()) {
+        runGoogleTaskSync(true, false);
+      }
+    };
+
+    trySync();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        trySync();
+      }
+    };
+    window.addEventListener('focus', trySync);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const intervalId = window.setInterval(trySync, BACKGROUND_SYNC_INTERVAL_MS);
+
+    return () => {
+      window.removeEventListener('focus', trySync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   // Counts
