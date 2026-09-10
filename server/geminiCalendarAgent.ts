@@ -191,11 +191,11 @@ export class GeminiCalendarAgent {
   /**
    * Constructs a full CalendarEvent object with milestones and saves it to store
    */
-  private static buildAndStoreEvent(
+  private static async buildAndStoreEvent(
     chatId: number | string,
     parsed: any,
     rawInputSnippet: string
-  ): CalendarAgentResult {
+  ): Promise<CalendarAgentResult> {
     const eventId = `evt_${Date.now()}`;
     const category: EventCategory = (parsed.category as EventCategory) || 'travel_trip';
     const startDateStr = parsed.start_date;
@@ -250,7 +250,7 @@ export class GeminiCalendarAgent {
       updatedAt: new Date().toISOString(),
     };
 
-    TelegramSessionStore.recordEventCreated(chatId, newEvent);
+    await TelegramSessionStore.recordEventCreated(chatId, newEvent);
 
     let reply = parsed.telegram_reply;
     if (!reply) {
@@ -287,7 +287,7 @@ export class GeminiCalendarAgent {
     chatId: number | string,
     rawText: string,
     prompt: string
-  ): CalendarAgentResult {
+  ): Promise<CalendarAgentResult> {
     // Grounding year / context
     const yearMatch = prompt.match(/\b(202\d)\b/);
     const baseYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;

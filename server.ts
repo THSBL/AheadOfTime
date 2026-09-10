@@ -30,6 +30,7 @@ import { WhatsAppService } from "./server/whatsappService";
 import { AgendaScannerService } from "./server/agendaScanner";
 import { TelegramWebhookHandler } from "./server/telegramWebhookHandler";
 import { TelegramSessionStore } from "./server/telegramStore";
+import { extractBearerToken, verifyGoogleAccessToken } from "./server/googleAuthVerify";
 import { TelegramService } from "./server/telegramService";
 
 dotenv.config();
@@ -782,7 +783,7 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
   const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
   const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
 
-  const pairStatus = TelegramSessionStore.getPairingStatus(code, userId);
+  const pairStatus = await TelegramSessionStore.getPairingStatus(code, userId);
 
   res.json({
     ok: true,
@@ -799,18 +800,18 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
     botInfo: botInfo?.ok ? botInfo.result : null,
     webhookInfo: webhookInfo?.ok ? webhookInfo.result : null,
     inferredWebhookUrl,
-    activeSessions: TelegramSessionStore.getAllSessions().length,
-    storedEventsCount: TelegramSessionStore.getAllEvents().length,
+    activeSessions: (await TelegramSessionStore.getAllSessions()).length,
+    storedEventsCount: (await TelegramSessionStore.getAllEvents()).length,
   });
 });
 
 // 2b. Manual Verification Fallback & Force-Link Endpoint
-app.post("/api/telegram/manual-link", (req: Request, res: Response) => {
+app.post("/api/telegram/manual-link", async (req: Request, res: Response) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   try {
     const { code, username = "Telegram User", chatId } = req.body || {};
     const cleanChatId = chatId && chatId !== 123456789 && chatId !== '123456789' ? chatId : undefined;
-    const record = TelegramSessionStore.manualLink(code, username, cleanChatId);
+    const record = await TelegramSessionStore.manualLink(code, username, cleanChatId);
     res.json({
       ok: true,
       linked: true,
@@ -843,8 +844,16 @@ app.post("/api/telegram/set-webhook", async (req: Request, res: Response) => {
 // 3b. Pairing Code Generation & Account Linking
 app.post(["/api/telegram/pair-code", "/api/pair-code"], async (req: Request, res: Response) => {
   try {
-    const { userId = "user_default", email } = req.body || {};
-    const pairingCode = TelegramSessionStore.createPairingCode(userId, email);
+    // Generating a pairing code ties a Telegram chat to a real web account,
+    // so this requires a verified identity rather than a client-claimed
+    // email/userId - otherwise anyone could request a code claiming to be
+    // someone else's account.
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    if (!verified) {
+      res.status(401).json({ ok: false, error: "Sign in required to generate a pairing code." });
+      return;
+    }
+    const pairingCode = await TelegramSessionStore.createPairingCode(verified.email, verified.email);
     let botUsername = "AheadTimebot";
     try {
       const botMe = await TelegramService.getMe();
@@ -868,26 +877,36 @@ app.post(["/api/telegram/pair-code", "/api/pair-code"], async (req: Request, res
   }
 });
 
-app.get(["/api/telegram/pair-code", "/api/pairing-status"], (req: Request, res: Response) => {
+app.get(["/api/telegram/pair-code", "/api/pairing-status"], async (req: Request, res: Response) => {
   try {
     const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
     const userId = (req.query.userId as string) || "user_default";
-    const status = TelegramSessionStore.getPairingStatus(code, userId);
+    const status = await TelegramSessionStore.getPairingStatus(code, userId);
     res.json(status);
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message || "Failed to check pairing status" });
   }
 });
 
-app.delete("/api/telegram/pair-code", (req: Request, res: Response) => {
+app.delete("/api/telegram/pair-code", async (req: Request, res: Response) => {
   try {
+    // Unlinking by userId disconnects someone's Telegram account, so it
+    // requires verified identity rather than a client-claimed userId -
+    // otherwise anyone could unlink another user's Telegram by guessing
+    // their email. Unlinking by chatId is left as-is: that's already
+    // scoped to a specific Telegram chat, not an arbitrary claimed user.
     const { chatId, userId } = req.body || {};
     if (chatId) {
-      TelegramSessionStore.unlinkSession(chatId);
+      await TelegramSessionStore.unlinkSession(chatId);
     } else if (userId) {
-      const session = TelegramSessionStore.getLinkedSessionForWebUser(userId);
+      const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+      if (!verified || verified.email.toLowerCase() !== String(userId).toLowerCase()) {
+        res.status(401).json({ ok: false, error: "Sign in required to unlink this account." });
+        return;
+      }
+      const session = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
       if (session) {
-        TelegramSessionStore.unlinkSession(session.chatId);
+        await TelegramSessionStore.unlinkSession(session.chatId);
       }
     }
     res.json({ ok: true, message: "Unlinked successfully" });
@@ -904,7 +923,7 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
 
     // If targetChatId is a placeholder or not provided, try resolving from active linked sessions
     if (!targetChatId || targetChatId === 123456789 || targetChatId === '123456789' || targetChatId === 'demo') {
-      const activeSessions = TelegramSessionStore.getAllSessions();
+      const activeSessions = await TelegramSessionStore.getAllSessions();
       const linkedSession = activeSessions.find(s => s.isLinked && s.chatId && s.chatId !== 123456789 && s.chatId !== '123456789');
       if (linkedSession) {
         targetChatId = linkedSession.chatId;
@@ -940,18 +959,30 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
 });
 
 // 5. Get Events created via Telegram (User/Account Scoped)
-app.get("/api/telegram/events", (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || (req.query.email as string);
-  if (!userId || userId.toLowerCase().trim() === 'guest' || userId.toLowerCase().trim() === 'anonymous') {
+app.get("/api/telegram/events", async (req: Request, res: Response) => {
+  // Returns real event data, so identity must be verified rather than
+  // trusted from a query param - a client-supplied userId was exactly how
+  // the earlier cross-user event exposure bug worked.
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
     res.json({ ok: true, events: [] });
     return;
   }
-  const events = TelegramSessionStore.getAllEvents(userId);
+  const events = await TelegramSessionStore.getAllEvents(verified.email);
   res.json({ ok: true, events });
 });
 
-app.get("/api/telegram/event/:id", (req: Request, res: Response) => {
-  const event = TelegramSessionStore.getEvent(req.params.id);
+app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {
+  // Scope through the same ownership-filtered query as /api/telegram/events
+  // (this route previously called getEvent() directly with no ownership
+  // check at all - the same class of bug already fixed in api/telegram/*).
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(404).json({ ok: false, error: "Event not found" });
+    return;
+  }
+  const events = await TelegramSessionStore.getAllEvents(verified.email);
+  const event = events.find((e) => e.id === req.params.id);
   if (event) {
     res.json({ ok: true, event });
   } else {

@@ -343,7 +343,10 @@ function App() {
     const syncTelegramEvents = async () => {
       try {
         const userParam = `?userId=${encodeURIComponent(currentUser.id)}`;
-        const res = await fetch(`/api/telegram/events${userParam}`);
+        const accessToken = getStoredAccessToken();
+        const res = await fetch(`/api/telegram/events${userParam}`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+        });
         const data = await res.json();
         if (data.ok && Array.isArray(data.events) && data.events.length > 0) {
           // Double check user didn't log out while request was in flight
@@ -594,7 +597,13 @@ function App() {
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (currentUser?.id) {
         // 2. Fetch from Telegram server events store
-        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?userId=${encodeURIComponent(currentUser.id)}`)
+        const telegramAuthHeaders = (() => {
+          const token = getStoredAccessToken();
+          return token ? { Authorization: `Bearer ${token}` } : {};
+        })();
+        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?userId=${encodeURIComponent(currentUser.id)}`, {
+          headers: telegramAuthHeaders,
+        })
           .then((r) => r.json())
           .then((data) => {
             const found = data.event;
@@ -617,7 +626,9 @@ function App() {
               window.history.replaceState({}, document.title, window.location.pathname);
             } else {
               // Fallback to searching all events
-              return fetch(`/api/telegram/events?userId=${encodeURIComponent(currentUser?.id || '')}`)
+              return fetch(`/api/telegram/events?userId=${encodeURIComponent(currentUser?.id || '')}`, {
+                headers: telegramAuthHeaders,
+              })
                 .then((r) => r.json())
                 .then((allData) => {
                   const f = (allData.events || []).find((e: CalendarEvent) => e.id === eventIdParam);
