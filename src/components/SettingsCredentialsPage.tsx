@@ -5,7 +5,8 @@ import { TelegramIntegrationCard } from './TelegramIntegrationCard';
 import { AdvancedDeveloperSettingsDrawer } from './AdvancedDeveloperSettingsDrawer';
 import { ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, Settings2, Check } from 'lucide-react';
 import { CalendarEvent, OnboardingProfile } from '../types';
-import { getCurrentUser, loadUserEvents, loadUserOnboardingProfile, saveUserOnboardingProfile } from '../services/accountManager';
+import { getCurrentUser, loadUserEvents } from '../services/accountManager';
+import { useUserProfile } from '../contexts/UserProfileContext';
 
 interface SettingsCredentialsPageProps {
   onSyncComplete?: (events: CalendarEvent[]) => void;
@@ -25,9 +26,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
     return loadUserEvents(user.id);
   });
 
-  const [onboardingProfile, setOnboardingProfile] = useState<OnboardingProfile | null>(() => {
-    return loadUserOnboardingProfile(currentUser?.id);
-  });
+  const { profile: onboardingProfile, saveProfile } = useUserProfile();
 
   const [editFamilyStructure, setEditFamilyStructure] = useState<string>(onboardingProfile?.family_structure || 'single');
   const [editCalendarScope, setEditCalendarScope] = useState<string>(onboardingProfile?.calendar_type || 'mixed');
@@ -52,8 +51,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
       calendarType: editCalendarScope === 'business' ? 'Business' : editCalendarScope === 'personal' ? 'Personal only' : 'Mixed (Personal & Work)',
       homeZipOrLocation: editHomeLocation,
     };
-    setOnboardingProfile(updatedProfile);
-    saveUserOnboardingProfile(updatedProfile, currentUser?.id);
+    saveProfile(updatedProfile);
     setSavedSuccessMessage(true);
     setTimeout(() => setSavedSuccessMessage(false), 3000);
   };

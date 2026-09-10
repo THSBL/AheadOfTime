@@ -152,6 +152,7 @@ export async function processWithGemini(params: {
   intakeAnswer?: { questionId: string; parameterKey: string; answerValue: string };
   batchAnswers?: { parameterKey: string; answerValue: string }[];
   activeEvents: CalendarEvent[];
+  userProfile?: { homeZipOrLocation?: string };
 }): Promise<ProcessAgentResponsePayload> {
   const systemInstruction = `You are the AheadOfTime Conversational Planning Engine.
 
@@ -463,12 +464,16 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   const additionText = parsed.conversational_response || parsed.addition || `I have scheduled your multi-track prep milestones and lead times.`;
   const formattedReply = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
-  // Merge context: existing -> AI extracted -> directly extracted tag parameters
+  // Merge context: existing -> AI extracted -> directly extracted tag parameters -> user profile
   const mergedContext = {
     ...(params.existingEvent?.context || {}),
     ...(parsed.context || {}),
     ...tagContext,
   };
+
+  if (params.userProfile?.homeZipOrLocation) {
+    mergedContext.homeZipOrLocation = params.userProfile.homeZipOrLocation;
+  }
 
   if (params.intakeAnswer) {
     mergedContext[params.intakeAnswer.parameterKey] = params.intakeAnswer.answerValue;
@@ -665,6 +670,7 @@ export function processWithDeterministicRules(params: {
   intakeAnswer?: { questionId: string; parameterKey: string; answerValue: string };
   batchAnswers?: { parameterKey: string; answerValue: string }[];
   transcribedVoiceText?: string;
+  userProfile?: { homeZipOrLocation?: string };
 }): ProcessAgentResponsePayload {
   const msgLower = (params.message || "").toLowerCase();
   const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -728,6 +734,7 @@ export function processWithDeterministicRules(params: {
       context: {
         ...extractContextFromMessage(params.message, params.existingEvent?.context),
         archetype: macro.type,
+        ...(params.userProfile?.homeZipOrLocation ? { homeZipOrLocation: params.userProfile.homeZipOrLocation } : {}),
       },
       milestones: finalMappedMilestones,
       rawInputSnippet: params.message,
@@ -781,6 +788,9 @@ export function processWithDeterministicRules(params: {
   let mode: OperationalMode = "CREATE_AND_INTAKE";
   let category: any = params.existingEvent?.category || detectEventCategory(title || params.message, params.message);
   const context: any = extractContextFromMessage(params.message, params.existingEvent?.context);
+  if (params.userProfile?.homeZipOrLocation) {
+    context.homeZipOrLocation = params.userProfile.homeZipOrLocation;
+  }
   title = getCleanEventTitle(title, category, context);
 
   if (params.intakeAnswer) {

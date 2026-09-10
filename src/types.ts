@@ -238,6 +238,13 @@ export interface ProcessAgentInputPayload {
     parameterKey: string;
     answerValue: string;
   }[];
+  // Subset of the user's OnboardingProfile relevant to planning (e.g. home
+  // location for international-destination / travel-distance detection in
+  // tminusRules.ts). Only the fields the planner actually consumes belong
+  // here - not the full profile.
+  userProfile?: {
+    homeZipOrLocation?: string;
+  };
 }
 
 export interface ProcessAgentResponsePayload {

@@ -58,18 +58,17 @@ import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/goog
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst } from './utils/tminusRules';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
-import { 
-  AuthUser, 
-  getCurrentUser, 
-  setCurrentUser as setGlobalCurrentUser, 
-  loadUserEvents, 
-  saveUserEvents, 
-  loadUserMessages, 
-  saveUserMessages, 
-  loadUserOnboardingProfile, 
-  saveUserOnboardingProfile, 
-  logoutAndClearAccountSession 
+import {
+  AuthUser,
+  getCurrentUser,
+  setCurrentUser as setGlobalCurrentUser,
+  loadUserEvents,
+  saveUserEvents,
+  loadUserMessages,
+  saveUserMessages,
+  logoutAndClearAccountSession
 } from './services/accountManager';
+import { UserProfileProvider, useUserProfile } from './contexts/UserProfileContext';
 
 const INITIAL_MESSAGES: AgentMessage[] = [
   {
@@ -241,19 +240,9 @@ function App() {
     }
   });
 
-  const [onboardingProfile, setOnboardingProfile] = useState<OnboardingProfile | null>(() => {
-    const user = getCurrentUser();
-    return loadUserOnboardingProfile(user?.id);
-  });
-
-
-
-  // Save onboarding profile to user-scoped storage
-  useEffect(() => {
-    if (onboardingProfile && !isInitializing) {
-      saveUserOnboardingProfile(onboardingProfile, currentUser?.id);
-    }
-  }, [onboardingProfile, currentUser?.id, isInitializing]);
+  // Single source of truth for the onboarding profile - derived from
+  // UserProfileContext, which tracks the active account itself.
+  const { profile: onboardingProfile, saveProfile } = useUserProfile();
 
   // Account switch event listener & verification on mount
   useEffect(() => {
@@ -263,11 +252,11 @@ function App() {
       
       const freshEvents = nextUser?.id ? loadUserEvents(nextUser.id) : [];
       const freshMessages = loadUserMessages(nextUser?.id, nextUser?.name);
-      const freshProfile = loadUserOnboardingProfile(nextUser?.id);
 
       setEvents(freshEvents);
       setMessages(freshMessages);
-      setOnboardingProfile(freshProfile);
+      // onboardingProfile itself is refreshed by UserProfileContext's own
+      // aot_account_switched listener - no need to duplicate that here.
       setSelectedEventId(null);
       setSelectedBulkEventIds([]);
     };
@@ -294,7 +283,8 @@ function App() {
             setCurrentUser(newUser);
             setEvents(loadUserEvents(newUser.id));
             setMessages(loadUserMessages(newUser.id, newUser.name));
-            setOnboardingProfile(loadUserOnboardingProfile(newUser.id));
+            // setGlobalCurrentUser dispatches aot_account_switched, which
+            // UserProfileContext listens for to refresh onboardingProfile.
           }
         }
       }).catch((err) => {
@@ -431,7 +421,8 @@ function App() {
           setCurrentUser(user);
           setEvents(loadUserEvents(user.id));
           setMessages(loadUserMessages(user.id, user.name));
-          setOnboardingProfile(loadUserOnboardingProfile(user.id));
+          // setGlobalCurrentUser dispatches aot_account_switched, which
+          // UserProfileContext listens for to refresh onboardingProfile.
           setCurrentView('dashboard');
         }
       }
@@ -460,7 +451,8 @@ function App() {
           setCurrentUser(user);
           setEvents(loadUserEvents(user.id));
           setMessages(loadUserMessages(user.id, user.name));
-          setOnboardingProfile(loadUserOnboardingProfile(user.id));
+          // setGlobalCurrentUser dispatches aot_account_switched, which
+          // UserProfileContext listens for to refresh onboardingProfile.
           setSelectedEventId(null);
         }
       }
@@ -476,7 +468,8 @@ function App() {
     setEvents([]);
     setSelectedBulkEventIds([]);
     setMessages(loadUserMessages('guest'));
-    setOnboardingProfile(null);
+    // logoutAndClearAccountSession dispatches aot_account_switched (user:
+    // null), which UserProfileContext listens for to refresh onboardingProfile.
     setSelectedEventId(null);
     setCurrentView('landing');
   };
@@ -520,9 +513,8 @@ function App() {
     } catch (e) {
       console.warn('Could not save onboarding profile', e);
     }
-    saveUserOnboardingProfile(profile, currentUser?.id ?? getCurrentUser()?.id);
+    saveProfile(profile);
     setHasCompletedOnboarding(true);
-    setOnboardingProfile(profile);
     setCurrentView('dashboard');
 
     if (action === 'connect_calendar') {
@@ -929,6 +921,7 @@ function App() {
             currentReferenceDate,
             activeEvents: events,
             targetEventId: undefined,
+            userProfile: { homeZipOrLocation: onboardingProfile?.homeZipOrLocation },
           }),
         }),
         new Promise((resolve) => setTimeout(resolve, 1500)),
@@ -1801,13 +1794,12 @@ function App() {
         onClose={() => setIsPreferencesModalOpen(false)}
         profile={onboardingProfile}
         onSaveProfile={(profile) => {
-          setOnboardingProfile(profile);
           try {
             localStorage.setItem('onboarding_profile', JSON.stringify(profile));
           } catch (e) {
             console.warn('Failed to save profile', e);
           }
-          saveUserOnboardingProfile(profile, currentUser?.id);
+          saveProfile(profile);
         }}
         onOpenPrivacyPolicy={() => {
           setIsPreferencesModalOpen(false);
@@ -1942,6 +1934,7 @@ function LandingRoute() {
 // Onboarding Route Component
 function OnboardingRoute() {
   const navigate = useNavigate();
+  const { saveProfile } = useUserProfile();
 
   const handleComplete = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => {
     try {
@@ -1955,7 +1948,7 @@ function OnboardingRoute() {
     } catch (e) {
       console.warn('Error saving onboarding profile', e);
     }
-    saveUserOnboardingProfile(profile, getCurrentUser()?.id);
+    saveProfile(profile);
     navigate(action === 'connect_calendar' ? '/dashboard?scan=true' : '/dashboard');
   };
 
@@ -1970,31 +1963,33 @@ function OnboardingRoute() {
 // Main App Router Entry Point
 export default function AppWithRouter() {
   return (
-    <BrowserRouter>
-      <AnalyticsTracker />
-      <Routes>
-        {/* Public / SEO Routes */}
-        <Route path="/" element={<LandingRoute />} />
-        <Route path="/onboarding" element={<OnboardingRoute />} />
-        <Route path="/features" element={<FeaturesPage />} />
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/feedback" element={<FeedbackPage />} />
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+    <UserProfileProvider>
+      <BrowserRouter>
+        <AnalyticsTracker />
+        <Routes>
+          {/* Public / SEO Routes */}
+          <Route path="/" element={<LandingRoute />} />
+          <Route path="/onboarding" element={<OnboardingRoute />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-        {/* Protected Application Routes */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<App />} />
-          <Route path="/events" element={<App />} />
-          <Route path="/events/new" element={<App />} />
-          <Route path="/events/:id" element={<App />} />
-          <Route path="/events/:id/edit" element={<App />} />
-          <Route path="/settings/credentials" element={<SettingsCredentialsPage />} />
-          <Route path="/settings/profile" element={<SettingsProfilePage />} />
-        </Route>
+          {/* Protected Application Routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<App />} />
+            <Route path="/events" element={<App />} />
+            <Route path="/events/new" element={<App />} />
+            <Route path="/events/:id" element={<App />} />
+            <Route path="/events/:id/edit" element={<App />} />
+            <Route path="/settings/credentials" element={<SettingsCredentialsPage />} />
+            <Route path="/settings/profile" element={<SettingsProfilePage />} />
+          </Route>
 
-        {/* Catch-all Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Catch-all Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </UserProfileProvider>
   );
 }

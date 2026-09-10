@@ -26,7 +26,8 @@ export default async function handler(req: any, res: any) {
       activeEvents = [],
       targetEventId,
       intakeAnswer,
-      batchAnswers
+      batchAnswers,
+      userProfile
     } = payload;
 
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date("2026-09-01T03:20:00-07:00");
@@ -84,7 +85,8 @@ export default async function handler(req: any, res: any) {
         existingEvent,
         intakeAnswer,
         batchAnswers,
-        transcribedVoiceText
+        transcribedVoiceText,
+        userProfile
       });
       res.json(instantResult);
       return;
@@ -102,6 +104,7 @@ export default async function handler(req: any, res: any) {
           intakeAnswer,
           batchAnswers,
           activeEvents,
+          userProfile,
         });
         if (transcribedVoiceText) {
           result.transcribedText = transcribedVoiceText;
@@ -115,7 +118,8 @@ export default async function handler(req: any, res: any) {
           existingEvent,
           intakeAnswer,
           batchAnswers,
-          transcribedVoiceText
+          transcribedVoiceText,
+          userProfile
         });
       }
     } else {
@@ -126,7 +130,8 @@ export default async function handler(req: any, res: any) {
         existingEvent,
         intakeAnswer,
         batchAnswers,
-        transcribedVoiceText
+        transcribedVoiceText,
+        userProfile
       });
     }
 

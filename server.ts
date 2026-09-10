@@ -458,15 +458,16 @@ Ensure every input task is preserved and calibrated. Output ONLY the raw JSON ob
 app.post("/api/agent/process", async (req: Request, res: Response): Promise<void> => {
   try {
     const payload: ProcessAgentInputPayload = req.body;
-    let { 
-      message = "", 
-      audioBase64, 
-      mimeType, 
-      currentReferenceDate, 
-      activeEvents = [], 
+    let {
+      message = "",
+      audioBase64,
+      mimeType,
+      currentReferenceDate,
+      activeEvents = [],
       targetEventId,
       intakeAnswer,
-      batchAnswers
+      batchAnswers,
+      userProfile
     } = payload;
 
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date("2026-09-01T03:20:00-07:00");
@@ -524,7 +525,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         existingEvent,
         intakeAnswer,
         batchAnswers,
-        transcribedVoiceText
+        transcribedVoiceText,
+        userProfile
       });
       res.json(instantResult);
       return;
@@ -542,6 +544,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
           intakeAnswer,
           batchAnswers,
           activeEvents,
+          userProfile,
         });
         if (transcribedVoiceText) {
           result.transcribedText = transcribedVoiceText;
@@ -555,7 +558,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
           existingEvent,
           intakeAnswer,
           batchAnswers,
-          transcribedVoiceText
+          transcribedVoiceText,
+          userProfile
         });
       }
     } else {
@@ -566,7 +570,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         existingEvent,
         intakeAnswer,
         batchAnswers,
-        transcribedVoiceText
+        transcribedVoiceText,
+        userProfile
       });
     }
 

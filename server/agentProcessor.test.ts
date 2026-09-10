@@ -76,4 +76,24 @@ describe('processWithDeterministicRules', () => {
     });
     expect(second.event.context.giftType).toBe('group');
   });
+
+  it('threads the userProfile home location into the event context (so tminusRules can consume it)', () => {
+    const result = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      userProfile: { homeZipOrLocation: 'Brussels, Belgium' },
+    });
+    expect(result.event.context.homeZipOrLocation).toBe('Brussels, Belgium');
+  });
+
+  it('threads the userProfile home location through the hierarchical trip-decomposition path', () => {
+    const result = processWithDeterministicRules({
+      message: 'Weekend trip Friday to Sunday with activity for the 2nd day',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      userProfile: { homeZipOrLocation: 'Brussels, Belgium' },
+    });
+    expect(result.event.context.homeZipOrLocation).toBe('Brussels, Belgium');
+  });
 });
