@@ -6,6 +6,7 @@ import {
   parseNaturalDateRange,
   getCleanEventTitle,
   detectEventCategory,
+  attachDeliverablesToMilestones,
 } from '../src/utils/tminusRules.js';
 
 export interface CalendarAgentResult {
@@ -95,6 +96,32 @@ Always ensure date arithmetic for milestones is accurate: target_date = start_da
 // DEFAULT_FAST_MODELS - a single hardcoded model name means the bot goes
 // permanently dark the moment that one model is deprecated/renamed.
 const CALENDAR_AGENT_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.6-flash'];
+
+/**
+ * Re-derives each milestone's deliverables from its own title via the same
+ * deterministic keyword matching agentProcessor.ts's web-app milestones use
+ * (attachDeliverablesToMilestones). The model's originally-suggested
+ * deliverables are kept as a defensive fallback for an empty result, but in
+ * practice attachDeliverablesToMilestones always synthesizes at least one
+ * title-derived deliverable via its own generic catch-all branch, so this
+ * makes the deterministic engine the sole source of deliverable content -
+ * deliberately, since trusting the model's own pairing was the actual bug
+ * (it can pair the wrong deliverable text to the wrong milestone when asked
+ * to produce several at once, e.g. a passport milestone ending up with
+ * football-kit deliverable text for a kids' sports trip abroad). Exported
+ * standalone (rather than inlined in buildAndStoreEvent) so this is
+ * directly testable without a live Gemini call.
+ */
+export function reconcileMilestoneDeliverables(
+  milestonesPendingDeliverables: TMinusMilestone[],
+  modelDeliverablesByIndex: Map<number, Deliverable[]>
+): TMinusMilestone[] {
+  const deterministic = attachDeliverablesToMilestones(milestonesPendingDeliverables);
+  return deterministic.map((ms, idx) => ({
+    ...ms,
+    deliverables: ms.deliverables.length > 0 ? ms.deliverables : modelDeliverablesByIndex.get(idx) || [],
+  }));
+}
 
 export class GeminiCalendarAgent {
   private static aiClient: GoogleGenAI | null = null;
@@ -279,12 +306,22 @@ export class GeminiCalendarAgent {
             deliverables: m.description ? [m.description] : [],
           }));
 
-    // Map extracted milestones
-    const milestones: TMinusMilestone[] = rawMilestones.map((m: any, idx: number) => {
+    // Map extracted milestones. The model's own `deliverables` strings are
+    // kept only as a fallback, not trusted outright: a model asked to
+    // produce several milestones at once (e.g. one about a passport, one
+    // about football kit for a kids' sports trip abroad) can pair the wrong
+    // deliverable text to the wrong milestone - the same "no single
+    // authoritative planner" failure mode the web app already solved for
+    // its own milestones via attachDeliverablesToMilestones's title-keyword
+    // matching. Re-deriving deliverables from each milestone's own title
+    // here, the same way, means a topic mismatch in the model's output gets
+    // corrected instead of stored verbatim.
+    const modelDeliverablesByIndex = new Map<number, Deliverable[]>();
+    const milestonesPendingDeliverables: TMinusMilestone[] = rawMilestones.map((m: any, idx: number) => {
       const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
       const targetDate = m.target_date || startDateStr;
 
-      const deliverables: Deliverable[] = Array.isArray(m.deliverables)
+      const modelDeliverables: Deliverable[] = Array.isArray(m.deliverables)
         ? m.deliverables.map((d: any, dIdx: number) => ({
             deliverable_id: `del_${Date.now()}_${idx}_${dIdx}`,
             title: typeof d === 'string' ? d : d.title || 'Action item',
@@ -292,6 +329,7 @@ export class GeminiCalendarAgent {
             is_completed: false,
           }))
         : [];
+      modelDeliverablesByIndex.set(idx, modelDeliverables);
 
       return {
         id: `ms_${Date.now()}_${idx}`,
@@ -303,9 +341,11 @@ export class GeminiCalendarAgent {
         category: 'logistics',
         status: 'pending',
         scope: 'macro',
-        deliverables,
+        deliverables: [],
       };
     });
+
+    const milestones: TMinusMilestone[] = reconcileMilestoneDeliverables(milestonesPendingDeliverables, modelDeliverablesByIndex);
 
     const newEvent: CalendarEvent = {
       id: eventId,
