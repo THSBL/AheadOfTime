@@ -213,40 +213,62 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     let pairingUrl = '';
     let randomToken = '';
 
-    // 1. Request pairing link directly from live Cloud Run pairing endpoint
-    try {
-      const response = await fetch('https://telegram-webhook-705347156449.europe-west1.run.app/pair', {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
+    // Generating a pairing code ties this Telegram chat to your real
+    // account, so it has to come from our own backend, which verifies
+    // your sign-in and resolves your real email server-side - NOT from a
+    // client-generated random code or the old, unrelated Cloud Run
+    // pairing service. Those produced a code that was shown to the user
+    // but never actually registered against their real account, which is
+    // exactly why linking silently fell back to an anonymous placeholder
+    // even when the user was signed in.
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      setIsLinking(false);
+      setFeedback({
+        type: 'error',
+        message: 'Please sign in (and make sure your calendar connection is active) before connecting Telegram.',
       });
+      return;
+    }
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.url || data.deepLink) {
-          pairingUrl = data.url || data.deepLink;
-          const match = pairingUrl.match(/[?&]start=([^&]+)/);
-          if (match && match[1]) {
-            randomToken = match[1];
-          }
-        }
+    try {
+      const res = await fetch('/api/telegram/pair-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) {
+        setIsLinking(false);
+        setFeedback({
+          type: 'error',
+          message: 'Could not start Telegram pairing - please sign in again and retry.',
+        });
+        return;
       }
+      const data = await res.json();
+      randomToken = data.pairingCode || data.pairCode;
+      pairingUrl = data.deepLink;
     } catch (err) {
-      console.warn('[TelegramCard] Cloud Run direct pair endpoint fetch fallback:', err);
+      setIsLinking(false);
+      setFeedback({ type: 'error', message: 'Could not reach the server to start Telegram pairing. Please try again.' });
+      return;
     }
 
-    // Fallback if needed
-    if (!randomToken) {
-      randomToken = `pair_${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`;
-    }
-    if (!pairingUrl) {
-      pairingUrl = `https://t.me/AheadTimebot?start=${randomToken}`;
+    if (!randomToken || !pairingUrl) {
+      setIsLinking(false);
+      setFeedback({ type: 'error', message: 'Could not generate a pairing code. Please try again.' });
+      return;
     }
 
     setActivePairCode(randomToken);
     setPairingLink(pairingUrl);
     setIsWaitingForHandshake(true);
 
-    // 2. Write staging doc to Firestore at pairings/<randomToken>
+    // Best-effort staging doc for the Firestore-based status listener below
+    // (harmless if it fails - Firestore isn't the source of truth here).
     try {
       await setDoc(doc(db, 'pairings', randomToken), {
         user_id: userId,
@@ -255,23 +277,6 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       });
     } catch (err) {
       console.warn('Firestore setDoc staging notice (using backend synchronization):', err);
-    }
-
-    // 3. Register pairing on local backend server for dual-stack support.
-    // This now requires a verified sign-in (the backend derives identity
-    // from this token, not from the userId/email in the body).
-    try {
-      const accessToken = getStoredAccessToken();
-      await fetch('/api/telegram/pair-code', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({ userId, code: randomToken }),
-      });
-    } catch (e) {
-      // Offline fallback
     }
 
     // Open Telegram Bot with deep link
