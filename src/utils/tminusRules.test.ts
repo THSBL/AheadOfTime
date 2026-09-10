@@ -96,6 +96,14 @@ describe('parseNaturalDateRange', () => {
   it('returns null when no recognizable date is present', () => {
     expect(parseNaturalDateRange('no dates mentioned here', REF_DATE_ISO)).toBeNull();
   });
+
+  it('parses a tightly-written "<Month> <day>-<day>" range with no spaces around the hyphen', () => {
+    // Regression test: the range separator required surrounding whitespace,
+    // so "Oct 14-18" silently fell through to the single-date pattern and
+    // dropped the end date entirely.
+    const result = parseNaturalDateRange('Oct 14-18', REF_DATE_ISO);
+    expect(result).toMatchObject({ startDate: '2026-10-14', endDate: '2026-10-18' });
+  });
 });
 
 describe('decomposeComplexTripIntent', () => {
@@ -133,6 +141,18 @@ describe('decomposeComplexTripIntent', () => {
   it('gives a specific title to a recognized archetype (stag party) alongside the destination', () => {
     const result = decomposeComplexTripIntent('Stag party trip to Prague', REF_DATE_ISO);
     expect(result?.macro_event.title).toBe('Stag Party Weekend (Prague)');
+  });
+
+  it('extracts the destination when immediately followed by a bare month/date (no "on")', () => {
+    // Regression test: the destination regex only stopped at "from|with|for
+    // |on|,|." - a destination directly followed by a date like "Highlands
+    // Oct 14-18" swallowed the month name into the capture, the trailing
+    // digits then broke the [a-zA-Z\s] class, the whole match failed, and
+    // the generic "Group Trip Horizon" sentinel leaked through as the title.
+    const result = decomposeComplexTripIntent('Trip to Scottish Highlands Oct 14-18 with 4 friends', REF_DATE_ISO);
+    expect(result?.macro_event.title).toContain('Scottish Highlands');
+    expect(result?.macro_event.start_date).toBe('2026-10-14');
+    expect(result?.macro_event.end_date).toBe('2026-10-18');
   });
 });
 
