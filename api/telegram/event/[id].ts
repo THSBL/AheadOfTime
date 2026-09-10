@@ -1,4 +1,5 @@
 import { TelegramSessionStore } from '../../../server/telegramStore.js';
+import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -6,12 +7,14 @@ export default async function handler(req: any, res: any) {
   }
 
   const eventId = req.query.id;
-  const userId = req.query.userId || req.query.user_id;
-
   if (!eventId) {
     return res.status(400).json({ ok: false, error: 'Missing event id' });
   }
-  if (!userId) {
+
+  // This endpoint returns real event data, so identity must be verified
+  // rather than trusted from a query param - see /api/telegram/events.
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
     // No caller identity: never confirm existence of, or return, another user's event.
     return res.status(404).json({ ok: false, error: 'Event not found' });
   }
@@ -19,7 +22,8 @@ export default async function handler(req: any, res: any) {
   // Scope the lookup through the same ownership-filtered query used by
   // /api/telegram/events, so a guessed/known event id can't be used to
   // read another user's event.
-  const event = TelegramSessionStore.getAllEvents(String(userId)).find((e) => e.id === String(eventId));
+  const events = await TelegramSessionStore.getAllEvents(verified.email);
+  const event = events.find((e) => e.id === String(eventId));
 
   if (!event) {
     return res.status(404).json({ ok: false, error: 'Event not found' });

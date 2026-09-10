@@ -15,6 +15,7 @@ import {
   Copy
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
+import { getStoredAccessToken } from '../services/googleAuth';
 import { db } from '@/lib/firebase';
 import { doc, setDoc, onSnapshot, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -256,11 +257,17 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       console.warn('Firestore setDoc staging notice (using backend synchronization):', err);
     }
 
-    // 3. Register pairing on local backend server for dual-stack support
+    // 3. Register pairing on local backend server for dual-stack support.
+    // This now requires a verified sign-in (the backend derives identity
+    // from this token, not from the userId/email in the body).
     try {
+      const accessToken = getStoredAccessToken();
       await fetch('/api/telegram/pair-code', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({ userId, code: randomToken }),
       });
     } catch (e) {

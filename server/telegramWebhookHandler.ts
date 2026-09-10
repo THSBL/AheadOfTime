@@ -54,9 +54,6 @@ export class TelegramWebhookHandler {
         TelegramWebhookHandler.processedUpdateIds.set(updateId, Date.now());
       }
 
-      // 3. Fast Webhook Acknowledgment: Immediately respond HTTP 200 so Telegram never retries
-      res.status(200).json({ ok: true });
-
       // 4. Resolve application base URL
       const appBaseUrl =
         process.env.APP_URL ||
@@ -65,7 +62,7 @@ export class TelegramWebhookHandler {
         (req.get('host') ? `https://${req.get('host')}` : '') ||
         'https://aheadoftime.app';
 
-      console.log('📥 Telegram update received & ACKed:', {
+      console.log('📥 Telegram update received:', {
         update_id: update.update_id,
         has_message: Boolean(update.message),
         has_callback: Boolean(update.callback_query),
@@ -73,34 +70,35 @@ export class TelegramWebhookHandler {
         text: update.message?.text?.slice(0, 40),
       });
 
-      // 5. Run processing asynchronously in background
-      setImmediate(async () => {
-        try {
-          // Handle Callback Query (Button clicks)
-          if (update.callback_query) {
-            await TelegramWebhookHandler.handleCallbackQuery(update.callback_query, appBaseUrl);
-            return;
-          }
-
-          // Handle Incoming Message (standard, edited, or channel post)
+      // 5. Process the update BEFORE responding. Vercel serverless
+      // functions can freeze/tear down immediately once a response is
+      // sent, which does not reliably let setImmediate/background work
+      // finish (confirmed directly: it never ran at all in testing) - so
+      // "ack first, process in the background" silently drops updates on
+      // serverless. Processing synchronously is simpler and safe here
+      // because the duplicate-update check above already marks the
+      // update_id as seen before this runs, so a Telegram retry (if this
+      // takes long enough to trigger one) is correctly deduped rather
+      // than reprocessed.
+      try {
+        if (update.callback_query) {
+          await TelegramWebhookHandler.handleCallbackQuery(update.callback_query, appBaseUrl);
+        } else {
           const incomingMessage = update.message || update.edited_message || update.channel_post;
           if (incomingMessage) {
             await TelegramWebhookHandler.handleIncomingMessage(incomingMessage, appBaseUrl);
-            return;
-          }
-
-          // Handle update with effective_chat fallback if present
-          if (update.effective_chat?.id && update.text) {
+          } else if (update.effective_chat?.id && update.text) {
             await TelegramWebhookHandler.handleIncomingMessage(
               { chat: update.effective_chat, text: update.text, from: update.effective_user },
               appBaseUrl
             );
-            return;
           }
-        } catch (bgErr) {
-          console.error('❌ Error in background Telegram update processing:', bgErr);
         }
-      });
+      } catch (processingErr) {
+        console.error('❌ Error processing Telegram update:', processingErr);
+      }
+
+      res.status(200).json({ ok: true });
     } catch (err) {
       console.error('❌ Error handling Telegram webhook update:', err);
       if (!res.headersSent) {
@@ -119,7 +117,7 @@ export class TelegramWebhookHandler {
     const text = (message.text || '').trim();
     const from = message.from;
 
-    const session = TelegramSessionStore.getOrCreateSession(chatId, from);
+    const session = await TelegramSessionStore.getOrCreateSession(chatId, from);
 
     // Command: /start (with or without pairing code)
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start=')) {
@@ -129,12 +127,8 @@ export class TelegramWebhookHandler {
 
       if (pairCode) {
         console.log(`[Telegram Webhook] Received pairing attempt for code:`, pairCode);
-        TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
+        await TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
       }
-
-      // Mark session as active and linked
-      session.isLinked = true;
-      TelegramSessionStore.saveToDisk();
 
       const welcome = [
         `*Ahead Of Time* — Active Executive Calendar Assistant`,
@@ -161,7 +155,7 @@ export class TelegramWebhookHandler {
 
     // Command: /unlink
     if (text === '/unlink') {
-      TelegramSessionStore.unlinkSession(chatId);
+      await TelegramSessionStore.unlinkSession(chatId);
       await TelegramService.sendMessage(
         chatId,
         `🔌 *Account Unlinked*\n\nYour Telegram chat has been disconnected from your web account. You can reconnect anytime via ${appBaseUrl}/settings/credentials.`,
@@ -193,7 +187,7 @@ export class TelegramWebhookHandler {
 
     // Command: /status
     if (text === '/status') {
-      const events = TelegramSessionStore.getRecentEventsForChat(chatId);
+      const events = await TelegramSessionStore.getRecentEventsForChat(chatId);
       const isLinked = Boolean(session.isLinked);
       const statusText = [
         `*System Status*:`,
@@ -211,7 +205,7 @@ export class TelegramWebhookHandler {
 
     // Command: /events
     if (text === '/events') {
-      const events = TelegramSessionStore.getRecentEventsForChat(chatId);
+      const events = await TelegramSessionStore.getRecentEventsForChat(chatId);
       if (events.length === 0) {
         await TelegramService.sendMessage(
           chatId,
@@ -277,7 +271,7 @@ export class TelegramWebhookHandler {
 
     if (data.startsWith('CONFIRM_DEFAULT:')) {
       const eventId = data.replace('CONFIRM_DEFAULT:', '');
-      const event = TelegramSessionStore.getEvent(eventId);
+      const event = await TelegramSessionStore.getEvent(eventId);
 
       if (event) {
         event.needsRefinement = false;
