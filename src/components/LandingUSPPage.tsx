@@ -53,15 +53,17 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             <span>Privacy Notice</span>
           </a>
 
-          <button
-            onClick={() => {
-              trackButtonClick('Get Started For Free', 'landing_header');
-              onGetStarted();
-            }}
-            className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            <span>Get Started For Free</span>
-          </button>
+          {!onGoToDashboard && (
+            <button
+              onClick={() => {
+                trackButtonClick('Get Started For Free', 'landing_header');
+                onGetStarted();
+              }}
+              className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Get Started For Free</span>
+            </button>
+          )}
         </div>
       </div>
 
