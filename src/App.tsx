@@ -520,6 +520,7 @@ function App() {
     } catch (e) {
       console.warn('Could not save onboarding profile', e);
     }
+    saveUserOnboardingProfile(profile, currentUser?.id ?? getCurrentUser()?.id);
     setHasCompletedOnboarding(true);
     setOnboardingProfile(profile);
     setCurrentView('dashboard');
@@ -1806,6 +1807,7 @@ function App() {
           } catch (e) {
             console.warn('Failed to save profile', e);
           }
+          saveUserOnboardingProfile(profile, currentUser?.id);
         }}
         onOpenPrivacyPolicy={() => {
           setIsPreferencesModalOpen(false);
@@ -1953,6 +1955,7 @@ function OnboardingRoute() {
     } catch (e) {
       console.warn('Error saving onboarding profile', e);
     }
+    saveUserOnboardingProfile(profile, getCurrentUser()?.id);
     navigate(action === 'connect_calendar' ? '/dashboard?scan=true' : '/dashboard');
   };
 

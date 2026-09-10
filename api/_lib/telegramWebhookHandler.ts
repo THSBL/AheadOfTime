@@ -25,18 +25,16 @@ export class TelegramWebhookHandler {
    */
   public static async handleWebhook(req: Request, res: Response): Promise<void> {
     try {
-      // 1. Webhook secret verification (if configured & supplied)
+      // 1. Webhook secret verification (if configured, a matching header is required)
       const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
       const receivedSecret =
         req.headers['x-telegram-bot-api-secret-token'] ||
         req.headers['X-Telegram-Bot-Api-Secret-Token'];
-      
-      if (expectedSecret && receivedSecret) {
-        if (receivedSecret !== expectedSecret) {
-          console.warn('⚠️ Telegram webhook secret mismatch, ignoring update.');
-          res.status(403).json({ error: 'Secret mismatch' });
-          return;
-        }
+
+      if (expectedSecret && receivedSecret !== expectedSecret) {
+        console.warn('⚠️ Telegram webhook secret mismatch, ignoring update.');
+        res.status(403).json({ error: 'Secret mismatch' });
+        return;
       }
 
       const update = req.body;

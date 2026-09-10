@@ -43,7 +43,12 @@ const app = express();
 const PORT = 3000;
 
 // Body parser
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({
+  limit: "50mb",
+  verify: (req: any, _res: any, buf: Buffer) => {
+    req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Lazy initialize Gemini SDK

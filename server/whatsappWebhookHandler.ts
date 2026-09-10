@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { WhatsAppSessionStore } from './whatsappStore.js';
 import { WhatsAppService } from './whatsappService.js';
 import { WhatsAppIntakeService } from './whatsappIntake.js';
@@ -13,19 +14,43 @@ export class WhatsAppWebhookHandler {
     const mode = req.query['hub.mode'] || req.query['mode'] || 'subscribe';
     const token = req.query['hub.verify_token'] || req.query['verify_token'];
     const challenge = req.query['hub.challenge'] || req.query['challenge'];
+    const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN?.trim();
 
-    console.log('🔍 WhatsApp Webhook verification request received:', { mode, token, challenge, query: req.query });
+    console.log('🔍 WhatsApp Webhook verification request received:', { mode, query: req.query });
 
-    // Always succeed if a challenge is provided by Meta
-    if (challenge) {
-      console.log('✅ WhatsApp Webhook verified successfully (permissive challenge mode)!');
+    if (challenge && expectedToken && token === expectedToken) {
+      console.log('✅ WhatsApp Webhook verified successfully.');
       res.setHeader('Content-Type', 'text/plain');
       res.status(200).send(String(challenge));
       return;
     }
 
-    console.warn('❌ WhatsApp Webhook verification failed. Missing challenge.');
-    res.status(403).send('Forbidden: Missing challenge');
+    console.warn('❌ WhatsApp Webhook verification failed. Token mismatch or missing challenge.');
+    res.status(403).send('Forbidden: Verification failed');
+  }
+
+  /**
+   * Verifies the X-Hub-Signature-256 header against WHATSAPP_APP_SECRET.
+   * Returns true if no app secret is configured (dev/local fallback) so the
+   * integration keeps working before that secret is set up, but logs a warning.
+   */
+  private static isValidSignature(req: Request & { rawBody?: Buffer }): boolean {
+    const appSecret = process.env.WHATSAPP_APP_SECRET?.trim();
+    if (!appSecret) {
+      console.warn('⚠️ WHATSAPP_APP_SECRET not configured; skipping WhatsApp webhook signature verification.');
+      return true;
+    }
+
+    const signatureHeader = req.headers['x-hub-signature-256'];
+    if (!signatureHeader || typeof signatureHeader !== 'string' || !req.rawBody) {
+      return false;
+    }
+
+    const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex');
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const receivedBuf = Buffer.from(signatureHeader, 'utf8');
+    if (expectedBuf.length !== receivedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
   }
 
   /**
@@ -33,7 +58,13 @@ export class WhatsAppWebhookHandler {
    * Incoming webhook notifications from Meta Cloud API
    */
   public static async handleIncomingMessage(req: Request, res: Response): Promise<void> {
-    // 1. Immediately acknowledge receipt with 200 OK to satisfy Meta SLA (< 3000ms)
+    if (!WhatsAppWebhookHandler.isValidSignature(req)) {
+      console.warn('⚠️ WhatsApp webhook signature mismatch, rejecting update.');
+      res.status(403).json({ error: 'Signature mismatch' });
+      return;
+    }
+
+    // Acknowledge receipt with 200 OK to satisfy Meta SLA (< 3000ms)
     res.status(200).json({ status: 'received' });
 
     const payload: MetaWebhookPayload = req.body;
