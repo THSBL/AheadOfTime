@@ -1585,7 +1585,10 @@ function App() {
                 <div className="flex items-center gap-1.5 p-1 bg-white/80 backdrop-blur-md rounded-2xl border border-sky-200/90 shadow-2xs">
                   <button
                     type="button"
-                    onClick={() => setActiveTab('feed')}
+                    onClick={() => {
+                      setActiveTab('feed');
+                      setMobileDashboardView('detail');
+                    }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       activeTab === 'feed'
                         ? 'bg-[#0f172a] text-white shadow-xs'
@@ -1602,6 +1605,7 @@ function App() {
                       setSelectedEventId(null);
                       setActiveTab('chat');
                       setFocusMode('welcome');
+                      setMobileDashboardView('detail');
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       activeTab === 'chat'
@@ -1620,6 +1624,7 @@ function App() {
                         if (!selectedEventId) setSelectedEventId(sortedEvents[0].id);
                         setActiveTab('tasks');
                         setFocusMode('adjust-event');
+                        setMobileDashboardView('detail');
                       }
                     }}
                     disabled={sortedEvents.length === 0}
