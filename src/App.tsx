@@ -14,6 +14,7 @@ import { Header } from './components/Header';
 import { MessengerSidebar } from './components/MessengerSidebar';
 import { ChatConsole } from './components/ChatConsole';
 import { EventTimelineRadar } from './components/EventTimelineRadar';
+import { MyWeekAhead } from './components/MyWeekAhead';
 import { ManualEventModal } from './components/ManualEventModal';
 import { CustomMilestoneModal } from './components/CustomMilestoneModal';
 import { GoogleCalendarSync } from './components/GoogleCalendarSync';
@@ -224,7 +225,7 @@ function App() {
   }, [events, currentReferenceDate]);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>('chat');
+  const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>('feed');
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
   const [isWizardInputFocused, setIsWizardInputFocused] = useState(false);
 
@@ -1584,13 +1585,26 @@ function App() {
                 <div className="flex items-center gap-1.5 p-1 bg-white/80 backdrop-blur-md rounded-2xl border border-sky-200/90 shadow-2xs">
                   <button
                     type="button"
+                    onClick={() => setActiveTab('feed')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      activeTab === 'feed'
+                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>My Week Ahead</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => {
                       setSelectedEventId(null);
                       setActiveTab('chat');
                       setFocusMode('welcome');
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                      activeTab === 'chat' || !selectedEventId || focusMode === 'welcome'
+                      activeTab === 'chat'
                         ? 'bg-[#0f172a] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
@@ -1639,7 +1653,24 @@ function App() {
               </div>
 
               {/* Workspace Content */}
-              {activeTab === 'chat' || !selectedEventId || focusMode === 'welcome' ? (
+              {activeTab === 'feed' ? (
+                <MyWeekAhead
+                  events={sortedEvents}
+                  currentReferenceDate={currentReferenceDate}
+                  onSelectEvent={(id) => {
+                    setSelectedEventId(id);
+                    setActiveTab('tasks');
+                    setFocusMode('adjust-event');
+                    setMobileDashboardView('detail');
+                    navigate(`/events/${id}`);
+                  }}
+                  onOpenNewEventModal={() => {
+                    setSelectedEventId(null);
+                    setActiveTab('chat');
+                    setFocusMode('welcome');
+                  }}
+                />
+              ) : activeTab === 'chat' || !selectedEventId || focusMode === 'welcome' ? (
                 <div className="flex-1 min-h-0 h-full overflow-y-auto">
                   <ChatConsole
                     messages={messages}

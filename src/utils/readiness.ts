@@ -146,6 +146,78 @@ export function computeAheadStatus(event: CalendarEvent, referenceDateISO: strin
   };
 }
 
+/**
+ * Aggregates computeAheadStatus across every active event into a single
+ * dashboard-level reading - the answer to "am I prepared overall?" rather
+ * than "am I prepared for this one thing?". Uses the same level-decision
+ * rules as the per-event version, just applied to summed counts, so the
+ * two stay consistent with each other.
+ */
+export function computeOverallAheadStatus(events: CalendarEvent[], referenceDateISO: string): AheadStatus {
+  const perEvent = events.map((event) => computeAheadStatus(event, referenceDateISO));
+
+  const totalCount = perEvent.reduce((sum, s) => sum + s.totalCount, 0);
+  const completedCount = perEvent.reduce((sum, s) => sum + s.completedCount, 0);
+  const overdueCount = perEvent.reduce((sum, s) => sum + s.overdueCount, 0);
+  const criticalOutstandingCount = perEvent.reduce((sum, s) => sum + s.criticalOutstandingCount, 0);
+  const hasOverdueCritical = perEvent.some((s) => s.level === 'at_risk');
+
+  const base = { completedCount, totalCount, overdueCount, criticalOutstandingCount };
+
+  if (totalCount === 0 || completedCount === totalCount) {
+    return {
+      ...base,
+      level: 'ready',
+      emoji: '✓',
+      label: 'Ready',
+      summary: totalCount === 0 ? 'No preparation actions needed right now.' : `All ${totalCount} actions complete.`,
+    };
+  }
+
+  if (hasOverdueCritical) {
+    return {
+      ...base,
+      level: 'at_risk',
+      emoji: '🔴',
+      label: "You're at risk",
+      summary: `${overdueCount} overdue action${overdueCount > 1 ? 's' : ''} across your events, including something critical.`,
+    };
+  }
+
+  if (overdueCount > 0) {
+    return {
+      ...base,
+      level: 'attention',
+      emoji: '🟡',
+      label: 'Needs attention',
+      summary: `${overdueCount} action${overdueCount > 1 ? 's are' : ' is'} overdue.`,
+    };
+  }
+
+  const completionRatio = completedCount / totalCount;
+  const outstandingNote = criticalOutstandingCount > 0
+    ? ` ${criticalOutstandingCount > 1 ? 'Some important items are' : 'One important item is'} still outstanding.`
+    : '';
+
+  if (completionRatio >= 0.7) {
+    return {
+      ...base,
+      level: 'ahead',
+      emoji: '🟢',
+      label: "You're ahead",
+      summary: `${completedCount} of ${totalCount} actions complete.${outstandingNote}`,
+    };
+  }
+
+  return {
+    ...base,
+    level: 'on_track',
+    emoji: '🟢',
+    label: "You're on track",
+    summary: `${completedCount} of ${totalCount} actions complete.${outstandingNote}`,
+  };
+}
+
 const IMPORTANCE_WEIGHT: Record<ActionImportance, number> = { critical: 0, important: 1, routine: 2 };
 
 /**

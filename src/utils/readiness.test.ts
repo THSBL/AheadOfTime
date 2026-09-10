@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeAheadStatus,
+  computeOverallAheadStatus,
   computeNextBestActionForEvent,
   computeNextBestAction,
   inferMilestoneImportance,
@@ -111,6 +112,38 @@ describe('computeAheadStatus', () => {
       makeMilestone({ id: 'b', status: 'pending', calculatedDate: '2026-09-20' }),
     ]);
     expect(computeAheadStatus(event, REF_DATE_ISO).level).toBe('on_track');
+  });
+});
+
+describe('computeOverallAheadStatus', () => {
+  it('reports ready when there are no events', () => {
+    expect(computeOverallAheadStatus([], REF_DATE_ISO).level).toBe('ready');
+  });
+
+  it('is at_risk if any single event is at_risk, even if others are ready', () => {
+    const readyEvent = makeEvent([makeMilestone({ status: 'completed' })], { id: 'evt-ready', title: 'Ready Event' });
+    const riskyEvent = makeEvent(
+      [makeMilestone({ category: 'booking', scope: 'macro', calculatedDate: '2026-09-01', status: 'pending' })],
+      { id: 'evt-risky', title: 'Risky Event' }
+    );
+    const overall = computeOverallAheadStatus([readyEvent, riskyEvent], REF_DATE_ISO);
+    expect(overall.level).toBe('at_risk');
+  });
+
+  it('sums completed/total counts across all events', () => {
+    const eventA = makeEvent([makeMilestone({ id: 'a1', status: 'completed', calculatedDate: '2026-09-20' })], {
+      id: 'evt-a',
+    });
+    const eventB = makeEvent(
+      [
+        makeMilestone({ id: 'b1', status: 'pending', calculatedDate: '2026-09-20' }),
+        makeMilestone({ id: 'b2', status: 'pending', calculatedDate: '2026-09-20' }),
+      ],
+      { id: 'evt-b' }
+    );
+    const overall = computeOverallAheadStatus([eventA, eventB], REF_DATE_ISO);
+    expect(overall.completedCount).toBe(1);
+    expect(overall.totalCount).toBe(3);
   });
 });
 
