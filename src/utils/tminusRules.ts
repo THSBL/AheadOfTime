@@ -250,8 +250,9 @@ export function parseNaturalDateRange(
   const monthRegexPart = Object.keys(monthMap).sort((a, b) => b.length - a.length).join('|');
 
   // Pattern A: "from 15 to 21 oktober" or "15 to 21 October" or "15 - 21 oct 2026"
+  // or a tightly-written "15-21 oktober" with no spaces around the hyphen.
   const patternA = new RegExp(
-    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchA = raw.match(patternA);
@@ -273,7 +274,7 @@ export function parseNaturalDateRange(
 
   // Pattern B: "from 15 oktober to 21 oktober" or "15 oct to 21 nov"
   const patternB = new RegExp(
-    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchB = raw.match(patternB);
@@ -293,9 +294,10 @@ export function parseNaturalDateRange(
     };
   }
 
-  // Pattern C: "October 15 to 21" or "Oct 15 - Oct 21"
+  // Pattern C: "October 15 to 21" or "Oct 15 - Oct 21" or a tightly-written
+  // "Oct 14-18" with no spaces around the hyphen.
   const patternC = new RegExp(
-    `(?:from\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(?:(${monthRegexPart})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(?:(${monthRegexPart})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchC = raw.match(patternC);
@@ -1621,8 +1623,19 @@ export function decomposeComplexTripIntent(
     macroTitle = 'Vacation & Holiday Getaway';
   }
 
-  // Check destination
-  const destMatch = message.match(/(?:to|in)\s+([A-Z][a-zA-Z\s]{2,20}?)(?:\s+(?:from|with|for|on|,|\.)|$)/);
+  // Check destination. The terminator alternation also stops before a bare
+  // month name ("...Highlands Oct 14-18") - without it, "Oct" gets swallowed
+  // into the destination capture, the trailing digits break the [a-zA-Z\s]
+  // class, and the whole match fails, leaving the generic "Group Trip
+  // Horizon" sentinel as the title.
+  // Not case-insensitive overall - the leading [A-Z] must stay case-sensitive
+  // so common lowercase words don't get mistaken for a destination, so both
+  // cases of each month abbreviation are listed explicitly instead.
+  const monthStopWords =
+    'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+  const destMatch = message.match(
+    new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z\\s]{2,20}?)(?:\\s+(?:from|with|for|on|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|$)`)
+  );
   const destination = destMatch ? destMatch[1].trim() : undefined;
   if (destination) {
     // No specific archetype matched (stag/hen/conference/vacation) - use a
