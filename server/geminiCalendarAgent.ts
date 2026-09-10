@@ -94,7 +94,7 @@ Always ensure date arithmetic for milestones is accurate: target_date = start_da
 // Fast active models to try in order, mirroring agentProcessor.ts's
 // DEFAULT_FAST_MODELS - a single hardcoded model name means the bot goes
 // permanently dark the moment that one model is deprecated/renamed.
-const CALENDAR_AGENT_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+const CALENDAR_AGENT_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.6-flash'];
 
 export class GeminiCalendarAgent {
   private static aiClient: GoogleGenAI | null = null;

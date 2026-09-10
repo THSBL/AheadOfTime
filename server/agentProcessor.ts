@@ -39,12 +39,12 @@ export function getGeminiClient(): GoogleGenAI {
 // Fast active models prioritized for calendar planning and reasoning
 export const DEFAULT_FAST_MODELS = [
   "gemini-3.1-flash-lite",
-  "gemini-2.5-flash",
+  "gemini-3.6-flash",
 ];
 
 export const TRANSCRIBE_MODELS = [
   "gemini-3.1-flash-lite",
-  "gemini-2.5-flash",
+  "gemini-3.6-flash",
 ];
 
 // Multi-model fast execution with low latency and strict timeout
