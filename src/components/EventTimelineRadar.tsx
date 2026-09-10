@@ -92,6 +92,19 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [clarifyLocation, setClarifyLocation] = useState('');
   const [isDeepRefining, setIsDeepRefining] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
+  const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
+
+  const toggleMilestoneExpanded = (milestoneId: string) => {
+    setExpandedMilestoneIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(milestoneId)) {
+        next.delete(milestoneId);
+      } else {
+        next.add(milestoneId);
+      }
+      return next;
+    });
+  };
   const [refiningDeliverable, setRefiningDeliverable] = useState<TMinusMilestone | null>(null);
 
   const activeEvent = selectedEventId 
@@ -747,8 +760,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             const isSkipped = ms.status === 'skipped';
             const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
             const isOverdue = !isCompleted && !isSkipped && msCountdown.isOverdue;
+            const isUrgentSoon = !isOverdue && !isCompleted && !isSkipped && msCountdown.diffDays <= 3;
             const isDeliverable = ms.kind === 'deliverable';
             const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
+            const isExpanded = expandedMilestoneIds.has(ms.id);
+            const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
 
             return (
               <div
@@ -789,14 +805,26 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   </button>
 
                   <div className="space-y-1 min-w-0 flex-1 w-full">
-                    {/* Tag / Badge row */}
+                    {/* Tag / Badge row - a single urgency-colored due signal instead of
+                        the date being repeated three different ways */}
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <span className={`font-mono text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
-                        isOverdue
-                          ? 'text-rose-800 bg-rose-100 border-rose-300'
-                          : 'text-sky-950 bg-sky-50 border-sky-200/80'
-                      }`}>
-                        {ms.tMinusLabel}
+                      {!isCompleted && !isSkipped && (
+                        <span
+                          className={`text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 inline-flex items-center gap-1 ${
+                            isOverdue
+                              ? 'text-rose-800 bg-rose-100 border-rose-300'
+                              : isUrgentSoon
+                              ? 'text-amber-900 bg-amber-100 border-amber-300'
+                              : 'text-slate-600 bg-slate-100 border-slate-200'
+                          }`}
+                          title={ms.tMinusLabel}
+                        >
+                          {isOverdue && <AlertTriangle className="w-2.5 h-2.5 shrink-0" />}
+                          <span>{msCountdown.label}</span>
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                        {formatDisplayDate(ms.calculatedDate)}
                       </span>
 
                       {isSkipped && (
@@ -806,15 +834,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         </span>
                       )}
 
-                      {/* Milestone vs Deliverable Badge */}
-                      {isDeliverable ? (
+                      {isDeliverable && (
                         <span className="text-[10px] font-bold text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#0e1d2c]" />
                           <span>Deliverable</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-medium text-slate-500 bg-slate-100/90 border border-slate-200/60 px-1.5 py-0.5 rounded shrink-0 hidden sm:inline">
-                          Milestone
                         </span>
                       )}
 
@@ -839,35 +862,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                           {ms.relativeDay || 'In-Trip'}
                         </span>
                       )}
-                      {ms.scope === 'macro' && (
-                        <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 hidden sm:inline">
-                          Trip Prep
-                        </span>
-                      )}
-                      {ms.tag && (
-                        <span className="text-[10px] font-semibold text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100 shrink-0 hidden sm:inline">
-                          {ms.tag}
-                        </span>
-                      )}
-                      
-                      {isOverdue && (
-                        <span className="text-[10px] text-rose-700 font-bold bg-rose-100/90 px-1.5 py-0.5 rounded-md border border-rose-300 inline-flex items-center gap-1 shrink-0 shadow-2xs">
-                          <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
-                          <span>{msCountdown.label}</span>
-                        </span>
-                      )}
-
-                      {!isOverdue && !isCompleted && (
-                        <span className="sm:hidden text-[10px] text-sky-800 font-semibold bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100">
-                          {msCountdown.label}
-                        </span>
-                      )}
                     </div>
 
                     {/* Task Title */}
                     <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
-                      isCompleted 
-                        ? 'line-through text-slate-400' 
+                      isCompleted
+                        ? 'line-through text-slate-400'
                         : isOverdue
                         ? 'text-rose-950 font-black'
                         : isDeliverable
@@ -884,142 +884,77 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       </p>
                     )}
 
-                    {/* Attached Deliverables (1-3 actionable items under this Milestone Gate) */}
+                    {/* Sub-tasks - collapsed by default. Google Calendar/Tasks only
+                        ever shows the milestone, never these, so they're kept
+                        deliberately lightweight and secondary rather than a second
+                        tier of full task cards. */}
                     {hasDeliverables && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-1.5 w-full">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c] px-2 py-0.5 rounded-md shadow-2xs inline-flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#0e1d2c]" />
-                              <span>Deliverables</span>
-                            </span>
-                            <span className="text-[11px] font-semibold text-slate-600">
-                              ({ms.deliverables!.filter((d) => d.is_completed).length}/{ms.deliverables!.length} completed)
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono text-slate-400">Action items</span>
-                        </div>
+                      <div className="pt-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMilestoneExpanded(ms.id);
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                        >
+                          <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                          <span>{completedDelivCount}/{ms.deliverables!.length} sub-tasks</span>
+                        </button>
 
-                        <div className="grid grid-cols-1 gap-1.5 pt-0.5 w-full">
-                          {ms.deliverables!.map((deliv) => {
-                            const isDelivDone = deliv.is_completed;
-                            return (
-                              <div
-                                key={deliv.deliverable_id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleDeliverable(ms, deliv.deliverable_id);
-                                }}
-                                className={`group/deliv flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
-                                  isDelivDone
-                                    ? 'bg-slate-50/80 border-slate-200 text-slate-400'
-                                    : 'bg-white hover:bg-slate-50/90 border-[#0e1d2c]/20 hover:border-[#0e1d2c]/60 text-slate-800 shadow-2xs'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {isExpanded && (
+                          <div className="mt-1.5 pl-4 space-y-1">
+                            {ms.deliverables!.map((deliv) => {
+                              const isDelivDone = deliv.is_completed;
+                              return (
+                                <div
+                                  key={deliv.deliverable_id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleDeliverable(ms, deliv.deliverable_id);
+                                  }}
+                                  className="flex items-center gap-2 py-0.5 cursor-pointer group/deliv"
+                                >
                                   <button
                                     type="button"
-                                    className={`w-4 h-4 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                                    className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                                       isDelivDone
-                                        ? 'bg-[#0e1d2c] text-white shadow-2xs'
-                                        : 'border border-[#0e1d2c]/40 hover:border-[#0e1d2c] text-transparent'
+                                        ? 'bg-[#0e1d2c] text-white'
+                                        : 'border border-slate-300 group-hover/deliv:border-[#0e1d2c] text-transparent'
                                     }`}
-                                    title={isDelivDone ? 'Mark deliverable as pending' : 'Mark deliverable as complete'}
+                                    title={isDelivDone ? 'Mark sub-task as pending' : 'Mark sub-task as complete'}
                                   >
-                                    <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                    <Check className="w-2 h-2 stroke-[3]" />
                                   </button>
-                                  <span className={`text-xs font-medium truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                  <span className={`text-[11px] sm:text-xs truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
                                     {deliv.title}
                                   </span>
                                 </div>
-
-                                <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${
-                                  isDelivDone
-                                    ? 'text-slate-400 bg-slate-100 border-slate-200'
-                                    : 'text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c]/40'
-                                }`}>
-                                  {deliv.type}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
-
-                    {/* Mobile-only Bottom Meta & Actions Row */}
-                    <div className="sm:hidden flex items-center justify-between pt-1.5 mt-0.5 border-t border-slate-100 gap-2 w-full">
-                      <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-slate-700">
-                        <Calendar className="w-3 h-3 text-sky-600" />
-                        <span>Date: {formatDisplayDate(ms.calculatedDate)}</span>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
-                          <button
-                            onClick={() => setRefiningDeliverable(ms)}
-                            className="p-1 px-2 rounded-lg text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                            title="Refine deliverable details"
-                          >
-                            <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                            <span>Refine</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setEditingMilestone(ms)}
-                          className="p-1 px-2 rounded-lg text-slate-600 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
-                          title="Edit task"
-                        >
-                          <Edit3 className="w-2.5 h-2.5" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTask(ms.id)}
-                          className="p-1 px-1.5 rounded-lg text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 text-[11px] transition-all cursor-pointer"
-                          title="Delete this task"
-                        >
-                          <Trash2 className="w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
-                {/* Desktop-only Right Side: Due Date & Actions */}
-                <div className="hidden sm:flex sm:flex-col sm:items-end gap-1.5 shrink-0 pl-2">
-                  <div className="text-right">
-                    <div className={`text-xs font-mono font-bold ${isOverdue ? 'text-rose-700' : 'text-slate-800'}`}>
-                      {formatDisplayDate(ms.calculatedDate)}
-                    </div>
-                    {isOverdue ? (
-                      <div className="text-[10px] text-rose-700 font-bold bg-rose-100 px-2 py-0.5 rounded-md border border-rose-300 mt-0.5 inline-flex items-center gap-1 shadow-2xs">
-                        <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
-                        <span>{msCountdown.label}</span>
-                      </div>
-                    ) : (
-                      <div className="text-[10px] text-sky-700 font-semibold bg-sky-50/70 px-1.5 py-0.5 rounded border border-sky-100 mt-0.5">
-                        {msCountdown.label}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Desktop Task Actions (Edit & Delete) */}
-                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity pt-1">
-                    <button
-                      onClick={() => setEditingMilestone(ms)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
-                      title="Edit task date, topic, or description"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTask(ms.id)}
-                      className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-                      title="Delete this task"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                {/* Actions (Edit & Delete) - quiet by default, not competing with content */}
+                <div className="flex items-center gap-1 self-end sm:self-start opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    onClick={() => setEditingMilestone(ms)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
+                    title="Edit task date, topic, or description"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTask(ms.id)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                    title="Delete this task"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             );
