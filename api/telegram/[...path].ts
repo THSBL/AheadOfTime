@@ -218,28 +218,12 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ ok: true, events: ownedEvents });
   }
 
-  // --- /api/telegram/event/:id ---
-  if (route === 'event') {
-    if (req.method !== 'GET') {
-      return res.status(405).json({ error: 'Method not allowed' });
-    }
-    const eventId = segments[1];
-    const userId = req.query.userId || req.query.user_id;
-
-    if (!eventId) {
-      return res.status(400).json({ ok: false, error: 'Missing event id' });
-    }
-    if (!userId) {
-      // No caller identity: never confirm existence of, or return, another user's event.
-      return res.status(404).json({ ok: false, error: 'Event not found' });
-    }
-
-    const event = TelegramSessionStore.getAllEvents(String(userId)).find((e) => e.id === String(eventId));
-    if (!event) {
-      return res.status(404).json({ ok: false, error: 'Event not found' });
-    }
-    return res.status(200).json({ ok: true, event });
-  }
+  // Note: /api/telegram/event/:id is handled by its own dedicated file
+  // (api/telegram/event/[id].ts), not here - a two-segment path under
+  // this catch-all was never actually reaching this handler on Vercel
+  // (confirmed via logging, in both local vercel dev and production), so
+  // it's kept as a separate function instead. There's enough headroom
+  // under the Hobby plan's 12-function cap for one extra file here.
 
   return res.status(404).json({ ok: false, error: 'Not found' });
 }
