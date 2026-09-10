@@ -1010,30 +1010,30 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
         />
       ) : (
         <div className="space-y-3">
-          {/* Primary Presets Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+          {/* Primary Presets Grid - compact horizontal row, matching the
+              secondary presets' already-tighter layout below rather than a
+              vertical stack that leaves a large icon box as the only thing
+              on its own row. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
             {primaryPresets.map((preset: PromptPreset) => (
               <button
                 key={preset.id}
                 onClick={() => handleSelectPreset(preset)}
-                className="group relative text-left p-3 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-2"
+                className="group relative text-left p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-3"
               >
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-100 text-xl sm:text-2xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
-                    {preset.emoji}
-                  </div>
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
+                <div className="w-9 h-9 shrink-0 rounded-xl bg-slate-100 text-lg flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                  {preset.emoji}
                 </div>
-
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-slate-900 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors">
                     {preset.title}
                   </h3>
-                  <p className="text-xs text-slate-500 font-normal leading-relaxed mt-0.5">
+                  <p className="text-[11px] text-slate-500 font-normal leading-snug mt-0.5 line-clamp-2">
                     {preset.description}
                   </p>
+                </div>
+                <div className="w-6 h-6 shrink-0 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </div>
               </button>
             ))}
