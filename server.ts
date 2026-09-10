@@ -64,15 +64,13 @@ function getGeminiClient(): GoogleGenAI {
 
 // Fast active models prioritized for calendar planning and reasoning
 const DEFAULT_FAST_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
   "gemini-3.1-flash-lite",
+  "gemini-2.5-flash",
 ];
 
 const TRANSCRIBE_MODELS = [
+  "gemini-3.1-flash-lite",
   "gemini-2.5-flash",
-  "gemini-3.5-transcribe",
-  "gemini-flash-latest",
 ];
 
 // Multi-model fast execution with low latency and strict timeout

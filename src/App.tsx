@@ -246,6 +246,8 @@ function App() {
     return loadUserOnboardingProfile(user?.id);
   });
 
+
+
   // Save onboarding profile to user-scoped storage
   useEffect(() => {
     if (onboardingProfile && !isInitializing) {
@@ -1503,6 +1505,8 @@ function App() {
 
           {/* Main Dashboard Layout (Master-Detail on Mobile, 2-Column on Desktop) */}
           <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 overflow-hidden relative z-10 animate-in fade-in duration-700">
+            
+
             
             {/* Left Console: Event Navigator (Screen State 1 on mobile) */}
             <div className={`${mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'} lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>

@@ -123,19 +123,19 @@ export const PRESET_MAINTENANCE: PromptPreset = {
   whenLabel: 'Target service or maintenance date?'
 };
 
-// Travel / Trip (Auxiliary / Backwards-compatible)
+// Travel / Trip (Always included for all users - Solo, Couple, Family, Business)
 export const PRESET_TRIP: PromptPreset = {
   id: 'trip',
-  title: 'Trip',
-  shortTitle: 'Trip',
+  title: 'Trips & Travel',
+  shortTitle: 'Trips',
   category: 'travel_trip',
   modeExpected: 'CREATE_AND_INTAKE',
   prompt: 'Trip to [who] on [date]',
   icon: 'Plane',
   emoji: '✈️',
-  description: 'Vacations, getaways, travel packing & bookings.',
-  whoLabel: 'Where are you traveling?',
-  whoPlaceholder: 'e.g. Tokyo, South of France, Barcelona',
+  description: 'Vacations, getaways, business trips, flight bookings & packing checklists.',
+  whoLabel: 'Where are you traveling / destination?',
+  whoPlaceholder: 'e.g. Brooklyn NY, Tokyo, London, Client Conference',
   whenLabel: 'When is the departure date?'
 };
 
@@ -196,11 +196,17 @@ export const PRESET_KIDS: PromptPreset = {
 export function normalizeProfile(profile?: Partial<OnboardingProfile> | null): {
   family_structure: FamilyStructure;
   calendar_type: CalendarTypeScope;
+  homeZipOrLocation: string;
 } {
   let family_structure: FamilyStructure = 'single';
   let calendar_type: CalendarTypeScope = 'personal';
+  let homeZipOrLocation = '';
 
   if (profile) {
+    if (profile.homeZipOrLocation) {
+      homeZipOrLocation = profile.homeZipOrLocation;
+    }
+
     if (profile.family_structure) {
       family_structure = profile.family_structure;
     } else if (profile.familyStatus) {
@@ -228,7 +234,7 @@ export function normalizeProfile(profile?: Partial<OnboardingProfile> | null): {
     }
   }
 
-  return { family_structure, calendar_type };
+  return { family_structure, calendar_type, homeZipOrLocation };
 }
 
 export interface CategorizedPresets {
@@ -241,43 +247,27 @@ export interface CategorizedPresets {
   isPersonalOnly: boolean;
   familyStructure: FamilyStructure;
   calendarType: CalendarTypeScope;
+  homeZipOrLocation: string;
 }
 
 /**
  * =========================================================================
  * 2. DEMOGRAPHIC FILTERING & ADAPTIVE PRESET ENGINE
  * =========================================================================
- *
- * Rules:
- * Rule A (Family Structure):
- * - family_structure === "family_with_kids" / "Family with kids":
- *   * Inject dedicated "Kids" category into the primary view with dual sub-selections:
- *     - Kids: School (Theme days, science fairs, parent-teacher reviews)
- *     - Kids: Hobbies (Youth matches, tournaments, kit checks, transport pooling)
- *   * Keep adult "Hobbies" preset accessible for parent's personal interests.
- * - family_structure === "single" / "Single" or "couple" / "Couple":
- *   * Suppress and hide "Kids" preset entirely.
- *   * Elevate personal "Hobbies" preset.
- *
- * Rule B (Calendar Scope):
- * - calendar_type === "personal" / "Personal":
- *   * Completely hide "Work / Projects".
- *   * Promote "Subscriptions" and "Maintenance" into high-priority visible primary slots.
- * - calendar_type === "mixed" or "business" / "Mixed" or "Business":
- *   * Retain "Work / Projects" as a primary preset alongside custom template import options.
  */
 export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | null): CategorizedPresets {
-  const { family_structure, calendar_type } = normalizeProfile(profile);
+  const { family_structure, calendar_type, homeZipOrLocation } = normalizeProfile(profile);
   const isPersonalOnly = calendar_type === 'personal';
   const hasKids = family_structure === 'family_with_kids';
   const hasProject = !isPersonalOnly;
   const canImportSpreadsheet = !isPersonalOnly;
 
-  // Baseline primary presets present across profiles
+  // Baseline primary presets present across profiles (including Trips & Travel)
   const primary: PromptPreset[] = [
     PRESET_PARTY,
     PRESET_FRIENDS_FAMILY,
     PRESET_HOBBIES,
+    PRESET_TRIP,
   ];
 
   // Rule B: Retain Work / Projects for Mixed or Business
@@ -294,11 +284,9 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
   let secondary: PromptPreset[] = [];
 
   if (isPersonalOnly) {
-    // Rule B: For Personal calendars, suppress Work and elevate Subscriptions & Maintenance to primary
     primary.push(PRESET_SUBSCRIPTION);
     primary.push(PRESET_MAINTENANCE);
   } else {
-    // For Mixed / Business calendars, keep Subscriptions & Maintenance in secondary quick-access slots
     secondary = [PRESET_SUBSCRIPTION, PRESET_MAINTENANCE];
   }
 
@@ -314,6 +302,7 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
     isPersonalOnly,
     familyStructure: family_structure,
     calendarType: calendar_type,
+    homeZipOrLocation,
   };
 }
 

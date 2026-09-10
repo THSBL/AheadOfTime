@@ -901,8 +901,11 @@ export function generateHeuristicMilestones(
       addMilestone('T-45d', -45 * 24 * 60, 'Book dog sitter / pet boarding', 'booking', 'Book pet sitter or kennel boarding 4-6 weeks in advance before holiday slots fill up', undefined, 'deliverable');
       addMilestone('T-14d', -14 * 24 * 60, 'Pet vaccination check & sitter meet-and-greet', 'prep', 'Verify kennel cough/rabies vaccine records and confirm entry keys with sitter', undefined, 'milestone');
     }
-    if (context.needVisa === true || context.needVisa === 'true' || (isInternational && /usa|us\b|brooklyn|ny\b|america/i.test(`${event.title} ${event.location || ''} ${context.destination || ''}`))) {
-      addMilestone('T-45d', -45 * 24 * 60, 'US Entry ESTA / travel visa application', 'booking', 'Submit required online ESTA or travel visa application', undefined, 'deliverable');
+    const isDestUS = /usa|us\b|america|brooklyn|ny\b|new york|california|miami|orlando|san francisco|chicago/i.test(`${event.title} ${event.location || ''} ${context.destination || ''} ${context.customNote || ''}`);
+    const isNonUSCitizenOrInternational = isInternational || isDestUS || /belgium|be\b|europe|uk|france|germany|netherlands|spain|italy/i.test(`${context.homeLocation || ''} ${context.homeZipOrLocation || ''} ${context.country || ''}`);
+
+    if (context.needVisa === true || context.needVisa === 'true' || isNonUSCitizenOrInternational) {
+      addMilestone('T-45d', -45 * 24 * 60, 'US Entry ESTA (Electronic System for Travel Authorization)', 'booking', 'Mandatory entry authorization for non-US citizens (e.g. Belgian / EU passports) traveling to the US. Submit at least 72 hours prior to departure', undefined, 'deliverable');
     }
 
     // BUSINESS TRIP DEDICATED TRACK
@@ -1564,33 +1567,14 @@ export function decomposeComplexTripIntent(
   const baseRef = new Date(referenceDateISO);
   const safeBase = isNaN(baseRef.getTime()) ? new Date('2026-09-01T03:20:00Z') : baseRef;
 
-  // 1. Date Range Extraction
+  // 1. Date Range Extraction using robust parseNaturalDateRange
   let startDateStr = '';
   let endDateStr = '';
 
-  const isoRangeMatch = message.match(/from\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\s+to\s+([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
-  if (isoRangeMatch) {
-    startDateStr = isoRangeMatch[1];
-    endDateStr = isoRangeMatch[2];
-  } else {
-    // Check for placeholder or month/day ranges
-    const monthNames = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
-    const monthRangeRegex = new RegExp(`(?:from\\s+)?(${monthNames})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(?:(${monthNames})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
-    const mMatch = message.match(monthRangeRegex);
-    if (mMatch) {
-      const startMonth = mMatch[1];
-      const startDay = parseInt(mMatch[2], 10);
-      const endMonth = mMatch[3] || startMonth;
-      const endDay = parseInt(mMatch[4], 10);
-      const year = mMatch[5] ? parseInt(mMatch[5], 10) : safeBase.getFullYear();
-      
-      const sDate = new Date(`${startMonth} ${startDay}, ${year}`);
-      const eDate = new Date(`${endMonth} ${endDay}, ${year}`);
-      if (!isNaN(sDate.getTime()) && !isNaN(eDate.getTime())) {
-        startDateStr = sDate.toISOString().substring(0, 10);
-        endDateStr = eDate.toISOString().substring(0, 10);
-      }
-    }
+  const parsedRange = parseNaturalDateRange(message, referenceDateISO);
+  if (parsedRange && parsedRange.startDate) {
+    startDateStr = parsedRange.startDate;
+    endDateStr = parsedRange.endDate || parsedRange.startDate;
   }
 
   // If placeholder like [Date X] to [Date Y] or no explicit dates, anchor a 3-day weekend 4 weeks from reference date
