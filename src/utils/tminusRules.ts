@@ -1320,7 +1320,7 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
         is_completed: ms.status === 'completed',
       });
     } else if (
-      /\b(soccer|football|cleats?|boots?|jersey|shin\s*guards?|uniform|athletic\s*kit|gym)\b/i.test(tLower) &&
+      /\b(soccer|football|cleats?|jersey|shin\s*guards?|uniform|athletic\s*kit)\b/i.test(tLower) &&
       !tLower.includes('passport') &&
       !tLower.includes('transport')
     ) {
