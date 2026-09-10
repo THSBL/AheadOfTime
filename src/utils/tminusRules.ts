@@ -219,7 +219,7 @@ export function formatDestinationName(dest: string): string {
 export function parseNaturalDateRange(
   text: string,
   referenceDateISO: string = new Date().toISOString()
-): { startDate: string; endDate?: string } | null {
+): { startDate: string; endDate?: string; matchedText?: string } | null {
   if (!text) return null;
   const raw = text.trim();
   const baseRef = new Date(referenceDateISO);
@@ -228,7 +228,7 @@ export function parseNaturalDateRange(
   // 1. ISO format: 2026-10-15 to 2026-10-21
   const isoRangeMatch = raw.match(/\b([0-9]{4}-[0-9]{2}-[0-9]{2})\s+(?:to|-)\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\b/i);
   if (isoRangeMatch) {
-    return { startDate: isoRangeMatch[1], endDate: isoRangeMatch[2] };
+    return { startDate: isoRangeMatch[1], endDate: isoRangeMatch[2], matchedText: isoRangeMatch[0] };
   }
 
   // Month dictionary supporting English, Dutch, German, French
@@ -267,6 +267,7 @@ export function parseNaturalDateRange(
     return {
       startDate: s.toISOString().substring(0, 10),
       endDate: e.toISOString().substring(0, 10),
+      matchedText: matchA[0],
     };
   }
 
@@ -288,6 +289,7 @@ export function parseNaturalDateRange(
     return {
       startDate: s.toISOString().substring(0, 10),
       endDate: e.toISOString().substring(0, 10),
+      matchedText: matchB[0],
     };
   }
 
@@ -309,6 +311,7 @@ export function parseNaturalDateRange(
     return {
       startDate: s.toISOString().substring(0, 10),
       endDate: e.toISOString().substring(0, 10),
+      matchedText: matchC[0],
     };
   }
 
@@ -320,7 +323,7 @@ export function parseNaturalDateRange(
     const month = monthMap[matchD1[2].toLowerCase()] ?? 9;
     const year = matchD1[3] ? parseInt(matchD1[3], 10) : currentYear;
     const s = new Date(year, month, day, 12, 0, 0);
-    return { startDate: s.toISOString().substring(0, 10) };
+    return { startDate: s.toISOString().substring(0, 10), matchedText: matchD1[0] };
   }
 
   const patternD2 = new RegExp(`(?:on\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
@@ -330,7 +333,7 @@ export function parseNaturalDateRange(
     const day = parseInt(matchD2[2], 10);
     const year = matchD2[3] ? parseInt(matchD2[3], 10) : currentYear;
     const s = new Date(year, month, day, 12, 0, 0);
-    return { startDate: s.toISOString().substring(0, 10) };
+    return { startDate: s.toISOString().substring(0, 10), matchedText: matchD2[0] };
   }
 
   return null;
