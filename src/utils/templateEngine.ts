@@ -92,90 +92,6 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
     ]
   },
   {
-    id: 'preset-employee-onboarding',
-    title: '90-Day Employee Onboarding Track',
-    description: 'Structured runway ensuring hardware readiness, 30/60/90 alignment milestones and comprehensive probation reviews.',
-    category: 'project_deadline',
-    tags: ['PeopleOps', 'HR', 'Management'],
-    isBuiltIn: true,
-    createdAt: '2026-09-01T00:00:00.000Z',
-    updatedAt: '2026-09-01T00:00:00.000Z',
-    milestones: [
-      {
-        id: 'cpm-10',
-        task: 'Hardware, Laptop & Security Key Dispatch',
-        t_minus_days: 14,
-        tag: 'IT',
-        description: 'Order machine specs, configure MDM profile and dispatch to new hire residence.',
-        kind: 'deliverable',
-        scope: 'macro'
-      },
-      {
-        id: 'cpm-11',
-        task: 'Account Provisioning & Calendar Welcome Invite',
-        t_minus_days: 7,
-        tag: 'IT',
-        description: 'Provision Google Workspace, Slack, GitHub, Figma and create Week 1 sync schedule.',
-        kind: 'milestone',
-        scope: 'micro'
-      },
-      {
-        id: 'cpm-12',
-        task: 'Desk Prep & Welcome Swag Kit Assembly',
-        t_minus_days: 2,
-        tag: 'Office',
-        description: 'Prepare physical badge, monitor workstation and welcome care package.',
-        kind: 'deliverable',
-        scope: 'micro'
-      },
-      {
-        id: 'cpm-13',
-        task: 'Day 1 Orientation & Peer Buddy Intro',
-        t_minus_days: 0,
-        tag: 'HR',
-        description: 'Welcome coffee, company mission briefing and 1:1 lunch with designated team buddy.',
-        kind: 'milestone',
-        scope: 'macro'
-      },
-      {
-        id: 'cpm-14',
-        task: 'Week 1 Retrospective & Setup Check-in',
-        t_minus_days: -7,
-        tag: 'Manager',
-        description: '30-minute sync to remove initial blockers and review first pull-request / deliverable.',
-        kind: 'milestone',
-        scope: 'micro'
-      },
-      {
-        id: 'cpm-15',
-        task: '30-Day Milestone Review & Role Expectations',
-        t_minus_days: -30,
-        tag: 'Manager',
-        description: 'Formal check-in on role autonomy, team integration and quarterly goals baseline.',
-        kind: 'milestone',
-        scope: 'macro'
-      },
-      {
-        id: 'cpm-16',
-        task: '60-Day Progress Check & Feedback Calibration',
-        t_minus_days: -60,
-        tag: 'Manager',
-        description: 'Two-way review on velocity, peer feedback and career trajectory development.',
-        kind: 'milestone',
-        scope: 'micro'
-      },
-      {
-        id: 'cpm-17',
-        task: '90-Day Full Performance Review & Probation Sign-off',
-        t_minus_days: -90,
-        tag: 'HR',
-        description: 'Completion of onboarding runway, permanent role sign-off and compensation review baseline.',
-        kind: 'milestone',
-        scope: 'macro'
-      }
-    ]
-  },
-  {
     id: 'preset-product-release',
     title: 'Major SaaS Product Release Cycle',
     description: 'High-rigor 45-day operational release protocol with legal, security, documentation and customer enablement gates.',
@@ -258,6 +174,192 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         scope: 'macro'
       }
     ]
+  },
+  {
+    id: 'preset-marketing-campaign',
+    title: 'Integrated Product Marketing Launch Campaign',
+    description: '35-day go-to-market runway from positioning lock through embargo, paid media activation and post-launch performance reporting.',
+    category: 'project_deadline',
+    tags: ['Marketing', 'PMM', 'Campaign', 'Content'],
+    isBuiltIn: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    milestones: [
+      {
+        id: 'cpm-30',
+        task: 'Positioning, Messaging & ICP Narrative Lock',
+        t_minus_days: 35,
+        tag: 'Product Marketing',
+        description: 'Finalize value proposition, competitive battlecards and target segment narrative before any campaign asset goes into production.',
+        kind: 'milestone',
+        scope: 'macro'
+      },
+      {
+        id: 'cpm-31',
+        task: 'Campaign Creative Brief & Content Calendar Build',
+        t_minus_days: 28,
+        tag: 'Content',
+        description: 'Brief design, video and copy teams and map blog, social, email and ad creative across the full launch window.',
+        kind: 'deliverable',
+        scope: 'macro'
+      },
+      {
+        id: 'cpm-32',
+        task: 'Analyst & Press Embargo Briefing Outreach',
+        t_minus_days: 21,
+        tag: 'PR',
+        description: 'Send embargoed briefing decks to target press and industry analysts under NDA ahead of the public announcement.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-33',
+        task: 'Paid Media Account Setup & Tracking Audit',
+        t_minus_days: 14,
+        tag: 'Paid Media',
+        description: 'Configure ad accounts, UTM taxonomy and conversion pixels; verify attribution end-to-end before spend goes live.',
+        kind: 'deliverable',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-34',
+        task: 'Sales & Customer Success Enablement Briefing',
+        t_minus_days: 10,
+        tag: 'Enablement',
+        description: 'Train frontline sales and support teams on new messaging, pricing and FAQs ahead of launch-day inbound demand.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-35',
+        task: 'Landing Page Copy Freeze & Cross-Browser QA',
+        t_minus_days: 7,
+        tag: 'Web',
+        description: 'Lock landing page copy, forms and tracking; run cross-browser and load QA ahead of the launch-day traffic spike.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-36',
+        task: 'Influencer & Co-Marketing Partner Assets Finalized',
+        t_minus_days: 3,
+        tag: 'Partnerships',
+        description: 'Confirm final creative, talking points and posting schedule with influencer and co-marketing partners.',
+        kind: 'deliverable',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-37',
+        task: 'Embargo Lift, Press Release & Paid Campaigns Go-Live',
+        t_minus_days: 0,
+        tag: 'Launch Day',
+        description: 'Publish the press release, flip paid campaigns live across channels and send the announcement email.',
+        kind: 'milestone',
+        scope: 'macro'
+      },
+      {
+        id: 'cpm-38',
+        task: 'Post-Launch Performance Readout & Budget Reallocation',
+        t_minus_days: -7,
+        tag: 'Analytics',
+        description: 'Review traffic, pipeline and conversion data against launch KPIs; reallocate paid spend toward top-performing channels.',
+        kind: 'milestone',
+        scope: 'macro'
+      }
+    ]
+  },
+  {
+    id: 'preset-sales-qbr',
+    title: 'Enterprise QBR & Renewal Runway',
+    description: '21-day preparation runway for a high-stakes enterprise Quarterly Business Review, from account health analysis through renewal or expansion close.',
+    category: 'project_deadline',
+    tags: ['Sales', 'CustomerSuccess', 'Renewal', 'RevOps'],
+    isBuiltIn: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    milestones: [
+      {
+        id: 'cpm-40',
+        task: 'Account Health & Usage Data Compilation',
+        t_minus_days: 21,
+        tag: 'RevOps',
+        description: 'Pull product usage, support ticket trends and contract terms into a single account health snapshot.',
+        kind: 'milestone',
+        scope: 'macro'
+      },
+      {
+        id: 'cpm-41',
+        task: 'Renewal Risk Scoring & Expansion Opportunity Review',
+        t_minus_days: 17,
+        tag: 'Customer Success',
+        description: 'Score churn risk and flag upsell/cross-sell opportunities with the account team before deck production starts.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-42',
+        task: 'QBR Deck & Executive Narrative Draft',
+        t_minus_days: 14,
+        tag: 'Sales',
+        description: 'Build the QBR narrative around measurable business outcomes and ROI delivered since the last review.',
+        kind: 'deliverable',
+        scope: 'macro'
+      },
+      {
+        id: 'cpm-43',
+        task: 'Internal Pre-Brief with Sales & CS Leadership',
+        t_minus_days: 10,
+        tag: 'Leadership',
+        description: 'Align internally on pricing flexibility, expansion targets and negotiation red lines before meeting the customer.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-44',
+        task: 'Custom Pricing & Expansion Proposal Finalized',
+        t_minus_days: 7,
+        tag: 'Deal Desk',
+        description: 'Lock proposed pricing tiers and contract terms with deal desk and finance sign-off.',
+        kind: 'deliverable',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-45',
+        task: 'Customer Stakeholder Calendar Confirmation',
+        t_minus_days: 3,
+        tag: 'Account Management',
+        description: 'Confirm attendance of the economic buyer and key stakeholders; send agenda and pre-read materials.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-46',
+        task: 'Quarterly Business Review Meeting & Proposal Presentation',
+        t_minus_days: 0,
+        tag: 'Sales',
+        description: 'Deliver the QBR, present the renewal or expansion proposal and capture live stakeholder feedback.',
+        kind: 'milestone',
+        scope: 'macro'
+      },
+      {
+        id: 'cpm-47',
+        task: 'Follow-Up Action Items & Procurement Handoff',
+        t_minus_days: -3,
+        tag: 'RevOps',
+        description: 'Send recap notes and outstanding questions, and hand off redlines to legal and procurement for contract turnaround.',
+        kind: 'milestone',
+        scope: 'micro'
+      },
+      {
+        id: 'cpm-48',
+        task: 'Signed Renewal / Expansion Contract Close',
+        t_minus_days: -14,
+        tag: 'Sales',
+        description: 'Countersign the renewal or expansion agreement and hand off to customer success for onboarding of the new scope.',
+        kind: 'deliverable',
+        scope: 'macro'
+      }
+    ]
   }
 ];
 
@@ -291,6 +393,48 @@ export async function parseSpreadsheetFile(file: File): Promise<{ headers: strin
         const headers = Object.keys(rawJson[0]);
 
         resolve({ headers, rows: rawJson });
+      } catch (err: any) {
+        reject(new Error(err?.message || 'Failed to parse spreadsheet file'));
+      }
+    };
+
+    reader.onerror = () => {
+      reject(new Error('File reading failed. Please check permissions and file format.'));
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Reads every sheet of an uploaded workbook as raw row grids (no header-row
+ * assumptions). Used by the AI smart-import path, which needs to see the
+ * whole file — dashboards, section headers, multiple tabs — not just a
+ * single clean table starting at row 1.
+ */
+export async function parseSpreadsheetForAI(file: File): Promise<{ sheets: { name: string; rows: any[][] }[] }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          throw new Error('Spreadsheet contains no visible worksheets.');
+        }
+
+        const MAX_ROWS_PER_SHEET = 200;
+        const sheets = workbook.SheetNames.map((name) => {
+          const worksheet = workbook.Sheets[name];
+          const allRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+          // Drop fully-blank rows and cap length so the payload stays bounded
+          const nonEmptyRows = allRows.filter((row) => row.some((cell) => String(cell).trim() !== ''));
+          return { name, rows: nonEmptyRows.slice(0, MAX_ROWS_PER_SHEET) };
+        });
+
+        resolve({ sheets });
       } catch (err: any) {
         reject(new Error(err?.message || 'Failed to parse spreadsheet file'));
       }
