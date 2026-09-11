@@ -52,7 +52,7 @@ interface TelegramIntegrationCardProps {
   userId?: string;
 }
 
-export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ events = [], userId = 'user_default' }) => {
+export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ events = [], userId }) => {
   const [status, setStatus] = useState<TelegramStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLinking, setIsLinking] = useState<boolean>(false);
@@ -106,10 +106,21 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
    * Polls /api/telegram/status?code=<pairCode>
    */
   const checkStatus = async (pairCodeToCheck?: string | null, silent = false): Promise<boolean> => {
+    // The status endpoint reveals a real linked account's username/chatId,
+    // so it requires proof of who's asking - without a live Google session
+    // there's nothing to check (and nothing to leak), so skip the call
+    // entirely rather than let it come back "not linked" every time.
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      setIsLinked(false);
+      return false;
+    }
     if (!silent) setIsLoading(true);
     try {
       const codeParam = pairCodeToCheck ? `?code=${encodeURIComponent(pairCodeToCheck)}` : '';
-      const res = await fetch(`/api/telegram/status${codeParam}`);
+      const res = await fetch(`/api/telegram/status${codeParam}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
       const data: TelegramStatusResponse = await res.json().catch(() => ({}));
 
       setStatus(data);
@@ -159,10 +170,13 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     let isMounted = true;
     checkStatus(null, false);
 
-    // Also check Firestore telegram_users collection on mount
+    // Also check Firestore telegram_users collection on mount - only for a
+    // real signed-in caller (a live Google access token, not just a
+    // truthy-looking userId prop), so this never resolves to someone else's
+    // linked account for a guest.
     const checkFirestoreUser = async () => {
       try {
-        if (!userId) return;
+        if (!userId || !getStoredAccessToken()) return;
         const userDocRef = doc(db, 'telegram_users', userId);
         const userSnap = await getDoc(userDocRef);
         if (userSnap.exists() && userSnap.data()?.linked && isMounted) {
@@ -426,10 +440,13 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     setFeedback(null);
     try {
       stopPolling();
+      const unlinkToken = getStoredAccessToken();
       await fetch('/api/telegram/pair-code', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'user_default', chatId }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(unlinkToken ? { Authorization: `Bearer ${unlinkToken}` } : {}),
+        },
       }).catch(() => ({}));
 
       setIsLinked(false);

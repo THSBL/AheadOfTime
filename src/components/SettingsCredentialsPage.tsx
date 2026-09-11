@@ -102,7 +102,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
           />
 
           {/* CARD 2: TELEGRAM ASSISTANT BOT */}
-          <TelegramIntegrationCard events={events} />
+          <TelegramIntegrationCard events={events} userId={currentUser?.id} />
 
           {/* CARD 3: QUESTIONNAIRE PROFILE & PRESET HEURISTICS */}
           <div className="bg-white border border-sky-200/90 rounded-2xl p-5 shadow-xs">

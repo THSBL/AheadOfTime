@@ -43,7 +43,6 @@ export default async function handler(req: any, res: any) {
     }
 
     const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
-    const userId = (req.query.userId as string) || 'user_default';
 
     const isConfigured = TelegramService.isConfigured();
     let botInfo = null;
@@ -62,7 +61,32 @@ export default async function handler(req: any, res: any) {
     const protocol = req.headers?.['x-forwarded-proto'] || 'https';
     const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
 
-    const pairStatus = await TelegramSessionStore.getPairingStatus(code, userId);
+    // This reveals whether a real person's Telegram is linked plus their
+    // username/chatId, so it must never be answered from an unverified or
+    // client-supplied identity - that's exactly how a guest with no Google
+    // session at all used to see another (arbitrary "default") account's
+    // Telegram connection as if it were their own. Every caller - whether
+    // polling by pairing code or asking "is my account linked" - now has to
+    // prove who they are first; a request with no verified Google session
+    // gets "not linked", full stop, never a fallback identity.
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    if (!verified) {
+      return res.status(200).json({
+        ok: true,
+        linked: false,
+        status: 'unlinked',
+        telegram_linked: false,
+        isLinked: false,
+        session: null,
+        isConfigured,
+        hasToken: isConfigured,
+        botInfo: botInfo?.ok ? botInfo.result : null,
+        webhookInfo: null,
+        inferredWebhookUrl,
+      });
+    }
+
+    const pairStatus = await TelegramSessionStore.getPairingStatus(code, verified.email);
 
     return res.status(200).json({
       ok: true,
@@ -153,9 +177,14 @@ export default async function handler(req: any, res: any) {
 
     if (req.method === 'GET') {
       try {
+        // Same identity leak class as /api/telegram/status - never resolve
+        // to a client-supplied or default userId.
+        const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+        if (!verified) {
+          return res.status(200).json({ ok: true, linked: false, status: 'unlinked', telegram_linked: false, isLinked: false, session: null });
+        }
         const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
-        const userId = (req.query.userId as string) || 'user_default';
-        const status = await TelegramSessionStore.getPairingStatus(code, userId);
+        const status = await TelegramSessionStore.getPairingStatus(code, verified.email);
         return res.status(200).json(status);
       } catch (err: any) {
         return res.status(500).json({ ok: false, error: err.message || 'Failed to check pairing status' });
@@ -164,14 +193,17 @@ export default async function handler(req: any, res: any) {
 
     if (req.method === 'DELETE') {
       try {
-        const { chatId, userId } = req.body || {};
-        if (chatId) {
-          await TelegramSessionStore.unlinkSession(chatId);
-        } else if (userId) {
-          const session = await TelegramSessionStore.getLinkedSessionForWebUser(userId);
-          if (session) {
-            await TelegramSessionStore.unlinkSession(session.chatId);
-          }
+        // Unlinking by a client-supplied chatId/userId meant anyone could
+        // disconnect an arbitrary stranger's Telegram session with no proof
+        // of ownership at all. Only ever unlink the verified caller's own
+        // linked session.
+        const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+        if (!verified) {
+          return res.status(401).json({ ok: false, error: 'Sign in required to unlink Telegram.' });
+        }
+        const session = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
+        if (session) {
+          await TelegramSessionStore.unlinkSession(session.chatId);
         }
         return res.status(200).json({ ok: true, message: 'Unlinked successfully' });
       } catch (err: any) {

@@ -764,7 +764,6 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
-  const userId = (req.query.userId as string) || "user_default";
 
   const isConfigured = TelegramService.isConfigured();
   let botInfo = null;
@@ -783,7 +782,28 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
   const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
   const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
 
-  const pairStatus = await TelegramSessionStore.getPairingStatus(code, userId);
+  // Reveals a real linked account's username/chatId - never resolve to a
+  // client-supplied or default userId. See api/telegram/[...path].ts for
+  // the matching Vercel-side fix.
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.json({
+      ok: true,
+      linked: false,
+      status: "unlinked",
+      telegram_linked: false,
+      isLinked: false,
+      session: null,
+      isConfigured,
+      hasToken: isConfigured,
+      botInfo: botInfo?.ok ? botInfo.result : null,
+      webhookInfo: null,
+      inferredWebhookUrl,
+    });
+    return;
+  }
+
+  const pairStatus = await TelegramSessionStore.getPairingStatus(code, verified.email);
 
   res.json({
     ok: true,
@@ -879,9 +899,14 @@ app.post(["/api/telegram/pair-code", "/api/pair-code"], async (req: Request, res
 
 app.get(["/api/telegram/pair-code", "/api/pairing-status"], async (req: Request, res: Response) => {
   try {
+    // Same identity leak class as /api/telegram/status above.
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    if (!verified) {
+      res.json({ ok: true, linked: false, status: "unlinked", telegram_linked: false, isLinked: false, session: null });
+      return;
+    }
     const code = (req.query.code as string) || (req.query.pairCode as string) || (req.query.token as string);
-    const userId = (req.query.userId as string) || "user_default";
-    const status = await TelegramSessionStore.getPairingStatus(code, userId);
+    const status = await TelegramSessionStore.getPairingStatus(code, verified.email);
     res.json(status);
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message || "Failed to check pairing status" });
@@ -890,24 +915,19 @@ app.get(["/api/telegram/pair-code", "/api/pairing-status"], async (req: Request,
 
 app.delete("/api/telegram/pair-code", async (req: Request, res: Response) => {
   try {
-    // Unlinking by userId disconnects someone's Telegram account, so it
-    // requires verified identity rather than a client-claimed userId -
-    // otherwise anyone could unlink another user's Telegram by guessing
-    // their email. Unlinking by chatId is left as-is: that's already
-    // scoped to a specific Telegram chat, not an arbitrary claimed user.
-    const { chatId, userId } = req.body || {};
-    if (chatId) {
-      await TelegramSessionStore.unlinkSession(chatId);
-    } else if (userId) {
-      const verified = await verifyGoogleAccessToken(extractBearerToken(req));
-      if (!verified || verified.email.toLowerCase() !== String(userId).toLowerCase()) {
-        res.status(401).json({ ok: false, error: "Sign in required to unlink this account." });
-        return;
-      }
-      const session = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
-      if (session) {
-        await TelegramSessionStore.unlinkSession(session.chatId);
-      }
+    // Unlinking (by chatId or by claimed userId) disconnects someone's
+    // Telegram account, so both require verified identity - a bare chatId
+    // is not a secret a legitimate caller needs to prove ownership with,
+    // it's just an ID, so trusting it alone let anyone disconnect an
+    // arbitrary stranger's session.
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    if (!verified) {
+      res.status(401).json({ ok: false, error: "Sign in required to unlink Telegram." });
+      return;
+    }
+    const session = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
+    if (session) {
+      await TelegramSessionStore.unlinkSession(session.chatId);
     }
     res.json({ ok: true, message: "Unlinked successfully" });
   } catch (err: any) {
