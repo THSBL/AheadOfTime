@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
+import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, AlertTriangle, AlertCircle, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
@@ -54,12 +54,20 @@ interface MyWeekAheadProps {
   onOpenScanAgenda: () => void;
 }
 
-const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string }> = {
-  at_risk: { badge: 'text-rose-800 bg-rose-100 border-rose-300', dot: 'bg-rose-500' },
-  attention: { badge: 'text-amber-900 bg-amber-100 border-amber-300', dot: 'bg-amber-500' },
-  on_track: { badge: 'text-emerald-900 bg-emerald-100 border-emerald-300', dot: 'bg-emerald-500' },
-  ahead: { badge: 'text-emerald-900 bg-emerald-100 border-emerald-300', dot: 'bg-emerald-500' },
-  ready: { badge: 'text-slate-700 bg-slate-100 border-slate-300', dot: 'bg-slate-400' },
+const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string; iconBg: string; border: string }> = {
+  at_risk: { badge: 'text-rose-800 bg-rose-100 border-rose-300', dot: 'bg-rose-500', iconBg: 'bg-rose-100 text-rose-700', border: 'border-l-rose-500' },
+  attention: { badge: 'text-amber-900 bg-amber-100 border-amber-300', dot: 'bg-amber-500', iconBg: 'bg-amber-100 text-amber-700', border: 'border-l-amber-500' },
+  on_track: { badge: 'text-emerald-900 bg-emerald-100 border-emerald-300', dot: 'bg-emerald-500', iconBg: 'bg-emerald-100 text-emerald-700', border: 'border-l-emerald-500' },
+  ahead: { badge: 'text-emerald-900 bg-emerald-100 border-emerald-300', dot: 'bg-emerald-500', iconBg: 'bg-emerald-100 text-emerald-700', border: 'border-l-emerald-500' },
+  ready: { badge: 'text-slate-700 bg-slate-100 border-slate-300', dot: 'bg-slate-400', iconBg: 'bg-slate-100 text-slate-500', border: 'border-l-slate-300' },
+};
+
+const OVERALL_ICONS: Record<AheadLevel, React.ElementType> = {
+  at_risk: AlertTriangle,
+  attention: AlertCircle,
+  on_track: CheckCircle2,
+  ahead: CheckCircle2,
+  ready: CheckCircle2,
 };
 
 export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
@@ -116,17 +124,22 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
     (e) => !needsAttention.includes(e) && !alreadyAhead.includes(e)
   );
 
+  const OverallIcon = OVERALL_ICONS[overall.level];
+  const overallStyle = AHEAD_STYLES[overall.level];
+
   return (
-    <div className="flex-1 flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs w-full">
+    <div className="flex-1 flex flex-col h-full milky-glass rounded-3xl overflow-hidden shadow-xs w-full">
       <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 sm:space-y-5">
         {/* AHEAD - overall readiness */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs space-y-1.5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Ahead</p>
-          <div className="flex items-center gap-2">
-            <span className="text-lg sm:text-xl">{overall.emoji}</span>
-            <h2 className="text-base sm:text-lg font-black text-slate-900">{overall.label}</h2>
+        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-start gap-3.5">
+          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center shrink-0 ${overallStyle.iconBg}`}>
+            <OverallIcon className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <p className="text-xs sm:text-sm text-slate-600">{overall.summary}</p>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Ahead</p>
+            <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{overall.label}</h2>
+            <p className="text-xs sm:text-sm text-slate-600">{overall.summary}</p>
+          </div>
         </div>
 
         {/* Next Best Action - urgent styling only when it's actually due
@@ -323,11 +336,10 @@ const EventRow: React.FC<{
     <button
       type="button"
       onClick={() => onSelectEvent(event.id)}
-      className={`w-full text-left p-3 rounded-xl bg-white border border-slate-200/90 hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer ${
+      className={`w-full text-left p-3 rounded-xl bg-white border border-slate-200/90 border-l-4 ${style.border} hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer ${
         compact ? 'opacity-80' : ''
       }`}
     >
-      <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
       <div className="min-w-0 flex-1">
         <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">{event.title}</p>
         <p className="text-[11px] text-slate-500">

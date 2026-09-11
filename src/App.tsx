@@ -1628,8 +1628,13 @@ function App() {
               </div>
             </div>
 
-            {/* Left Console: Event Navigator (Screen State 1 on mobile) */}
-            <div className={`${mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'} lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>
+            {/* Left Console: Event Navigator (Screen State 1 on mobile).
+                Hidden on desktop too when My Week Ahead is active - that
+                view already lists every event grouped by status, so the
+                Active Events picker beside it is redundant, not complementary. */}
+            <div className={`${
+              activeTab === 'feed' ? 'hidden' : mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'
+            } lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
                 events={sortedEvents}
                 selectedEventId={selectedEventId}
@@ -1655,7 +1660,9 @@ function App() {
             </div>
 
             {/* Right Console: Main Preparation Workspace / Presets Planner (Screen State 2 on mobile) */}
-            <div className={`${mobileDashboardView === 'list' ? 'hidden lg:flex' : 'flex'} lg:col-span-7 xl:col-span-8 h-[calc(100vh-140px)] flex-col w-full`}>
+            <div className={`${
+              mobileDashboardView === 'list' && activeTab !== 'feed' ? 'hidden lg:flex' : 'flex'
+            } ${activeTab === 'feed' ? 'lg:col-span-12' : 'lg:col-span-7 xl:col-span-8'} h-[calc(100vh-140px)] flex-col w-full`}>
 
               {/* Workspace Content */}
               {activeTab === 'feed' ? (

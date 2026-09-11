@@ -222,7 +222,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                       ? 'bg-white border-2 border-slate-900 border-l-4 border-l-amber-500 shadow-sm'
                       : 'bg-white border-2 border-slate-900 shadow-sm'
                     : isUnrefined
-                      ? 'bg-amber-50/40 border border-amber-200/90 border-l-4 border-l-amber-500 hover:border-amber-300 hover:shadow-xs shadow-2xs'
+                      ? 'bg-white/95 border border-slate-200/80 border-l-4 border-l-amber-500 hover:border-slate-300 hover:shadow-xs shadow-2xs'
                       : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
                 }`}
               >
@@ -241,9 +241,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 </div>
 
                 {/* Category Icon */}
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs mt-0.5 ${
-                  isUnrefined ? 'bg-amber-100/80 border border-amber-300 text-amber-900' : 'bg-slate-100 border border-slate-200 text-slate-700'
-                }`}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs mt-0.5 bg-slate-100 border border-slate-200 text-slate-700">
                   {getCategoryIcon(evt.category)}
                 </div>
 
