@@ -31,7 +31,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                   trackButtonClick('Go to Dashboard', 'landing_header');
                   onGoToDashboard();
                 }}
-                className="bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white border border-[#3f7962]/50 font-bold text-xs sm:text-sm px-3.5 py-2 rounded-xl shadow-xs hover:shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="bg-[#447463] hover:bg-[#376052] text-white border border-[#376052]/50 font-bold text-xs sm:text-sm px-3.5 py-2 rounded-xl shadow-xs hover:shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                 title="Return to your active events dashboard"
               >
                 <LayoutDashboard className="w-4 h-4 text-white" />
@@ -97,7 +97,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Open My Dashboard', 'landing_hero');
                 onGoToDashboard();
               }}
-              className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white border border-[#3f7962]/50 font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              className="px-8 py-3.5 rounded-2xl bg-[#447463] hover:bg-[#376052] text-white border border-[#376052]/50 font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <LayoutDashboard className="w-4 h-4 text-white" />
               <span>Open My Dashboard</span>

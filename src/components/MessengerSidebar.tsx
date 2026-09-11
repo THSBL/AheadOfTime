@@ -122,7 +122,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             {onOpenScanAgenda && (
               <button
                 onClick={onOpenScanAgenda}
-                className="px-3 py-1.5 rounded-full bg-gradient-to-r from-[#62a98c] via-[#529479] to-[#3f7962] hover:from-[#579b7f] hover:via-[#48876c] hover:to-[#376c56] text-white transition-all cursor-pointer border border-[#3f7962]/50 shadow-xs flex items-center gap-1.5 text-xs font-bold active:scale-95"
+                className="px-3 py-1.5 rounded-full bg-[#447463] hover:bg-[#376052] text-white transition-all cursor-pointer border border-[#376052]/50 shadow-xs flex items-center gap-1.5 text-xs font-bold active:scale-95"
                 title="Scan for existing events in your agenda"
               >
                 <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
