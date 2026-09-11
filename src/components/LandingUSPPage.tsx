@@ -175,8 +175,6 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       {/* Bottom Closing Banner */}
       <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-12 text-center space-y-6">
         <div className="bg-[#182A42] text-white rounded-3xl p-8 sm:p-12 shadow-xl shadow-slate-900/10 space-y-6 relative overflow-hidden">
-          <div className="absolute -right-16 -top-16 w-64 h-64 bg-sky-500/10 rounded-full blur-2xl pointer-events-none" />
-          
           <div className="space-y-3 relative z-10">
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
               Try Ahead Of Time

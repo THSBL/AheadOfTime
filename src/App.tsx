@@ -1504,14 +1504,6 @@ function App() {
   return (
     <div className="min-h-screen bg-[#F5F6F2] text-slate-800 flex flex-col font-sans selection:bg-[#182A42] selection:text-white relative overflow-x-hidden">
       
-      {/* Soft Ambient Light Glow in background to make blue pop */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-32 -left-32 w-[650px] h-[650px] bg-sky-300/35 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute top-1/4 -right-32 w-[600px] h-[600px] bg-blue-300/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 left-1/4 w-[700px] h-[700px] bg-cyan-200/40 rounded-full blur-3xl" />
-        <div className="absolute top-2/3 right-1/4 w-[450px] h-[450px] bg-indigo-200/25 rounded-full blur-3xl" />
-      </div>
-
       {/* Milky Glass Header */}
       <div className="relative z-20">
             <Header
