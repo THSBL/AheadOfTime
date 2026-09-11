@@ -1685,35 +1685,7 @@ function App() {
                   }}
                   onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 />
-              ) : activeTab === 'chat' || !selectedEventId || focusMode === 'welcome' ? (
-                <div className="flex-1 min-h-0 h-full overflow-y-auto">
-                  <ChatConsole
-                    messages={messages}
-                    onSendMessage={handleSendMessage}
-                    onSaveEvent={handleSaveManualEvent}
-                    onIntakeOptionSelect={handleIntakeOptionSelect}
-                    onBatchIntakeSubmit={handleBatchIntakeSubmit}
-                    onSelectVariable={handleSelectVariable}
-                    onToggleMilestoneStatus={handleToggleMilestoneStatus}
-                    onViewEventDetails={(event) => {
-                      setSelectedEventId(event.id);
-                      setActiveTab('tasks');
-                      setFocusMode('adjust-event');
-                    }}
-                    onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
-                    onOpenImporter={() => setIsImportTemplateModalOpen(true)}
-                    onApplyCustomPreset={handleApplyCustomPresetToNewEvent}
-                    savedPresets={customPresets}
-                    onPresetsUpdated={handleCustomPresetsUpdated}
-                    isLoading={isLoading}
-                    events={sortedEvents}
-                    focusMode={focusMode}
-                    onFocusChange={setIsWizardInputFocused}
-                    onboardingProfile={onboardingProfile}
-                    onOpenPreferences={() => setIsPreferencesModalOpen(true)}
-                  />
-                </div>
-              ) : (
+              ) : activeTab === 'tasks' ? (
                 <EventTimelineRadar
                   events={sortedEvents}
                   selectedEventId={selectedEventId}
@@ -1758,6 +1730,34 @@ function App() {
                   isSyncingWithGoogle={isSyncingWithGoogle}
                   onTriggerGoogleSync={() => runGoogleTaskSync(false, true)}
                 />
+              ) : (
+                <div className="flex-1 min-h-0 h-full overflow-y-auto">
+                  <ChatConsole
+                    messages={messages}
+                    onSendMessage={handleSendMessage}
+                    onSaveEvent={handleSaveManualEvent}
+                    onIntakeOptionSelect={handleIntakeOptionSelect}
+                    onBatchIntakeSubmit={handleBatchIntakeSubmit}
+                    onSelectVariable={handleSelectVariable}
+                    onToggleMilestoneStatus={handleToggleMilestoneStatus}
+                    onViewEventDetails={(event) => {
+                      setSelectedEventId(event.id);
+                      setActiveTab('tasks');
+                      setFocusMode('adjust-event');
+                    }}
+                    onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
+                    onOpenImporter={() => setIsImportTemplateModalOpen(true)}
+                    onApplyCustomPreset={handleApplyCustomPresetToNewEvent}
+                    savedPresets={customPresets}
+                    onPresetsUpdated={handleCustomPresetsUpdated}
+                    isLoading={isLoading}
+                    events={sortedEvents}
+                    focusMode={focusMode}
+                    onFocusChange={setIsWizardInputFocused}
+                    onboardingProfile={onboardingProfile}
+                    onOpenPreferences={() => setIsPreferencesModalOpen(true)}
+                  />
+                </div>
               )}
             </div>
           </main>
