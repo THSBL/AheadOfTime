@@ -618,7 +618,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Trip Prep ({macroCount})
+              Preparation ({macroCount})
             </button>
             <button
               type="button"
@@ -629,7 +629,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              In-Trip Tasks ({microCount})
+              Day-Of Tasks ({microCount})
             </button>
           </div>
         )}
@@ -746,7 +746,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </div>
         ) : displayedMilestones.length === 0 ? (
           <div className="p-6 text-center text-slate-400 text-xs sm:text-sm bg-white rounded-2xl border border-sky-100 space-y-2 shadow-xs">
-            <p>No tasks found for "{scopeFilter === 'micro' ? 'In-Trip Tasks' : 'Trip Prep'}".</p>
+            <p>No tasks found for "{scopeFilter === 'micro' ? 'Day-Of Tasks' : 'Preparation'}".</p>
             <button
               onClick={() => setScopeFilter('all')}
               className="px-3 py-1 bg-sky-50 text-sky-900 rounded-lg text-xs font-bold hover:bg-sky-100 cursor-pointer border border-sky-200"
@@ -829,6 +829,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         {formatDisplayDate(ms.calculatedDate)}
                       </span>
 
+                      {ms.tag && (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">
+                          {ms.tag}
+                        </span>
+                      )}
+
                       {isSkipped && (
                         <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
                           <X className="w-2.5 h-2.5" />
@@ -859,9 +865,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         </button>
                       )}
 
-                      {ms.scope === 'micro' && (
+                      {ms.scope === 'micro' && ms.relativeDay && (
                         <span className="text-[10px] font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
-                          {ms.relativeDay || 'In-Trip'}
+                          {ms.relativeDay}
+                        </span>
+                      )}
+
+                      {ms.tMinusLabel === 'T-Day' && (
+                        <span className="text-[10px] font-bold text-white bg-[#182A42] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />
+                          <span>Main Event</span>
                         </span>
                       )}
                     </div>

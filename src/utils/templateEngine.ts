@@ -21,7 +21,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-1',
         task: 'Architecture & Core UI Feature Cut',
         t_minus_days: 60,
-        tag: 'Engineering',
+        tag: 'Development',
         description: 'Hard freeze on net-new features. Branch cut for release candidate branch.',
         kind: 'milestone',
         scope: 'macro'
@@ -30,7 +30,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-2',
         task: 'TestFlight & Internal Beta Build Distribution',
         t_minus_days: 45,
-        tag: 'QA',
+        tag: 'Beta Testing',
         description: 'Distribute signed build to internal dogfooders & VIP beta cohort.',
         kind: 'milestone',
         scope: 'micro'
@@ -39,7 +39,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-3',
         task: 'App Store Screenshots, Copy & Localization Lock',
         t_minus_days: 30,
-        tag: 'Design',
+        tag: 'Store Assets',
         description: 'Finalize 6.7" and 6.1" store assets, promotional text and privacy nutrition disclosures.',
         kind: 'deliverable',
         scope: 'macro'
@@ -48,7 +48,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-4',
         task: 'Security Audit & Third-Party SDK Review',
         t_minus_days: 21,
-        tag: 'Security',
+        tag: 'QA & Security',
         description: 'Verify analytics compliance, ATS configuration, and authentication token lifetimes.',
         kind: 'milestone',
         scope: 'micro'
@@ -57,7 +57,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-5',
         task: 'Full QA Regression & Performance Benchmarking',
         t_minus_days: 14,
-        tag: 'QA',
+        tag: 'QA & Security',
         description: 'Execute critical-path smoke tests, cold-launch latency checks and battery profiling.',
         kind: 'milestone',
         scope: 'macro'
@@ -66,7 +66,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-6',
         task: 'App Store & Google Play Review Submission',
         t_minus_days: 7,
-        tag: 'Release',
+        tag: 'Store Submission',
         description: 'Submit build for standard App Store review with "Manual Release" toggle selected.',
         kind: 'deliverable',
         scope: 'macro'
@@ -75,7 +75,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-7',
         task: 'Production Staging, DB Migration & Rollback Runbook',
         t_minus_days: 2,
-        tag: 'DevOps',
+        tag: 'Release Ops',
         description: 'Dry run staging database migrations, cache warming and customer support triage channels.',
         kind: 'milestone',
         scope: 'micro'
@@ -84,7 +84,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-8',
         task: 'Release Flip & Real-Time Crash Telemetry Monitoring',
         t_minus_days: 0,
-        tag: 'Operations',
+        tag: 'Launch Day',
         description: 'Flip release to 100% phased rollout. Monitor Sentry & Datadog crash rates.',
         kind: 'milestone',
         scope: 'macro'
@@ -105,7 +105,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-20',
         task: 'Product Scope Freeze & Acceptance Criteria Lock',
         t_minus_days: 45,
-        tag: 'Product',
+        tag: 'Planning',
         description: 'All user stories marked Done or deferred. No scope additions without VP sign-off.',
         kind: 'milestone',
         scope: 'macro'
@@ -114,7 +114,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-21',
         task: 'End-to-End Regression & Load Testing Run',
         t_minus_days: 30,
-        tag: 'QA',
+        tag: 'QA & Testing',
         description: 'Stress test database replicas and verify API p99 latency under 2x projected peak traffic.',
         kind: 'milestone',
         scope: 'macro'
@@ -123,7 +123,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-22',
         task: 'Customer Documentation & Public API Changelog Lock',
         t_minus_days: 21,
-        tag: 'Docs',
+        tag: 'Documentation',
         description: 'Publish developer SDK reference docs and draft help desk guide updates.',
         kind: 'deliverable',
         scope: 'micro'
@@ -132,7 +132,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-23',
         task: 'Sales, Customer Success & Support Enablement Briefing',
         t_minus_days: 14,
-        tag: 'GTM',
+        tag: 'Internal Enablement',
         description: 'Train frontline support on common FAQs, troubleshooting scripts and escalation pathways.',
         kind: 'milestone',
         scope: 'micro'
@@ -141,7 +141,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-24',
         task: 'Release Candidate (RC) Staging Verification',
         t_minus_days: 7,
-        tag: 'Release',
+        tag: 'QA & Testing',
         description: 'Deploy RC build to staging environment with live production database snapshot mirror.',
         kind: 'milestone',
         scope: 'macro'
@@ -150,7 +150,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-25',
         task: 'Executive Go / No-Go Sign-Off Gate',
         t_minus_days: 2,
-        tag: 'Executive',
+        tag: 'Executive Sign-Off',
         description: 'Review blocker-free status across Engineering, Support, Legal and Marketing leads.',
         kind: 'milestone',
         scope: 'macro'
@@ -159,7 +159,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-26',
         task: 'Database Schema Migration & Pre-flight Health Check',
         t_minus_days: 1,
-        tag: 'Infrastructure',
+        tag: 'Release Ops',
         description: 'Execute zero-downtime table migration and verify read replica replication lag.',
         kind: 'milestone',
         scope: 'micro'
@@ -168,7 +168,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-27',
         task: 'General Availability (GA) Launch & Press Release Go-Live',
         t_minus_days: 0,
-        tag: 'Marketing',
+        tag: 'Launch Day',
         description: 'Switch feature flags to 100%, publish launch blog post and activate promo newsletter.',
         kind: 'milestone',
         scope: 'macro'
@@ -189,7 +189,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-30',
         task: 'Positioning, Messaging & ICP Narrative Lock',
         t_minus_days: 35,
-        tag: 'Product Marketing',
+        tag: 'Strategy',
         description: 'Finalize value proposition, competitive battlecards and target segment narrative before any campaign asset goes into production.',
         kind: 'milestone',
         scope: 'macro'
@@ -198,7 +198,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-31',
         task: 'Campaign Creative Brief & Content Calendar Build',
         t_minus_days: 28,
-        tag: 'Content',
+        tag: 'Content & Creative',
         description: 'Brief design, video and copy teams and map blog, social, email and ad creative across the full launch window.',
         kind: 'deliverable',
         scope: 'macro'
@@ -207,7 +207,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-32',
         task: 'Analyst & Press Embargo Briefing Outreach',
         t_minus_days: 21,
-        tag: 'PR',
+        tag: 'PR & Outreach',
         description: 'Send embargoed briefing decks to target press and industry analysts under NDA ahead of the public announcement.',
         kind: 'milestone',
         scope: 'micro'
@@ -225,7 +225,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-34',
         task: 'Sales & Customer Success Enablement Briefing',
         t_minus_days: 10,
-        tag: 'Enablement',
+        tag: 'Internal Enablement',
         description: 'Train frontline sales and support teams on new messaging, pricing and FAQs ahead of launch-day inbound demand.',
         kind: 'milestone',
         scope: 'micro'
@@ -234,7 +234,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-35',
         task: 'Landing Page Copy Freeze & Cross-Browser QA',
         t_minus_days: 7,
-        tag: 'Web',
+        tag: 'Content & Creative',
         description: 'Lock landing page copy, forms and tracking; run cross-browser and load QA ahead of the launch-day traffic spike.',
         kind: 'milestone',
         scope: 'micro'
@@ -243,7 +243,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-36',
         task: 'Influencer & Co-Marketing Partner Assets Finalized',
         t_minus_days: 3,
-        tag: 'Partnerships',
+        tag: 'PR & Outreach',
         description: 'Confirm final creative, talking points and posting schedule with influencer and co-marketing partners.',
         kind: 'deliverable',
         scope: 'micro'
@@ -261,7 +261,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-38',
         task: 'Post-Launch Performance Readout & Budget Reallocation',
         t_minus_days: -7,
-        tag: 'Analytics',
+        tag: 'Follow-up',
         description: 'Review traffic, pipeline and conversion data against launch KPIs; reallocate paid spend toward top-performing channels.',
         kind: 'milestone',
         scope: 'macro'
@@ -282,7 +282,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-40',
         task: 'Account Health & Usage Data Compilation',
         t_minus_days: 21,
-        tag: 'RevOps',
+        tag: 'Preparation',
         description: 'Pull product usage, support ticket trends and contract terms into a single account health snapshot.',
         kind: 'milestone',
         scope: 'macro'
@@ -291,7 +291,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-41',
         task: 'Renewal Risk Scoring & Expansion Opportunity Review',
         t_minus_days: 17,
-        tag: 'Customer Success',
+        tag: 'Preparation',
         description: 'Score churn risk and flag upsell/cross-sell opportunities with the account team before deck production starts.',
         kind: 'milestone',
         scope: 'micro'
@@ -300,7 +300,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-42',
         task: 'QBR Deck & Executive Narrative Draft',
         t_minus_days: 14,
-        tag: 'Sales',
+        tag: 'PPT & Strategy',
         description: 'Build the QBR narrative around measurable business outcomes and ROI delivered since the last review.',
         kind: 'deliverable',
         scope: 'macro'
@@ -309,7 +309,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-43',
         task: 'Internal Pre-Brief with Sales & CS Leadership',
         t_minus_days: 10,
-        tag: 'Leadership',
+        tag: 'Internal Meeting',
         description: 'Align internally on pricing flexibility, expansion targets and negotiation red lines before meeting the customer.',
         kind: 'milestone',
         scope: 'micro'
@@ -318,7 +318,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-44',
         task: 'Custom Pricing & Expansion Proposal Finalized',
         t_minus_days: 7,
-        tag: 'Deal Desk',
+        tag: 'PPT & Strategy',
         description: 'Lock proposed pricing tiers and contract terms with deal desk and finance sign-off.',
         kind: 'deliverable',
         scope: 'micro'
@@ -327,7 +327,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-45',
         task: 'Customer Stakeholder Calendar Confirmation',
         t_minus_days: 3,
-        tag: 'Account Management',
+        tag: 'Preparation',
         description: 'Confirm attendance of the economic buyer and key stakeholders; send agenda and pre-read materials.',
         kind: 'milestone',
         scope: 'micro'
@@ -336,7 +336,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-46',
         task: 'Quarterly Business Review Meeting & Proposal Presentation',
         t_minus_days: 0,
-        tag: 'Sales',
+        tag: 'Client Meeting',
         description: 'Deliver the QBR, present the renewal or expansion proposal and capture live stakeholder feedback.',
         kind: 'milestone',
         scope: 'macro'
@@ -345,7 +345,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-47',
         task: 'Follow-Up Action Items & Procurement Handoff',
         t_minus_days: -3,
-        tag: 'RevOps',
+        tag: 'Follow-up',
         description: 'Send recap notes and outstanding questions, and hand off redlines to legal and procurement for contract turnaround.',
         kind: 'milestone',
         scope: 'micro'
@@ -354,7 +354,7 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
         id: 'cpm-48',
         task: 'Signed Renewal / Expansion Contract Close',
         t_minus_days: -14,
-        tag: 'Sales',
+        tag: 'Follow-up',
         description: 'Countersign the renewal or expansion agreement and hand off to customer success for onboarding of the new scope.',
         kind: 'deliverable',
         scope: 'macro'
