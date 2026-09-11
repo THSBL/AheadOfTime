@@ -1579,7 +1579,7 @@ function App() {
               
               {/* Workspace Navigation Bar */}
               <div className="flex items-center justify-between pb-2 shrink-0">
-                <div className="flex items-center gap-1.5 p-1">
+                <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
                   <button
                     type="button"
                     onClick={() => {
@@ -1588,8 +1588,8 @@ function App() {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       activeTab === 'feed'
-                        ? 'bg-white/10 text-white border border-white/20 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                        ? 'bg-[#182A42] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -1606,11 +1606,11 @@ function App() {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       activeTab === 'chat'
-                        ? 'bg-white/10 text-white border border-white/20 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                        ? 'bg-[#182A42] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+                    <Sparkles className="w-3.5 h-3.5 text-sky-700" />
                     <span>Presets &amp; New Event</span>
                   </button>
 
@@ -1630,14 +1630,14 @@ function App() {
                     disabled={sortedEvents.length === 0}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
                       activeTab === 'tasks' && selectedEventId && focusMode !== 'welcome'
-                        ? 'bg-white/10 text-white border border-white/20 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                        ? 'bg-[#182A42] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
-                    <ListChecks className="w-3.5 h-3.5 text-emerald-400" />
+                    <ListChecks className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Timeline &amp; Tasks</span>
                     {sortedEvents.length > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.2 bg-white/15 text-white font-bold rounded-full font-mono">
+                      <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 text-slate-700 font-bold rounded-full font-mono">
                         {sortedEvents.length}
                       </span>
                     )}
