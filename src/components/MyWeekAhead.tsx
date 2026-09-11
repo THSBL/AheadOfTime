@@ -1,5 +1,5 @@
-import React from 'react';
-import { Sparkles, ArrowRight, Plus, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
@@ -21,11 +21,21 @@ const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
   other: Layers,
 };
 
+// A clear week isn't a hole to fill - rotate a short line that says so,
+// rather than defaulting to a single fixed message.
+const EMPTY_WEEK_LINES = [
+  "Nothing ahead. That's what being ahead looks like.",
+  'A clear week is a finished one. Nothing left to prep.',
+  "No prep needed right now - that's the goal, not a gap.",
+];
+
 interface MyWeekAheadProps {
   events: CalendarEvent[];
   currentReferenceDate: string;
   onSelectEvent: (eventId: string) => void;
+  onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
   onOpenNewEventModal: () => void;
+  onOpenScanAgenda: () => void;
 }
 
 const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string }> = {
@@ -40,27 +50,39 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   events,
   currentReferenceDate,
   onSelectEvent,
+  onToggleMilestoneStatus,
   onOpenNewEventModal,
+  onOpenScanAgenda,
 }) => {
+  const [expandedTheme, setExpandedTheme] = useState<ActionTheme | null>(null);
   const activeEvents = events.filter((e) => e.status !== 'completed');
 
   if (activeEvents.length === 0) {
+    // A day picked from the reference date so the line is stable within a
+    // session instead of reshuffling on every re-render.
+    const line = EMPTY_WEEK_LINES[new Date(currentReferenceDate).getDate() % EMPTY_WEEK_LINES.length];
     return (
-      <div className="flex-1 flex flex-col items-center justify-center h-full milky-glass border border-white/80 rounded-3xl p-6 text-center text-slate-500 shadow-xs">
-        <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-900 mb-3 shadow-xs">
+      <div className="flex-1 flex flex-col items-center justify-center h-full milky-glass border border-white/80 rounded-3xl p-6 text-center shadow-xs">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-900 mb-4 shadow-xs">
           <CalendarIcon className="w-6 h-6" />
         </div>
-        <h3 className="text-base font-bold text-slate-900 mb-1">Nothing ahead yet</h3>
-        <p className="text-xs sm:text-sm text-slate-500 mb-4 max-w-xs leading-relaxed">
-          Create your first event and Ahead Of Time will build a preparation plan and track it here.
-        </p>
-        <button
-          onClick={onOpenNewEventModal}
-          className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-sm shadow-slate-900/25 transition-all"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>New Event</span>
-        </button>
+        <h3 className="text-base sm:text-lg font-black text-slate-900 mb-6 max-w-xs leading-snug">{line}</h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onOpenNewEventModal}
+            className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-sm shadow-slate-900/25 transition-all"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>New Event</span>
+          </button>
+          <button
+            onClick={onOpenScanAgenda}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
+          >
+            <Search className="w-4 h-4 text-slate-500" />
+            <span>Scan your agenda</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -135,28 +157,61 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             <div className="space-y-2">
               {thisWeekFocus.map((cluster) => {
                 const Icon = THEME_ICONS[cluster.theme];
+                const isOpen = expandedTheme === cluster.theme;
                 const eventsPhrase =
                   cluster.eventTitles.length > 1
                     ? `across ${cluster.eventTitles.slice(0, 2).join(' and ')}${cluster.eventTitles.length > 2 ? ' and more' : ''}`
                     : `for ${cluster.eventTitles[0]}`;
                 return (
-                  <button
-                    key={cluster.theme}
-                    type="button"
-                    onClick={() => onSelectEvent(cluster.actions[0].eventId)}
-                    className="w-full text-left p-3 rounded-xl bg-white border border-slate-200/90 hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="w-4 h-4 text-slate-500 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm font-bold text-slate-900">{cluster.label}</p>
-                      <p className="text-[11px] text-slate-500 truncate">
-                        {cluster.count} items {eventsPhrase}
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
-                      {cluster.count}
-                    </span>
-                  </button>
+                  <div key={cluster.theme} className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTheme(isOpen ? null : cluster.theme)}
+                      className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer"
+                    >
+                      <Icon className="w-4 h-4 text-slate-500 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm font-bold text-slate-900">{cluster.label}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {cluster.count} items {eventsPhrase}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
+                        {cluster.count}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isOpen && (
+                      <div className="border-t border-slate-100 divide-y divide-slate-100">
+                        {cluster.actions.map((action) => (
+                          <div key={action.milestoneId} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50/60">
+                            <button
+                              type="button"
+                              onClick={() => onToggleMilestoneStatus(action.eventId, action.milestoneId)}
+                              className="w-4 h-4 rounded border border-slate-300 hover:border-[#0e1d2c] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
+                              title="Mark as complete"
+                            >
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onSelectEvent(action.eventId)}
+                              className="min-w-0 flex-1 text-left cursor-pointer"
+                            >
+                              <p className="text-xs font-semibold text-slate-800 truncate">{action.title}</p>
+                              <p className="text-[10px] text-slate-400 truncate">{action.eventTitle}</p>
+                            </button>
+                            <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                              action.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
+                            }`}>
+                              {action.dueLabel}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

@@ -299,6 +299,8 @@ export interface ThemeClusterAction {
   eventTitle: string;
   milestoneId: string;
   title: string;
+  dueLabel: string;
+  isOverdue: boolean;
 }
 
 export interface ThemeCluster {
@@ -356,6 +358,8 @@ export function computeThisWeekFocus(
         eventTitle: event.title,
         milestoneId: milestone.id,
         title: milestone.title,
+        dueLabel: countdown.label,
+        isOverdue: countdown.isOverdue,
       });
       clusters.set(theme, existing);
     }
@@ -363,6 +367,12 @@ export function computeThisWeekFocus(
 
   return Array.from(clusters.values())
     .filter((c) => c.count >= minClusterSize)
+    .map((c) => ({
+      ...c,
+      // Most urgent action in the cluster first, so opening it up shows
+      // what actually needs doing soonest rather than insertion order.
+      actions: [...c.actions].sort((a, b) => Number(b.isOverdue) - Number(a.isOverdue)),
+    }))
     .sort((a, b) => b.count - a.count)
     .slice(0, maxClusters);
 }

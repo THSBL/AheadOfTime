@@ -1677,11 +1677,13 @@ function App() {
                     setMobileDashboardView('detail');
                     navigate(`/events/${id}`);
                   }}
+                  onToggleMilestoneStatus={handleToggleMilestoneStatus}
                   onOpenNewEventModal={() => {
                     setSelectedEventId(null);
                     setActiveTab('chat');
                     setFocusMode('welcome');
                   }}
+                  onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 />
               ) : activeTab === 'chat' || !selectedEventId || focusMode === 'welcome' ? (
                 <div className="flex-1 min-h-0 h-full overflow-y-auto">

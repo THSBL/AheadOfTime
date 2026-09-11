@@ -233,6 +233,19 @@ describe('computeThisWeekFocus', () => {
     expect(clusters.every((c) => c.theme !== 'other')).toBe(true);
   });
 
+  it('includes due-status on each action and sorts overdue ones first within a cluster', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'soon', title: 'Pack bag one', calculatedDate: '2026-09-15' }),
+      makeMilestone({ id: 'overdue', title: 'Pack bag two', calculatedDate: '2026-09-01' }),
+    ]);
+    const clusters = computeThisWeekFocus([event], REF_DATE_ISO);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].actions[0].milestoneId).toBe('overdue');
+    expect(clusters[0].actions[0].isOverdue).toBe(true);
+    expect(clusters[0].actions[1].isOverdue).toBe(false);
+    expect(clusters[0].actions[0].dueLabel).toBeTruthy();
+  });
+
   it('sorts largest cluster first and caps at maxClusters', () => {
     const event = makeEvent([
       makeMilestone({ id: 'd1', title: 'Passport check', calculatedDate: '2026-09-15' }),
