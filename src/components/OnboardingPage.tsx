@@ -154,7 +154,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                     onClick={() => setAgeRange(range)}
                     className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                       ageRange === range
-                        ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
@@ -178,7 +178,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                     onClick={() => setFamilyStatus(status)}
                     className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center truncate ${
                       familyStatus === status
-                        ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
@@ -202,7 +202,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                     onClick={() => setCalendarType(type)}
                     className={`py-2.5 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center ${
                       calendarType === type
-                        ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
@@ -336,7 +336,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               id="btn-save-and-connect-calendar"
               disabled={isConnecting}
               onClick={() => handleSubmit('connect_calendar')}
-              className="w-full py-3.5 px-6 rounded-2xl bg-[#0e1d2c] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0e1d2c] disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
+              className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
             >
               {isConnecting ? (
                 <>

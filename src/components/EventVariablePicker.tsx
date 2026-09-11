@@ -306,7 +306,7 @@ export const EventVariablePicker: React.FC<EventVariablePickerProps> = ({
                   >
                     <div className="flex items-center gap-2">
                       {isSelected ? (
-                        <div className="w-4 h-4 rounded-full bg-[#0f172a] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <div className="w-4 h-4 rounded-full bg-[#182A42] text-white flex items-center justify-center shrink-0 shadow-xs">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </div>
                       ) : (

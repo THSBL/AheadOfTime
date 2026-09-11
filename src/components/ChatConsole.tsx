@@ -888,7 +888,7 @@ const CustomClarificationCard = ({
           </button>
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-xl bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
+            className="px-6 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-sky-300" />
             <span>Build Ahead Of Time Milestones</span>
@@ -960,7 +960,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             onClick={() => setActivePresetExplorerTab?.('core')}
             className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
               activePresetExplorerTab === 'core'
-                ? 'bg-[#0f172a] text-white shadow-xs'
+                ? 'bg-[#182A42] text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
             }`}
           >
@@ -973,7 +973,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             onClick={() => setActivePresetExplorerTab?.('saved')}
             className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
               activePresetExplorerTab === 'saved'
-                ? 'bg-[#0f172a] text-white shadow-xs'
+                ? 'bg-[#182A42] text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
             }`}
           >
@@ -1032,7 +1032,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                     {preset.description}
                   </p>
                 </div>
-                <div className="w-6 h-6 shrink-0 rounded-full bg-slate-100 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
+                <div className="w-6 h-6 shrink-0 rounded-full bg-slate-100 group-hover:bg-[#182A42] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
                   <ChevronRight className="w-3.5 h-3.5" />
                 </div>
               </button>
@@ -1061,7 +1061,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                       </p>
                     </div>
                   </div>
-                  <div className="w-6 h-6 shrink-0 rounded-full bg-slate-50 group-hover:bg-[#0f172a] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
+                  <div className="w-6 h-6 shrink-0 rounded-full bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
                     <ChevronRight className="w-3.5 h-3.5" />
                   </div>
                 </button>
@@ -1120,7 +1120,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                 type="button"
                 onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
                 className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
-                  isRecording ? 'bg-[#0f172a] text-white animate-pulse' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-900 bg-slate-50'
+                  isRecording ? 'bg-[#182A42] text-white animate-pulse' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-900 bg-slate-50'
                 }`}
                 title="Voice Memo Recording"
               >
@@ -1133,7 +1133,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
               disabled={!inputText.trim() || isLoading}
               className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
                 inputText.trim() 
-                  ? 'bg-[#0f172a] text-white shadow-md shadow-slate-900/20 active:scale-95 hover:bg-slate-800' 
+                  ? 'bg-[#182A42] text-white shadow-md shadow-slate-900/20 active:scale-95 hover:bg-slate-800' 
                   : 'bg-slate-100 text-slate-400 opacity-50 cursor-not-allowed'
               }`}
               title="Send Event"

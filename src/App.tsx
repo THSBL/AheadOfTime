@@ -1502,7 +1502,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#faf9f4] lg:bg-fixed lg:bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#f5f4ee_55%,#5c6f80_100%)] text-slate-800 flex flex-col font-sans selection:bg-[#0e1d2c] selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#F5F6F2] text-slate-800 flex flex-col font-sans selection:bg-[#182A42] selection:text-white relative overflow-x-hidden">
       
       {/* Soft Ambient Light Glow in background to make blue pop */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
@@ -1596,7 +1596,7 @@ function App() {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       activeTab === 'feed'
-                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        ? 'bg-[#182A42] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
@@ -1614,7 +1614,7 @@ function App() {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       activeTab === 'chat'
-                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        ? 'bg-[#182A42] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
@@ -1638,7 +1638,7 @@ function App() {
                     disabled={sortedEvents.length === 0}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
                       activeTab === 'tasks' && selectedEventId && focusMode !== 'welcome'
-                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        ? 'bg-[#182A42] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
@@ -1797,7 +1797,7 @@ function App() {
       {/* Real-time Bidirectional Sync Notification Toast */}
       {syncToast && (
         <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300 pointer-events-none">
-          <div className="bg-[#0f172a] text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3 pointer-events-auto">
+          <div className="bg-[#182A42] text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3 pointer-events-auto">
             <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
               <Check className="w-4 h-4 stroke-[3]" />
             </div>

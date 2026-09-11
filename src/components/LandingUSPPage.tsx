@@ -17,7 +17,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   onOpenPrivacyPolicy,
 }) => {
   return (
-    <div className="relative z-10 min-h-screen w-full bg-[#faf9f4] lg:bg-fixed lg:bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#f5f4ee_55%,#5c6f80_100%)] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#0e1d2c] selection:text-white">
+    <div className="relative z-10 min-h-screen w-full bg-[#F5F6F2] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#182A42] selection:text-white">
       
       {/* Top Header Navigation */}
       <div className="max-w-6xl mx-auto w-full flex items-center justify-between p-4 sm:p-6 lg:px-10">
@@ -59,7 +59,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Get Started For Free', 'landing_header');
                 onGetStarted();
               }}
-              className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              className="bg-[#182A42] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
             >
               <span>Get Started For Free</span>
             </button>
@@ -95,7 +95,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Open My Dashboard', 'landing_hero');
                 onGoToDashboard();
               }}
-              className="px-8 py-3.5 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              className="px-8 py-3.5 rounded-2xl bg-[#182A42] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <LayoutDashboard className="w-4 h-4 text-sky-300" />
               <span>Open My Dashboard</span>
@@ -106,7 +106,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Get Started For Free', 'landing_hero');
                 onGetStarted();
               }}
-              className="px-8 py-3.5 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              className="px-8 py-3.5 rounded-2xl bg-[#182A42] hover:bg-slate-800 text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <span>Get Started For Free</span>
             </button>
@@ -174,7 +174,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
 
       {/* Bottom Closing Banner */}
       <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-12 text-center space-y-6">
-        <div className="bg-[#0f172a] text-white rounded-3xl p-8 sm:p-12 shadow-xl shadow-slate-900/10 space-y-6 relative overflow-hidden">
+        <div className="bg-[#182A42] text-white rounded-3xl p-8 sm:p-12 shadow-xl shadow-slate-900/10 space-y-6 relative overflow-hidden">
           <div className="absolute -right-16 -top-16 w-64 h-64 bg-sky-500/10 rounded-full blur-2xl pointer-events-none" />
           
           <div className="space-y-3 relative z-10">

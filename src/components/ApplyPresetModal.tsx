@@ -277,7 +277,7 @@ export const ApplyPresetModal: React.FC<ApplyPresetModalProps> = ({
           <button
             type="button"
             onClick={handleApply}
-            className="px-6 py-2.5 bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer transition-all"
+            className="px-6 py-2.5 bg-[#182A42] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer transition-all"
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>

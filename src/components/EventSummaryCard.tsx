@@ -82,7 +82,7 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
       }`}>
         <div>
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="text-[11px] font-bold text-white uppercase tracking-wider bg-[#0f172a] px-2.5 py-0.5 rounded-full shadow-xs">
+            <span className="text-[11px] font-bold text-white uppercase tracking-wider bg-[#182A42] px-2.5 py-0.5 rounded-full shadow-xs">
               Target Deadline
             </span>
             {event.needsRefinement && !event.refinedAt && (!event.context || Object.keys(event.context).length === 0) && (
@@ -152,7 +152,7 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
           <button
             type="button"
             onClick={onOpenGoogleCalendarSync}
-            className="text-xs sm:text-sm px-3.5 py-1.5 rounded-full bg-[#0f172a] hover:bg-slate-800 text-white font-semibold flex items-center gap-1.5 transition-all shrink-0 shadow-xs cursor-pointer"
+            className="text-xs sm:text-sm px-3.5 py-1.5 rounded-full bg-[#182A42] hover:bg-slate-800 text-white font-semibold flex items-center gap-1.5 transition-all shrink-0 shadow-xs cursor-pointer"
             title="Push 1 Target Deadline + Preparation Tasks to Google Calendar"
           >
             <Calendar className="w-3.5 h-3.5" />
@@ -256,7 +256,7 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
                         <Check className="w-3.5 h-3.5 stroke-[3]" />
                       </button>
                     ) : (
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${isOverdue ? 'bg-rose-600' : 'bg-[#0f172a]'}`} />
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${isOverdue ? 'bg-rose-600' : 'bg-[#182A42]'}`} />
                     )}
 
                     <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${

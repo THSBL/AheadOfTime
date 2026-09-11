@@ -85,7 +85,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
           className={`${imgSize} object-contain rounded-lg shrink-0`} 
         />
       </div>
-      <span className={`inline-flex items-center font-extrabold tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#0e1d2c]'} whitespace-nowrap`}>
+      <span className={`inline-flex items-center font-extrabold tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#182A42]'} whitespace-nowrap`}>
         Ahead&nbsp;<span className="text-[#447463]">Of</span>&nbsp;Time
       </span>
     </div>

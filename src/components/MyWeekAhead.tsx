@@ -84,7 +84,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenNewEventModal}
-            className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-sm shadow-slate-900/25 transition-all"
+            className="bg-[#182A42] hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-sm shadow-slate-900/25 transition-all"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>New Event</span>
@@ -228,7 +228,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
                             <button
                               type="button"
                               onClick={() => onToggleMilestoneStatus(action.eventId, action.milestoneId)}
-                              className="w-4 h-4 rounded border border-slate-300 hover:border-[#0e1d2c] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
+                              className="w-4 h-4 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
                               title="Mark as complete"
                             >
                               <Check className="w-2.5 h-2.5 stroke-[3]" />

@@ -165,7 +165,7 @@ export const LaunchPresetModal: React.FC<LaunchPresetModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
+              className="px-6 py-2.5 bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
             >
               <Zap className="w-4 h-4 text-amber-400" />
               <span>Project Milestones Instantly</span>

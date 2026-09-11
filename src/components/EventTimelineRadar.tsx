@@ -238,7 +238,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         particleCount: 30,
         spread: 50,
         origin: { y: 0.7 },
-        colors: ['#0e1d2c', '#529479', '#3b82f6'],
+        colors: ['#182A42', '#529479', '#3b82f6'],
       });
     }
 
@@ -298,7 +298,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         </p>
         <button
           onClick={onOpenNewEventModal}
-          className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-sm shadow-slate-900/25 transition-all"
+          className="bg-[#182A42] hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-sm shadow-slate-900/25 transition-all"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>New Event</span>
@@ -412,7 +412,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="flex items-center gap-1.5 shrink-0 relative">
             <button
               onClick={() => setIsPushModalOpen(true)}
-              className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
               title="Push 1 event + prep tasks to Google Calendar"
             >
               <Calendar className="w-3.5 h-3.5 text-sky-300 shrink-0" />
@@ -726,7 +726,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-sky-300" />
                   <span>Build Ahead Of Time Milestones</span>
@@ -739,7 +739,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <p>No preparation tasks created for this event yet.</p>
             <button
               onClick={() => onAddCustomMilestone(activeEvent.id)}
-              className="px-4 py-2 bg-[#0f172a] text-white rounded-xl text-xs font-bold shadow-xs hover:bg-slate-800 cursor-pointer"
+              className="px-4 py-2 bg-[#182A42] text-white rounded-xl text-xs font-bold shadow-xs hover:bg-slate-800 cursor-pointer"
             >
               Add First Task
             </button>
@@ -777,9 +777,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     : isOverdue
                     ? 'bg-rose-50/60 border-rose-300 hover:border-rose-400 text-slate-800 shadow-2xs ring-1 ring-rose-200/60'
                     : isDeliverable
-                    ? 'bg-white border-slate-200/90 hover:border-[#0e1d2c]/50 text-slate-800 shadow-xs border-l-4 border-l-[#0e1d2c]'
+                    ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
                     : hasDeliverables
-                    ? 'bg-white border-slate-200/90 hover:border-[#0e1d2c]/40 text-slate-800 shadow-xs border-l-4 border-l-[#0e1d2c]/70'
+                    ? 'bg-white border-slate-200/90 hover:border-[#182A42]/40 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]/70'
                     : 'bg-white/80 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-2xs'
                 }`}
               >
@@ -796,7 +796,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         : isOverdue
                         ? 'border-2 border-rose-400 hover:border-rose-600 text-transparent cursor-pointer'
                         : isDeliverable || hasDeliverables
-                        ? 'border-2 border-[#0e1d2c]/40 hover:border-[#0e1d2c] text-transparent cursor-pointer'
+                        ? 'border-2 border-[#182A42]/40 hover:border-[#182A42] text-transparent cursor-pointer'
                         : 'border-2 border-slate-300 hover:border-sky-600 text-transparent cursor-pointer'
                     }`}
                     title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
@@ -835,8 +835,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       )}
 
                       {isDeliverable && (
-                        <span className="text-[10px] font-bold text-[#0e1d2c] bg-slate-100 border border-[#0e1d2c] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#0e1d2c]" />
+                        <span className="text-[10px] font-bold text-[#182A42] bg-slate-100 border border-[#182A42] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#182A42]" />
                           <span>Deliverable</span>
                         </span>
                       )}
@@ -871,7 +871,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         : isOverdue
                         ? 'text-rose-950 font-black'
                         : isDeliverable
-                        ? 'text-[#0e1d2c]'
+                        ? 'text-[#182A42]'
                         : 'text-slate-900'
                     }`}>
                       {ms.title}
@@ -919,8 +919,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                                     type="button"
                                     className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                                       isDelivDone
-                                        ? 'bg-[#0e1d2c] text-white'
-                                        : 'border border-slate-300 group-hover/deliv:border-[#0e1d2c] text-transparent'
+                                        ? 'bg-[#182A42] text-white'
+                                        : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
                                     }`}
                                     title={isDelivDone ? 'Mark sub-task as pending' : 'Mark sub-task as complete'}
                                   >
@@ -968,7 +968,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             : 'bg-white border-sky-200/80 text-slate-700'
         }`}>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div className={`w-3 h-3 rounded-full shadow-2xs ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#0f172a]'}`} />
+            <div className={`w-3 h-3 rounded-full shadow-2xs ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#182A42]'}`} />
             <div>
               <span className="font-bold text-slate-900">Target Event: {activeEvent.title}</span>
               {activeEvent.eventTime && <span className="text-slate-500 text-xs ml-2">({activeEvent.eventTime})</span>}

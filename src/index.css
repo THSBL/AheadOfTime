@@ -1,24 +1,26 @@
 @import "tailwindcss";
 
 /*
- * Brand palette (Phase 1 of the visual identity migration - see the
- * "Calm Command Centre" direction agreed for AheadOfTime):
- *   - Navy is the dominant structural brand colour, sampled from the real
- *     logo wordmark (Logo.tsx renders "Ahead"/"Time" in #0e1d2c) rather
- *     than approximated from a screenshot.
- *   - Sage (#447463) was ALREADY wired up as a global token below
- *     (aot-green/emerald/green) before this pass - it needed no change.
- *   - The remaining work is retiring the cold, pale-blue Tailwind
- *     defaults (sky/slate/blue) in favour of one warm, navy-tinted
- *     neutral scale, since those three are what actually produced the
- *     "bright SaaS dashboard" feel: 276 sky-*, 1245 slate-*, and 23
- *     blue-* usages across the app, all resolving through these same
- *     tokens. Overriding them here reskins the entire app without
- *     touching individual components - the surgical, low-risk way to do
- *     a palette migration in an existing Tailwind v4 codebase.
- *   - rose/amber (at-risk/attention) are left as Tailwind defaults for
- *     now - reasonably muted already; revisit once the neutral migration
- *     has been seen live.
+ * Brand palette ("Calm Command Centre" visual identity for AheadOfTime):
+ *   - Navy #182A42 is THE primary structural brand colour - text,
+ *     buttons, borders, selected states. (Note: the logo image asset
+ *     itself renders its wordmark in #0e1d2c, slightly darker - a
+ *     deliberate choice to keep the UI's navy at #182A42 rather than
+ *     force pixel-identical logo/UI colours.)
+ *   - Sage #447463 is the primary accent / readiness colour - already
+ *     wired up as a global token below (aot-green/emerald/green) before
+ *     this pass, needed no change, and matches the logo's "Of" exactly.
+ *   - The page background is a single flat warm neutral (#F5F6F2) -
+ *     no gradients, no decorative backgrounds. White is reserved for
+ *     elevated content surfaces (cards/modals) only.
+ *   - Amber/coral are reserved exclusively for attention/at-risk states -
+ *     never used decoratively.
+ *   - slate/sky/blue (three cool-blue-gray Tailwind defaults doing the
+ *     same job under different names across 276/1245/23 call sites) all
+ *     collapse onto one warm, navy-tinted neutral ramp anchored on the
+ *     same #182A42, so overriding them here reskins the whole app
+ *     without touching individual components.
+ *   - Colour communicates meaning, never decoration.
  */
 @theme {
   --color-aot-green: #447463;
@@ -58,7 +60,7 @@
   --color-green-900: #21362f;
   --color-green-950: #101e1a;
 
-  /* Named navy scale, anchored on the real logo colour (#0e1d2c). New
+  /* Named navy scale, anchored on the canonical brand navy #182A42. New
      code (the Phase 3 navy shell, etc.) should reach for bg-aot-navy-900
      etc. directly rather than another arbitrary bg-[#hex]. */
   --color-aot-navy-50: #eef1f4;
@@ -67,17 +69,18 @@
   --color-aot-navy-300: #8a9aa8;
   --color-aot-navy-400: #5c6f80;
   --color-aot-navy-500: #3d4f60;
-  --color-aot-navy-600: #283848;
-  --color-aot-navy-700: #1c2b3a;
-  --color-aot-navy-800: #14212e;
-  --color-aot-navy-900: #0e1d2c;
-  --color-aot-navy-950: #0a1420;
+  --color-aot-navy-600: #2a3d52;
+  --color-aot-navy-700: #22344a;
+  --color-aot-navy-800: #1c2c40;
+  --color-aot-navy-900: #182a42;
+  --color-aot-navy-950: #0e1d2c;
 
   /* slate/sky/blue all collapse onto one warm, navy-tinted neutral ramp -
      these three cool-blue-gray Tailwind defaults were doing the same job
      under three different names throughout the app. Light stops lean
-     warm (for surfaces/borders); dark stops lean into the brand navy
-     (for text/structure), matching how each end was already being used. */
+     warm (for surfaces/borders); dark stops land exactly on the brand
+     navy (for text/structure), matching how each end was already being
+     used. */
   --color-slate-50: #faf9f7;
   --color-slate-100: #f3f3ef;
   --color-slate-200: #e6e6e0;
@@ -86,8 +89,8 @@
   --color-slate-500: #7c8580;
   --color-slate-600: #5b6660;
   --color-slate-700: #3f4a48;
-  --color-slate-800: #24333a;
-  --color-slate-900: #182a3a;
+  --color-slate-800: #22344a;
+  --color-slate-900: #182a42;
   --color-slate-950: #0e1d2c;
 
   --color-sky-50: #faf9f7;
@@ -98,8 +101,8 @@
   --color-sky-500: #7c8580;
   --color-sky-600: #5b6660;
   --color-sky-700: #3f4a48;
-  --color-sky-800: #24333a;
-  --color-sky-900: #182a3a;
+  --color-sky-800: #22344a;
+  --color-sky-900: #182a42;
   --color-sky-950: #0e1d2c;
 
   --color-blue-50: #faf9f7;
@@ -110,19 +113,22 @@
   --color-blue-500: #7c8580;
   --color-blue-600: #5b6660;
   --color-blue-700: #3f4a48;
-  --color-blue-800: #24333a;
-  --color-blue-900: #182a3a;
+  --color-blue-800: #22344a;
+  --color-blue-900: #182a42;
   --color-blue-950: #0e1d2c;
 }
 
 @layer base {
   body {
-    @apply bg-[#faf9f4] text-slate-900 antialiased selection:bg-[#0e1d2c] selection:text-white;
+    /* Single flat warm neutral page background - no gradients, no
+       decorative backgrounds. White is reserved for elevated surfaces
+       (.milky-glass/.milky-card, modals) only. */
+    @apply bg-[#F5F6F2] text-slate-900 antialiased selection:bg-[#182A42] selection:text-white;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
-/* Custom scrollbars - warm navy-neutral instead of cyan */
+/* Custom scrollbars - brand navy instead of cyan */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -131,23 +137,23 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(14, 29, 44, 0.2);
+  background: rgba(24, 42, 66, 0.2);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(14, 29, 44, 0.4);
+  background: rgba(24, 42, 66, 0.4);
 }
 
 .milky-glass {
   background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(14, 29, 44, 0.1);
-  box-shadow: 0 4px 16px -2px rgba(14, 29, 44, 0.06), 0 1px 3px rgba(14, 29, 44, 0.05);
+  border: 1px solid rgba(24, 42, 66, 0.1);
+  box-shadow: 0 4px 16px -2px rgba(24, 42, 66, 0.06), 0 1px 3px rgba(24, 42, 66, 0.05);
 }
 
 .milky-card {
   background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(14, 29, 44, 0.1);
-  box-shadow: 0 4px 16px -2px rgba(14, 29, 44, 0.05), 0 1px 3px rgba(14, 29, 44, 0.04);
+  border: 1px solid rgba(24, 42, 66, 0.1);
+  box-shadow: 0 4px 16px -2px rgba(24, 42, 66, 0.05), 0 1px 3px rgba(24, 42, 66, 0.04);
 }
 
 .accent-blue-pill {

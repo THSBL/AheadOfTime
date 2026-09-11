@@ -452,7 +452,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                 <button
                   onClick={handleSignIn}
                   disabled={isSigningIn}
-                  className="px-3 py-1.5 bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 bg-[#182A42] hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   {isSigningIn ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
                   <span>Link Calendar</span>
@@ -666,7 +666,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
                     <button
                       type="button"
                       onClick={onClose}
-                      className="px-4 py-1.5 bg-[#0e1d2c] hover:bg-[#162a3f] text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
+                      className="px-4 py-1.5 bg-[#182A42] hover:bg-[#162a3f] text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
                     >
                       Return to Dashboard
                     </button>
@@ -789,7 +789,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
               <button
                 onClick={handleImportSelected}
                 disabled={selectedCount === 0}
-                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#0e1d2c] hover:bg-[#162a3f] disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#182A42] hover:bg-[#162a3f] disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <span className="sm:hidden">Import ({selectedCount})</span>
                 <span className="hidden sm:inline">Import &amp; Generate Timelines ({selectedCount})</span>

@@ -812,7 +812,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setGiftType(opt.value)}
                       className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         giftType === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -844,7 +844,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setIsThemed(opt.value)}
                       className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         isThemed === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -887,7 +887,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setTransportType(opt.value)}
                       className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         transportType === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -923,7 +923,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setFoodPlan(opt.value)}
                       className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                         foodPlan === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -961,7 +961,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                         onClick={() => handleTogglePartyVendor(item.key)}
                         className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
                           isSelected
-                            ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs'
+                            ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
                             : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                         }`}
                       >
@@ -1305,7 +1305,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setStakeholderReview(opt.value)}
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
                         stakeholderReview === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm font-bold'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-sm font-bold'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -1335,7 +1335,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setQaFreeze(opt.value)}
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
                         qaFreeze === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm font-bold'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-sm font-bold'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -1366,7 +1366,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                       onClick={() => setMarketingCollateral(opt.value)}
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
                         marketingCollateral === opt.value
-                          ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm font-bold'
+                          ? 'bg-[#182A42] text-white border-[#182A42] shadow-sm font-bold'
                           : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
@@ -1401,7 +1401,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                     onClick={() => setNoticePeriod(opt.value)}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
                       noticePeriod === opt.value
-                        ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm font-bold'
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-sm font-bold'
                         : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                     }`}
                   >
@@ -1433,7 +1433,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                     onClick={() => setMaintenanceServiceType(opt.value)}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
                       maintenanceServiceType === opt.value
-                        ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm font-bold'
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-sm font-bold'
                         : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                     }`}
                   >
@@ -1465,7 +1465,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                     onClick={() => setIsCamping(opt.value)}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
                       isCamping === opt.value
-                        ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-sm font-bold'
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-sm font-bold'
                         : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
                     }`}
                   >
@@ -1527,7 +1527,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
                 type="button"
                 onClick={handleAddCustomTask}
                 disabled={!customTaskInput.trim()}
-                className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1 shadow-xs shrink-0"
+                className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1 shadow-xs shrink-0"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Add</span>
@@ -1567,7 +1567,7 @@ export const EventRefineModal: React.FC<EventRefineModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-[#0f172a] hover:bg-slate-800 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md shadow-slate-900/20 transition-all cursor-pointer active:scale-95"
+              className="px-6 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md shadow-slate-900/20 transition-all cursor-pointer active:scale-95"
             >
               <Sparkles className="w-4 h-4 text-sky-300" />
               <span>Generate Tailored Schedule</span>

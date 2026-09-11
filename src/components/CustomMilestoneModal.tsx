@@ -434,7 +434,7 @@ export const CustomMilestoneModal: React.FC<CustomMilestoneModalProps> = ({
             </button>
             <button
               type="submit"
-              className="bg-[#0f172a] hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              className="bg-[#182A42] hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Add Task</span>

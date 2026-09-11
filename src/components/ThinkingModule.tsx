@@ -48,7 +48,7 @@ export const ThinkingModule: React.FC<ThinkingModuleProps> = ({ promptText, clas
       <div className="p-4 sm:p-5 bg-gradient-to-r from-sky-50/80 via-white to-indigo-50/50 border-b border-sky-100/80 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[#0f172a] to-sky-800 text-white flex items-center justify-center shadow-md shadow-sky-900/20">
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[#182A42] to-sky-800 text-white flex items-center justify-center shadow-md shadow-sky-900/20">
               <Brain className="w-5 h-5 animate-pulse text-sky-200" />
             </div>
             <span className="absolute -top-1 -right-1 flex h-3 w-3">

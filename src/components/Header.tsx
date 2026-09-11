@@ -220,7 +220,7 @@ export const Header: React.FC<HeaderProps> = ({
                     />
                     <button
                       type="submit"
-                      className="bg-[#0f172a] hover:bg-slate-800 text-white px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-xs"
+                      className="bg-[#182A42] hover:bg-slate-800 text-white px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-xs"
                     >
                       Save
                     </button>
@@ -380,7 +380,7 @@ export const Header: React.FC<HeaderProps> = ({
                             }}
                             className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
                               isSelected
-                                ? 'bg-[#0f172a] text-white border-slate-900 shadow-sm'
+                                ? 'bg-[#182A42] text-white border-slate-900 shadow-sm'
                                 : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'
                             }`}
                           >
@@ -410,7 +410,7 @@ export const Header: React.FC<HeaderProps> = ({
                         setIsHorizonOpen(false);
                       }}
                       disabled={isSyncingWithGoogle}
-                      className="w-full py-2 px-3 bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors disabled:opacity-50"
+                      className="w-full py-2 px-3 bg-[#182A42] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isSyncingWithGoogle ? 'animate-spin' : ''}`} />
                       <span>{isSyncingWithGoogle ? 'Syncing...' : 'Force Sync Now'}</span>
@@ -478,7 +478,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenNewEventModal}
               id="btn-manual-event"
-              className="bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
+              className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
               title="Create new event using presets or assistant"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />

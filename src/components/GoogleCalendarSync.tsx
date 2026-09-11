@@ -432,7 +432,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="px-3 py-1.5 bg-[#0f172a] hover:bg-slate-800 text-white font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-3 py-1.5 bg-[#182A42] hover:bg-slate-800 text-white font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
               >
                 {isSigningIn ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
                 <span>Connect Google</span>
@@ -582,7 +582,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     type="button"
                     onClick={handleBatchPushToCalendar}
                     disabled={isBatchSyncing || isSigningIn || selectedBatchIds.length === 0}
-                    className="px-6 py-3 rounded-2xl bg-[#0f172a] hover:bg-slate-800 active:scale-98 text-white text-xs sm:text-sm font-bold transition-all shadow-md shadow-slate-900/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="px-6 py-3 rounded-2xl bg-[#182A42] hover:bg-slate-800 active:scale-98 text-white text-xs sm:text-sm font-bold transition-all shadow-md shadow-slate-900/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isBatchSyncing ? (
                       <>
@@ -738,7 +738,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     type="button"
                     onClick={handlePushToCalendar}
                     disabled={isSyncing || isSigningIn}
-                    className="px-6 py-3 rounded-2xl bg-[#0f172a] hover:bg-slate-800 active:scale-98 text-white text-xs sm:text-sm font-bold transition-all shadow-md shadow-slate-900/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="px-6 py-3 rounded-2xl bg-[#182A42] hover:bg-slate-800 active:scale-98 text-white text-xs sm:text-sm font-bold transition-all shadow-md shadow-slate-900/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isSyncing ? (
                       <>
