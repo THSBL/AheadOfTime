@@ -138,6 +138,18 @@ describe('decomposeComplexTripIntent', () => {
     expect(decomposeComplexTripIntent('Pay the electricity bill', REF_DATE_ISO)).toBeNull();
   });
 
+  it('does not hijack a single-day event that merely contains a soft trip word', () => {
+    // Regression test: "weekend"/"holiday"/"getaway"/"conference"/"retreat"
+    // used to trigger full trip decomposition on their own, so an ordinary
+    // single-day event like a "weekend BBQ" got silently replaced with a
+    // canned multi-day "Group Trip Horizon" plan and unrelated Day 2
+    // milestones. These words should only decompose as a trip alongside an
+    // actual multi-day date range.
+    expect(decomposeComplexTripIntent('Weekend BBQ with the neighbors', REF_DATE_ISO)).toBeNull();
+    expect(decomposeComplexTripIntent('Holiday party at the office', REF_DATE_ISO)).toBeNull();
+    expect(decomposeComplexTripIntent('Team retreat planning call', REF_DATE_ISO)).toBeNull();
+  });
+
   it('gives a specific title to a recognized archetype (stag party) alongside the destination', () => {
     const result = decomposeComplexTripIntent('Stag party trip to Prague', REF_DATE_ISO);
     expect(result?.macro_event.title).toBe('Stag Party Weekend (Prague)');

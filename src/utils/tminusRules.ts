@@ -1563,14 +1563,22 @@ export function decomposeComplexTripIntent(
     role = 'co_organiser';
   }
 
-  // Check if this is a trip, multi-day span, or contains sub-task/activity requirements
-  const isTripIntent =
-    /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?|trip|vacation|holiday|getaway|conference|retreat|weekend/i.test(message) ||
+  // Check if this is a trip, multi-day span, or contains sub-task/activity requirements.
+  // Words like "stag do", "from X to Y", or an explicit "day 2" callout are
+  // unambiguous multi-day signals on their own. But "trip", "vacation",
+  // "holiday", "getaway", "conference", "retreat" and especially "weekend"
+  // show up constantly in single-day event descriptions too (a "holiday
+  // party", "weekend BBQ", "team retreat afternoon") - matching on those
+  // alone used to hijack completely unrelated events into a canned
+  // "Group Trip Horizon" plan with generic Day 2 milestones that had
+  // nothing to do with what was actually typed. Only trust them when the
+  // message also contains a genuine multi-day date range.
+  const hasStrongTripSignal =
+    /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?|\btrip\b|\bvacation\b/i.test(message) ||
     /^(going|flying|traveling|travelling|heading)\s+to\s+/i.test(message) ||
     /from\s+.*?to\s+/i.test(message) ||
     /day\s*\d+|2nd\s*day|second\s*day|3rd\s*day|third\s*day/i.test(message);
-
-  if (!isTripIntent) return null;
+  const hasSoftTripWord = /holiday|getaway|conference|retreat|weekend/i.test(message);
 
   const baseRef = new Date(referenceDateISO);
   const safeBase = isNaN(baseRef.getTime()) ? new Date('2026-09-01T03:20:00Z') : baseRef;
@@ -1580,6 +1588,14 @@ export function decomposeComplexTripIntent(
   let endDateStr = '';
 
   const parsedRange = parseNaturalDateRange(message, referenceDateISO);
+  const hasMultiDayRange = Boolean(
+    parsedRange?.startDate && parsedRange?.endDate && parsedRange.endDate !== parsedRange.startDate
+  );
+
+  const isTripIntent = hasStrongTripSignal || (hasSoftTripWord && hasMultiDayRange);
+
+  if (!isTripIntent) return null;
+
   if (parsedRange && parsedRange.startDate) {
     startDateStr = parsedRange.startDate;
     endDateStr = parsedRange.endDate || parsedRange.startDate;
