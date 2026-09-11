@@ -17,7 +17,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   onOpenPrivacyPolicy,
 }) => {
   return (
-    <div className="relative z-10 min-h-screen w-full bg-fixed bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#f5f4ee_45%,#37495c_100%)] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#0e1d2c] selection:text-white">
+    <div className="relative z-10 min-h-screen w-full bg-fixed bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#f5f4ee_55%,#5c6f80_100%)] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#0e1d2c] selection:text-white">
       
       {/* Top Header Navigation */}
       <div className="max-w-6xl mx-auto w-full flex items-center justify-between p-4 sm:p-6 lg:px-10">
@@ -47,7 +47,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 onOpenPrivacyPolicy();
               }
             }}
-            className="text-xs sm:text-sm text-slate-600 hover:text-slate-900 font-medium transition-colors cursor-pointer hidden sm:flex items-center gap-1.5"
+            className="bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200/90 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-xl shadow-2xs hover:shadow-xs transition-all cursor-pointer hidden sm:flex items-center gap-1.5"
           >
             <ShieldCheck className="w-4 h-4 text-sky-700" />
             <span>Privacy Notice</span>
