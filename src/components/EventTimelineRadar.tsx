@@ -29,7 +29,6 @@ import { deepRefineEventLocally } from '../utils/deepRefine';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { DeleteEventModal } from './DeleteEventModal';
-import { EventRefineModal } from './EventRefineModal';
 import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
@@ -50,6 +49,7 @@ interface EventTimelineRadarProps {
   onOpenNewEventModal: () => void;
   onOpenGoogleCalendarSync?: () => void;
   onOpenApplyPreset?: (event: CalendarEvent) => void;
+  onOpenRefine: (event: CalendarEvent) => void;
   onSelectVariable?: (eventId: string, key: string, value: any, label: string) => void;
   currentReferenceDate: string;
   isGoogleConnected?: boolean;
@@ -73,6 +73,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   onOpenNewEventModal,
   onOpenGoogleCalendarSync,
   onOpenApplyPreset,
+  onOpenRefine,
   currentReferenceDate,
   isGoogleConnected,
   isSyncingWithGoogle,
@@ -80,7 +81,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
-  const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<TMinusMilestone | null>(null);
@@ -420,7 +420,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             </button>
 
             <button
-              onClick={() => setIsRefineModalOpen(true)}
+              onClick={() => onOpenRefine(activeEvent)}
               className="bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border border-amber-200 flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
               title="Answer follow-up questions to customize schedule"
             >
@@ -1043,20 +1043,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         />
       )}
 
-      {/* Interactive Refine Follow-up Questions Modal */}
-      {isRefineModalOpen && activeEvent && (
-        <EventRefineModal
-          isOpen={isRefineModalOpen}
-          event={activeEvent}
-          onClose={() => setIsRefineModalOpen(false)}
-          onApplyRefinement={(updated) => {
-            if (onUpdateEvent) {
-              onUpdateEvent(updated);
-            }
-          }}
-          currentReferenceDate={currentReferenceDate}
-        />
-      )}
 
       {/* Refine Deliverable Modal */}
       {refiningDeliverable && activeEvent && (

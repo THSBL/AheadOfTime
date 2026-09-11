@@ -59,6 +59,7 @@ import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/goog
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst } from './utils/tminusRules';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
+import { classifySubmittedTitle } from './utils/creationStateMachine';
 import {
   AuthUser,
   getCurrentUser,
@@ -1746,6 +1747,11 @@ function App() {
                   }}
                   onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
                   onOpenApplyPreset={handleOpenApplyPreset}
+                  onOpenRefine={(event) => {
+                    setRefinementEvent(event);
+                    setWizardStage('step2_refinement');
+                    setIsManualModalOpen(true);
+                  }}
                   onSelectVariable={handleSelectVariable}
                   currentReferenceDate={currentReferenceDate}
                   isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
@@ -1814,7 +1820,7 @@ function App() {
         </div>
       )}
 
-      {/* Manual Event Modal */}
+      {/* Manual Event Modal - also used for "Refine" (initialEvent + step2_refinement) */}
       <ManualEventModal
         isOpen={isManualModalOpen}
         onClose={handleCloseManualModal}
@@ -1822,6 +1828,11 @@ function App() {
         currentReferenceDate={currentReferenceDate}
         initialStage={wizardStage}
         initialEvent={refinementEvent}
+        initialPresetCategory={
+          refinementEvent && !refinementEvent.context?.canonicalCategory
+            ? classifySubmittedTitle(refinementEvent.title, refinementEvent.category)
+            : null
+        }
       />
 
       {/* Custom Milestone Modal */}

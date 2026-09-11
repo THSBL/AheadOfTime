@@ -224,16 +224,17 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
       category: catDef ? catDef.internalCategory : 'birthday_party',
       location: location.trim() || undefined,
       status: 'milestones_active',
-      userRole: 'organiser',
+      userRole: initialEvent?.userRole || 'organiser',
       milestones: finalizedMilestones,
       recurrence: recurrenceConfig,
       context: {
+        ...(initialEvent?.context || {}),
         canonicalCategory: selectedCategory,
         refinementAnswers,
         isRecurring,
         recurrencePatternText: recurrenceConfig?.recurrencePatternText,
       },
-      createdAt: new Date().toISOString(),
+      createdAt: initialEvent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 

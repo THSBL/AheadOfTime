@@ -43,7 +43,7 @@ import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
 import { EventCreationWizard } from './EventCreationWizard';
-import { CanonicalCategory } from '../utils/creationStateMachine';
+import { CanonicalCategory, CATEGORY_REFINEMENT_QUESTIONS } from '../utils/creationStateMachine';
 
 function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
   if (presetId === 'hobbies') return 'hobbies';
@@ -56,6 +56,14 @@ function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
   if (presetId === 'maintenance') return 'maintenance';
   if (presetId === 'project' || presetId === 'work_projects') return 'project_management';
   return 'party';
+}
+
+// Categories detected from freeform text that have a matching chip-question
+// set to ask as a genuine follow-up before generating the plan. 'dinner' and
+// 'custom' have no good canonical match, so those skip straight to generation.
+function mapCustomCategoryToRefinementCategory(cat: string): CanonicalCategory | null {
+  if (cat === 'dinner' || cat === 'custom') return null;
+  return mapPresetIdToCanonicalCategory(cat);
 }
 
 interface ChatConsoleProps {
@@ -191,6 +199,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const [customTime, setCustomTime] = useState('19:00');
   const [customLocation, setCustomLocation] = useState('');
   const [clarificationReason, setClarificationReason] = useState<'unclear' | 'recognized_birthday' | 'recognized_trip' | 'recognized_friends' | 'recognized_project' | 'recognized_dinner' | 'custom'>('unclear');
+  // Follow-up chip questions shown after basic details are confirmed, before
+  // the plan is generated - reuses the same category question set as the
+  // structured New Event wizard so "describing an event" gets a genuine
+  // confirmation + follow-up instead of jumping straight to a generated plan.
+  const [customRefineRevealed, setCustomRefineRevealed] = useState(false);
+  const [customRefinementAnswers, setCustomRefinementAnswers] = useState<Record<string, string[]>>({});
 
   // Intelligent text detector for the custom event box
   const analyzeCustomText = (text: string) => {
@@ -230,7 +244,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
     // 3. Detect Date / Time
     let extractedDate = '';
-    const now = new Date('2026-09-02');
+    const now = new Date();
     
     // Check for explicit dates like "2026-10-24" or "Oct 24" or "October 24th" or "next Saturday"
     const isoDateMatch = text.match(/\b(202[5-9]-[0-1][0-9]-[0-3][0-9])\b/);
@@ -504,19 +518,63 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     e.preventDefault();
     if (!inputText.trim() || isLoading) return;
     const textToSend = inputText.trim();
-    setLastSubmittedPrompt(textToSend);
+    const analysis = analyzeCustomText(textToSend);
+    setCustomEventTitle(textToSend);
+    setCustomParsedCategory(analysis.category);
+    setClarificationReason(analysis.detectedReason);
+    setCustomWho(analysis.extractedWho);
+    setCustomDate(analysis.extractedDate);
+    setCustomTime(analysis.extractedTime);
+    setCustomLocation(analysis.extractedLocation);
+    setCustomRefineRevealed(false);
+    setCustomRefinementAnswers({});
+    setCustomClarificationStep('details');
     setInputText('');
     setIsInputFocused(false);
     onFocusChange?.(false);
-    onSendMessage(textToSend, false);
   };
 
   const handleConfirmCustomClarification = (e: React.FormEvent) => {
     e.preventDefault();
-    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}. Please build the Ahead Of Time preparation plan!`;
+    const refinementCategory = mapCustomCategoryToRefinementCategory(customParsedCategory);
+
+    // First confirm: if there's a matching follow-up question set, ask it
+    // before generating anything - a real confirmation + follow-up instead
+    // of jumping straight to a plan.
+    if (refinementCategory && !customRefineRevealed) {
+      setCustomRefineRevealed(true);
+      return;
+    }
+
+    const refinementSummary = refinementCategory
+      ? (Object.entries(customRefinementAnswers) as [string, string[]][])
+          .filter(([, answers]) => answers.length > 0)
+          .map(([questionId, answers]) => {
+            const question = CATEGORY_REFINEMENT_QUESTIONS[refinementCategory].find((q) => q.id === questionId);
+            return question ? `${question.label}: ${answers.join(', ')}` : '';
+          })
+          .filter(Boolean)
+          .join('. ')
+      : '';
+
+    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}.${refinementSummary ? ` ${refinementSummary}.` : ''} Please build the Ahead Of Time preparation plan!`;
     setLastSubmittedPrompt(customEventTitle || detailsMsg);
     setCustomClarificationStep('none');
+    setCustomRefineRevealed(false);
+    setCustomRefinementAnswers({});
     onSendMessage(detailsMsg, false);
+  };
+
+  const handleCustomRefinementChipClick = (questionId: string, chipText: string, allowMultiple: boolean) => {
+    setCustomRefinementAnswers((prev) => {
+      const current = prev[questionId] || [];
+      if (allowMultiple) {
+        return current.includes(chipText)
+          ? { ...prev, [questionId]: current.filter((c) => c !== chipText) }
+          : { ...prev, [questionId]: [...current, chipText] };
+      }
+      return current.includes(chipText) ? { ...prev, [questionId]: [] } : { ...prev, [questionId]: [chipText] };
+    });
   };
 
   // Voice recording handlers
@@ -643,6 +701,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               setCustomLocation={setCustomLocation}
               setCustomClarificationStep={setCustomClarificationStep}
               handleConfirmCustomClarification={handleConfirmCustomClarification}
+              customRefineRevealed={customRefineRevealed}
+              customRefinementAnswers={customRefinementAnswers}
+              handleCustomRefinementChipClick={handleCustomRefinementChipClick}
             />
           ) : (
             <InitialPresetsAndFreeform
@@ -761,7 +822,12 @@ const CustomClarificationCard = ({
   setCustomLocation,
   setCustomClarificationStep,
   handleConfirmCustomClarification,
+  customRefineRevealed,
+  customRefinementAnswers,
+  handleCustomRefinementChipClick,
 }: any) => {
+  const refinementCategory = mapCustomCategoryToRefinementCategory(customParsedCategory);
+  const refinementQuestions = refinementCategory ? CATEGORY_REFINEMENT_QUESTIONS[refinementCategory] : [];
   return (
     <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-[32px] p-5 sm:p-7 shadow-lg shadow-slate-200/40 space-y-6 animate-in fade-in slide-in-from-bottom duration-400">
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -884,6 +950,42 @@ const CustomClarificationCard = ({
           />
         </div>
 
+        {customRefineRevealed && refinementQuestions.length > 0 && (
+          <div className="space-y-4 pt-3 border-t border-slate-100 animate-in fade-in duration-300">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              A few quick follow-ups
+            </p>
+            {refinementQuestions.map((q: any) => {
+              const selectedAnswers: string[] = customRefinementAnswers[q.id] || [];
+              return (
+                <div key={q.id} className="space-y-1.5">
+                  <p className="text-xs sm:text-sm font-bold text-slate-900">{q.question}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {q.chips.map((chip: string) => {
+                      const isSelected = selectedAnswers.includes(chip);
+                      return (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => handleCustomRefinementChipClick(q.id, chip, Boolean(q.allowMultiple))}
+                          className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
+                              : 'bg-slate-50 hover:bg-slate-100 border-slate-200/90 text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          <span>{chip}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div className="pt-2 flex items-center justify-end gap-3">
           <button
             type="button"
@@ -897,7 +999,9 @@ const CustomClarificationCard = ({
             className="px-6 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-sky-300" />
-            <span>Build Ahead Of Time Milestones</span>
+            <span>
+              {refinementQuestions.length > 0 && !customRefineRevealed ? 'Continue' : 'Build Ahead Of Time Milestones'}
+            </span>
           </button>
         </div>
       </form>
