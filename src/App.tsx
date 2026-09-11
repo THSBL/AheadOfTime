@@ -1544,9 +1544,90 @@ function App() {
 
           {/* Main Dashboard Layout (Master-Detail on Mobile, 2-Column on Desktop) */}
           <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 overflow-hidden relative z-10 animate-in fade-in duration-700">
-            
 
-            
+            {/* Workspace Navigation Bar - always visible (both mobile screen
+                states, both desktop columns), not just when the workspace
+                column happens to be showing, so switching tabs is possible
+                from the Active Events list too. */}
+            <div className="lg:col-span-12 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('feed');
+                    setMobileDashboardView('detail');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                    activeTab === 'feed'
+                      ? 'bg-[#182A42] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>My Week Ahead</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (sortedEvents.length > 0) {
+                      setActiveTab('tasks');
+                      setFocusMode('adjust-event');
+                      // Active Events is the starting point for a detailed
+                      // timeline, not a destination of its own - jump
+                      // straight back into whatever event was already
+                      // selected, otherwise show the picker to choose one.
+                      setMobileDashboardView(selectedEventId ? 'detail' : 'list');
+                    }
+                  }}
+                  disabled={sortedEvents.length === 0}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
+                    activeTab === 'tasks' && selectedEventId && focusMode !== 'welcome'
+                      ? 'bg-[#182A42] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                  }`}
+                >
+                  <ListChecks className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Timeline &amp; Tasks</span>
+                  {sortedEvents.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 text-slate-700 font-bold rounded-full font-mono">
+                      {sortedEvents.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedEventId(null);
+                    setActiveTab('chat');
+                    setFocusMode('welcome');
+                    setMobileDashboardView('detail');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                    activeTab === 'chat'
+                      ? 'bg-[#182A42] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-700" />
+                  <span>Presets &amp; New Event</span>
+                </button>
+              </div>
+
+              {/* Quick actions for manual modal */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsManualModalOpen(true)}
+                  className="text-xs text-slate-300 hover:text-white font-medium underline cursor-pointer hidden sm:inline-flex items-center gap-1"
+                  title="Open traditional manual event form"
+                >
+                  <span>Manual form modal</span>
+                </button>
+              </div>
+            </div>
+
             {/* Left Console: Event Navigator (Screen State 1 on mobile) */}
             <div className={`${mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'} lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
@@ -1564,7 +1645,6 @@ function App() {
                 }}
                 onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
-                onBackToTabs={() => setMobileDashboardView('detail')}
                 currentReferenceDate={currentReferenceDate}
                 selectedEventIds={selectedBulkEventIds}
                 onToggleSelectEvent={handleToggleSelectEvent}
@@ -1576,86 +1656,6 @@ function App() {
 
             {/* Right Console: Main Preparation Workspace / Presets Planner (Screen State 2 on mobile) */}
             <div className={`${mobileDashboardView === 'list' ? 'hidden lg:flex' : 'flex'} lg:col-span-7 xl:col-span-8 h-[calc(100vh-140px)] flex-col w-full`}>
-              
-              {/* Workspace Navigation Bar */}
-              <div className="flex items-center justify-between pb-2 shrink-0">
-                <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab('feed');
-                      setMobileDashboardView('detail');
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                      activeTab === 'feed'
-                        ? 'bg-[#182A42] text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>My Week Ahead</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedEventId(null);
-                      setActiveTab('chat');
-                      setFocusMode('welcome');
-                      setMobileDashboardView('detail');
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                      activeTab === 'chat'
-                        ? 'bg-[#182A42] text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                    }`}
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-sky-700" />
-                    <span>Presets &amp; New Event</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (sortedEvents.length > 0) {
-                        setActiveTab('tasks');
-                        setFocusMode('adjust-event');
-                        // Active Events is the starting point for a detailed
-                        // timeline, not a destination of its own - jump
-                        // straight back into whatever event was already
-                        // selected, otherwise show the picker to choose one.
-                        setMobileDashboardView(selectedEventId ? 'detail' : 'list');
-                      }
-                    }}
-                    disabled={sortedEvents.length === 0}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
-                      activeTab === 'tasks' && selectedEventId && focusMode !== 'welcome'
-                        ? 'bg-[#182A42] text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                    }`}
-                  >
-                    <ListChecks className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Timeline &amp; Tasks</span>
-                    {sortedEvents.length > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 text-slate-700 font-bold rounded-full font-mono">
-                        {sortedEvents.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Quick actions for manual modal */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsManualModalOpen(true)}
-                    className="text-xs text-slate-300 hover:text-white font-medium underline cursor-pointer hidden sm:inline-flex items-center gap-1"
-                    title="Open traditional manual event form"
-                  >
-                    <span>Manual form modal</span>
-                  </button>
-                </div>
-              </div>
 
               {/* Workspace Content */}
               {activeTab === 'feed' ? (

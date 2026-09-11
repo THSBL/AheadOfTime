@@ -16,7 +16,6 @@ import {
   CheckSquare,
   Square,
   Repeat,
-  ArrowLeft,
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
@@ -28,7 +27,6 @@ interface MessengerSidebarProps {
   onOpenNewEventModal: () => void;
   onOpenScanAgenda?: () => void;
   onOpenGoogleCalendarSync?: () => void;
-  onBackToTabs?: () => void;
   currentReferenceDate: string;
   selectedEventIds: string[];
   onToggleSelectEvent: (eventId: string) => void;
@@ -44,7 +42,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onOpenNewEventModal,
   onOpenScanAgenda,
   onOpenGoogleCalendarSync,
-  onBackToTabs,
   currentReferenceDate,
   selectedEventIds,
   onToggleSelectEvent,
@@ -95,16 +92,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
       
       {/* Sidebar Header */}
       <div className="p-3.5 sm:p-4 bg-white/60 border-b border-sky-100/90 backdrop-blur-md space-y-3">
-        {onBackToTabs && (
-          <button
-            type="button"
-            onClick={onBackToTabs}
-            className="lg:hidden inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>My Week Ahead</span>
-          </button>
-        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-sky-100/80 border border-sky-200 flex items-center justify-center">
@@ -195,7 +182,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             <p className="text-xs text-slate-400 max-w-[200px]">Create an event or sync your Google Calendar to see your preparation runways.</p>
           </div>
         ) : (
-          filteredEvents.map((evt) => {
+          (() => {
+            let lastMonthKey = '';
+            return filteredEvents.map((evt) => {
             const isSelected = selectedEventId === evt.id;
             const isCheckedForBulk = selectedEventIds.includes(evt.id);
             const countdown = getCountdownStatus(evt.eventDate, currentReferenceDate);
@@ -208,9 +197,24 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
             const isUnrefined = evt.needsRefinement === true && !evt.refinedAt && (!evt.context || Object.keys(evt.context).length === 0);
 
+            // Month section header - only when the month actually changes
+            // from the previous (already date-sorted) event, so scanning a
+            // list spanning several months is quicker.
+            const monthKey = evt.eventDate ? evt.eventDate.slice(0, 7) : '';
+            const showMonthHeader = Boolean(monthKey) && monthKey !== lastMonthKey;
+            if (showMonthHeader) lastMonthKey = monthKey;
+            const monthLabel = evt.eventDate
+              ? new Date(`${evt.eventDate}T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              : '';
+
             return (
+              <React.Fragment key={evt.id}>
+              {showMonthHeader && (
+                <p className="px-1 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 first:pt-0">
+                  {monthLabel}
+                </p>
+              )}
               <div
-                key={evt.id}
                 onClick={() => onSelectEvent(evt.id)}
                 className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-2.5 relative group ${
                   isSelected
@@ -286,8 +290,10 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   )}
                 </div>
               </div>
+              </React.Fragment>
             );
-          })
+            });
+          })()
         )}
       </div>
 

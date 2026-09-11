@@ -776,6 +776,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     ? 'bg-slate-50/90 border-slate-200 text-slate-400'
                     : isOverdue
                     ? 'bg-rose-50/60 border-rose-300 hover:border-rose-400 text-slate-800 shadow-2xs ring-1 ring-rose-200/60'
+                    : isUrgentSoon
+                    ? 'bg-amber-50/50 border-amber-300 hover:border-amber-400 text-slate-800 shadow-2xs ring-1 ring-amber-200/50'
                     : isDeliverable
                     ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
                     : hasDeliverables

@@ -30,15 +30,7 @@ export const MySavedPresetsView: React.FC<MySavedPresetsViewProps> = ({
   onApplyPresetToNewEvent,
   onPresetsUpdated,
 }) => {
-  const [selectedTag, setSelectedTag] = useState<string>('All');
   const [previewPreset, setPreviewPreset] = useState<CustomPreset | null>(null);
-
-  // Extract unique tags
-  const allTags = ['All', ...Array.from(new Set(presets.flatMap((p) => p.tags || [])))];
-
-  const filteredPresets = selectedTag === 'All'
-    ? presets
-    : presets.filter((p) => p.tags?.includes(selectedTag));
 
   const handleDelete = (e: React.MouseEvent, presetId: string) => {
     e.stopPropagation();
@@ -86,29 +78,9 @@ export const MySavedPresetsView: React.FC<MySavedPresetsViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Tag Filters */}
-      {allTags.length > 2 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => setSelectedTag(tag)}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                selectedTag === tag
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-400'
-              }`}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Presets Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {filteredPresets.map((preset) => (
+        {presets.map((preset) => (
           <div
             key={preset.id}
             onClick={() => onApplyPresetToNewEvent(preset)}
