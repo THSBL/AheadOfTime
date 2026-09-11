@@ -17,7 +17,7 @@ import { getCountdownStatus } from './tminusRules';
 
 export type ActionImportance = 'critical' | 'important' | 'routine';
 
-export type AheadLevel = 'ready' | 'ahead' | 'on_track' | 'attention' | 'at_risk';
+export type AheadLevel = 'ready' | 'ahead' | 'on_track' | 'not_yet_due' | 'attention' | 'at_risk';
 
 export interface AheadStatus {
   level: AheadLevel;
@@ -143,6 +143,20 @@ export function computeAheadStatus(event: CalendarEvent, referenceDateISO: strin
     };
   }
 
+  // Nothing has actually been completed yet - too early to call this
+  // "on track" (that reads as a positive judgment on progress that
+  // hasn't happened). Neutral until there's a real completed action to
+  // point to.
+  if (completedCount === 0) {
+    return {
+      ...base,
+      level: 'not_yet_due',
+      emoji: '🔵',
+      label: 'Nothing due yet',
+      summary: `${totalCount} action${totalCount > 1 ? 's' : ''} planned, none due yet.${outstandingNote}`,
+    };
+  }
+
   return {
     ...base,
     level: 'on_track',
@@ -212,6 +226,16 @@ export function computeOverallAheadStatus(events: CalendarEvent[], referenceDate
       emoji: '🟢',
       label: "You're ahead",
       summary: `${completedCount} of ${totalCount} actions complete.${outstandingNote}`,
+    };
+  }
+
+  if (completedCount === 0) {
+    return {
+      ...base,
+      level: 'not_yet_due',
+      emoji: '🔵',
+      label: 'Nothing due yet',
+      summary: `${totalCount} action${totalCount > 1 ? 's' : ''} planned across your events, none due yet.${outstandingNote}`,
     };
   }
 

@@ -254,14 +254,14 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
           <button
             type="button"
             onClick={() => stage !== 'step1_title' && setStage('step1_title')}
-            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
               stage === 'step1_title'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer'
             }`}
           >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">1</span>
-            <span>Title & Date</span>
+            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] shrink-0">1</span>
+            <span className="hidden sm:inline whitespace-nowrap">Title & Date</span>
           </button>
 
           <div className={`h-0.5 flex-1 transition-colors ${stage !== 'step1_title' ? 'bg-slate-900' : 'bg-slate-200'}`} />
@@ -271,7 +271,7 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
             type="button"
             disabled={stage === 'step1_title'}
             onClick={() => stage === 'step3_milestones' && setStage('step2_refinement')}
-            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
               stage === 'step2_refinement'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : stage === 'step3_milestones'
@@ -279,22 +279,22 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
                 : 'bg-slate-50 text-slate-400 cursor-not-allowed'
             }`}
           >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">2</span>
-            <span>Refinement</span>
+            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] shrink-0">2</span>
+            <span className="hidden sm:inline whitespace-nowrap">Refinement</span>
           </button>
 
           <div className={`h-0.5 flex-1 transition-colors ${stage === 'step3_milestones' ? 'bg-slate-900' : 'bg-slate-200'}`} />
 
           {/* Step 3 Pill */}
           <div
-            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
               stage === 'step3_milestones'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-slate-50 text-slate-400'
             }`}
           >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">3</span>
-            <span>Milestones</span>
+            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] shrink-0">3</span>
+            <span className="hidden sm:inline whitespace-nowrap">Milestones</span>
           </div>
         </div>
       </div>

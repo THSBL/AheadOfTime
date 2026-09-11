@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, AlertTriangle, AlertCircle, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
+import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, AlertTriangle, AlertCircle, Clock, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
@@ -59,6 +59,7 @@ const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string; iconBg: str
   attention: { badge: 'text-amber-900 bg-amber-100 border-amber-300', dot: 'bg-amber-500', iconBg: 'bg-amber-100 text-amber-700', border: 'border-l-amber-500' },
   on_track: { badge: 'text-emerald-900 bg-emerald-100 border-emerald-300', dot: 'bg-emerald-500', iconBg: 'bg-emerald-100 text-emerald-700', border: 'border-l-emerald-500' },
   ahead: { badge: 'text-emerald-900 bg-emerald-100 border-emerald-300', dot: 'bg-emerald-500', iconBg: 'bg-emerald-100 text-emerald-700', border: 'border-l-emerald-500' },
+  not_yet_due: { badge: 'text-indigo-900 bg-indigo-100 border-indigo-300', dot: 'bg-indigo-400', iconBg: 'bg-indigo-100 text-indigo-700', border: 'border-l-indigo-400' },
   ready: { badge: 'text-slate-700 bg-slate-100 border-slate-300', dot: 'bg-slate-400', iconBg: 'bg-slate-100 text-slate-500', border: 'border-l-slate-300' },
 };
 
@@ -67,6 +68,7 @@ const OVERALL_ICONS: Record<AheadLevel, React.ElementType> = {
   attention: AlertCircle,
   on_track: CheckCircle2,
   ahead: CheckCircle2,
+  not_yet_due: Clock,
   ready: CheckCircle2,
 };
 

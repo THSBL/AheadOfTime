@@ -249,7 +249,7 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
 
                       {/* Agenda label utilizing available space on mobile and desktop */}
-                      <span className="font-semibold text-slate-900 text-xs sm:text-sm whitespace-nowrap">
+                      <span className="font-semibold text-slate-900 text-xs sm:text-sm whitespace-nowrap leading-none flex items-baseline">
                         <span className="hidden lg:inline">Agenda up to date until </span>
                         <span className="lg:hidden">Agenda up to date · </span>
                         <span className="text-sky-950 font-bold">{getFurthestMonth(agendaHorizonMonths)}</span>

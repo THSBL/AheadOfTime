@@ -117,6 +117,15 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 <span className="sm:hidden">Scan</span>
               </button>
             )}
+            {onOpenGoogleCalendarSync && events.length > 0 && (
+              <button
+                onClick={onOpenGoogleCalendarSync}
+                className="p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 transition-all cursor-pointer border border-sky-200/80 shadow-xs active:scale-95 flex items-center justify-center"
+                title="Push events to Google Calendar"
+              >
+                <Calendar className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={onOpenNewEventModal}
               className="p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 transition-all cursor-pointer border border-sky-200/80 shadow-xs active:scale-95 flex items-center justify-center"

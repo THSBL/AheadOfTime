@@ -1127,32 +1127,32 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
               secondary presets' already-tighter layout below rather than a
               vertical stack that leaves a large icon box as the only thing
               on its own row. */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
             {primaryPresets.map((preset: PromptPreset) => {
               const isSelected = preset.id === selectedPresetId;
               return (
               <button
                 key={preset.id}
                 onClick={() => handleSelectPreset(preset)}
-                className={`group relative text-left p-3 rounded-2xl bg-white border shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-3 ${
+                className={`group relative text-left p-2.5 sm:p-3 rounded-2xl bg-white border shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 sm:gap-3 ${
                   isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/90'
                 }`}
               >
-                <div className="w-9 h-9 shrink-0 rounded-xl bg-slate-100 text-lg flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-xl bg-slate-100 text-base sm:text-lg flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
                   {preset.emoji}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate">
                     {preset.title}
                   </h3>
-                  <p className="text-[11px] text-slate-500 font-normal leading-snug mt-0.5 line-clamp-2">
+                  <p className="hidden sm:block text-[11px] text-slate-500 font-normal leading-snug mt-0.5 line-clamp-2">
                     {preset.description}
                   </p>
                 </div>
-                <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                <div className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
                   isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-100 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
                 }`}>
-                  {isSelected ? <Check className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  {isSelected ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
                 </div>
               </button>
               );
@@ -1161,34 +1161,34 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
 
           {/* Secondary Presets Row (e.g. Subscription, Maintenance in Mixed/Business) */}
           {secondaryPresets && secondaryPresets.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 pt-1">
               {secondaryPresets.map((preset: PromptPreset) => {
                 const isSelected = preset.id === selectedPresetId;
                 return (
                 <button
                   key={preset.id}
                   onClick={() => handleSelectPreset(preset)}
-                  className={`group relative text-left p-3.5 rounded-2xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-3 ${
+                  className={`group relative text-left p-2.5 sm:p-3.5 rounded-2xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2 sm:gap-3 ${
                     isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/80'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 text-xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-slate-100 text-base sm:text-xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
                       {preset.emoji}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors">
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate">
                         {preset.title}
                       </h4>
-                      <p className="text-[11px] text-slate-500 font-normal truncate mt-0.5">
+                      <p className="hidden sm:block text-[11px] text-slate-500 font-normal truncate mt-0.5">
                         {preset.description}
                       </p>
                     </div>
                   </div>
-                  <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
                     isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
                   }`}>
-                    {isSelected ? <Check className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    {isSelected ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
                   </div>
                 </button>
                 );

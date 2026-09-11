@@ -544,40 +544,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}
       <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 bg-sky-50/20 w-full">
-        {/* Hierarchical Sub-events Strip */}
-        {activeEvent.subEvents && activeEvent.subEvents.length > 0 && (
-          <div className="bg-indigo-50/50 border border-indigo-100/90 rounded-2xl p-2.5 sm:p-3 space-y-1.5 shadow-2xs">
-            <div className="flex items-center justify-between text-[11px] font-bold text-indigo-950 uppercase tracking-wider">
-              <span className="flex items-center gap-1.5">
-                <span>🎯</span>
-                <span>In-Trip Objectives ({activeEvent.subEvents.length})</span>
-              </span>
-              {activeEvent.macroEvent?.destination && (
-                <span className="text-[10px] text-indigo-700 font-semibold lowercase">
-                  📍 {activeEvent.macroEvent.destination}
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {activeEvent.subEvents.map((sub, idx) => (
-                <div key={idx} className="bg-white text-indigo-950 border border-indigo-200/80 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
-                  <span className="font-bold">{sub.title}</span>
-                  {sub.relative_day && (
-                    <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md font-bold">
-                      {sub.relative_day}
-                    </span>
-                  )}
-                  {sub.target_date && (
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {formatDisplayDate(sub.target_date)}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider px-0.5">
           <div className="flex items-center gap-1.5">
             <span className="text-slate-700">Prep Tasks ({totalCount})</span>
@@ -775,8 +741,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     ? 'bg-slate-50/90 border-slate-200 text-slate-400'
                     : isOverdue
                     ? 'bg-rose-50/60 border-rose-300 hover:border-rose-400 text-slate-800 shadow-2xs ring-1 ring-rose-200/60'
-                    : isUrgentSoon
-                    ? 'bg-amber-50/50 border-amber-300 hover:border-amber-400 text-slate-800 shadow-2xs ring-1 ring-amber-200/50'
                     : isDeliverable
                     ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
                     : hasDeliverables
@@ -806,8 +770,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   </button>
 
                   <div className="space-y-1 min-w-0 flex-1 w-full">
-                    {/* Tag / Badge row - a single urgency-colored due signal instead of
-                        the date being repeated three different ways */}
+                    {/* Line 1: the actual calendar date */}
+                    <div className="text-xs sm:text-sm font-bold text-slate-700">
+                      {formatDisplayDate(ms.calculatedDate)}
+                    </div>
+
+                    {/* Line 2: due-in countdown, type label, and status badges */}
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                       {!isCompleted && !isSkipped && (
                         <span
@@ -824,9 +792,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                           <span>{msCountdown.label}</span>
                         </span>
                       )}
-                      <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                        {formatDisplayDate(ms.calculatedDate)}
-                      </span>
 
                       {isReservation && (
                         <span className="text-[10px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
@@ -842,9 +807,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         </span>
                       )}
 
-                      {ms.tag && (
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">
-                          {ms.tag}
+                      {!isReservation && !isPurchase && ms.category === 'logistics' && (
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">
+                          Logistics
                         </span>
                       )}
 
@@ -852,13 +817,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
                           <X className="w-2.5 h-2.5" />
                           <span>Skipped - removed in Google Tasks</span>
-                        </span>
-                      )}
-
-                      {isDeliverable && (
-                        <span className="text-[10px] font-bold text-[#182A42] bg-slate-100 border border-[#182A42] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#182A42]" />
-                          <span>Deliverable</span>
                         </span>
                       )}
 
@@ -876,12 +834,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                           <Sparkles className="w-2.5 h-2.5 text-amber-600" />
                           <span>Refine</span>
                         </button>
-                      )}
-
-                      {ms.scope === 'micro' && ms.relativeDay && (
-                        <span className="text-[10px] font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
-                          {ms.relativeDay}
-                        </span>
                       )}
 
                       {ms.tMinusLabel === 'T-Day' && (
