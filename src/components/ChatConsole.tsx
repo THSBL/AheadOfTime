@@ -140,6 +140,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   // Preset Guided Intake Workflow State
   const [selectedPreset, setSelectedPreset] = useState<PromptPreset | null>(null);
   const [presetStep, setPresetStep] = useState<'initial' | 'who_when' | 'refine'>('initial');
+  // Tracks which preset card to show as selected in the grid, even after
+  // "Change Preset" clears selectedPreset and returns the user to it.
+  const [lastSelectedPresetId, setLastSelectedPresetId] = useState<string | null>(null);
   
   // Who & When Fields
   const [whoInput, setWhoInput] = useState('');
@@ -315,6 +318,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   // Handle choosing a preset
   const handleSelectPreset = (preset: PromptPreset) => {
     setSelectedPreset(preset);
+    setLastSelectedPresetId(preset.id);
     setPresetStep('who_when');
     setRefinements({});
     setPartyItems([]);
@@ -660,6 +664,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               isLoading={isLoading}
               textareaRef={textareaRef}
               savedPresets={currentSavedPresets}
+              selectedPresetId={lastSelectedPresetId}
               activePresetExplorerTab={activePresetExplorerTab}
               setActivePresetExplorerTab={setActivePresetExplorerTab}
               onOpenImporter={onOpenImporter}
@@ -706,6 +711,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 onSendMessage(`Created event "${createdEvent.title}" with AheadOfTime milestones`, false);
               }
               setSelectedPreset(null);
+              setLastSelectedPresetId(null);
               setPresetStep("initial");
             }}
             onCancel={() => {
@@ -923,6 +929,7 @@ interface InitialPresetsAndFreeformProps {
   onOpenImporter?: () => void;
   onStartLaunch?: (preset: CustomPreset) => void;
   onPresetsUpdated?: (presets: CustomPreset[]) => void;
+  selectedPresetId?: string | null;
 }
 
 const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
@@ -932,6 +939,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
   onboardingProfile,
   onOpenPreferences,
   handleSelectPreset,
+  selectedPresetId,
   inputText,
   setInputText,
   isInputFocused,
@@ -1015,11 +1023,15 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
               vertical stack that leaves a large icon box as the only thing
               on its own row. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
-            {primaryPresets.map((preset: PromptPreset) => (
+            {primaryPresets.map((preset: PromptPreset) => {
+              const isSelected = preset.id === selectedPresetId;
+              return (
               <button
                 key={preset.id}
                 onClick={() => handleSelectPreset(preset)}
-                className="group relative text-left p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-3"
+                className={`group relative text-left p-3 rounded-2xl bg-white border shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-3 ${
+                  isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/90'
+                }`}
               >
                 <div className="w-9 h-9 shrink-0 rounded-xl bg-slate-100 text-lg flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
                   {preset.emoji}
@@ -1032,21 +1044,28 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                     {preset.description}
                   </p>
                 </div>
-                <div className="w-6 h-6 shrink-0 rounded-full bg-slate-100 group-hover:bg-[#182A42] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
-                  <ChevronRight className="w-3.5 h-3.5" />
+                <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                  isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-100 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
+                }`}>
+                  {isSelected ? <Check className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {/* Secondary Presets Row (e.g. Subscription, Maintenance in Mixed/Business) */}
           {secondaryPresets && secondaryPresets.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              {secondaryPresets.map((preset: PromptPreset) => (
+              {secondaryPresets.map((preset: PromptPreset) => {
+                const isSelected = preset.id === selectedPresetId;
+                return (
                 <button
                   key={preset.id}
                   onClick={() => handleSelectPreset(preset)}
-                  className="group relative text-left p-3.5 rounded-2xl bg-white/95 border border-slate-200/80 shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-3"
+                  className={`group relative text-left p-3.5 rounded-2xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-3 ${
+                    isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/80'
+                  }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 text-xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
@@ -1061,11 +1080,14 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                       </p>
                     </div>
                   </div>
-                  <div className="w-6 h-6 shrink-0 rounded-full bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400 flex items-center justify-center transition-colors">
-                    <ChevronRight className="w-3.5 h-3.5" />
+                  <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                    isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
+                  }`}>
+                    {isSelected ? <Check className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
