@@ -7,6 +7,7 @@ import {
   inferMilestoneImportance,
   inferActionTheme,
   computeThisWeekFocus,
+  isNextBestActionThisWeek,
 } from './readiness';
 import { CalendarEvent, TMinusMilestone } from '../types';
 
@@ -260,6 +261,36 @@ describe('computeThisWeekFocus', () => {
     expect(clusters).toHaveLength(2);
     expect(clusters[0].theme).toBe('packing');
     expect(clusters[0].count).toBe(3);
+  });
+});
+
+describe('isNextBestActionThisWeek', () => {
+  const eventDueIn = (diffDays: number, isOverdue = false) => ({
+    eventId: 'evt-1',
+    eventTitle: 'Some Event',
+    milestoneId: 'ms-1',
+    title: 'Some action',
+    reason: 'Needed before your Some Event.',
+    dueLabel: isOverdue ? 'Overdue by 1 day' : `In ${diffDays} days`,
+    isOverdue,
+    diffDays,
+    importance: 'important' as const,
+  });
+
+  it('treats an overdue action as this week regardless of diffDays', () => {
+    expect(isNextBestActionThisWeek(eventDueIn(-30, true))).toBe(true);
+  });
+
+  it('treats an action due within the default 7-day window as this week', () => {
+    expect(isNextBestActionThisWeek(eventDueIn(5))).toBe(true);
+  });
+
+  it('treats an action due further out than 7 days as NOT this week', () => {
+    expect(isNextBestActionThisWeek(eventDueIn(21))).toBe(false);
+  });
+
+  it('respects a custom horizon', () => {
+    expect(isNextBestActionThisWeek(eventDueIn(10), 14)).toBe(true);
   });
 });
 

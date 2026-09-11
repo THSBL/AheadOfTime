@@ -38,7 +38,13 @@ export interface NextBestAction {
   reason: string;
   dueLabel: string;
   isOverdue: boolean;
+  diffDays: number;
   importance: ActionImportance;
+}
+
+/** Whether a NextBestAction is due soon enough to treat as urgent right now. */
+export function isNextBestActionThisWeek(action: NextBestAction, withinDays: number = 7): boolean {
+  return action.isOverdue || action.diffDays <= withinDays;
 }
 
 // Categories with a hard external deadline/cost (a booking that can sell
@@ -251,6 +257,7 @@ export function computeNextBestActionForEvent(event: CalendarEvent, referenceDat
     reason: `Needed before your ${event.title}.`,
     dueLabel: best.countdown.label,
     isOverdue: best.countdown.isOverdue,
+    diffDays: best.countdown.diffDays,
     importance: best.importance,
   };
 }

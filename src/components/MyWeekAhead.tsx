@@ -7,6 +7,7 @@ import {
   computeNextBestAction,
   computeAheadStatus,
   computeThisWeekFocus,
+  isNextBestActionThisWeek,
   AheadLevel,
   ActionTheme,
 } from '../utils/readiness';
@@ -28,6 +29,21 @@ const EMPTY_WEEK_LINES = [
   'A clear week is a finished one. Nothing left to prep.',
   "No prep needed right now - that's the goal, not a gap.",
 ];
+
+// Same idea for the narrower case: there IS a next best action somewhere,
+// it's just not due soon - still worth leading with the achievement
+// rather than the future item.
+const CAUGHT_UP_LINES = [
+  "Nothing urgent this week. You're ahead of it.",
+  "This week is clear. Everything else can wait its turn.",
+  "You're covered for now - the rest is just future planning.",
+];
+
+/** Picks a stable line for the session's reference date rather than
+ * reshuffling on every re-render. */
+function pickStableLine(lines: string[], currentReferenceDate: string): string {
+  return lines[new Date(currentReferenceDate).getDate() % lines.length];
+}
 
 interface MyWeekAheadProps {
   events: CalendarEvent[];
@@ -58,9 +74,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   const activeEvents = events.filter((e) => e.status !== 'completed');
 
   if (activeEvents.length === 0) {
-    // A day picked from the reference date so the line is stable within a
-    // session instead of reshuffling on every re-render.
-    const line = EMPTY_WEEK_LINES[new Date(currentReferenceDate).getDate() % EMPTY_WEEK_LINES.length];
+    const line = pickStableLine(EMPTY_WEEK_LINES, currentReferenceDate);
     return (
       <div className="flex-1 flex flex-col items-center justify-center h-full milky-glass border border-white/80 rounded-3xl p-6 text-center shadow-xs">
         <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-900 mb-4 shadow-xs">
@@ -115,37 +129,62 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
           <p className="text-xs sm:text-sm text-slate-600">{overall.summary}</p>
         </div>
 
-        {/* Next Best Action */}
+        {/* Next Best Action - urgent styling only when it's actually due
+            this week. Otherwise lead with the achievement (nothing urgent
+            right now) and show the future item calmly underneath, rather
+            than making a 6-week-out task look like something to worry
+            about today. */}
         {nextBestAction && (
-          <button
-            type="button"
-            onClick={() => onSelectEvent(nextBestAction.eventId)}
-            className={`w-full text-left p-4 sm:p-5 rounded-2xl border shadow-xs transition-all hover:shadow-md active:scale-[0.99] cursor-pointer ${
-              nextBestAction.isOverdue
-                ? 'bg-rose-50/80 border-rose-200'
-                : nextBestAction.importance === 'critical'
-                ? 'bg-amber-50/80 border-amber-200'
-                : 'bg-sky-50/70 border-sky-200'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Next best action</p>
-                <p className="text-sm sm:text-base font-black text-slate-900 truncate">{nextBestAction.title}</p>
-                <p className="text-xs text-slate-600">{nextBestAction.reason}</p>
+          isNextBestActionThisWeek(nextBestAction) ? (
+            <button
+              type="button"
+              onClick={() => onSelectEvent(nextBestAction.eventId)}
+              className={`w-full text-left p-4 sm:p-5 rounded-2xl border shadow-xs transition-all hover:shadow-md active:scale-[0.99] cursor-pointer ${
+                nextBestAction.isOverdue
+                  ? 'bg-rose-50/80 border-rose-200'
+                  : nextBestAction.importance === 'critical'
+                  ? 'bg-amber-50/80 border-amber-200'
+                  : 'bg-sky-50/70 border-sky-200'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Next best action</p>
+                  <p className="text-sm sm:text-base font-black text-slate-900 truncate">{nextBestAction.title}</p>
+                  <p className="text-xs text-slate-600">{nextBestAction.reason}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <span
+                    className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                      nextBestAction.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-700 bg-white border border-slate-200'
+                    }`}
+                  >
+                    {nextBestAction.dueLabel}
+                  </span>
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                </div>
               </div>
-              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                <span
-                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                    nextBestAction.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-700 bg-white border border-slate-200'
-                  }`}
-                >
+            </button>
+          ) : (
+            <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs space-y-3">
+              <p className="text-sm sm:text-base font-black text-slate-900">
+                {pickStableLine(CAUGHT_UP_LINES, currentReferenceDate)}
+              </p>
+              <button
+                type="button"
+                onClick={() => onSelectEvent(nextBestAction.eventId)}
+                className="w-full text-left pt-3 border-t border-slate-100 flex items-center justify-between gap-3 cursor-pointer group"
+              >
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Looking further ahead</p>
+                  <p className="text-xs sm:text-sm font-bold text-slate-700 truncate group-hover:text-slate-900">{nextBestAction.title}</p>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-500 bg-slate-100 shrink-0">
                   {nextBestAction.dueLabel}
                 </span>
-                <ArrowRight className="w-4 h-4 text-slate-400" />
-              </div>
+              </button>
             </div>
-          </button>
+          )
         )}
 
         {/* This Week's Focus - actions grouped by theme across events, so
