@@ -839,6 +839,12 @@ function App() {
   const [isSyncingWithGoogle, setIsSyncingWithGoogle] = useState(false);
   const [lastGoogleSyncTime, setLastGoogleSyncTime] = useState<Date | null>(null);
   const [syncToast, setSyncToast] = useState<{ id: number; message: string; count?: number } | null>(null);
+  // Surfaces the agent's own understanding of a freeform/chat-submitted
+  // event ("FOCUS: ..." from the backend) as a visible confirmation -
+  // previously that text was only ever appended to the `messages` array,
+  // which nothing renders, so the user had no on-screen sign the app had
+  // actually understood what they typed.
+  const [agentConfirmationToast, setAgentConfirmationToast] = useState<{ id: number; title: string; message: string } | null>(null);
 
   // Minimum gap between automatic (non-forced) syncs. This used to be a 24h
   // "once a day" gate, which meant a change made in Google Tasks could sit
@@ -910,6 +916,16 @@ function App() {
     }, 4500);
     return () => clearTimeout(timer);
   }, [syncToast]);
+
+  // Auto-dismiss the agent confirmation toast - longer than the sync toast
+  // since it usually carries a full sentence worth reading.
+  useEffect(() => {
+    if (!agentConfirmationToast) return;
+    const timer = setTimeout(() => {
+      setAgentConfirmationToast(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [agentConfirmationToast]);
 
   // Keep Google Tasks sync fresh while the app is in use: once on mount,
   // again whenever the tab regains focus/visibility (the moment a user is
@@ -1022,6 +1038,14 @@ function App() {
       setMobileDashboardView('detail');
       setActiveTab('tasks');
       setFocusMode('adjust-event');
+
+      if (data.focusText || data.replyText) {
+        setAgentConfirmationToast({
+          id: Date.now(),
+          title: newEvent.title,
+          message: data.focusText || data.replyText,
+        });
+      }
     } catch (err: any) {
       console.error('Failed to process message server-side, falling back to client-side heuristics:', err);
       const category = detectEventCategory(text);
@@ -1073,6 +1097,11 @@ function App() {
       setMobileDashboardView('detail');
       setActiveTab('tasks');
       setFocusMode('adjust-event');
+      setAgentConfirmationToast({
+        id: Date.now(),
+        title: fallbackEvent.title,
+        message: agentMsg.focusText || agentMsg.text,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -1799,6 +1828,29 @@ function App() {
               </button>
             </div>
           </footer>
+
+      {/* Agent Confirmation Toast - echoes back what the agent understood
+          from a freeform/chat event description, so there's genuine
+          on-screen assurance the input was actually caught. */}
+      {agentConfirmationToast && (
+        <div className="fixed bottom-24 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300 pointer-events-none max-w-sm">
+          <div className="bg-[#182A42] text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-start gap-3 pointer-events-auto">
+            <div className="w-8 h-8 rounded-xl bg-[#447463]/20 text-[#9ec6b7] border border-[#447463]/40 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-200">{agentConfirmationToast.title}</p>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">{agentConfirmationToast.message}</p>
+            </div>
+            <button
+              onClick={() => setAgentConfirmationToast(null)}
+              className="text-slate-500 hover:text-white text-xs shrink-0 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Real-time Bidirectional Sync Notification Toast */}
       {syncToast && (

@@ -39,7 +39,7 @@ import {
   PromptPreset 
 } from '../data/samplePresets';
 import { ThinkingModule } from './ThinkingModule';
-import { getCleanEventTitle } from '../utils/tminusRules';
+import { getCleanEventTitle, formatDisplayDate } from '../utils/tminusRules';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
@@ -224,7 +224,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     } else if (lower.includes('trip') || lower.includes('flight') || lower.includes('travel') || lower.includes('vacation') || lower.includes('holiday') || lower.includes('flying to') || lower.includes('hotel')) {
       category = 'trip';
       detectedReason = 'recognized_trip';
-    } else if (lower.includes('project') || lower.includes('launch') || lower.includes('deadline') || lower.includes('sprint') || lower.includes('deck') || lower.includes('deliverable')) {
+    } else if (lower.includes('project') || lower.includes('launch') || lower.includes('deadline') || lower.includes('sprint') || lower.includes('deck') || lower.includes('deliverable') || lower.includes('presentation') || lower.includes('meeting') || lower.includes('review') || lower.includes('pitch') || lower.includes('proposal') || lower.includes('strategy') || lower.includes('stakeholder') || lower.includes('demo')) {
       category = 'project';
       detectedReason = 'recognized_project';
     } else if (lower.includes('dinner') || lower.includes('supper') || lower.includes('restaurant') || lower.includes('brunch') || lower.includes('lunch') || lower.includes('bbq')) {
@@ -253,11 +253,22 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       extractedDate = isoDateMatch[1];
     } else {
       const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-      const monthMatch = text.match(/(?:on\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?/i);
+      const monthPattern = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+      // "October 22nd" / "on October 22" (month first)
+      const monthFirstMatch = text.match(new RegExp(`(?:on\\s+)?(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?`, 'i'));
+      // "22nd of October" / "the 22nd October" (day first) - just as common in
+      // natural phrasing and previously unrecognized entirely, silently
+      // falling back to a generic +14-days guess.
+      const dayFirstMatch = text.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthPattern})\\b`, 'i'));
+      const monthMatch = monthFirstMatch
+        ? { monthStr: monthFirstMatch[1], day: monthFirstMatch[2] }
+        : dayFirstMatch
+        ? { monthStr: dayFirstMatch[2], day: dayFirstMatch[1] }
+        : null;
       if (monthMatch) {
-        const monthStr = monthMatch[1].toLowerCase().substring(0, 3);
+        const monthStr = monthMatch.monthStr.toLowerCase().substring(0, 3);
         const monthIndex = monthNames.indexOf(monthStr);
-        const day = parseInt(monthMatch[2], 10);
+        const day = parseInt(monthMatch.day, 10);
         const year = monthIndex < 8 ? 2027 : 2026; // Ref date is Sept 2026
         const d = new Date(year, monthIndex, day);
         extractedDate = d.toISOString().substring(0, 10);
@@ -558,7 +569,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           .join('. ')
       : '';
 
-    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}. Who/Subject: ${customWho}. Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}.${refinementSummary ? ` ${refinementSummary}.` : ''} Please build the Ahead Of Time preparation plan!`;
+    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}.${customWho ? ` Who/Subject: ${customWho}.` : ''} Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}.${refinementSummary ? ` ${refinementSummary}.` : ''} Please build the Ahead Of Time preparation plan!`;
     setLastSubmittedPrompt(customEventTitle || detailsMsg);
     setCustomClarificationStep('none');
     setCustomRefineRevealed(false);
@@ -842,15 +853,15 @@ const CustomClarificationCard = ({
           </div>
           <div>
             <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">
-              {clarificationReason === 'unclear' ? 'Additional Details Requested (1.1)' : 'Event Recognized & Parsed (1.2)'}
+              Here's what I caught
             </span>
             <h3 className="text-base sm:text-lg font-black text-slate-900">
-              {clarificationReason === 'recognized_birthday' ? 'Birthday Celebration Recognized' :
-               clarificationReason === 'recognized_trip' ? 'Trip / Getaway Recognized' :
-               clarificationReason === 'recognized_friends' ? 'Visiting Friends / Hosting Recognized' :
-               clarificationReason === 'recognized_dinner' ? 'Dinner / Dining Event Recognized' :
-               clarificationReason === 'recognized_project' ? 'Project / Milestone Recognized' :
-               'Clarify Event Details'}
+              {clarificationReason === 'recognized_birthday' ? 'Birthday Celebration' :
+               clarificationReason === 'recognized_trip' ? 'Trip / Getaway' :
+               clarificationReason === 'recognized_friends' ? 'Visiting Friends / Hosting' :
+               clarificationReason === 'recognized_dinner' ? 'Dinner / Dining Event' :
+               clarificationReason === 'recognized_project' ? 'Project / Milestone' :
+               'Your Event'}
             </h3>
           </div>
         </div>
@@ -863,16 +874,13 @@ const CustomClarificationCard = ({
         </button>
       </div>
 
-      <div className={`p-3.5 rounded-2xl border text-xs leading-relaxed ${
-        clarificationReason === 'unclear' 
-          ? 'bg-amber-50 border-amber-200 text-amber-900' 
-          : 'bg-blue-50 border-blue-200 text-blue-950'
-      }`}>
-        {clarificationReason === 'unclear' ? (
-          <span><strong>Need more details:</strong> Your description was brief or unclear. Please fill in the target person, date, and venue below so Ahead Of Time can map out your preparation milestones.</span>
-        ) : (
-          <span><strong>Event details recognized:</strong> We detected a <strong>{customParsedCategory}</strong> event. Please review and fine-tune the details below before building your Ahead Of Time milestones.</span>
-        )}
+      <div className="p-3.5 rounded-2xl border bg-blue-50 border-blue-200 text-blue-950 text-xs leading-relaxed">
+        <span>
+          <strong>"{customEventTitle}"</strong>
+          {customDate && <> on <strong>{formatDisplayDate(customDate)}</strong></>}
+          {customWho && <> with <strong>{customWho}</strong></>}
+          . That's my best read of it - check the fields below and fix anything I got wrong before we tailor the timeline.
+        </span>
       </div>
 
       <form onSubmit={handleConfirmCustomClarification} className="space-y-4">
@@ -889,13 +897,12 @@ const CustomClarificationCard = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">Who / Main Subject (e.g. Maya, Alex)</label>
+            <label className="text-xs font-bold text-slate-700">Who's involved (optional)</label>
             <input
               type="text"
-              required
               value={customWho}
               onChange={(e) => setCustomWho(e.target.value)}
-              placeholder="e.g. Maya"
+              placeholder="e.g. Maya, or your manager and director"
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
             />
           </div>
