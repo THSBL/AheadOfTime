@@ -17,7 +17,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   onOpenPrivacyPolicy,
 }) => {
   return (
-    <div className="relative z-10 min-h-screen w-full bg-gradient-to-b from-[#f1f7fe] via-[#e5f1fc] to-[#d6ebfa] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#0f172a] selection:text-white">
+    <div className="relative z-10 min-h-screen w-full bg-gradient-to-b from-[#faf9f4] via-[#f6f5ef] to-[#efece0] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#0e1d2c] selection:text-white">
       
       {/* Top Header Navigation */}
       <div className="max-w-6xl mx-auto w-full flex items-center justify-between p-4 sm:p-6 lg:px-10">

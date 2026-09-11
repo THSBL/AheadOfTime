@@ -1502,7 +1502,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fd] via-[#f1f7fe] to-[#dbeefd] text-slate-800 flex flex-col font-sans selection:bg-[#0f172a] selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#faf9f4] via-[#f6f5ef] to-[#efece0] text-slate-800 flex flex-col font-sans selection:bg-[#0e1d2c] selection:text-white relative overflow-x-hidden">
       
       {/* Soft Ambient Light Glow in background to make blue pop */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
