@@ -21,6 +21,7 @@ import {
   Layers,
   Repeat,
   X,
+  ShoppingBag,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone } from '../types';
@@ -339,10 +340,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <ArrowLeft className="w-3.5 h-3.5 text-sky-300" />
             <span>Back</span>
           </button>
-          
-          <span className="text-xs font-black text-slate-900 truncate px-2 flex-1 text-center">
-            {activeEvent.title}
-          </span>
 
           <span className="text-[11px] font-mono font-bold text-slate-700 bg-sky-50 border border-sky-200/90 px-2 py-0.5 rounded-lg shrink-0">
             {completedCount}/{totalCount}
@@ -764,6 +761,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             const isDeliverable = ms.kind === 'deliverable';
             const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
             const isExpanded = expandedMilestoneIds.has(ms.id);
+            const isReservation = ms.category === 'booking' || ms.category === 'tickets';
+            const isPurchase = ms.category === 'shopping' || ms.category === 'gift';
             const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
 
             return (
@@ -828,6 +827,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       <span className="text-[10px] text-slate-400 font-mono shrink-0">
                         {formatDisplayDate(ms.calculatedDate)}
                       </span>
+
+                      {isReservation && (
+                        <span className="text-[10px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                          <CalendarCheck className="w-2.5 h-2.5" />
+                          <span>Reservation</span>
+                        </span>
+                      )}
+
+                      {isPurchase && (
+                        <span className="text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                          <ShoppingBag className="w-2.5 h-2.5" />
+                          <span>Purchase</span>
+                        </span>
+                      )}
 
                       {ms.tag && (
                         <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">

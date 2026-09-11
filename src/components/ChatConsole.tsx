@@ -39,6 +39,7 @@ import {
   PromptPreset 
 } from '../data/samplePresets';
 import { ThinkingModule } from './ThinkingModule';
+import { getCleanEventTitle } from '../utils/tminusRules';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
@@ -519,7 +520,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     if (!inputText.trim() || isLoading) return;
     const textToSend = inputText.trim();
     const analysis = analyzeCustomText(textToSend);
-    setCustomEventTitle(textToSend);
+    setCustomEventTitle(getCleanEventTitle(textToSend, analysis.category));
     setCustomParsedCategory(analysis.category);
     setClarificationReason(analysis.detectedReason);
     setCustomWho(analysis.extractedWho);
