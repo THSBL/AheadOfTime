@@ -14,22 +14,29 @@ import {
   Layers,
   Calendar,
   Clock,
-  Check
+  Check,
+  Wand2,
+  Lightbulb
 } from 'lucide-react';
-import { 
-  parseSpreadsheetFile, 
-  autoDetectColumnMapping, 
-  mapRowsToMilestones, 
+import {
+  parseSpreadsheetFile,
+  parseSpreadsheetForAI,
+  autoDetectColumnMapping,
+  mapRowsToMilestones,
   generateSampleCSV,
   saveCustomPreset,
   projectPresetToMilestones
 } from '../utils/templateEngine';
-import { 
-  CustomPreset, 
-  CustomPresetMilestone, 
-  SpreadsheetColumnMapping, 
-  CalendarEvent 
+import {
+  CustomPreset,
+  CustomPresetMilestone,
+  SpreadsheetColumnMapping,
+  CalendarEvent
 } from '../types';
+
+interface SuggestedAddition extends CustomPresetMilestone {
+  rationale: string;
+}
 
 interface ImportTemplateModalProps {
   isOpen: boolean;
@@ -56,6 +63,12 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<any[]>([]);
   const [mapping, setMapping] = useState<SpreadsheetColumnMapping>({ taskCol: '' });
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+
+  // AI Smart Import state (reads every sheet directly, no column mapping needed)
+  const [isSmartImporting, setIsSmartImporting] = useState(false);
+  const [smartImportNotice, setSmartImportNotice] = useState<string | null>(null);
+  const [suggestedAdditions, setSuggestedAdditions] = useState<SuggestedAddition[]>([]);
 
   // Preset configuration
   const [presetTitle, setPresetTitle] = useState<string>('Custom Workflow Runway');
@@ -84,7 +97,10 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
   const handleFile = async (file: File) => {
     setIsParsing(true);
     setParseError(null);
+    setSmartImportNotice(null);
+    setSuggestedAdditions([]);
     setFileName(file.name);
+    setUploadedFile(file);
 
     try {
       const { headers, rows } = await parseSpreadsheetFile(file);
@@ -150,6 +166,82 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
     const mapped = mapRowsToMilestones(rawRows, mapping);
     setMilestones(mapped);
     setStep('preview');
+  };
+
+  const handleSmartImport = async () => {
+    if (!uploadedFile) return;
+    setIsSmartImporting(true);
+    setParseError(null);
+    setSmartImportNotice(null);
+
+    try {
+      const { sheets } = await parseSpreadsheetForAI(uploadedFile);
+      const response = await fetch('/api/presets/smart-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: uploadedFile.name, sheets }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Server returned an error during smart import');
+      }
+
+      const data = await response.json();
+
+      if (data.extractedBy === 'unavailable') {
+        setSmartImportNotice(data.error || 'AI smart import is unavailable in this environment. Use column mapping below instead.');
+        return;
+      }
+
+      if (!Array.isArray(data.milestones) || data.milestones.length === 0) {
+        throw new Error('No milestones extracted');
+      }
+
+      const extracted: CustomPresetMilestone[] = data.milestones.map((m: any, idx: number) => ({
+        id: `cpm-ai-${idx}-${Date.now().toString(36)}`,
+        task: m.task,
+        t_minus_days: typeof m.t_minus_days === 'number' ? m.t_minus_days : 0,
+        tag: m.tag || 'Operations',
+        description: m.description || '',
+        kind: m.kind || 'milestone',
+        scope: m.scope || (Math.abs(m.t_minus_days || 0) >= 14 ? 'macro' : 'micro'),
+      }));
+
+      setMilestones(extracted);
+      if (data.presetTitle) setPresetTitle(data.presetTitle);
+      if (Array.isArray(data.tags) && data.tags.length > 0) setPresetTags(data.tags.join(', '));
+      if (data.targetDateGuess) setTargetLaunchDate(data.targetDateGuess);
+
+      const suggestions: SuggestedAddition[] = Array.isArray(data.suggestedAdditions)
+        ? data.suggestedAdditions.map((s: any, idx: number) => ({
+            id: `cpm-suggest-${idx}-${Date.now().toString(36)}`,
+            task: s.task,
+            t_minus_days: typeof s.t_minus_days === 'number' ? s.t_minus_days : 0,
+            tag: s.tag || 'Operations',
+            description: s.description || '',
+            kind: s.kind || 'milestone',
+            scope: s.scope || (Math.abs(s.t_minus_days || 0) >= 14 ? 'macro' : 'micro'),
+            rationale: s.rationale || '',
+          }))
+        : [];
+      setSuggestedAdditions(suggestions);
+
+      setStep('preview');
+    } catch (err: any) {
+      setParseError('AI smart import failed. You can still map columns manually below.');
+    } finally {
+      setIsSmartImporting(false);
+    }
+  };
+
+  const handleAddSuggestion = (suggestion: SuggestedAddition) => {
+    const { rationale, ...milestone } = suggestion;
+    setMilestones((prev) => [...prev, milestone].sort((a, b) => b.t_minus_days - a.t_minus_days));
+    setSuggestedAdditions((prev) => prev.filter((s) => s.id !== suggestion.id));
+  };
+
+  const handleDismissSuggestion = (id?: string) => {
+    setSuggestedAdditions((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleAICalibrate = async () => {
@@ -278,6 +370,49 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
               <span>{parseError}</span>
+            </div>
+          )}
+
+          {/* Smart Import Notice (e.g. AI unavailable in this environment) */}
+          {smartImportNotice && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+              <span>{smartImportNotice}</span>
+            </div>
+          )}
+
+          {/* AI Smart Import Banner — reads every sheet directly, no manual mapping needed */}
+          {(step === 'mapping' || step === 'preview') && uploadedFile && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white text-indigo-600 flex items-center justify-center shrink-0 shadow-xs">
+                  <Wand2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-slate-800">Messy file, dashboard layout, or multiple tabs?</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Let AI read every sheet of "{fileName}" directly and extract milestones — no column mapping required.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSmartImport}
+                disabled={isSmartImporting}
+                className="shrink-0 text-xs font-bold px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-xs disabled:opacity-60"
+              >
+                {isSmartImporting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Reading entire file...</span>
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-3.5 h-3.5" />
+                    <span>AI Smart Import</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
 
@@ -652,6 +787,59 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {/* AI Suggested Additional Milestones */}
+              {suggestedAdditions.length > 0 && (
+                <div className="bg-amber-50/60 rounded-2xl border border-amber-200 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Lightbulb className="w-4 h-4 text-amber-500" />
+                    <span className="text-xs font-black text-slate-800">
+                      AI noticed a few things this plan might be missing
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {suggestedAdditions.map((s) => (
+                      <div
+                        key={s.id}
+                        className="bg-white rounded-xl border border-amber-100 p-3 flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-slate-900">{s.task}</span>
+                            <span className="text-[10px] font-bold text-slate-400 font-mono">
+                              {s.t_minus_days >= 0 ? `T-${s.t_minus_days}d` : `Day +${Math.abs(s.t_minus_days)}`}
+                            </span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              {s.tag}
+                            </span>
+                          </div>
+                          {s.rationale && (
+                            <p className="text-[11px] text-slate-500 mt-1">{s.rationale}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleAddSuggestion(s)}
+                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDismissSuggestion(s.id)}
+                            className="text-slate-300 hover:text-red-500 p-1.5"
+                            title="Dismiss suggestion"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Execution / Application Option */}
               <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
