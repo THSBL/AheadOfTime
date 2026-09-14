@@ -166,6 +166,32 @@ describe('decomposeComplexTripIntent', () => {
     expect(result?.macro_event.start_date).toBe('2026-10-14');
     expect(result?.macro_event.end_date).toBe('2026-10-18');
   });
+
+  it('gives a business trip its own client/deck/attire track instead of the generic group-trip activity plan', () => {
+    // Regression test: this regex heuristic used to have zero business-trip
+    // awareness, so "work trip ... for business, need to present to a
+    // client" fell into the generic "Group Trip Horizon" template with
+    // group-activity suggestions (Go-Karting, Paintball, group kitty) that
+    // make no sense for a solo work trip.
+    const result = decomposeComplexTripIntent(
+      'I am going on a work trip to New York for business, I need to present to a client',
+      REF_DATE_ISO
+    );
+    expect(result?.macro_event.archetype).toBe('Business Trip');
+    expect(result?.macro_event.title).toContain('New York');
+    const taskTitles = result?.milestones.map((m) => m.task).join(' | ') || '';
+    expect(taskTitles).toMatch(/client/i);
+    expect(taskTitles).toMatch(/slide deck/i);
+    expect(taskTitles).toMatch(/attire/i);
+    // None of the group-trip-specific suggestions should leak into a
+    // solo business trip's runway.
+    expect(taskTitles).not.toMatch(/go-karting|paintball|kitty/i);
+  });
+
+  it('recognizes a business trip from "client"/"pitch" mentioned in the message even without the word "business"', () => {
+    const result = decomposeComplexTripIntent('Flying to Chicago for a client pitch next month', REF_DATE_ISO);
+    expect(result?.macro_event.archetype).toBe('Business Trip');
+  });
 });
 
 describe('generateHeuristicMilestones', () => {

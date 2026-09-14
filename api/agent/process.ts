@@ -10,6 +10,16 @@ import {
 // server.ts's POST /api/agent/process route). Logic is ported verbatim from
 // that route handler; the actual processing lives in server/agentProcessor.ts
 // so both deployment targets share the same implementation.
+//
+// The Gemini extraction call can race up to 2 models at 12s each (see
+// processWithGemini's generateContentFast timeout) - default Vercel function
+// duration is too short to safely cover that worst case, so raise it here.
+// (On plans capped below 30s, Vercel silently uses the plan's own ceiling -
+// this is a no-op there, not an error.)
+export const config = {
+  maxDuration: 30,
+};
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed. /api/agent/process requires POST.' });
