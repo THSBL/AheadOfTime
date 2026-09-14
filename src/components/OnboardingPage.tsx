@@ -130,11 +130,27 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
           {/* Explanation of why we need this information */}
           <div className="space-y-2 border-b border-slate-100 pb-5">
             <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-              Why we need this information
+              Let's tune your first plan
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              We use your life stage, family setup, and calendar type to calibrate realistic preparation milestones and buffer times for your events (e.g. extra prep time for family outings). Your preferences remain private and secure.
+              A few quick details — your life stage, family setup, and calendar type — so we can calibrate realistic prep milestones and buffer times from the start (e.g. extra lead time for family outings).
             </p>
+          </div>
+
+          {/* Clean Agenda Guarantee & Tasks Explanation - leads with what the
+              user gets, before asking them to answer anything. */}
+          <div className="p-3.5 bg-sky-50/70 border border-sky-200/90 rounded-2xl flex items-start gap-3">
+            <div className="w-7 h-7 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div className="space-y-1 text-xs">
+              <p className="font-bold text-sky-950">
+                Clean Agenda Guarantee
+              </p>
+              <p className="text-sky-900/90 leading-relaxed">
+                Ahead of Time syncs preparation milestones directly to your <strong className="text-sky-950">Google Tasks</strong> layer, giving you a dedicated action checklist without cluttering your primary calendar events.
+              </p>
+            </div>
           </div>
 
           {/* Intake Form Fields */}
@@ -271,21 +287,6 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
           </div>
 
-          {/* Clean Agenda Guarantee & Tasks Explanation */}
-          <div className="p-3.5 bg-sky-50/70 border border-sky-200/90 rounded-2xl flex items-start gap-3">
-            <div className="w-7 h-7 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div className="space-y-1 text-xs">
-              <p className="font-bold text-sky-950">
-                Clean Agenda Guarantee
-              </p>
-              <p className="text-sky-900/90 leading-relaxed">
-                Ahead of Time syncs preparation milestones directly to your <strong className="text-sky-950">Google Tasks</strong> layer, giving you a dedicated action checklist without cluttering your primary calendar events.
-              </p>
-            </div>
-          </div>
-
           {/* Compliance Checkpoint: Privacy & Data Use Notice */}
           <div className={`p-4 rounded-2xl border transition-all ${
             showConsentError 
@@ -368,7 +369,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
       {/* Footer reassurance */}
       <div className="max-w-2xl mx-auto w-full text-center text-[11px] text-slate-500 py-2">
-        Zero data selling &bull; Read-only event metadata processing &bull; Client-side encrypted session tokens
+        Your data stays private and is only used to build your prep schedule.
       </div>
 
     </div>

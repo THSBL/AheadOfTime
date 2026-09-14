@@ -72,7 +72,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold text-sky-800 bg-sky-50 border border-sky-200/70 px-2.5 py-1 rounded-full uppercase tracking-wider">
-              Integration Hub
+              Connected Ways to Plan
             </span>
           </div>
         </div>
@@ -86,7 +86,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
             Connect Your Services
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 max-w-lg leading-relaxed">
-            Link your accounts to automatically synchronize event lead-up checklists, scan flight details, and receive proactive mobile reminders.
+            Plan and adjust your prep schedule from Google Calendar or Telegram — pick whichever's in front of you.
           </p>
         </div>
 

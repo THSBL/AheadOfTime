@@ -510,7 +510,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
               Telegram Assistant
             </h3>
             <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-              Receive proactive reminder alerts and plan trips on the go.
+              Plan and adjust your prep schedule by chatting — on the go, not just here.
             </p>
           </div>
         </div>
@@ -562,7 +562,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
                 className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
               >
                 <Send className={`w-3.5 h-3.5 ${isSendingTest ? 'animate-spin text-sky-600' : 'text-slate-500'}`} />
-                <span>{isSendingTest ? 'Sending...' : 'Send Test Alert'}</span>
+                <span>{isSendingTest ? 'Sending...' : 'Try a Message'}</span>
               </button>
 
               <button
