@@ -16,8 +16,6 @@ import {
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { getStoredAccessToken } from '../services/googleAuth';
-import { db } from '@/lib/firebase';
-import { doc, setDoc, onSnapshot, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 interface TelegramStatusResponse {
   ok?: boolean;
@@ -89,16 +87,11 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const pollingRef = useRef<number | null>(null);
-  const firestoreUnsubRef = useRef<(() => void) | null>(null);
 
   const stopPolling = () => {
     if (pollingRef.current) {
       window.clearInterval(pollingRef.current);
       pollingRef.current = null;
-    }
-    if (firestoreUnsubRef.current) {
-      firestoreUnsubRef.current();
-      firestoreUnsubRef.current = null;
     }
   };
 
@@ -167,51 +160,9 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
   };
 
   useEffect(() => {
-    let isMounted = true;
     checkStatus(null, false);
 
-    // Also check Firestore telegram_users collection on mount - only for a
-    // real signed-in caller (a live Google access token, not just a
-    // truthy-looking userId prop), so this never resolves to someone else's
-    // linked account for a guest.
-    const checkFirestoreUser = async () => {
-      try {
-        if (!userId || !getStoredAccessToken()) return;
-        const userDocRef = doc(db, 'telegram_users', userId);
-        const userSnap = await getDoc(userDocRef);
-        if (userSnap.exists() && userSnap.data()?.linked && isMounted) {
-          const user = userSnap.data()?.username || userSnap.data()?.telegram_username || 'Telegram User';
-          setIsLinked(true);
-          setUsername(user);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('aot_telegram_linked', 'true');
-            localStorage.setItem('aot_telegram_user', user);
-          }
-          return;
-        }
-
-        const q = query(collection(db, 'telegram_users'), where('user_id', '==', userId));
-        const qSnap = await getDocs(q);
-        if (!qSnap.empty && isMounted) {
-          const docData = qSnap.docs[0].data();
-          if (docData.linked !== false) {
-            const user = docData.username || docData.telegram_username || 'Telegram User';
-            setIsLinked(true);
-            setUsername(user);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('aot_telegram_linked', 'true');
-              localStorage.setItem('aot_telegram_user', user);
-            }
-          }
-        }
-      } catch (e) {
-        // Fallback gracefully
-      }
-    };
-    checkFirestoreUser();
-
     return () => {
-      isMounted = false;
       stopPolling();
     };
   }, [userId]);
@@ -282,17 +233,6 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     setIsWaitingForHandshake(true);
 
     // Best-effort staging doc for the Firestore-based status listener below
-    // (harmless if it fails - Firestore isn't the source of truth here).
-    try {
-      await setDoc(doc(db, 'pairings', randomToken), {
-        user_id: userId,
-        linked: false,
-        created_at: new Date()
-      });
-    } catch (err) {
-      console.warn('Firestore setDoc staging notice (using backend synchronization):', err);
-    }
-
     // Open Telegram Bot with deep link
     try {
       window.open(pairingUrl, '_blank', 'noopener,noreferrer');
@@ -300,44 +240,12 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       console.warn('window.open notice:', e);
     }
 
-    // 4. Set up real-time Firestore listener (onSnapshot) on that specific pairings/<randomToken> document
-    try {
-      const unsub = onSnapshot(doc(db, 'pairings', randomToken), (docSnap) => {
-        if (docSnap.exists() && docSnap.data().linked) {
-          const detectedUser = docSnap.data().username || 'Telegram User';
-          const detectedChat = docSnap.data().chat_id || docSnap.data().chatId || '';
-
-          setIsLinked(true);
-          setUsername(detectedUser);
-          if (detectedChat) setChatId(detectedChat);
-
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('aot_telegram_linked', 'true');
-            localStorage.setItem('aot_telegram_user', detectedUser);
-            if (detectedChat) {
-              localStorage.setItem('aot_telegram_chat_id', String(detectedChat));
-            }
-          }
-
-          stopPolling();
-          setIsWaitingForHandshake(false);
-          setPairingLink(null);
-          setActivePairCode(null);
-          setShowManualInput(false);
-          setIsLinking(false);
-
-          setFeedback({
-            type: 'success',
-            message: `🎉 Connected! Telegram assistant (@${detectedUser}) is now active.`,
-          });
-        }
-      });
-      firestoreUnsubRef.current = unsub;
-    } catch (err) {
-      console.warn('Firestore onSnapshot notice:', err);
-    }
-
-    // Start dual-layer polling every 2 seconds
+    // Poll the (now auth-required) status endpoint every 2 seconds until
+    // the backend confirms the link - this is the actual source of truth
+    // (a parallel Firestore listener used to sit alongside this, but
+    // nothing server-side ever wrote to that collection, so it never
+    // fired; removed rather than left as an unused, directly-queryable
+    // client-side read of another concern's data).
     if (pollingRef.current) window.clearInterval(pollingRef.current);
     pollingRef.current = window.setInterval(async () => {
       const success = await checkStatus(randomToken, true);
