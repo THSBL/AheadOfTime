@@ -169,6 +169,12 @@ Category-standard milestones (the usual checklist for "birthday party", "trip", 
 CRITICAL RULE - NO DUPLICATE TASKS:
 Each real-world task exists as exactly ONE milestone. Before finalizing your output, review your own milestone list and remove any that cover the same underlying task as another one (even if worded differently, e.g. "Buy gift" and "Purchase birthday present" are the same task - keep only one). Never generate a category-default milestone that duplicates something you already generated as a narrative-inferred milestone from the same input.
 
+CRITICAL RULE - REFINEMENT MEANS MERGE, NEVER REPLACE:
+If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" - the user's message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how short or narrowly-scoped the message is (e.g. "we also need a dog sitter" on an existing business trip is adding ONE thing, not redefining the whole trip).
+- Your "runway"/"milestones" output must be the COMPLETE resulting plan: include every existing milestone that is still relevant, worded the same or only lightly adjusted, PLUS whatever the new message adds or changes. Never return a runway containing only milestones derived from the new message - that discards the entire existing plan, which is exactly the failure mode this rule exists to prevent.
+- Only drop or rewrite an existing milestone if the new message explicitly contradicts it (e.g. "actually we're not going to Paris anymore, going to Rome instead" replaces the destination-specific tasks; "we also need a dog sitter" does not touch anything else on the trip).
+- When the new message is narrow (mentions one thing), the correct output is: all existing milestones unchanged, plus 1-2 new ones for the thing just mentioned. A narrow message should almost never shrink the milestone count from what existingMilestones already had.
+
 CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
 1. Milestone (State Checkpoint - 0-day duration):
    - Represents a condition of readiness or gate (e.g., "Venue Secured", "Headcount Locked", "Luggage Packed", "Beta Cutoff").
@@ -223,6 +229,15 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       endDate: params.existingEvent.endDate,
       category: params.existingEvent.category,
       context: params.existingEvent.context,
+      // Without this, the model has no way to know a plan already exists -
+      // it just plans a fresh event from userInput alone, which reads as
+      // the model "wiping" everything when userInput only mentions one
+      // narrow addition (see the REFINEMENT MEANS MERGE rule above).
+      existingMilestones: (params.existingEvent.milestones || []).map((m) => ({
+        title: m.title,
+        description: m.description,
+        target_date: m.calculatedDate,
+      })),
     } : null,
     referenceDate: params.refDateStr,
   });
