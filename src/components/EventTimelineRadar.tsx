@@ -92,6 +92,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [clarifyTime, setClarifyTime] = useState('');
   const [clarifyLocation, setClarifyLocation] = useState('');
   const [isDeepRefining, setIsDeepRefining] = useState(false);
+  const [correctionInput, setCorrectionInput] = useState('');
+  const [isSendingCorrection, setIsSendingCorrection] = useState(false);
+  const [correctionReply, setCorrectionReply] = useState<string | null>(null);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
 
@@ -164,6 +167,41 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     }
   };
 
+  // Lets the user correct a fault they spot (a wrong assumption, missing
+  // detail, irrelevant task) by typing it as plain text instead of editing
+  // milestones one at a time. Routes through the same conversational engine
+  // and quality guardrails as chat/Telegram, targeting this specific event.
+  const handleSendCorrection = async () => {
+    const text = correctionInput.trim();
+    if (!text || !activeEvent || isSendingCorrection || !onUpdateEvent) return;
+    setIsSendingCorrection(true);
+    setCorrectionReply(null);
+    try {
+      const res = await fetch('/api/agent/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          currentReferenceDate,
+          activeEvents: [activeEvent],
+          targetEventId: activeEvent.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      const data = await res.json();
+      if (data?.event) {
+        onUpdateEvent(data.event);
+      }
+      setCorrectionReply(data.focusText || data.replyText || "Updated based on what you told me.");
+      setCorrectionInput('');
+    } catch (e) {
+      console.warn('Text correction notice:', e);
+      setCorrectionReply("Couldn't process that just now - please try again.");
+    } finally {
+      setIsSendingCorrection(false);
+    }
+  };
+
   React.useEffect(() => {
     if (activeEvent) {
       setClarifyTitle(activeEvent.title);
@@ -172,6 +210,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       setClarifyTime(activeEvent.eventTime || '19:00');
       setClarifyLocation(activeEvent.location || '');
       setIsEditingEvent(false);
+      setCorrectionInput('');
+      setCorrectionReply(null);
     }
   }, [activeEvent?.id, activeEvent?.status]);
 
@@ -449,18 +489,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <span>Refine</span>
             </button>
 
-            {onOpenApplyPreset && (
-              <button
-                onClick={() => onOpenApplyPreset(activeEvent)}
-                className="bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border border-purple-200 flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
-                title="Import spreadsheet template or saved runway preset"
-              >
-                <Layers className="w-3.5 h-3.5 text-purple-700 shrink-0" />
-                <span className="hidden md:inline">Import Template</span>
-                <span className="md:hidden">Import</span>
-              </button>
-            )}
-
             {/* More Actions Menu */}
             <div className="relative">
               <button
@@ -581,6 +609,52 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <span>Add Task</span>
           </button>
         </div>
+
+        {/* Freeform correction box: spotted something wrong or missing?
+            Type it instead of hand-editing each task - this goes through
+            the same conversational engine and quality guardrails as chat
+            or Telegram, targeting this specific event. */}
+        {onUpdateEvent && (
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-2xs space-y-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <span>Something off? Tell us in your own words</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={correctionInput}
+                onChange={(e) => setCorrectionInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendCorrection();
+                  }
+                }}
+                placeholder="e.g. It's just me and my girlfriend, not a group"
+                disabled={isSendingCorrection}
+                className="flex-1 min-w-0 text-xs font-medium px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={handleSendCorrection}
+                disabled={isSendingCorrection || !correctionInput.trim()}
+                className="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isSendingCorrection ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <span>Send</span>
+                )}
+              </button>
+            </div>
+            {correctionReply && (
+              <p className="text-[11px] text-slate-500 font-medium leading-snug border-t border-slate-100 pt-2">
+                {correctionReply}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Scope Filter Buttons if Hierarchical Tasks exist */}
         {hasMicroTasks && (
