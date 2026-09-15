@@ -243,6 +243,20 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
   // -------------------------------------------------------------
   const handleFinalSave = () => {
     setIsSaving(true);
+    try {
+      handleFinalSaveInner();
+    } catch (err) {
+      // isSaving was never reset on this path before - a throw anywhere in
+      // onComplete's chain (e.g. an unexpected data shape from a merged
+      // AI-refined event) left the button stuck on "Saving Event..."
+      // forever with no error shown, which read to a user as "the save
+      // silently failed" - it wasn't silent, it just had nowhere to go.
+      console.error('Failed to save event:', err);
+      setIsSaving(false);
+    }
+  };
+
+  const handleFinalSaveInner = () => {
     const eventId = initialEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const catDef = CANONICAL_CATEGORIES.find((c) => c.id === selectedCategory);
 
