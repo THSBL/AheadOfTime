@@ -99,7 +99,8 @@ Generate 4 to 6 tailored T-minus milestones for this event and return a JSON obj
         // No retry-on-timeout wrapper here, so use the stronger model in that
         // list rather than the lite one - a single attempt is worth spending
         // on the more capable model when there's no fallback to catch a miss.
-        model: DEFAULT_FAST_MODELS[DEFAULT_FAST_MODELS.length - 1],
+        // DEFAULT_FAST_MODELS is ordered strongest-first, so that's index 0.
+        model: DEFAULT_FAST_MODELS[0],
         contents: prompt,
         config: {
           systemInstruction,

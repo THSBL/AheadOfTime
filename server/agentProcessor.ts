@@ -37,15 +37,19 @@ export function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-// Fast active models prioritized for calendar planning and reasoning
+// Model priority for calendar planning and reasoning: the stronger model
+// first. Quality of the actual plan (specific, well-reasoned milestones)
+// matters more here than shaving a couple of seconds off a request that
+// already has a generous timeout budget - gemini-3.1-flash-lite is kept
+// only as the fallback for when gemini-3.6-flash times out or errors.
 export const DEFAULT_FAST_MODELS = [
-  "gemini-3.1-flash-lite",
   "gemini-3.6-flash",
+  "gemini-3.1-flash-lite",
 ];
 
 export const TRANSCRIBE_MODELS = [
-  "gemini-3.1-flash-lite",
   "gemini-3.6-flash",
+  "gemini-3.1-flash-lite",
 ];
 
 // Multi-model fast execution with low latency and strict timeout
@@ -169,9 +173,13 @@ Category-standard milestones (the usual checklist for "birthday party", "trip", 
 CRITICAL RULE - NO DUPLICATE TASKS:
 Each real-world task exists as exactly ONE milestone. Before finalizing your output, review your own milestone list and remove any that cover the same underlying task as another one (even if worded differently, e.g. "Buy gift" and "Purchase birthday present" are the same task - keep only one). Never generate a category-default milestone that duplicates something you already generated as a narrative-inferred milestone from the same input.
 
+CRITICAL RULE - MILESTONES MUST NAME A SPECIFIC, CONCRETE THING - NEVER A GENERIC PHASE LABEL:
+Never title a milestone with a vague category or phase name like "Logistics & Bookings", "Work & Trip Prep", or "Pre-departure Checks" - these tell the user nothing they can actually check off, and they're so broad they make every future request look "already covered" even when nothing concrete addresses it. Every milestone must name the actual thing being tracked - a specific document, booking, or deliverable someone could point to and say "yes, that's done" - e.g. "Passport & Visa Verified", "Flights & Hotel Booked", "Rental Car Reserved", "Pitch Deck Finalized". If a business trip needs travel documents checked, a rental car booked, and a pitch deck finished, those are separate specific milestones (or explicit named deliverables under one), never folded into a single vague bucket.
+
 CRITICAL RULE - REFINEMENT MEANS MERGE, NEVER REPLACE:
-If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" - the user's message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how short or narrowly-scoped the message is (e.g. "we also need a dog sitter" on an existing business trip is adding ONE thing, not redefining the whole trip).
+If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" (each with its own deliverables) - the user's message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how short or narrowly-scoped the message is (e.g. "we also need a dog sitter" on an existing business trip is adding ONE thing, not redefining the whole trip).
 - Your "runway"/"milestones" output must be the COMPLETE resulting plan: include every existing milestone that is still relevant, worded the same or only lightly adjusted, PLUS whatever the new message adds or changes. Never return a runway containing only milestones derived from the new message - that discards the entire existing plan, which is exactly the failure mode this rule exists to prevent.
+- Only treat something the new message mentions as "already covered" if an existing milestone's title OR one of its deliverables names that SAME specific thing - a broad or vague existing title is never enough on its own to justify skipping a specific new request. When in doubt, add it as a new deliverable under the most relevant existing milestone, or its own milestone if it doesn't fit anywhere - never silently drop a specific, concrete request.
 - Only drop or rewrite an existing milestone if the new message explicitly contradicts it (e.g. "actually we're not going to Paris anymore, going to Rome instead" replaces the destination-specific tasks; "we also need a dog sitter" does not touch anything else on the trip).
 - When the new message is narrow (mentions one thing), the correct output is: all existing milestones unchanged, plus 1-2 new ones for the thing just mentioned. A narrow message should almost never shrink the milestone count from what existingMilestones already had.
 
@@ -237,6 +245,10 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         title: m.title,
         description: m.description,
         target_date: m.calculatedDate,
+        // Without these, the model only sees a milestone's (possibly
+        // broad) title and can't judge whether a specific new request is
+        // genuinely already covered by it.
+        deliverables: (m.deliverables || []).map((d) => d.title),
       })),
     } : null,
     referenceDate: params.refDateStr,

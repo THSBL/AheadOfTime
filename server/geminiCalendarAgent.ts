@@ -37,9 +37,13 @@ Category-standard milestones (the usual checklist for "birthday party", "trip", 
 ### CRITICAL RULE - NO DUPLICATE TASKS:
 Each real-world task exists as exactly ONE milestone. Review your own list before responding and remove anything that covers the same underlying task as another entry, even if worded differently.
 
+### CRITICAL RULE - MILESTONES MUST NAME A SPECIFIC, CONCRETE THING - NEVER A GENERIC PHASE LABEL:
+Never title a milestone with a vague category or phase name like "Logistics & Bookings", "Work & Trip Prep", "Pre-departure Checks", or "General Preparation" - these tell the user nothing they can actually check off or verify, and they're so broad they make every future request look "already covered" even when nothing concrete addresses it. Every milestone must name the actual thing being tracked: a specific document, booking, or deliverable someone could point to and say "yes, that's done" - e.g. "Passport & Visa Verified", "Flights & Hotel Booked", "Rental Car Reserved", "Pitch Deck Finalized", "Business Attire Ready". If a business trip needs travel documents checked, a rental car booked, and a pitch deck finished, those are separate specific milestones (or explicit named deliverables under one), never folded into a single vague bucket.
+
 ### CRITICAL RULE - REFINING AN EXISTING EVENT MEANS MERGE, NEVER REPLACE:
-If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" - the message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how narrow the message is (e.g. "we also need a dog sitter" on an existing business trip adds ONE thing, it does not redefine the trip).
+If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" (each with its own deliverables) - the message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how narrow the message is (e.g. "we also need a dog sitter" on an existing business trip adds ONE thing, it does not redefine the trip).
 - Your "milestones" output must be the COMPLETE resulting plan: every existing milestone that's still relevant (unchanged or lightly adjusted), plus whatever the new message adds or changes. Returning only milestones derived from the new message discards the entire existing plan - never do that.
+- Only treat something the new message mentions as "already covered" if an existing milestone's title OR one of its deliverables names that SAME specific thing - a broad or vague existing title (e.g. "Logistics & Bookings") is never enough on its own to justify skipping a specific new request (e.g. "book a rental car", "dry clean my suit"). When in doubt, add it as a new deliverable under the most relevant existing milestone, or its own milestone if it doesn't fit anywhere - never silently drop a specific, concrete request.
 - Only drop or rewrite an existing milestone if the new message explicitly contradicts it.
 - If genuinely something is unclear about the ADDITION itself (not the whole event), use Option C to ask about that one thing - e.g. "Got it, one thing: is the dog sitter needed for the full week or just a couple of days?"
 
@@ -118,10 +122,13 @@ Ask AT MOST 2 short questions in ONE message - never a back-and-forth interrogat
 Allowed categories: "travel_trip", "birthday_party", "dinner_social", "project_deadline", "hosting_visitors", "festival_concert", "custom".
 Always ensure date arithmetic for milestones is accurate: target_date = start_date minus t_minus_days.`;
 
-// Fast active models to try in order, mirroring agentProcessor.ts's
-// DEFAULT_FAST_MODELS - a single hardcoded model name means the bot goes
-// permanently dark the moment that one model is deprecated/renamed.
-const CALENDAR_AGENT_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.6-flash'];
+// Model priority, mirroring agentProcessor.ts's DEFAULT_FAST_MODELS -
+// strongest model first (plan quality matters more than shaving a couple
+// of seconds off a request with a generous timeout budget), lite model
+// kept only as the fallback for a timeout/error. A list rather than a
+// single hardcoded name also means the bot doesn't go permanently dark
+// the moment one model is deprecated/renamed.
+const CALENDAR_AGENT_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite'];
 
 /**
  * Re-derives each milestone's deliverables from its own title via the same
@@ -352,6 +359,12 @@ export class GeminiCalendarAgent {
         title: m.title,
         description: m.description,
         target_date: m.calculatedDate,
+        // Without these, the model only sees the milestone's (possibly
+        // broad) title and has no way to judge whether a specific new
+        // request is genuinely already covered - it was treating "book a
+        // rental car" as covered by a milestone titled "Logistics &
+        // Bookings" purely because the title sounded related.
+        deliverables: (m.deliverables || []).map((d) => d.title),
       })),
     };
 
