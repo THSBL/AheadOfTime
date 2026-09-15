@@ -1,7 +1,5 @@
 import { query } from './db.js';
 import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, MilestoneCategory } from '../src/types.js';
-import { inferTaskTimingLocally } from '../src/utils/timingAI.js';
-import { applyMilestoneQualityGuardrails } from '../src/utils/tminusRules.js';
 
 export interface TelegramUserSession {
   chatId: number | string;
@@ -717,51 +715,49 @@ export class TelegramSessionStore {
   }
 
   /**
-   * Turns a free-text note into one new milestone on an existing event,
-   * using the same lead-time inference and context-aware dedup/suppression
-   * guardrails as every other milestone-generation path in the app -
-   * fixes "Add Note" previously just telling the user to type it somewhere
-   * or open the web app, without ever actually doing anything with it.
-   * Returns the created milestone, or undefined if the guardrail pass
-   * determined it duplicates an existing one (nothing is added in that case).
+   * Tracks the one capped clarification round for an in-progress event
+   * REFINEMENT (as opposed to pendingClarification, which is for a
+   * not-yet-created event). Kept as its own field since it carries the
+   * target eventId alongside the original text and question.
    */
-  public static async addNoteMilestoneToEvent(eventId: string, noteText: string): Promise<TMinusMilestone | undefined> {
-    const event = await this.getEvent(eventId);
-    if (!event) return undefined;
+  public static async getPendingRefinementClarification(
+    chatId: number | string
+  ): Promise<{ eventId: string; originalText: string; question: string } | undefined> {
+    const row = await this.getAccountRow(chatId);
+    return row?.metadata?.pendingRefinementClarification;
+  }
 
-    const timing = inferTaskTimingLocally(noteText, '', event.title || '');
-    const offsetMinutes =
-      timing.unit === 'weeks' ? -timing.amount * 7 * 24 * 60 :
-      timing.unit === 'hours' ? -timing.amount * 60 :
-      -timing.amount * 24 * 60;
-    const targetDate = new Date(new Date(event.eventDate).getTime() + offsetMinutes * 60 * 1000);
-
-    const candidate: TMinusMilestone = {
-      id: `ms_note_${Date.now()}`,
-      eventId,
-      tMinusLabel: timing.badge,
-      tMinusOffsetMinutes: offsetMinutes,
-      calculatedDate: targetDate.toISOString().substring(0, 10),
-      title: noteText.trim(),
-      description: timing.reason,
-      category: timing.category,
-      status: 'pending',
-    };
-
-    const guarded = applyMilestoneQualityGuardrails([...(event.milestones || []), candidate], {
-      title: event.title,
-      location: event.location,
-      rawText: noteText,
-    });
-    const wasKept = guarded.some((m) => m.id === candidate.id);
-    if (!wasKept) return undefined;
-
+  public static async setPendingRefinementClarification(
+    chatId: number | string,
+    pending: { eventId: string; originalText: string; question: string } | null
+  ): Promise<void> {
+    await this.getOrCreateSession(chatId);
+    const row = await this.getAccountRow(chatId);
+    const metadata = { ...(row?.metadata || {}) };
+    if (pending) {
+      metadata.pendingRefinementClarification = pending;
+    } else {
+      delete metadata.pendingRefinementClarification;
+    }
     await query(
-      `INSERT INTO milestones (event_id, title, description, category, calculated_date, status, kind)
-       VALUES ($1, $2, $3, $4, $5, 'pending', 'milestone')`,
-      [eventId, candidate.title, candidate.description, candidate.category, candidate.calculatedDate]
+      `UPDATE integration_accounts SET metadata = $2 WHERE channel = 'telegram' AND external_id = $1`,
+      [String(chatId), JSON.stringify(metadata)]
     );
-    return candidate;
+  }
+
+  /**
+   * Persists milestones that survived a merge (existing + AI-refined) but
+   * didn't already exist in the DB - used by the "Refine Event in Chat"
+   * flow, which only ever adds to a plan, never rewrites what's there.
+   */
+  public static async addMilestonesToEvent(eventId: string, milestones: TMinusMilestone[]): Promise<void> {
+    for (const m of milestones) {
+      await query(
+        `INSERT INTO milestones (event_id, title, description, category, calculated_date, status, kind)
+         VALUES ($1, $2, $3, $4, $5, 'pending', 'milestone')`,
+        [eventId, m.title, m.description || '', m.category || 'prep', m.calculatedDate]
+      );
+    }
   }
 
   public static async recordEventCreated(chatId: number | string, event: CalendarEvent): Promise<void> {

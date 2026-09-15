@@ -119,25 +119,29 @@ export class TelegramWebhookHandler {
 
     const session = await TelegramSessionStore.getOrCreateSession(chatId, from);
 
-    // A chat that tapped "Add Note" on an event is expected to type that
-    // note next - checked before any command routing so e.g. a note that
-    // happens to start with "/status" doesn't get swallowed as a command.
+    // A chat that tapped "Refine in Chat" on an event is expected to type
+    // the change next - checked before any command routing so e.g. a
+    // request that happens to start with "/status" doesn't get swallowed
+    // as a command. If a clarifying question is already pending for this
+    // refinement, this message is the answer to THAT question instead of a
+    // fresh request - checked first since both states use the same
+    // pendingNoteForEventId marker.
+    const pendingRefinementClarification = await TelegramSessionStore.getPendingRefinementClarification(chatId);
     const pendingNoteEventId = await TelegramSessionStore.getPendingEventNote(chatId);
+    if (pendingRefinementClarification && text && !text.startsWith('/')) {
+      await TelegramSessionStore.setPendingRefinementClarification(chatId, null);
+      await TelegramSessionStore.setPendingEventNote(chatId, null);
+      await this.refineEventInChat(
+        chatId,
+        pendingRefinementClarification.eventId,
+        `${pendingRefinementClarification.originalText}\n\n(Follow-up answer to "${pendingRefinementClarification.question}"): ${text}`,
+        true
+      );
+      return;
+    }
     if (pendingNoteEventId && text && !text.startsWith('/')) {
       await TelegramSessionStore.setPendingEventNote(chatId, null);
-      const added = await TelegramSessionStore.addNoteMilestoneToEvent(pendingNoteEventId, text);
-      if (added) {
-        await TelegramService.sendMessage(
-          chatId,
-          `✅ Added *${added.title}* (${added.tMinusLabel}) to your prep list.`,
-          { parse_mode: 'Markdown' }
-        );
-      } else {
-        await TelegramService.sendMessage(
-          chatId,
-          `That looks like it's already covered by an existing task, so I didn't add a duplicate.`
-        );
-      }
+      await this.refineEventInChat(chatId, pendingNoteEventId, text, false);
       return;
     }
 
@@ -265,9 +269,14 @@ export class TelegramWebhookHandler {
       const agentResult = await GeminiCalendarAgent.processMessage(chatId, rawText);
 
       if (agentResult.createdEvent) {
-        // Event was created via create_calendar_event
-        // Send Telegram response and include refinement action button
-        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl, agentResult.replyText);
+        // Event was created via create_calendar_event.
+        // Deliberately does NOT pass agentResult.replyText as custom text -
+        // that's the model's own one-line summary ("N milestones
+        // generated"), which never actually lists what was planned, giving
+        // the user nothing to judge before tapping "Looks Good". Letting
+        // sendRefinementPrompt fall through to its own default builds the
+        // real milestone list instead.
+        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl);
       } else {
         // Schedule query or status response
         await TelegramService.sendMessage(chatId, agentResult.replyText, {
@@ -280,6 +289,51 @@ export class TelegramWebhookHandler {
         chatId,
         `⚠️ *Error Processing Request*: ${err.message || 'Could not access calendar tool.'}`
       );
+    }
+  }
+
+  /**
+   * Handles a "Refine in Chat" request (or its follow-up clarification
+   * answer) for an already-created event: AI-powered, merge-aware, and
+   * capped at one clarifying question - replaces the old "Add Note" flow's
+   * blind local-heuristic single-milestone insert.
+   */
+  private static async refineEventInChat(
+    chatId: number | string,
+    eventId: string,
+    text: string,
+    isSecondRound: boolean
+  ): Promise<void> {
+    try {
+      const event = await TelegramSessionStore.getEvent(eventId);
+      if (!event) {
+        await TelegramService.sendMessage(chatId, `Hmm, I couldn't find that event anymore - it may have been deleted.`);
+        return;
+      }
+
+      const result = await GeminiCalendarAgent.refineEvent(event, text, isSecondRound);
+
+      if (result.clarificationPending) {
+        await TelegramSessionStore.setPendingRefinementClarification(chatId, {
+          eventId,
+          originalText: text,
+          question: result.replyText,
+        });
+        // Re-arm the same marker the top-of-handler check reads, so the
+        // next message routes back here as the clarification answer.
+        await TelegramSessionStore.setPendingEventNote(chatId, eventId);
+        await TelegramService.sendMessage(chatId, result.replyText);
+        return;
+      }
+
+      if (result.newlyAddedMilestones.length > 0) {
+        await TelegramSessionStore.addMilestonesToEvent(eventId, result.newlyAddedMilestones);
+      }
+
+      await TelegramService.sendMessage(chatId, result.replyText, { parse_mode: 'Markdown' });
+    } catch (err: any) {
+      console.error('Error in refineEventInChat:', err);
+      await TelegramService.sendMessage(chatId, `⚠️ Couldn't process that change: ${err.message || 'please try again.'}`);
     }
   }
 
@@ -318,11 +372,14 @@ export class TelegramWebhookHandler {
     if (data.startsWith('ADD_NOTE:')) {
       const eventId = data.replace('ADD_NOTE:', '');
       if (chatId) {
+        // Clear any stale clarification round from a previous refinement
+        // before starting a new one, so it can't bleed into this request.
+        await TelegramSessionStore.setPendingRefinementClarification(chatId, null);
         await TelegramSessionStore.setPendingEventNote(chatId, eventId);
       }
-      await TelegramService.answerCallbackQuery(callbackId, 'Go ahead, type your note');
+      await TelegramService.answerCallbackQuery(callbackId, 'Go ahead, tell me what to change');
       if (chatId) {
-        await TelegramService.sendMessage(chatId, `💬 What would you like to add?`);
+        await TelegramService.sendMessage(chatId, `💬 What would you like to change or add? I'll ask a follow-up if anything's unclear.`);
       }
       return;
     }

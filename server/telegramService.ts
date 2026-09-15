@@ -175,7 +175,7 @@ export class TelegramService {
         `Here's your prep checklist, saved to your account:`,
         milestoneLines || '📌 Initial review and planning',
         '',
-        `Not on your calendar yet - open the app to push it to Google Calendar/Tasks. Anything off? Just tell me, or tap Add Note below.`,
+        `Not on your calendar yet - open the app to push it to Google Calendar/Tasks. Anything off? Tap Refine in Chat below and tell me.`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -197,7 +197,7 @@ export class TelegramService {
               callback_data: `CONFIRM_DEFAULT:${event.id}`,
             },
             {
-              text: '➕ Add Note',
+              text: '🔄 Refine in Chat',
               callback_data: `ADD_NOTE:${event.id}`,
             },
           ],

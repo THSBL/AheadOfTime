@@ -37,6 +37,12 @@ Category-standard milestones (the usual checklist for "birthday party", "trip", 
 ### CRITICAL RULE - NO DUPLICATE TASKS:
 Each real-world task exists as exactly ONE milestone. Review your own list before responding and remove anything that covers the same underlying task as another entry, even if worded differently.
 
+### CRITICAL RULE - REFINING AN EXISTING EVENT MEANS MERGE, NEVER REPLACE:
+If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" - the message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how narrow the message is (e.g. "we also need a dog sitter" on an existing business trip adds ONE thing, it does not redefine the trip).
+- Your "milestones" output must be the COMPLETE resulting plan: every existing milestone that's still relevant (unchanged or lightly adjusted), plus whatever the new message adds or changes. Returning only milestones derived from the new message discards the entire existing plan - never do that.
+- Only drop or rewrite an existing milestone if the new message explicitly contradicts it.
+- If genuinely something is unclear about the ADDITION itself (not the whole event), use Option C to ask about that one thing - e.g. "Got it, one thing: is the dog sitter needed for the full week or just a couple of days?"
+
 ### Temporal Grounding Rules:
 - Every incoming user message contains dynamic system time context in the format:
   \`[System Context: Current Time: <Day, DD Month YYYY, HH:MM:SS TZ> (Timezone: <TZ>)]\`
@@ -316,6 +322,113 @@ export class GeminiCalendarAgent {
 
     // Intelligent Deterministic NLP Engine Fallback
     return this.intelligentNaturalLanguageEngine(chatId, effectiveText, referenceDateISO, tripDecomposition);
+  }
+
+  /**
+   * AI-powered refinement of an ALREADY-CREATED event ("Refine Event in
+   * Chat"). Unlike the old "Add Note" flow (one heuristically-timed
+   * milestone, no real understanding of the request), this gives the model
+   * the event's existing milestones and lets it either ask one clarifying
+   * question about the change (capped the same way as initial creation) or
+   * return the complete resulting plan, which is then merged with what's
+   * already there via the same quality guardrail used everywhere else -
+   * belt-and-braces against the model still returning only the new bits.
+   */
+  public static async refineEvent(
+    event: CalendarEvent,
+    rawText: string,
+    isSecondRound: boolean,
+    defaultTimezone: string = 'Europe/London'
+  ): Promise<{ replyText: string; clarificationPending: boolean; newlyAddedMilestones: TMinusMilestone[]; mergedMilestones: TMinusMilestone[] }> {
+    const referenceDateISO = new Date().toISOString();
+    const existingTargetEvent = {
+      id: event.id,
+      title: event.title,
+      eventDate: event.eventDate,
+      endDate: event.endDate,
+      category: event.category,
+      location: event.location,
+      existingMilestones: (event.milestones || []).map((m) => ({
+        title: m.title,
+        description: m.description,
+        target_date: m.calculatedDate,
+      })),
+    };
+
+    const prompt = this.ensureSystemContext(rawText, defaultTimezone, referenceDateISO)
+      + `\n\n[System: existingTargetEvent = ${JSON.stringify(existingTargetEvent)}]`
+      + (isSecondRound
+        ? '\n\n[Note: you already asked one clarifying question about this refinement and the user just answered it - use Option A now, filling any remaining gaps with a clearly-labeled best guess. Do not ask another question.]'
+        : '');
+
+    const fallback = {
+      replyText: "Sorry, I couldn't process that just now - please try again.",
+      clarificationPending: false,
+      newlyAddedMilestones: [],
+      mergedMilestones: event.milestones || [],
+    };
+
+    const ai = this.getClient();
+    if (!ai) return fallback;
+
+    try {
+      const { text: rawJson } = await this.generateWithFallback(ai, prompt);
+      if (!rawJson.trim()) return fallback;
+
+      const cleaned = rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (parsed.type === 'clarification_needed' && parsed.telegram_reply && !isSecondRound) {
+        return { ...fallback, replyText: parsed.telegram_reply, clarificationPending: true };
+      }
+
+      if (parsed.type === 'event_creation' && Array.isArray(parsed.milestones)) {
+        const modelDeliverablesByIndex = new Map<number, Deliverable[]>();
+        const freshMilestonesPending: TMinusMilestone[] = parsed.milestones.map((m: any, idx: number) => {
+          const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
+          const modelDeliverables: Deliverable[] = Array.isArray(m.deliverables)
+            ? m.deliverables.map((d: any, dIdx: number) => ({
+                deliverable_id: `del_${Date.now()}_${idx}_${dIdx}`,
+                title: typeof d === 'string' ? d : d.title || 'Action item',
+                type: 'coordination' as const,
+                is_completed: false,
+              }))
+            : [];
+          modelDeliverablesByIndex.set(idx, modelDeliverables);
+          return {
+            id: `ms_${Date.now()}_${idx}`,
+            eventId: event.id,
+            tMinusLabel: `T-${tMinusDays}d`,
+            tMinusOffsetMinutes: -1 * tMinusDays * 1440,
+            calculatedDate: m.target_date || event.eventDate,
+            title: m.milestone_title || `Milestone ${idx + 1}`,
+            category: 'logistics',
+            status: 'pending',
+            scope: 'macro',
+            deliverables: [],
+          };
+        });
+        const reconciled = reconcileMilestoneDeliverables(freshMilestonesPending, modelDeliverablesByIndex);
+
+        const merged = applyMilestoneQualityGuardrails(
+          [...(event.milestones || []), ...reconciled],
+          { title: event.title, location: event.location, rawText }
+        );
+        const existingIds = new Set((event.milestones || []).map((m) => m.id));
+        const newlyAdded = merged.filter((m) => !existingIds.has(m.id));
+
+        const replyText = newlyAdded.length > 0
+          ? newlyAdded.map((m) => `✅ Added *${m.title}* (${m.tMinusLabel})`).join('\n')
+          : `That looks like it's already covered by an existing task, so I didn't add anything new.`;
+
+        return { replyText, clarificationPending: false, newlyAddedMilestones: newlyAdded, mergedMilestones: merged };
+      }
+
+      return { ...fallback, replyText: "I didn't quite catch a specific change there - could you say it a different way?" };
+    } catch (err: any) {
+      console.warn('⚠️ Gemini refine error:', err.message);
+      return fallback;
+    }
   }
 
   /**
