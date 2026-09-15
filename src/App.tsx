@@ -592,6 +592,15 @@ function App() {
     if (eventIdParam) {
       // 1. Check local state
       const target = events.find((e) => e.id === eventIdParam);
+      // currentUser is a cached profile (localStorage) that can outlive the
+      // actual Google access token - it does NOT mean the token is still
+      // valid. Branching on it alone meant a user whose token had expired
+      // (header still shows their name, Settings correctly shows "Not
+      // Connected") got routed into a fetch doomed to fail auth, while
+      // looking to them like a plain "signed in but nothing happened" bug.
+      // getStoredAccessToken()+isTokenExpired() is the same check used
+      // everywhere else in this file to mean "actually connected right now".
+      const hasValidGoogleToken = Boolean(getStoredAccessToken() && !isTokenExpired());
       if (target) {
         setSelectedEventId(target.id);
         setMobileDashboardView('detail');
@@ -603,7 +612,7 @@ function App() {
         }
         // Clean URL parameters so manual refresh doesn't trap user
         window.history.replaceState({}, document.title, window.location.pathname);
-      } else if (currentUser?.id) {
+      } else if (hasValidGoogleToken) {
         // 2. Fetch from Telegram server events store
         const telegramAuthHeaders = (() => {
           const token = getStoredAccessToken();
@@ -675,6 +684,18 @@ function App() {
             }
           })
           .catch((err) => console.warn('Could not fetch telegram event for refinement:', err));
+      } else if (currentUser?.id) {
+        // A cached profile exists but the actual Google token is missing or
+        // expired - the header still shows their name (misleadingly, since
+        // that display reads the cached profile, not live token validity),
+        // while Settings correctly shows "Not Connected". Distinct from the
+        // pure-guest case below: the fix here is reconnecting, not signing
+        // in for the first time.
+        setAgentConfirmationToast({
+          id: Date.now(),
+          title: 'Your Google session expired',
+          message: "This event was created via Telegram. Your Google connection has expired - reconnect in Settings to see and refine it here.",
+        });
       } else {
         // Was a silent no-op: a guest (no Google sign-in) clicking a
         // Telegram "Refine"/"Open Full Timeline" link would land on the
