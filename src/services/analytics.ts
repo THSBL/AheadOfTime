@@ -5,34 +5,46 @@ declare global {
   interface Window {
     dataLayer?: any[];
     gtag?: (...args: any[]) => void;
-    posthog?: {
-      capture: (eventName: string, properties?: Record<string, any>) => void;
-    };
-    analytics?: {
-      page: (name?: string, properties?: Record<string, any>) => void;
-      track?: (eventName: string, properties?: Record<string, any>) => void;
-    };
   }
 }
 
 const DEFAULT_MEASUREMENT_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID as string) || 'G-R1QGR1397K';
+const CONSENT_STORAGE_KEY = 'has_cookie_consent_v1';
 
 let isInitialized = false;
 let activeMeasurementId = '';
 
 /**
- * Initializes GA4 script and configures dataLayer
+ * Whether the user has explicitly opted into analytics via the cookie
+ * consent banner/preferences modal (src/components/CookieBanner.tsx,
+ * CookiePreferencesModal.tsx - both write this same key). Fails closed: no
+ * decision recorded yet, or a parse error, means no tracking - GA previously
+ * fired unconditionally regardless of what the user chose here.
+ */
+export function hasAnalyticsConsent(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const saved = localStorage.getItem(CONSENT_STORAGE_KEY);
+    if (!saved) return false;
+    const parsed = JSON.parse(saved);
+    return parsed?.analytics === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Initializes GA4 script and configures dataLayer. Re-checks consent on
+ * every call (rather than caching a denial) so tracking starts the moment
+ * the user grants it later in the session, with no reload required.
  */
 export function initAnalytics(overrideMeasurementId?: string): boolean {
   if (typeof window === 'undefined') return false;
+  if (!hasAnalyticsConsent()) return false;
+  if (isInitialized) return true;
 
   const measurementId = (overrideMeasurementId || DEFAULT_MEASUREMENT_ID || '').trim();
-  if (!measurementId || isInitialized) {
-    if (measurementId && !isInitialized) {
-      activeMeasurementId = measurementId;
-    }
-    return isInitialized;
-  }
+  if (!measurementId) return false;
 
   activeMeasurementId = measurementId;
 
