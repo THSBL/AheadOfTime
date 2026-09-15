@@ -1168,7 +1168,115 @@ export function generateHeuristicMilestones(
 
   // Sort milestones chronologically (earliest first, which means largest negative offset first)
   const sorted = milestones.sort((a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime());
-  return attachDeliverablesToMilestones(sorted);
+  return applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(sorted), { title: event.title, location: event.location, context });
+}
+
+/**
+ * Signals that the event happens at a venue which supplies its own
+ * ancillary infrastructure (bar, restaurant, hired hall, club, banquet
+ * room, etc). Deliberately broader than the narrow context.foodPlan
+ * flags the heuristic branches above check - those only suppress the
+ * generic "buy ice/decor/tableware" milestone when a specific flag was set
+ * exactly right; this scans the actual free text so "a party in a bar"
+ * is caught even when nothing set foodPlan==='bar'.
+ */
+function detectsExternallySuppliedVenue(text: string): boolean {
+  // Allows a few descriptive words between the preposition/article and the
+  // venue keyword ("at The Rooftop Bar", "at a cozy little restaurant"),
+  // not just an immediate "at the bar" - real venue names almost always
+  // have a proper name or adjective in between.
+  return /\b(at|in|hired?|booked?|reserv\w*)\s+(?:a |the |an )?(?:[a-z][a-z'-]*\s+){0,3}(bar|pub|restaurant|venue|hall|club|banquet room|ballroom|brewery|lounge)\b/i.test(text)
+    || /\b(bar|pub|restaurant|venue|hall|club)\s+(booked|reserved|confirmed)\b/i.test(text);
+}
+
+// Generic ancillary supplies a hosted-at-a-venue event doesn't need the
+// user to personally source - the venue provides these. Matched against a
+// milestone's own title+description, not the whole event, so a milestone
+// about something venue-independent (e.g. a specific gift) is untouched.
+const VENUE_SUPPLIED_SUPPLY_PATTERN = /\b(ice|glassware|cups?|plates|napkins|tableware|table\s?cloths?|chairs|tables|linens?|decor|balloons?|party\s?supplies)\b/i;
+
+/**
+ * Shared last-mile pass applied to every milestone list regardless of which
+ * of the three input paths produced it (Telegram, ChatConsole/web via
+ * Gemini, or this file's own deterministic heuristics) - see
+ * reconcileMilestoneDeliverables in geminiCalendarAgent.ts and
+ * processWithGemini/processWithDeterministicRules in agentProcessor.ts for
+ * the other two call sites.
+ *
+ * Two rules with deliberately opposite bias, per explicit product direction
+ * ("be very strict on how many times a task can exist... we don't need
+ * duplicates" vs. never silently deleting something the user actually
+ * asked for):
+ *
+ * 1. Dedupe - biased toward collapsing. One real-world task should exist
+ *    once, not as a category-default AND a narrative-inferred copy of the
+ *    same thing. Two titles are treated as the same task when the shorter
+ *    one's significant words are fully covered by the longer one's (e.g.
+ *    "Buy gift" / "Buy birthday gift"), not just literal-substring or
+ *    exact-match - a real duplicate is rarely worded identically twice.
+ * 2. Context override - biased toward caution. When the event/context text
+ *    signals the event is hosted at an external venue (a bar, restaurant,
+ *    hired hall...), strips out generic self-hosting supply milestones (buy
+ *    ice, glassware, decor) that assume the user is personally stocking the
+ *    space - the venue already provides that. A specific stated preference
+ *    (e.g. "make sure her favorite liqueur is available") is a targeted
+ *    Gemini-prompt responsibility, not something this deterministic pass
+ *    can synthesize - this function only ever removes, never invents a
+ *    replacement.
+ */
+const DEDUPE_STOPWORDS = new Set(['a', 'an', 'the', 'and', 'or', 'to', 'for', 'of', 'on', 'in', 'at', 'with', 'your', 'is', 'are']);
+
+export function applyMilestoneQualityGuardrails(
+  milestones: TMinusMilestone[],
+  signal: { title?: string; location?: string; context?: any; rawText?: string } = {}
+): TMinusMilestone[] {
+  const significantWords = (s: string): Set<string> =>
+    new Set(
+      s.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 0 && !DEDUPE_STOPWORDS.has(w))
+    );
+
+  const seen: Set<string>[] = [];
+  const deduped = milestones.filter((ms) => {
+    const words = significantWords(ms.title || '');
+    if (words.size === 0) return true;
+    // Require at least 2 significant words before treating subset-coverage
+    // as a match, so two milestones that merely share one common word (e.g.
+    // both mention "buy") don't get collapsed into each other.
+    const isDuplicate = seen.some((prior) => {
+      const [smaller, larger] = prior.size <= words.size ? [prior, words] : [words, prior];
+      if (smaller.size < 2) return false;
+      for (const w of smaller) {
+        if (!larger.has(w)) return false;
+      }
+      return true;
+    });
+    if (isDuplicate) return false;
+    seen.push(words);
+    return true;
+  });
+
+  const contextNote = typeof signal.context?.customNote === 'string' ? signal.context.customNote : '';
+  const combinedSignalText = [signal.title, signal.location, signal.rawText, contextNote].filter(Boolean).join(' ');
+  if (!detectsExternallySuppliedVenue(combinedSignalText)) {
+    return deduped;
+  }
+
+  return deduped.filter((ms) => {
+    // Checks title + description + any attached deliverables' own titles -
+    // a "Party setup & beverage chill" milestone (category 'prep', not
+    // 'shopping') can still carry a "Drinks, ice, and glassware ready"
+    // deliverable that's exactly the venue-supplied content this is meant
+    // to catch, even though the parent milestone's own title doesn't
+    // mention it.
+    const searchText = [ms.title, ms.description, ...(ms.deliverables || []).map((d) => d.title)]
+      .filter(Boolean)
+      .join(' ');
+    const isVenueSuppliedTask = (ms.category === 'shopping' || ms.category === 'prep') && VENUE_SUPPLIED_SUPPLY_PATTERN.test(searchText);
+    return !isVenueSuppliedTask;
+  });
 }
 
 /**
