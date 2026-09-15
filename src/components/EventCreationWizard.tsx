@@ -46,7 +46,7 @@ import {
   generateConcreteEventMilestones,
 } from '../utils/creationStateMachine';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
-import { applyMilestoneQualityGuardrails } from '../utils/tminusRules';
+import { finalizeMilestonePlan } from '../utils/tminusRules';
 
 // Looked up by each RefinementQuestion's iconKey (creationStateMachine.ts) -
 // gives every question card a distinct visual anchor instead of an
@@ -240,7 +240,7 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
     // entirely. Merge fresh + existing and let the quality guardrail
     // collapse anything that just restates the same task.
     const mergedMilestones = initialEvent?.milestones?.length
-      ? applyMilestoneQualityGuardrails(
+      ? finalizeMilestonePlan(
           [...initialEvent.milestones, ...freshMilestones],
           { title, location, context: { ...(initialEvent.context || {}), canonicalCategory: selectedCategory } }
         )

@@ -7,8 +7,14 @@ import {
   getCleanEventTitle,
   detectEventCategory,
   attachDeliverablesToMilestones,
-  applyMilestoneQualityGuardrails,
+  finalizeMilestonePlan,
+  sanitizeSlotKey,
 } from '../src/utils/tminusRules.js';
+import {
+  buildCandidateEventIndex,
+  resolveTargetEvent,
+  CandidateEventSummary,
+} from './planningPipeline.js';
 
 export interface CalendarAgentResult {
   replyText: string;
@@ -40,6 +46,15 @@ Each real-world task exists as exactly ONE milestone. Review your own list befor
 ### CRITICAL RULE - MILESTONES MUST NAME A SPECIFIC, CONCRETE THING - NEVER A GENERIC PHASE LABEL:
 Never title a milestone with a vague category or phase name like "Logistics & Bookings", "Work & Trip Prep", "Pre-departure Checks", or "General Preparation" - these tell the user nothing they can actually check off or verify, and they're so broad they make every future request look "already covered" even when nothing concrete addresses it. Every milestone must name the actual thing being tracked: a specific document, booking, or deliverable someone could point to and say "yes, that's done" - e.g. "Passport & Visa Verified", "Flights & Hotel Booked", "Rental Car Reserved", "Pitch Deck Finalized", "Business Attire Ready". If a business trip needs travel documents checked, a rental car booked, and a pitch deck finished, those are separate specific milestones (or explicit named deliverables under one), never folded into a single vague bucket.
 
+### CRITICAL RULE - A MILESTONE TITLE MUST NEVER OPEN WITH A HEDGE OR CONJUNCTION:
+Never start a milestone_title with "or ...", "and ...", "maybe ..." - state the single concrete thing directly. If unsure between two options, pick the more likely one and name it plainly.
+
+### CRITICAL RULE - GIVE EACH MILESTONE A STABLE slot_key, AND REUSE IT ON REFINEMENT:
+Every milestone object needs a short, stable, snake_case slot_key describing WHAT it tracks, independent of wording (e.g. "gift", "flights_hotel", "passport_visa"). If existingMilestones has one that already covers this same underlying task, REUSE that exact slot_key verbatim - this is how the app recognizes "same task, don't duplicate" even when you phrase the title differently than before.
+
+### CRITICAL RULE - DECIDE THE TARGET EVENT FIRST:
+The input may include currentlyOpenEventId and candidateEvents (a lightweight list of the user's other active events - id/title/category/dates only). Before anything else, decide target_event_id: default to currentlyOpenEventId if given, unless the message clearly names a different event from candidateEvents by topic/destination/date - then use that id instead. If this is a genuinely new plan unrelated to anything given, use the literal string "NEW". Always include target_event_id in your JSON response.
+
 ### CRITICAL RULE - REFINING AN EXISTING EVENT MEANS MERGE, NEVER REPLACE:
 If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" (each with its own deliverables) - the message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how narrow the message is (e.g. "we also need a dog sitter" on an existing business trip adds ONE thing, it does not redefine the trip).
 - Your "milestones" output must be the COMPLETE resulting plan: every existing milestone that's still relevant (unchanged or lightly adjusted), plus whatever the new message adds or changes. Returning only milestones derived from the new message discards the entire existing plan - never do that.
@@ -60,6 +75,7 @@ You MUST respond with a valid JSON object matching one of three schemas:
 \`\`\`json
 {
   "type": "event_creation",
+  "target_event_id": "NEW",
   "summary": "Scottish Highlands Trip (with 4 friends)",
   "start_date": "2026-10-14",
   "end_date": "2026-10-18",
@@ -70,6 +86,7 @@ You MUST respond with a valid JSON object matching one of three schemas:
   "milestones": [
     {
       "milestone_title": "Lodging & Transport Locked",
+      "slot_key": "lodging_transport",
       "t_minus_days": 21,
       "target_date": "2026-09-23",
       "deliverables": [
@@ -79,6 +96,7 @@ You MUST respond with a valid JSON object matching one of three schemas:
     },
     {
       "milestone_title": "Headcount & Group Costs Settled",
+      "slot_key": "headcount_costs",
       "t_minus_days": 14,
       "target_date": "2026-09-30",
       "deliverables": [
@@ -88,6 +106,7 @@ You MUST respond with a valid JSON object matching one of three schemas:
     },
     {
       "milestone_title": "Gear & Bags Packed",
+      "slot_key": "packing",
       "t_minus_days": 2,
       "target_date": "2026-10-12",
       "deliverables": [
@@ -99,6 +118,7 @@ You MUST respond with a valid JSON object matching one of three schemas:
   "telegram_reply": "*Scottish Highlands Trip (with 4 friends)*\\n• 📅 \`2026-10-14\` to \`2026-10-18\`\\n• 📍 Scottish Highlands\\n• 🎯 3 Preparation Milestones generated"
 }
 \`\`\`
+If target_event_id resolves to an existing event instead of "NEW", "milestones" should still list every milestone that ought to exist for that event (existing ones you're keeping, reusing their slot_key, plus any new ones) - per the REFINEMENT MEANS MERGE rule below.
 
 #### Option B: Calendar Query / Availability Check (e.g. "What do I have going on tomorrow afternoon?", "Am I free next Monday?")
 \`\`\`json
@@ -277,7 +297,24 @@ export class GeminiCalendarAgent {
       isSecondRound = true;
     }
 
+    // Target-event resolution setup: a plain-text message here used to
+    // always create a brand-new event, with no attempt to recognize it as
+    // continuing an event already being discussed in this chat - the same
+    // duplicate-events gap the web app's ChatConsole had. lastCreatedEventId
+    // (tracked per-chat, previously unused) stands in for "the thing we were
+    // just talking about" the way the web app uses whichever event is
+    // currently open in the UI; getRecentEventsForChat supplies the other
+    // candidates for a message that names a different event by topic.
+    const [session, recentEvents] = await Promise.all([
+      TelegramSessionStore.getOrCreateSession(chatId),
+      TelegramSessionStore.getRecentEventsForChat(chatId),
+    ]);
+    const currentlyOpenEventId = session.lastCreatedEventId;
+    const candidateEvents: CandidateEventSummary[] = buildCandidateEventIndex(recentEvents, currentlyOpenEventId);
+    const activeEventsById = new Map(recentEvents.map((e) => [e.id, e] as const));
+
     const prompt = this.ensureSystemContext(effectiveText, defaultTimezone, referenceDateISO)
+      + `\n\n[System: currentlyOpenEventId = ${currentlyOpenEventId ? `"${currentlyOpenEventId}"` : 'null'}, candidateEvents = ${JSON.stringify(candidateEvents)}]`
       + (isSecondRound ? '\n\n[Note: you already asked one clarifying question in this conversation and the user just answered it - use Option A now, filling any remaining gaps with a clearly-labeled best guess. Do not ask another question.]' : '');
     const ai = this.getClient();
 
@@ -298,6 +335,15 @@ export class GeminiCalendarAgent {
           const parsed = JSON.parse(cleaned);
 
           if (parsed.type === 'event_creation' && parsed.summary && parsed.start_date) {
+            const targetResolution = resolveTargetEvent({
+              modelTargetEventId: typeof parsed.target_event_id === 'string' ? parsed.target_event_id : undefined,
+              candidateIds: candidateEvents.map((c) => c.id),
+              currentlyOpenEventId,
+              activeEventsById,
+            });
+            if (targetResolution.existingEvent) {
+              return this.mergeMilestonesIntoEvent(targetResolution.existingEvent, parsed, effectiveText);
+            }
             return this.buildAndStoreEvent(chatId, parsed, effectiveText, referenceDateISO, tripDecomposition);
           } else if (parsed.type === 'query') {
             return {
@@ -359,6 +405,7 @@ export class GeminiCalendarAgent {
         title: m.title,
         description: m.description,
         target_date: m.calculatedDate,
+        slot_key: m.slotKey || null,
         // Without these, the model only sees the milestone's (possibly
         // broad) title and has no way to judge whether a specific new
         // request is genuinely already covered - it was treating "book a
@@ -415,6 +462,7 @@ export class GeminiCalendarAgent {
             tMinusOffsetMinutes: -1 * tMinusDays * 1440,
             calculatedDate: m.target_date || event.eventDate,
             title: m.milestone_title || `Milestone ${idx + 1}`,
+            slotKey: sanitizeSlotKey(m.slot_key),
             category: 'logistics',
             status: 'pending',
             scope: 'macro',
@@ -423,7 +471,7 @@ export class GeminiCalendarAgent {
         });
         const reconciled = reconcileMilestoneDeliverables(freshMilestonesPending, modelDeliverablesByIndex);
 
-        const merged = applyMilestoneQualityGuardrails(
+        const merged = finalizeMilestonePlan(
           [...(event.milestones || []), ...reconciled],
           { title: event.title, location: event.location, rawText }
         );
@@ -442,6 +490,66 @@ export class GeminiCalendarAgent {
       console.warn('⚠️ Gemini refine error:', err.message);
       return fallback;
     }
+  }
+
+  /**
+   * Used by processMessage when target-event resolution decides a plain-text
+   * message is about an event that already exists (rather than a new one) -
+   * the same merge-and-persist-only-the-new-bits logic refineEvent uses for
+   * its explicit "Add Note" trigger, but reachable from a cold message with
+   * no button tap required. Never sets createdEvent on the result, so the
+   * webhook handler's reply path treats this as a plain text update (what
+   * was added) rather than the new-event "Looks Good" refinement prompt.
+   */
+  private static async mergeMilestonesIntoEvent(
+    event: CalendarEvent,
+    parsed: any,
+    rawText: string
+  ): Promise<CalendarAgentResult> {
+    const modelDeliverablesByIndex = new Map<number, Deliverable[]>();
+    const freshMilestonesPending: TMinusMilestone[] = (Array.isArray(parsed.milestones) ? parsed.milestones : []).map((m: any, idx: number) => {
+      const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
+      const modelDeliverables: Deliverable[] = Array.isArray(m.deliverables)
+        ? m.deliverables.map((d: any, dIdx: number) => ({
+            deliverable_id: `del_${Date.now()}_${idx}_${dIdx}`,
+            title: typeof d === 'string' ? d : d.title || 'Action item',
+            type: 'coordination' as const,
+            is_completed: false,
+          }))
+        : [];
+      modelDeliverablesByIndex.set(idx, modelDeliverables);
+      return {
+        id: `ms_${Date.now()}_${idx}`,
+        eventId: event.id,
+        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusOffsetMinutes: -1 * tMinusDays * 1440,
+        calculatedDate: m.target_date || event.eventDate,
+        title: m.milestone_title || `Milestone ${idx + 1}`,
+        slotKey: sanitizeSlotKey(m.slot_key),
+        category: 'logistics',
+        status: 'pending',
+        scope: 'macro',
+        deliverables: [],
+      };
+    });
+    const reconciled = reconcileMilestoneDeliverables(freshMilestonesPending, modelDeliverablesByIndex);
+
+    const merged = finalizeMilestonePlan(
+      [...(event.milestones || []), ...reconciled],
+      { title: event.title, location: event.location, rawText }
+    );
+    const existingIds = new Set((event.milestones || []).map((m) => m.id));
+    const newlyAdded = merged.filter((m) => !existingIds.has(m.id));
+
+    if (newlyAdded.length > 0) {
+      await TelegramSessionStore.addMilestonesToEvent(event.id, newlyAdded);
+    }
+
+    const replyText = parsed.telegram_reply || (newlyAdded.length > 0
+      ? newlyAdded.map((m) => `✅ Added *${m.title}* (${m.tMinusLabel}) to *${event.title}*`).join('\n')
+      : `That looks like it's already covered on *${event.title}*, so I didn't add anything new.`);
+
+    return { replyText };
   }
 
   /**
@@ -515,6 +623,7 @@ export class GeminiCalendarAgent {
         tMinusOffsetMinutes: -1 * tMinusDays * 1440,
         calculatedDate: targetDate,
         title: m.milestone_title || `Milestone ${idx + 1}`,
+        slotKey: sanitizeSlotKey(m.slot_key),
         category: 'logistics',
         status: 'pending',
         scope: 'macro',
@@ -527,7 +636,7 @@ export class GeminiCalendarAgent {
     // applies to its own output - a Telegram-originated event shouldn't get a
     // laxer quality bar than one created in the app. rawInputSnippet is the
     // user's own message, so "a party at the bar" is caught here too.
-    const milestones: TMinusMilestone[] = applyMilestoneQualityGuardrails(reconciled, {
+    const milestones: TMinusMilestone[] = finalizeMilestonePlan(reconciled, {
       title,
       location: parsed.location || macro?.destination,
       rawText: rawInputSnippet,

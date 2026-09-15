@@ -6,6 +6,10 @@ import {
   decomposeComplexTripIntent,
   generateHeuristicMilestones,
   applyMilestoneQualityGuardrails,
+  attachDeliverablesToMilestones,
+  finalizeMilestonePlan,
+  sanitizeMilestoneTitle,
+  sanitizeSlotKey,
 } from './tminusRules';
 import type { TMinusMilestone } from '../types';
 
@@ -373,5 +377,200 @@ describe('applyMilestoneQualityGuardrails', () => {
       rawText: 'We booked a table at a restaurant for the party',
     });
     expect(result).toHaveLength(0);
+  });
+
+  it('merges two milestones sharing a slot_key even when titles/categories are unrelated', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Sort out the dog', category: 'admin', slotKey: 'dog_sitter' } as Partial<TMinusMilestone>),
+      makeMilestone({ id: 'b', title: 'Confirm kennel booking', category: 'booking', tMinusOffsetMinutes: -1000, slotKey: 'dog_sitter' } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+  });
+
+  it('does not merge two milestones with different explicit slot_keys even if titles overlap', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Order birthday gift', category: 'shopping', slotKey: 'gift_order' } as Partial<TMinusMilestone>),
+      makeMilestone({ id: 'b', title: 'Wrap gift & prepare birthday card', category: 'prep', slotKey: 'gift_wrap' } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(2);
+  });
+
+  it('still applies the legacy fuzzy fallback when either side lacks a slot_key', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Book flights and accommodation', category: 'booking', tMinusOffsetMinutes: -40320 }),
+      makeMilestone({ id: 'b', title: 'Flights & Accommodations Locked', category: 'booking', tMinusOffsetMinutes: -43200, slotKey: 'flights_hotel' } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+  });
+
+  it('does not merge two genuinely distinct same-category milestones that just happen to land a day or two apart (no shared vocabulary)', () => {
+    // Regression test: found live when exercising the deterministic
+    // birthday-party fallback end-to-end - "Wrap gift & prepare birthday
+    // card" (T-2d, prep) and "Party setup & beverage chill" (T-3h, prep)
+    // are unrelated tasks ~45 hours apart that share zero words, but the
+    // old 3-day category+timing fallback merged them anyway, grafting a
+    // mismatched "Bakery or catering order confirmed" deliverable onto the
+    // gift-wrapping milestone.
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Wrap gift & prepare birthday card', category: 'prep', tMinusOffsetMinutes: -2880 }),
+      makeMilestone({
+        id: 'b',
+        title: 'Party setup & beverage chill',
+        category: 'prep',
+        tMinusOffsetMinutes: -180,
+        deliverables: [{ deliverable_id: 'd1', title: 'Bakery or catering order confirmed with pickup time', type: 'purchase', is_completed: false }],
+      } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(2);
+    const wrapMilestone = result.find((m) => m.id === 'a')!;
+    expect((wrapMilestone.deliverables || []).map((d) => d.title)).not.toContain('Bakery or catering order confirmed with pickup time');
+  });
+
+  it('does not merge two unrelated milestones that only share structural "state checkpoint" suffix words from the title converter', () => {
+    // Regression test: found live - "Birthday gift Ordered & Tracked" and
+    // "Birthday cake & plan refreshments Ordered & Tracked" share "birthday"
+    // + the mechanically-appended "Ordered"/"Tracked" suffix (3 words), which
+    // was enough to false-positive as a duplicate and silently absorb the
+    // cake milestone's deliverable into the gift milestone.
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Birthday gift Ordered & Tracked', category: 'shopping', tMinusOffsetMinutes: -20160 }),
+      makeMilestone({ id: 'b', title: 'Birthday cake & plan refreshments Ordered & Tracked', category: 'shopping', tMinusOffsetMinutes: -10080 }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(2);
+  });
+
+  it('does not merge two sequential milestones (order vs. wrap the gift) that only share words generic to the event\'s own title', () => {
+    // Regression test: found live - within a "Birthday Celebration" event,
+    // "Birthday gift Ordered & Tracked" and "Wrap gift & prepare birthday
+    // card" share "birthday" + "gift", but both words are individually
+    // generic to this one event (every milestone says "birthday"; "gift" is
+    // the shared subject of two deliberately separate steps) - not evidence
+    // they're the same task. The event's own title is passed as the signal.
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Birthday gift Ordered & Tracked', category: 'shopping', tMinusOffsetMinutes: -20160 }),
+      makeMilestone({ id: 'b', title: 'Wrap gift & prepare birthday card', category: 'prep', tMinusOffsetMinutes: -2880 }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones, { title: 'Birthday Celebration' });
+    expect(result).toHaveLength(2);
+  });
+
+  it('still catches a tense/number-variant duplicate via stemming ("confirm passport" vs "passports ... confirmed")', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Confirm passport is valid for travel', category: 'booking', tMinusOffsetMinutes: -20160 }),
+      makeMilestone({ id: 'b', title: 'Passports & Key Activities Confirmed', category: 'booking', tMinusOffsetMinutes: -20160 }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+  });
+
+  it('unions deliverables from both sides when a slot_key merge happens, instead of dropping the second entry\'s', () => {
+    const milestones = [
+      makeMilestone({
+        id: 'a',
+        title: 'Sort out the dog',
+        slotKey: 'dog_sitter',
+        deliverables: [{ deliverable_id: 'd1', title: 'Kennel booked', type: 'booking', is_completed: false }],
+      } as Partial<TMinusMilestone>),
+      makeMilestone({
+        id: 'b',
+        title: 'Confirm kennel booking',
+        slotKey: 'dog_sitter',
+        deliverables: [{ deliverable_id: 'd2', title: 'Vaccination records shared', type: 'document', is_completed: false }],
+      } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+    expect(result[0].deliverables?.map((d) => d.title)).toEqual(
+      expect.arrayContaining(['Kennel booked', 'Vaccination records shared'])
+    );
+  });
+});
+
+describe('sanitizeMilestoneTitle', () => {
+  it('strips a leading stray "or" left over from a bad hedge-phrase title', () => {
+    expect(sanitizeMilestoneTitle('or brainstorm birthday gift Ordered & Tracked')).toBe('Brainstorm birthday gift Ordered & Tracked');
+  });
+
+  it('capitalizes the first letter of an otherwise normal title', () => {
+    expect(sanitizeMilestoneTitle('flights booked & confirmed')).toBe('Flights booked & confirmed');
+  });
+
+  it('leaves a legitimate leading article untouched', () => {
+    expect(sanitizeMilestoneTitle('The Great Gatsby Party Booked')).toBe('The Great Gatsby Party Booked');
+  });
+});
+
+describe('sanitizeSlotKey', () => {
+  it('lowercases and snake_cases a raw model-provided key', () => {
+    expect(sanitizeSlotKey('Flights & Hotel')).toBe('flights_hotel');
+  });
+
+  it('collapses empty/garbage input to undefined', () => {
+    expect(sanitizeSlotKey('   ')).toBeUndefined();
+    expect(sanitizeSlotKey(undefined)).toBeUndefined();
+    expect(sanitizeSlotKey(null as any)).toBeUndefined();
+  });
+
+  it('caps length at 40 characters', () => {
+    const long = 'a'.repeat(80);
+    expect(sanitizeSlotKey(long)!.length).toBe(40);
+  });
+});
+
+describe('attachDeliverablesToMilestones - regression for the exact historical bug string', () => {
+  it('does not produce "or brainstorm birthday gift Ordered & Tracked" from the bad source title', () => {
+    const milestones: TMinusMilestone[] = [{
+      id: 'ms-1',
+      eventId: 'evt-1',
+      tMinusLabel: 'T-14d',
+      tMinusOffsetMinutes: -20160,
+      calculatedDate: '2026-10-01',
+      title: 'Order or brainstorm birthday gift',
+      category: 'shopping',
+      status: 'pending',
+    }];
+    const result = attachDeliverablesToMilestones(milestones);
+    // The historical bug: stripping only the leading "Order " verb left "or
+    // brainstorm birthday gift", then appended " Ordered & Tracked" onto it.
+    // The guarded converter must refuse to mangle a hedge-phrase title at
+    // all, leaving it a sensible (if unremarkable) title instead.
+    expect(result[0].title).not.toBe('or brainstorm birthday gift Ordered & Tracked');
+    expect(result[0].title).not.toMatch(/^or\s/i);
+  });
+});
+
+describe('generateHeuristicMilestones - regression for the exact historical bug string', () => {
+  it('never emits a milestone title starting with a stray "or" for a default birthday gift plan', () => {
+    const milestones = generateHeuristicMilestones(
+      { category: 'birthday_party', title: "Maya's birthday party", context: {} },
+      'evt-test-gift',
+      '2026-11-20',
+      '19:00'
+    );
+    const badTitle = milestones.find((m) => /^or\s/i.test(m.title));
+    expect(badTitle).toBeUndefined();
+  });
+});
+
+describe('finalizeMilestonePlan', () => {
+  it('composes deliverable attachment, slot_key dedup, and title sanitization in one call', () => {
+    const milestones: TMinusMilestone[] = [{
+      id: 'ms-1',
+      eventId: 'evt-1',
+      tMinusLabel: 'T-14d',
+      tMinusOffsetMinutes: -20160,
+      calculatedDate: '2026-10-01',
+      title: 'or brainstorm birthday gift',
+      category: 'shopping',
+      status: 'pending',
+    }];
+    const result = finalizeMilestonePlan(milestones);
+    expect(result[0].title).not.toMatch(/^or\s/i);
   });
 });

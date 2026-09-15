@@ -16,10 +16,15 @@ import {
   detectEventCategory,
   getCleanEventTitle,
   decomposeComplexTripIntent,
-  attachDeliverablesToMilestones,
-  applyMilestoneQualityGuardrails,
+  finalizeMilestonePlan,
+  sanitizeSlotKey,
   parseNaturalDateRange
 } from "../src/utils/tminusRules.js";
+import {
+  SHARED_PLANNING_RULES,
+  buildCandidateEventIndex,
+  resolveTargetEvent,
+} from "./planningPipeline.js";
 
 // Lazy initialize Gemini SDK
 let aiClient: GoogleGenAI | null = null;
@@ -162,26 +167,7 @@ export async function processWithGemini(params: {
 }): Promise<ProcessAgentResponsePayload> {
   const systemInstruction = `You are the AheadOfTime Conversational Planning Engine.
 
-CRITICAL RULE - CONTEXT LEADS, NEVER GENERIC TEMPLATES:
-Category-standard milestones (the usual checklist for "birthday party", "trip", etc.) are a STARTING POINT, not a fixed script. Before including any generic/routine milestone, check it against everything the user actually said. If a stated detail contradicts or makes a routine milestone irrelevant, DROP that milestone entirely rather than including it anyway:
-- If the event is at an external venue the user names or implies (a bar, restaurant, hired hall, venue, club) - do NOT generate milestones for supplies/setup that venue would already provide (buying ice, glassware, decorations, tables, chairs, a sound system). Only generate milestones for what the user must personally still arrange.
-- Example: "planning a party in a bar" needs a reservation/headcount milestone, NOT "buy ice and glassware" - the bar has that. If the user mentions a specific preference (e.g. "make sure her favorite liqueur is available" or "need a 0.0% option"), generate ONE targeted milestone for exactly that ("Confirm bar stocks [X]"), not a generic shopping list.
-- For a trip: do NOT default to group-coordination milestones (collecting shared funds/deposits from other people, locking a headcount, chasing RSVPs, booking a "group activity" or "group dinner") unless the input actually names a wider group of independent people (friends, colleagues, a stag/hen party, "the guys/girls", an explicit number of attendees). A trip described with a partner, girlfriend/boyfriend, spouse, or family is a couple/family trip, not a group to coordinate - it needs booking, packing, and activity milestones for the traveller(s) actually mentioned, nothing about pooling money or tracking who's confirmed.
-- This applies to every category and every source of input the same way - a routine task that doesn't fit the stated context should never appear just because it's usually part of that category's checklist.
-- When genuinely unsure whether a routine milestone still applies given what was said, err toward leaving it out rather than including something irrelevant - a shorter, accurate list beats a longer, generic one.
-
-CRITICAL RULE - NO DUPLICATE TASKS:
-Each real-world task exists as exactly ONE milestone. Before finalizing your output, review your own milestone list and remove any that cover the same underlying task as another one (even if worded differently, e.g. "Buy gift" and "Purchase birthday present" are the same task - keep only one). Never generate a category-default milestone that duplicates something you already generated as a narrative-inferred milestone from the same input.
-
-CRITICAL RULE - MILESTONES MUST NAME A SPECIFIC, CONCRETE THING - NEVER A GENERIC PHASE LABEL:
-Never title a milestone with a vague category or phase name like "Logistics & Bookings", "Work & Trip Prep", or "Pre-departure Checks" - these tell the user nothing they can actually check off, and they're so broad they make every future request look "already covered" even when nothing concrete addresses it. Every milestone must name the actual thing being tracked - a specific document, booking, or deliverable someone could point to and say "yes, that's done" - e.g. "Passport & Visa Verified", "Flights & Hotel Booked", "Rental Car Reserved", "Pitch Deck Finalized". If a business trip needs travel documents checked, a rental car booked, and a pitch deck finished, those are separate specific milestones (or explicit named deliverables under one), never folded into a single vague bucket.
-
-CRITICAL RULE - REFINEMENT MEANS MERGE, NEVER REPLACE:
-If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" (each with its own deliverables) - the user's message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how short or narrowly-scoped the message is (e.g. "we also need a dog sitter" on an existing business trip is adding ONE thing, not redefining the whole trip).
-- Your "runway"/"milestones" output must be the COMPLETE resulting plan: include every existing milestone that is still relevant, worded the same or only lightly adjusted, PLUS whatever the new message adds or changes. Never return a runway containing only milestones derived from the new message - that discards the entire existing plan, which is exactly the failure mode this rule exists to prevent.
-- Only treat something the new message mentions as "already covered" if an existing milestone's title OR one of its deliverables names that SAME specific thing - a broad or vague existing title is never enough on its own to justify skipping a specific new request. When in doubt, add it as a new deliverable under the most relevant existing milestone, or its own milestone if it doesn't fit anywhere - never silently drop a specific, concrete request.
-- Only drop or rewrite an existing milestone if the new message explicitly contradicts it (e.g. "actually we're not going to Paris anymore, going to Rome instead" replaces the destination-specific tasks; "we also need a dog sitter" does not touch anything else on the trip).
-- When the new message is narrow (mentions one thing), the correct output is: all existing milestones unchanged, plus 1-2 new ones for the thing just mentioned. A narrow message should almost never shrink the milestone count from what existingMilestones already had.
+${SHARED_PLANNING_RULES}
 
 CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
 1. Milestone (State Checkpoint - 0-day duration):
@@ -224,12 +210,23 @@ OUTPUT MODES:
 - "CREATE_AND_INTAKE": If the event needs key prep details. Provide 1-2 multiple-choice intake questions in intakeQuestions.
 - "RESEARCH_REQUIRED": If the event date/tickets are unannounced.
 
+intakeQuestions is also where the one proactive follow-up from the rule above belongs, REGARDLESS of which mode you pick - a RESOLVE_MILESTONES turn can still carry exactly one intakeQuestions entry proposing the next specific thing worth asking about.
+
 Focus and Addition format (plain language only - never "runway", "Track A/B", "macro/micro", or other internal planning vocabulary):
 FOCUS: <1 clear sentence stating event created or timeline scheduled>
 ADDITION: <1-2 questions, clarification or proposed tailored options>`;
 
+  const currentlyOpenEventId = params.existingEvent?.id;
+  const candidateEvents = buildCandidateEventIndex(params.activeEvents, currentlyOpenEventId);
+
   const userPrompt = JSON.stringify({
     userInput: params.message,
+    currentlyOpenEventId: currentlyOpenEventId || null,
+    // Lightweight index (id/title/category/dates only, no milestones) of the
+    // user's other active events, so a message that clearly names a
+    // different one ("the Rome trip needs a rental car") can be routed
+    // there instead of always defaulting to whatever's currently open.
+    candidateEvents,
     existingTargetEvent: params.existingEvent ? {
       id: params.existingEvent.id,
       title: params.existingEvent.title,
@@ -245,6 +242,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         title: m.title,
         description: m.description,
         target_date: m.calculatedDate,
+        slot_key: m.slotKey || null,
         // Without these, the model only sees a milestone's (possibly
         // broad) title and can't judge whether a specific new request is
         // genuinely already covered by it.
@@ -260,6 +258,10 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       mode: {
         type: Type.STRING,
         description: "CREATE_AND_INTAKE, RESOLVE_MILESTONES, or RESEARCH_REQUIRED",
+      },
+      target_event_id: {
+        type: Type.STRING,
+        description: "Decide this FIRST, before anything else. Either the literal string \"NEW\", or the id of currentlyOpenEventId / one of candidateEvents if this message is about an event that already exists.",
       },
       macro_event: {
         type: Type.OBJECT,
@@ -303,7 +305,11 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
           properties: {
             milestone_title: {
               type: Type.STRING,
-              description: "State checkpoint named as past-participle or state-change achievement (e.g. 'Lodging & Transit Locked')",
+              description: "State checkpoint named as past-participle or state-change achievement (e.g. 'Lodging & Transit Locked'). Never opens with a hedge/conjunction like 'or'/'and'.",
+            },
+            slot_key: {
+              type: Type.STRING,
+              description: "Short stable snake_case id for WHAT this milestone tracks (e.g. 'flights_hotel', 'gift'). Reuse an existingMilestones entry's slot_key verbatim if this is the same underlying task.",
             },
             t_minus_days: { type: Type.INTEGER },
             target_date: { type: Type.STRING, description: "YYYY-MM-DD" },
@@ -315,7 +321,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
                 type: Type.OBJECT,
                 properties: {
                   deliverable_id: { type: Type.STRING },
-                  title: { type: Type.STRING, description: "Tangible output (e.g. 'Confirmed Airbnb reservation code')" },
+                  title: { type: Type.STRING, description: "A concrete output SPECIFIC to what the user said for THIS milestone (e.g. user said 'rent a car in Lisbon' -> 'Lisbon rental car booking confirmed') - never generic boilerplate reused across unrelated milestones, never the milestone title restated with 'verified & completed'." },
                   type: { type: Type.STRING, description: "booking, purchase, document, or coordination" },
                   is_completed: { type: Type.BOOLEAN },
                 },
@@ -332,7 +338,11 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         items: {
           type: Type.OBJECT,
           properties: {
-            task: { type: Type.STRING },
+            task: { type: Type.STRING, description: "Never opens with a hedge/conjunction like 'or'/'and'." },
+            slot_key: {
+              type: Type.STRING,
+              description: "Short stable snake_case id for WHAT this milestone tracks (e.g. 'flights_hotel', 'gift'). Reuse an existingMilestones entry's slot_key verbatim if this is the same underlying task.",
+            },
             target_date: { type: Type.STRING, description: "YYYY-MM-DD" },
             t_minus_days: { type: Type.INTEGER },
             scope: { type: Type.STRING, description: "macro or micro" },
@@ -445,14 +455,13 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
     }),
     DEFAULT_FAST_MODELS,
-    // Was 8000ms. This call now asks the model to also scan for narrative-
-    // inferred milestones (approvals, implied prep) on top of the standard
-    // runway, which needs more room to reason - an 8s cutoff was punishing
-    // exactly the careful reasoning we want by racing it into the narrative-
-    // blind decomposeComplexTripIntent/generateHeuristicMilestones fallback.
-    // Paired with api/agent/process.ts's maxDuration bump so a full 2-model
-    // race (worst case ~24s) fits inside the serverless function's timeout.
-    12000
+    // Was 12000ms per model (worst-case ~24s across the 2-model sequence) -
+    // gemini-3.6-flash typically answers in 1-3s even with the added
+    // target-resolution/slot_key/proactive-suggestion reasoning, so this
+    // ceiling only ever matters for a genuinely hung request. Tightened so a
+    // real failure surfaces (and falls back) in a few seconds, not 24, per
+    // "the free form always has to trigger the AI in a timely manner."
+    7000
   );
 
   let rawText = response.text || "{}";
@@ -470,11 +479,35 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     parsed = {};
   }
 
+  // Resolve which event this message actually targets. params.existingEvent
+  // is only ever a HINT (today: whichever event is currently open in the
+  // UI) - the model gets to override it when the message clearly names a
+  // different event from candidateEvents, or drop it entirely by saying
+  // "NEW" when the message is unrelated to whatever happens to be open.
+  // resolveTargetEvent never trusts an id that wasn't actually offered.
+  const activeEventsById = new Map(params.activeEvents.map((e) => [e.id, e] as const));
+  const targetResolution = resolveTargetEvent({
+    modelTargetEventId: typeof parsed.target_event_id === "string" ? parsed.target_event_id : undefined,
+    candidateIds: candidateEvents.map((c) => c.id),
+    currentlyOpenEventId: params.existingEvent?.id,
+    activeEventsById,
+  });
+  const existingEvent = targetResolution.existingEvent;
+  // The model only ever sees FULL milestone detail (existingTargetEvent,
+  // built below from params.existingEvent) for the one event it was given
+  // as a hint before this call ran - if it switched onto a different real
+  // candidate, it was reasoning from a lightweight id/title/date summary
+  // only, so its own "complete merged plan" attempt can't be trusted for
+  // that event. In that case the milestones assembled below get defensively
+  // merged against this event's REAL stored list via finalizeMilestonePlan
+  // instead of replacing it outright.
+  const targetSwitchedToUnseenEvent = Boolean(existingEvent && existingEvent.id !== params.existingEvent?.id);
+
   // Hierarchical local check for multi-day trips and embedded sub-tasks
   const tripDecomp = decomposeComplexTripIntent(params.message, params.currentReferenceDate);
 
   // Pre-extract tags and bracket parameters directly from message
-  const tagContext = extractContextFromMessage(params.message, params.existingEvent?.context);
+  const tagContext = extractContextFromMessage(params.message, existingEvent?.context);
   const hasExplicitBrackets = /\[[a-zA-Z0-9_-]+:\s*[^\]]+\]/.test(params.message);
 
   let mode: OperationalMode = (parsed.mode as OperationalMode) || "CREATE_AND_INTAKE";
@@ -502,14 +535,14 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     }
   }
 
-  const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-  const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || params.existingEvent?.eventDate || params.refDateStr;
-  const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || params.existingEvent?.endDate || undefined;
-  const eventTime = parsed.eventTime || params.existingEvent?.eventTime || "19:00";
+  const eventId = existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || existingEvent?.eventDate || params.refDateStr;
+  const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || existingEvent?.endDate || undefined;
+  const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
 
-  let title = structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || params.existingEvent?.title || 'Upcoming Event';
-  let finalCategory = structuredPayload ? 'travel_trip' : (parsed.category || params.existingEvent?.category || detectEventCategory(title, params.message));
-  title = getCleanEventTitle(title, finalCategory, params.existingEvent?.context);
+  let title = structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || existingEvent?.title || 'Upcoming Event';
+  let finalCategory = structuredPayload ? 'travel_trip' : (parsed.category || existingEvent?.category || detectEventCategory(title, params.message));
+  title = getCleanEventTitle(title, finalCategory, existingEvent?.context);
 
   const focusText = parsed.focus || (structuredPayload
     ? `I created "${title}" (${eventDate}${endDate ? ` to ${endDate}` : ''}) with a full prep checklist.`
@@ -519,7 +552,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
 
   // Merge context: existing -> AI extracted -> directly extracted tag parameters -> user profile
   const mergedContext = {
-    ...(params.existingEvent?.context || {}),
+    ...(existingEvent?.context || {}),
     ...(parsed.context || {}),
     ...tagContext,
   };
@@ -547,18 +580,22 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     });
   }
 
-  // Format intake questions with IDs
+  // Format intake questions with IDs. Previously gated to mode ===
+  // "CREATE_AND_INTAKE" && !structuredPayload only - a proactive follow-up
+  // suggestion the model found on an already-resolved plan (mode
+  // RESOLVE_MILESTONES, the common case after the first turn) was silently
+  // discarded even though the shared prompt now asks for exactly one every
+  // turn. Accepted regardless of mode/payload shape; capped at 2 either way.
   let intakeQuestions: IntakeQuestion[] = [];
-  if (mode === "CREATE_AND_INTAKE" && !structuredPayload) {
-    if (Array.isArray(parsed.intakeQuestions) && parsed.intakeQuestions.length > 0) {
-      intakeQuestions = parsed.intakeQuestions.map((q: any, idx: number) => ({
-        id: `q-${eventId}-${idx + 1}`,
-        question: q.question,
-        parameterKey: q.parameterKey,
-        options: Array.isArray(q.options) ? q.options : [],
-        answered: false,
-      }));
-    } else {
+  if (Array.isArray(parsed.intakeQuestions) && parsed.intakeQuestions.length > 0) {
+    intakeQuestions = parsed.intakeQuestions.slice(0, 2).map((q: any, idx: number) => ({
+      id: `q-${eventId}-${idx + 1}-${Date.now() % 10000}`,
+      question: q.question,
+      parameterKey: q.parameterKey,
+      options: Array.isArray(q.options) ? q.options : [],
+      answered: false,
+    }));
+  } else if (mode === "CREATE_AND_INTAKE" && !structuredPayload) {
       if (finalCategory === 'birthday_party') {
         intakeQuestions = [
           {
@@ -584,7 +621,6 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
           }
         ];
       }
-    }
   }
 
   // Generate or map milestones
@@ -617,6 +653,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: calcDate,
         title: gate.milestone_title,
+        slotKey: sanitizeSlotKey(gate.slot_key),
         description: deliverables.length > 0
           ? `${deliverables.length} deliverable(s) attached to satisfy checkpoint.`
           : 'Milestone state checkpoint gate',
@@ -626,7 +663,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         deliverables,
       };
     });
-    milestones = applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(milestones), { title, context: mergedContext, rawText: params.message });
+    milestones = finalizeMilestonePlan(milestones, { title, context: mergedContext, rawText: params.message });
   } else if (structuredPayload && Array.isArray(structuredPayload.milestones) && structuredPayload.milestones.length > 0) {
     milestones = structuredPayload.milestones.map((m: any, idx: number) => {
       const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
@@ -648,6 +685,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: calcDate,
         title: m.task,
+        slotKey: sanitizeSlotKey(m.slot_key),
         // Was "Track A • Macro Logistics runway task" / "Track B • Micro
         // Specifics in-trip milestone" - internal planning-model vocabulary
         // ("runway", "Track A/B") that meant nothing to a user reading their
@@ -665,19 +703,29 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         source: m.source === 'narrative_inferred' ? 'narrative_inferred' : 'category_default',
       };
     });
-    milestones = applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(milestones), { title, context: mergedContext, rawText: params.message });
+    milestones = finalizeMilestonePlan(milestones, { title, context: mergedContext, rawText: params.message });
   } else {
     milestones = generateHeuristicMilestones(
       {
         category: finalCategory,
         context: mergedContext,
-        userRole: params.existingEvent?.userRole || mergedContext.userRole,
+        userRole: existingEvent?.userRole || mergedContext.userRole,
         title,
       },
       eventId,
       eventDate,
       eventTime
     );
+  }
+
+  // The model only had full milestone detail for whichever event it was
+  // handed as a hint before the call ran - if it switched onto a different
+  // real candidate mid-response, its own "complete merged plan" can't be
+  // trusted for that event (see targetSwitchedToUnseenEvent above), so
+  // defensively merge the milestones it did produce against that event's
+  // REAL stored list here instead of letting them replace it outright.
+  if (targetSwitchedToUnseenEvent && existingEvent) {
+    milestones = finalizeMilestonePlan([...existingEvent.milestones, ...milestones], { title, context: mergedContext, rawText: params.message });
   }
 
   // Construct CalendarEvent object
@@ -688,11 +736,11 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     eventDate,
     endDate,
     eventTime,
-    location: parsed.location || params.existingEvent?.location || undefined,
+    location: parsed.location || existingEvent?.location || undefined,
     status: mode === "CREATE_AND_INTAKE" ? "intake_pending"
           : mode === "RESEARCH_REQUIRED" ? "research_watchpoint"
           : "milestones_active",
-    userRole: params.existingEvent?.userRole || mergedContext.userRole || 'organiser',
+    userRole: existingEvent?.userRole || mergedContext.userRole || 'organiser',
     needsRefinement: false,
     refinedAt: new Date().toISOString(),
     macroEvent: structuredPayload?.macro_event,
@@ -704,7 +752,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     milestones,
     watchpoint: parsed.watchpoint || undefined,
     rawInputSnippet: params.message,
-    createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
+    createdAt: existingEvent?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
@@ -767,7 +815,7 @@ export function processWithDeterministicRules(params: {
         deliverableType: m.deliverableType,
       };
     });
-    const finalMappedMilestones = applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(mappedMilestones), { title: macro.title, rawText: params.message });
+    const finalMappedMilestones = finalizeMilestonePlan(mappedMilestones, { title: macro.title, rawText: params.message });
 
     const focusText = `I built the full prep plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
     const additionText = tripDecomposition.conversational_response || `Covers the overall trip logistics plus the specific prep for what you mentioned.`;
@@ -1016,7 +1064,7 @@ export function processWithDeterministicRules(params: {
 
   // Always generate heuristic milestones for the event
   const freshMilestones: TMinusMilestone[] = generateHeuristicMilestones(
-    { category, context },
+    { category, context, title },
     eventId,
     eventDate,
     eventTime
@@ -1053,7 +1101,7 @@ export function processWithDeterministicRules(params: {
           return messageWords.some((w) => new RegExp(`\\b${w}\\b`).test(text));
         })
       : [];
-    milestones = applyMilestoneQualityGuardrails(
+    milestones = finalizeMilestonePlan(
       [...params.existingEvent!.milestones, ...noteRelevantFreshMilestones],
       { title, context, rawText: params.message }
     );

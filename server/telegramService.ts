@@ -35,6 +35,30 @@ export class TelegramService {
   }
 
   /**
+   * Shows Telegram's native "typing…" affordance while a slower request
+   * (the Gemini planning call) is in flight, instead of the chat going
+   * silent for a few seconds with no feedback at all. Telegram auto-expires
+   * this after ~5s, so callers processing something longer should repeat it
+   * every ~4s for the duration of the request.
+   */
+  public static async sendChatAction(chatId: number | string, action: 'typing' = 'typing'): Promise<void> {
+    if (!this.isConfigured()) return;
+    const cleanChatId = typeof chatId === 'string' ? chatId.trim() : chatId;
+    if (!cleanChatId) return;
+    try {
+      await fetch(`${this.getApiBase()}/sendChatAction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: cleanChatId, action }),
+      });
+    } catch (err: any) {
+      // Best-effort only - a failed typing indicator should never block or
+      // fail the actual message processing.
+      console.warn('⚠️ Telegram sendChatAction notice:', err?.message || err);
+    }
+  }
+
+  /**
    * Send a message to a Telegram chat
    */
   public static async sendMessage(

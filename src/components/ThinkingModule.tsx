@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Brain, CheckCircle2, ChevronDown, ChevronUp, Loader2, Clock, Zap } from 'lucide-react';
+import { Sparkles, Brain, CheckCircle2, ChevronDown, ChevronUp, Loader2, Zap } from 'lucide-react';
 
 interface ThinkingModuleProps {
   promptText?: string;
@@ -16,13 +16,11 @@ const THINKING_STEPS = [
 export const ThinkingModule: React.FC<ThinkingModuleProps> = ({ promptText, className = '' }) => {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(true);
-  const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
     const startTime = Date.now();
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      setElapsedMs(elapsed);
 
       // Advance step index smoothly based on elapsed time
       if (elapsed > 2400) {
@@ -38,8 +36,6 @@ export const ThinkingModule: React.FC<ThinkingModuleProps> = ({ promptText, clas
 
     return () => clearInterval(interval);
   }, []);
-
-  const elapsedSec = (elapsedMs / 1000).toFixed(1);
 
   return (
     <div className={`w-full bg-white/95 backdrop-blur-md rounded-3xl border border-sky-200/90 shadow-lg shadow-sky-100/50 overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 ${className}`}>
@@ -61,10 +57,6 @@ export const ThinkingModule: React.FC<ThinkingModuleProps> = ({ promptText, clas
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-sky-700 bg-sky-100/80 px-2 py-0.5 rounded-full">
                 AI Thinking Process
-              </span>
-              <span className="text-xs text-slate-400 font-mono flex items-center gap-1">
-                <Clock className="w-3 h-3 text-slate-400" />
-                {elapsedSec}s
               </span>
             </div>
             <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5 mt-0.5">

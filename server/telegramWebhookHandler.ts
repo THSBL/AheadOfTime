@@ -287,6 +287,10 @@ export class TelegramWebhookHandler {
     rawText: string,
     appBaseUrl: string
   ): Promise<void> {
+    // Telegram's own "typing…" indicator auto-expires after ~5s, so it's
+    // repeated for the duration of the (usually sub-few-second, but not
+    // guaranteed) planning call instead of the chat going silent.
+    const stopTyping = this.startTypingIndicator(chatId);
     try {
       const agentResult = await GeminiCalendarAgent.processMessage(chatId, rawText);
 
@@ -311,7 +315,22 @@ export class TelegramWebhookHandler {
         chatId,
         `⚠️ *Error Processing Request*: ${err.message || 'Could not access calendar tool.'}`
       );
+    } finally {
+      stopTyping();
     }
+  }
+
+  /**
+   * Fires Telegram's "typing…" chat action immediately and every ~4s after,
+   * until the returned function is called. Best-effort - a failed/slow
+   * typing call never blocks or fails the actual request.
+   */
+  private static startTypingIndicator(chatId: number | string): () => void {
+    void TelegramService.sendChatAction(chatId, 'typing');
+    const interval = setInterval(() => {
+      void TelegramService.sendChatAction(chatId, 'typing');
+    }, 4000);
+    return () => clearInterval(interval);
   }
 
   /**
@@ -326,6 +345,7 @@ export class TelegramWebhookHandler {
     text: string,
     isSecondRound: boolean
   ): Promise<void> {
+    const stopTyping = this.startTypingIndicator(chatId);
     try {
       const event = await TelegramSessionStore.getEvent(eventId);
       if (!event) {
@@ -356,6 +376,8 @@ export class TelegramWebhookHandler {
     } catch (err: any) {
       console.error('Error in refineEventInChat:', err);
       await TelegramService.sendMessage(chatId, `⚠️ Couldn't process that change: ${err.message || 'please try again.'}`);
+    } finally {
+      stopTyping();
     }
   }
 

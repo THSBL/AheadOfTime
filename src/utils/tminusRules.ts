@@ -698,7 +698,7 @@ export function generateHeuristicMilestones(
       addMilestone('T-2d', -2 * 24 * 60, 'Wrapping & card check', 'prep', 'Wrap present, write birthday card, ensure tags and tape are ready', undefined, 'milestone');
     } else {
       // Default baseline solo gift if not yet refined
-      addMilestone('T-14d', -14 * 24 * 60, 'Order or brainstorm birthday gift', 'shopping', 'Select and order birthday gift with shipping buffer', undefined, 'deliverable');
+      addMilestone('T-14d', -14 * 24 * 60, 'Order birthday gift', 'shopping', 'Select and order birthday gift with shipping buffer', undefined, 'deliverable');
       addMilestone('T-2d', -2 * 24 * 60, 'Wrap gift & prepare birthday card', 'prep', 'Wrap gift, write heartfelt birthday card, and check ribbon/tags', undefined, 'milestone');
     }
 
@@ -1180,7 +1180,7 @@ export function generateHeuristicMilestones(
 
   // Sort milestones chronologically (earliest first, which means largest negative offset first)
   const sorted = milestones.sort((a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime());
-  return applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(sorted), { title: event.title, location: event.location, context });
+  return finalizeMilestonePlan(sorted, { title: event.title, location: event.location, context });
 }
 
 /**
@@ -1236,59 +1236,160 @@ const VENUE_SUPPLIED_SUPPLY_PATTERN = /\b(ice|glassware|cups?|plates|napkins|tab
  *    can synthesize - this function only ever removes, never invents a
  *    replacement.
  */
-const DEDUPE_STOPWORDS = new Set(['a', 'an', 'the', 'and', 'or', 'to', 'for', 'of', 'on', 'in', 'at', 'with', 'your', 'is', 'are']);
+const DEDUPE_STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'to', 'for', 'of', 'on', 'in', 'at', 'with', 'your', 'is', 'are',
+  // Past-participle "state checkpoint" suffixes the title converter (and
+  // the AI prompt) mechanically append to nearly every milestone title
+  // ("X Booked & Confirmed", "Y Ordered & Tracked") - without excluding
+  // these, two milestones about completely different subjects that merely
+  // went through the same verb conversion share these structural words,
+  // which was enough on its own to false-positive as a duplicate (e.g. a
+  // birthday-party "Order gift" and "Order cake" milestone both becoming
+  // "... Ordered & Tracked" and getting merged into one).
+  'ordered', 'tracked', 'booked', 'locked', 'secured', 'purchased', 'sent', 'packed', 'finalized', 'reserved', 'ready', 'observed', 'settled',
+]);
 
 export function applyMilestoneQualityGuardrails(
   milestones: TMinusMilestone[],
   signal: { title?: string; location?: string; context?: any; rawText?: string } = {}
 ): TMinusMilestone[] {
+  // Crude suffix stemming so "passport"/"passports" and "confirm"/
+  // "confirmed" count as the same word - without it, two milestones about
+  // the exact same thing but in different tense/number ("Confirm passport
+  // is valid" vs "Passports ... Confirmed") shared zero exact words and had
+  // to fall through to the much looser category+timing check below, which
+  // is also easy to false-positive on two genuinely different milestones
+  // that just happen to land a day or two apart in the same category.
+  const stem = (w: string): string => {
+    if (w.length > 6 && w.endsWith('ing')) return w.slice(0, -3);
+    if (w.length > 5 && w.endsWith('ed')) return w.slice(0, -2);
+    if (w.length > 4 && w.endsWith('es')) return w.slice(0, -2);
+    if (w.length > 4 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+    return w;
+  };
+
+  // A word from the event's OWN title is scaffolding, not a distinguishing
+  // signal, for milestones that belong to it - e.g. every default milestone
+  // in a "Birthday Celebration" event mentions "birthday", which otherwise
+  // let two genuinely sequential, different milestones ("Order the gift"
+  // and "Wrap the gift") false-positive as duplicates purely for sharing
+  // "birthday" + "gift" - two words that are individually generic to this
+  // one event, not evidence they're the same task.
+  const titleWords = new Set(
+    (signal.title || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 0)
+      .map(stem)
+  );
+
   const significantWords = (s: string): Set<string> =>
     new Set(
       s.toLowerCase()
         .replace(/[^a-z0-9\s]/g, '')
         .split(/\s+/)
         .filter((w) => w.length > 0 && !DEDUPE_STOPWORDS.has(w))
+        .map(stem)
+        .filter((w) => !titleWords.has(w))
     );
 
-  // A merge (e.g. re-running "Refine") can bring together an AI/Telegram-
-  // phrased milestone ("Book flights and accommodation") with the wizard's
-  // own fixed template wording for the same checkpoint ("Flights &
-  // Accommodations Locked") - completely different words, so the title
-  // overlap check below never catches it and both get kept, doubling the
-  // plan. Track category + timing alongside title words so a milestone in
-  // the same category landing within a few days of one already kept is
-  // recognized as the same logistical slot even when worded differently.
-  const DUPLICATE_TIME_PROXIMITY_MINUTES = 3 * 24 * 60;
-  const seen: { words: Set<string>; category?: string; offsetMinutes?: number }[] = [];
-  const deduped = milestones.filter((ms) => {
+  // Last-resort fallback for two milestones sharing zero stemmed words - a
+  // narrow window, since this is now only reached when there's truly no
+  // vocabulary signal at all (stemming above already catches tense/number
+  // variants like "confirm"/"confirmed", "passport"/"passports"). A wider
+  // window here previously caused false positives between genuinely
+  // distinct same-category milestones that just land a day or two apart
+  // (e.g. a birthday plan's "Wrap gift" and "Party setup & beverage chill",
+  // both 'prep', ~45 hours apart) - narrowed to same-day-ish instead.
+  const DUPLICATE_TIME_PROXIMITY_MINUTES = 8 * 60;
+  type SeenEntry = { words: Set<string>; category?: string; offsetMinutes?: number; slotKey?: string; index: number };
+  const seen: SeenEntry[] = [];
+  const deduped: TMinusMilestone[] = [];
+
+  for (const ms of milestones) {
     const words = significantWords(ms.title || '');
     const offsetMinutes = typeof ms.tMinusOffsetMinutes === 'number' ? ms.tMinusOffsetMinutes : undefined;
+    const slotKey = sanitizeSlotKey(ms.slotKey);
 
-    const isDuplicate = seen.some((prior) => {
-      // Require at least 2 significant words before treating subset-coverage
-      // as a match, so two milestones that merely share one common word (e.g.
-      // both mention "buy") don't get collapsed into each other.
+    // High-confidence matches (an explicit shared slot_key, or substantial
+    // title-word overlap) mean the two milestones are almost certainly
+    // about the same real thing, so it's safe to union in a deliverable the
+    // duplicate carried that the kept one is missing. The category+timing
+    // fallback is a much looser signal - two genuinely distinct milestones
+    // in a single deterministically-generated plan can easily land in the
+    // same category within a few days of each other (e.g. "Wrap gift" and
+    // "Party setup & beverage chill", both 'prep', ~2 days apart) - so a
+    // match found ONLY that way is still deduped, but never used to graft a
+    // deliverable from one topic onto an unrelated kept milestone.
+    let matchIdx = -1;
+    let isHighConfidenceMatch = false;
+
+    for (let i = 0; i < seen.length; i++) {
+      const prior = seen[i];
+      if (slotKey && prior.slotKey) {
+        if (slotKey === prior.slotKey) {
+          matchIdx = i;
+          isHighConfidenceMatch = true;
+          break;
+        }
+        continue;
+      }
+      // Require at least 2 shared significant words, so two milestones that
+      // merely share one common word (e.g. both mention "buy") don't get
+      // collapsed into each other. Deliberately a shared-word COUNT, not
+      // strict subset containment - "Book flights and accommodation" and
+      // "Flights & Accommodations Locked" each carry one word the other
+      // doesn't ("book"/"locked"), so neither is a subset of the other, but
+      // sharing "flight[s]"+"accommodation[s]" is still a strong signal
+      // they're the same checkpoint.
       if (words.size > 0 && prior.words.size > 0) {
-        const [smaller, larger] = prior.words.size <= words.size ? [prior.words, words] : [words, prior.words];
-        if (smaller.size >= 2) {
-          let allWordsMatch = true;
-          for (const w of smaller) {
-            if (!larger.has(w)) { allWordsMatch = false; break; }
-          }
-          if (allWordsMatch) return true;
+        let sharedCount = 0;
+        for (const w of words) {
+          if (prior.words.has(w)) sharedCount++;
+        }
+        if (sharedCount >= 2) {
+          matchIdx = i;
+          isHighConfidenceMatch = true;
+          break;
         }
       }
-      return Boolean(
+      if (
+        matchIdx === -1 &&
         ms.category && prior.category && ms.category === prior.category &&
         typeof offsetMinutes === 'number' && typeof prior.offsetMinutes === 'number' &&
         Math.abs(offsetMinutes - prior.offsetMinutes) <= DUPLICATE_TIME_PROXIMITY_MINUTES
-      );
-    });
+      ) {
+        matchIdx = i;
+        // Keep scanning rather than break - a later prior entry might still
+        // produce a high-confidence match, which should win.
+      }
+    }
 
-    if (isDuplicate) return false;
-    seen.push({ words, category: ms.category, offsetMinutes });
-    return true;
-  });
+    if (matchIdx >= 0) {
+      // Merge rather than silently drop. Only union in an extra deliverable
+      // from the duplicate for a high-confidence match - a differently-
+      // worded duplicate sometimes names a specific detail (from narrative
+      // text, or the AI's own phrasing) the first one missed, but that's
+      // only trustworthy when we're confident it's really the same task.
+      if (isHighConfidenceMatch) {
+        const keptIndex = seen[matchIdx].index;
+        const kept = deduped[keptIndex];
+        const existingTitles = new Set((kept.deliverables || []).map((d) => d.title.toLowerCase()));
+        const extraDeliverables = (ms.deliverables || []).filter((d) => !existingTitles.has(d.title.toLowerCase()));
+        if (extraDeliverables.length > 0) {
+          deduped[keptIndex] = {
+            ...kept,
+            deliverables: [...(kept.deliverables || []), ...extraDeliverables].slice(0, 3),
+          };
+        }
+      }
+      continue;
+    }
+
+    seen.push({ words, category: ms.category, offsetMinutes, slotKey, index: deduped.length });
+    deduped.push(ms);
+  }
 
   const contextNote = typeof signal.context?.customNote === 'string' ? signal.context.customNote : '';
   const combinedSignalText = [signal.title, signal.location, signal.rawText, contextNote].filter(Boolean).join(' ');
@@ -1321,6 +1422,7 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
     if (ms.deliverables && ms.deliverables.length > 0) {
       return {
         ...ms,
+        title: sanitizeMilestoneTitle(ms.title),
         deliverables: ms.deliverables.slice(0, 3),
       };
     }
@@ -1433,6 +1535,23 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
         deliverable_id: `del_${ms.id}_2`,
         title: 'Departure times & meeting spot shared with group',
         type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+    } else if (tLower.includes('wrap') && (tLower.includes('gift') || tLower.includes('present'))) {
+      // A later "wrap the gift" milestone is a distinct step from an earlier
+      // "order/buy the gift" one - giving both the same purchase-flavored
+      // deliverables (e.g. "Purchased gift receipt") made a milestone about
+      // wrapping something already bought look like it still needed buying.
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_1`,
+        title: 'Gift wrapped with ribbon & gift tag attached',
+        type: 'coordination',
+        is_completed: ms.status === 'completed',
+      });
+      deliverables.push({
+        deliverable_id: `del_${ms.id}_2`,
+        title: 'Birthday card written & signed',
+        type: 'document',
         is_completed: ms.status === 'completed',
       });
     } else if (
@@ -1552,26 +1671,88 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
 
     // Convert raw imperative verbs into past-participle / state checkpoint titles:
     let stateCheckpointTitle = ms.title.replace(/^task:\s*/i, '').trim();
-    if (/^book\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^book\s+/i, '') + ' Booked & Confirmed';
-    } else if (/^reserve\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^reserve\s+/i, '') + ' Reserved & Locked';
-    } else if (/^order\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^order\s+/i, '') + ' Ordered & Tracked';
-    } else if (/^buy\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^buy\s+/i, '') + ' Purchased';
-    } else if (/^send\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^send\s+/i, '') + ' Sent';
-    } else if (/^pack\s+/i.test(stateCheckpointTitle)) {
-      stateCheckpointTitle = stateCheckpointTitle.replace(/^pack\s+/i, '') + ' Packed & Ready';
+    const verbConversions: [RegExp, string][] = [
+      [/^book\s+/i, ' Booked & Confirmed'],
+      [/^reserve\s+/i, ' Reserved & Locked'],
+      [/^order\s+/i, ' Ordered & Tracked'],
+      [/^buy\s+/i, ' Purchased'],
+      [/^send\s+/i, ' Sent'],
+      [/^pack\s+/i, ' Packed & Ready'],
+    ];
+    for (const [verbRegex, suffix] of verbConversions) {
+      const match = stateCheckpointTitle.match(verbRegex);
+      if (!match) continue;
+      const remainder = stateCheckpointTitle.slice(match[0].length);
+      // A hedge/compound phrase left over after stripping the leading verb
+      // (e.g. "Order or brainstorm birthday gift" -> "or brainstorm birthday
+      // gift") means the source title itself is bad - mangling it further
+      // only produces a worse result ("or brainstorm birthday gift Ordered &
+      // Tracked"). Leave it untouched here; sanitizeMilestoneTitle below is
+      // the safety net for a stray leading conjunction either way.
+      if (/^(or|and|nor|but)\b/i.test(remainder)) break;
+      stateCheckpointTitle = remainder + suffix;
+      break;
     }
 
     return {
       ...ms,
-      title: stateCheckpointTitle,
+      title: sanitizeMilestoneTitle(stateCheckpointTitle),
       deliverables: deliverables.slice(0, 3),
     };
   });
+}
+
+/**
+ * Deterministic safety net applied to every milestone title regardless of
+ * source (AI-generated or locally templated): capitalizes the first letter
+ * and strips a stray leading coordinating conjunction left over from a bad
+ * hedge-phrase title (e.g. "or brainstorm birthday gift" -> "Brainstorm
+ * birthday gift"). Deliberately narrow - a leading article ("The Great
+ * Gatsby Party") is never touched, only "or/and/nor/but".
+ */
+export function sanitizeMilestoneTitle(title: string): string {
+  let cleaned = (title || '').trim();
+  const hedgeMatch = cleaned.match(/^(?:or|and|nor|but)\s+(.+)$/i);
+  if (hedgeMatch && hedgeMatch[1]) {
+    cleaned = hedgeMatch[1].trim();
+  }
+  if (!cleaned) return cleaned;
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * Sanitizes a model-assigned milestone slot_key into a safe, comparable
+ * form: lowercase snake_case, capped length, empty/garbage collapses to
+ * undefined so callers fall back to the older fuzzy title/category dedup
+ * instead of matching on a meaningless key.
+ */
+export function sanitizeSlotKey(raw: string | undefined | null): string | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/**
+ * Single entry point every milestone-generation path (AI success, AI
+ * timeout/fallback, wizard merge, deep-refine) should route a milestone list
+ * through before it's ever persisted or shown - replaces the previously
+ * hand-chained `applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(...))`
+ * calls scattered across the codebase with one composed pass: attach/cap
+ * deliverables, then slot_key-aware dedup (falling back to fuzzy title/timing
+ * matching for milestones without one), then title sanitization.
+ */
+export function finalizeMilestonePlan(
+  milestones: TMinusMilestone[],
+  signal: { title?: string; location?: string; context?: any; rawText?: string } = {}
+): TMinusMilestone[] {
+  const withDeliverables = attachDeliverablesToMilestones(milestones);
+  const deduped = applyMilestoneQualityGuardrails(withDeliverables, signal);
+  return deduped.map((ms) => ({ ...ms, title: sanitizeMilestoneTitle(ms.title) }));
 }
 
 /**

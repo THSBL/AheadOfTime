@@ -24,7 +24,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { CalendarEvent, TMinusMilestone } from '../types';
+import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { EditMilestoneModal } from './EditMilestoneModal';
@@ -95,6 +95,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [correctionInput, setCorrectionInput] = useState('');
   const [isSendingCorrection, setIsSendingCorrection] = useState(false);
   const [correctionReply, setCorrectionReply] = useState<string | null>(null);
+  // A short running exchange instead of a single reply that gets cleared on
+  // the next send - so a proactive follow-up question and the user's answer
+  // both stay visible, reading as a continuing conversation rather than one
+  // message that vanishes the moment you reply to it.
+  const [correctionExchanges, setCorrectionExchanges] = useState<{ text: string; isUser: boolean }[]>([]);
+  const [pendingSuggestion, setPendingSuggestion] = useState<IntakeQuestion | null>(null);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
 
@@ -171,11 +177,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // detail, irrelevant task) by typing it as plain text instead of editing
   // milestones one at a time. Routes through the same conversational engine
   // and quality guardrails as chat/Telegram, targeting this specific event.
-  const handleSendCorrection = async () => {
-    const text = correctionInput.trim();
+  const handleSendCorrection = async (overrideText?: string) => {
+    const text = (overrideText ?? correctionInput).trim();
     if (!text || !activeEvent || isSendingCorrection || !onUpdateEvent) return;
     setIsSendingCorrection(true);
-    setCorrectionReply(null);
+    setPendingSuggestion(null);
+    setCorrectionExchanges((prev) => [...prev, { text, isUser: true }]);
     try {
       const res = await fetch('/api/agent/process', {
         method: 'POST',
@@ -192,14 +199,26 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       if (data?.event) {
         onUpdateEvent(data.event);
       }
-      setCorrectionReply(data.focusText || data.replyText || "Updated based on what you told me.");
+      const replyText = data.focusText || data.replyText || "Updated based on what you told me.";
+      setCorrectionReply(replyText);
+      setCorrectionExchanges((prev) => [...prev, { text: replyText, isUser: false }]);
+      // The one proactive, specific follow-up the planning engine found for
+      // this turn (if any) - rendered as clickable chips below.
+      const suggestion: IntakeQuestion | undefined = data.event?.intakeQuestions?.[0];
+      setPendingSuggestion(suggestion || null);
       setCorrectionInput('');
     } catch (e) {
       console.warn('Text correction notice:', e);
-      setCorrectionReply("Couldn't process that just now - please try again.");
+      const failureText = "Couldn't process that just now - please try again.";
+      setCorrectionReply(failureText);
+      setCorrectionExchanges((prev) => [...prev, { text: failureText, isUser: false }]);
     } finally {
       setIsSendingCorrection(false);
     }
+  };
+
+  const handleAnswerSuggestion = (optionLabel: string) => {
+    handleSendCorrection(optionLabel);
   };
 
   React.useEffect(() => {
@@ -212,6 +231,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       setIsEditingEvent(false);
       setCorrectionInput('');
       setCorrectionReply(null);
+      setCorrectionExchanges([]);
+      setPendingSuggestion(null);
     }
   }, [activeEvent?.id, activeEvent?.status]);
 
@@ -637,7 +658,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               />
               <button
                 type="button"
-                onClick={handleSendCorrection}
+                onClick={() => handleSendCorrection()}
                 disabled={isSendingCorrection || !correctionInput.trim()}
                 className="shrink-0 text-xs font-bold px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5"
               >
@@ -648,10 +669,42 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 )}
               </button>
             </div>
-            {correctionReply && (
-              <p className="text-[11px] text-slate-500 font-medium leading-snug border-t border-slate-100 pt-2">
-                {correctionReply}
+            {isSendingCorrection && (
+              <p className="text-[11px] text-sky-700 font-semibold leading-snug border-t border-slate-100 pt-2 flex items-center gap-1.5">
+                <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
+                <span>Thinking through your plan…</span>
               </p>
+            )}
+            {!isSendingCorrection && correctionExchanges.length > 0 && (
+              <div className="border-t border-slate-100 pt-2 space-y-1.5">
+                {correctionExchanges.map((exchange, idx) => (
+                  <p
+                    key={idx}
+                    className={`text-[11px] font-medium leading-snug ${
+                      exchange.isUser ? 'text-slate-500 italic' : 'text-slate-700'
+                    }`}
+                  >
+                    {exchange.isUser ? `“${exchange.text}”` : exchange.text}
+                  </p>
+                ))}
+              </div>
+            )}
+            {!isSendingCorrection && pendingSuggestion && (
+              <div className="pt-1 space-y-1.5">
+                <p className="text-[11px] font-bold text-amber-800">{pendingSuggestion.question}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(pendingSuggestion.options || []).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleAnswerSuggestion(opt.label)}
+                      className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 transition-all cursor-pointer"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}

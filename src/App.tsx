@@ -30,6 +30,7 @@ import { PrivacyPage } from './components/PrivacyPage';
 import { FeaturesPage } from './components/FeaturesPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AuthCallbackPage } from './components/AuthCallbackPage';
+import { MarketingGraphicPage } from './marketing/MarketingGraphicPage';
 import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
 import { SettingsProfilePage } from './components/SettingsProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -1062,20 +1063,23 @@ function App() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const [response] = await Promise.all([
-        fetch('/api/agent/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: text,
-            currentReferenceDate,
-            activeEvents: events,
-            targetEventId: undefined,
-            userProfile: { homeZipOrLocation: onboardingProfile?.homeZipOrLocation },
-          }),
+      // targetEventId used to be hardcoded undefined here, so the server had
+      // no way to know a message continued a conversation about the event
+      // already open in the UI - every message created a brand-new event
+      // (the root cause of duplicate events from one evolving chat).
+      // selectedEventId is only ever a HINT: the server's target-resolution
+      // still lets a message that's clearly about something else win.
+      const response = await fetch('/api/agent/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          currentReferenceDate,
+          activeEvents: events,
+          targetEventId: selectedEventId ?? undefined,
+          userProfile: { homeZipOrLocation: onboardingProfile?.homeZipOrLocation },
         }),
-        new Promise((resolve) => setTimeout(resolve, 1500)),
-      ]);
+      });
 
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
@@ -2229,6 +2233,7 @@ export default function AppWithRouter() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/feedback" element={<FeedbackPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/marketing/graphic" element={<MarketingGraphicPage />} />
 
           {/* Protected Application Routes */}
           <Route element={<ProtectedRoute />}>

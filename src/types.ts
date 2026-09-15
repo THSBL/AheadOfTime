@@ -105,6 +105,13 @@ export interface StructuredMilestone {
   applicableRoles?: UserEventRole[];
   deliverables?: Deliverable[];
   source?: 'category_default' | 'narrative_inferred';
+  // Short stable snake_case identity for WHAT this milestone tracks (e.g.
+  // "gift", "flights_hotel"), independent of wording - lets a later
+  // refinement recognize "this is the same task" even when the model
+  // phrases the title completely differently the second time. Optional:
+  // absent on legacy/local-heuristic milestones, which fall back to the
+  // older title/category/timing-based dedup heuristic.
+  slotKey?: string;
 }
 
 export interface StructuredPlanningPayload {
@@ -139,6 +146,9 @@ export interface TMinusMilestone {
   applicableRoles?: UserEventRole[];
   deliverables?: Deliverable[];
   source?: 'category_default' | 'narrative_inferred';
+  // See StructuredMilestone.slotKey - same field, carried through once a
+  // milestone is finalized into the app's persisted shape.
+  slotKey?: string;
 }
 
 export interface WatchpointData {
