@@ -17,6 +17,7 @@ import {
   getCleanEventTitle,
   decomposeComplexTripIntent,
   attachDeliverablesToMilestones,
+  applyMilestoneQualityGuardrails,
   parseNaturalDateRange
 } from "../src/utils/tminusRules.js";
 
@@ -157,6 +158,16 @@ export async function processWithGemini(params: {
 }): Promise<ProcessAgentResponsePayload> {
   const systemInstruction = `You are the AheadOfTime Conversational Planning Engine.
 
+CRITICAL RULE - CONTEXT LEADS, NEVER GENERIC TEMPLATES:
+Category-standard milestones (the usual checklist for "birthday party", "trip", etc.) are a STARTING POINT, not a fixed script. Before including any generic/routine milestone, check it against everything the user actually said. If a stated detail contradicts or makes a routine milestone irrelevant, DROP that milestone entirely rather than including it anyway:
+- If the event is at an external venue the user names or implies (a bar, restaurant, hired hall, venue, club) - do NOT generate milestones for supplies/setup that venue would already provide (buying ice, glassware, decorations, tables, chairs, a sound system). Only generate milestones for what the user must personally still arrange.
+- Example: "planning a party in a bar" needs a reservation/headcount milestone, NOT "buy ice and glassware" - the bar has that. If the user mentions a specific preference (e.g. "make sure her favorite liqueur is available" or "need a 0.0% option"), generate ONE targeted milestone for exactly that ("Confirm bar stocks [X]"), not a generic shopping list.
+- This applies to every category and every source of input the same way - a routine task that doesn't fit the stated context should never appear just because it's usually part of that category's checklist.
+- When genuinely unsure whether a routine milestone still applies given what was said, err toward leaving it out rather than including something irrelevant - a shorter, accurate list beats a longer, generic one.
+
+CRITICAL RULE - NO DUPLICATE TASKS:
+Each real-world task exists as exactly ONE milestone. Before finalizing your output, review your own milestone list and remove any that cover the same underlying task as another one (even if worded differently, e.g. "Buy gift" and "Purchase birthday present" are the same task - keep only one). Never generate a category-default milestone that duplicates something you already generated as a narrative-inferred milestone from the same input.
+
 CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
 1. Milestone (State Checkpoint - 0-day duration):
    - Represents a condition of readiness or gate (e.g., "Venue Secured", "Headcount Locked", "Luggage Packed", "Beta Cutoff").
@@ -198,7 +209,7 @@ OUTPUT MODES:
 - "CREATE_AND_INTAKE": If the event needs key prep details. Provide 1-2 multiple-choice intake questions in intakeQuestions.
 - "RESEARCH_REQUIRED": If the event date/tickets are unannounced.
 
-Focus and Addition format:
+Focus and Addition format (plain language only - never "runway", "Track A/B", "macro/micro", or other internal planning vocabulary):
 FOCUS: <1 clear sentence stating event created or timeline scheduled>
 ADDITION: <1-2 questions, clarification or proposed tailored options>`;
 
@@ -306,7 +317,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
       conversational_response: {
         type: Type.STRING,
-        description: "Natural conversational reply acknowledging the multi-track plan and clarifying options",
+        description: "Natural conversational reply in plain language a user would use themselves - never say 'runway', 'Track A/B', 'macro/micro', or other internal planning-model vocabulary; describe what was actually planned instead",
       },
       tailored_options: {
         type: Type.ARRAY,
@@ -473,9 +484,9 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   title = getCleanEventTitle(title, finalCategory, params.existingEvent?.context);
 
   const focusText = parsed.focus || (structuredPayload
-    ? `I created "${title}" (${eventDate}${endDate ? ` to ${endDate}` : ''}) with multi-track runway milestones.`
+    ? `I created "${title}" (${eventDate}${endDate ? ` to ${endDate}` : ''}) with a full prep checklist.`
     : `I created "${title}" for ${eventDate}.`);
-  const additionText = parsed.conversational_response || parsed.addition || `I have scheduled your multi-track prep milestones and lead times.`;
+  const additionText = parsed.conversational_response || parsed.addition || `I've scheduled your prep tasks with the right lead times.`;
   const formattedReply = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
   // Merge context: existing -> AI extracted -> directly extracted tag parameters -> user profile
@@ -587,7 +598,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         deliverables,
       };
     });
-    milestones = attachDeliverablesToMilestones(milestones);
+    milestones = applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(milestones), { title, context: mergedContext, rawText: params.message });
   } else if (structuredPayload && Array.isArray(structuredPayload.milestones) && structuredPayload.milestones.length > 0) {
     milestones = structuredPayload.milestones.map((m: any, idx: number) => {
       const tMinusDays = typeof m.t_minus_days === 'number' ? m.t_minus_days : 7;
@@ -609,7 +620,11 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: calcDate,
         title: m.task,
-        description: m.description || (m.scope === 'macro' ? 'Track A • Macro Logistics runway task' : 'Track B • Micro Specifics in-trip milestone'),
+        // Was "Track A • Macro Logistics runway task" / "Track B • Micro
+        // Specifics in-trip milestone" - internal planning-model vocabulary
+        // ("runway", "Track A/B") that meant nothing to a user reading their
+        // own milestone card.
+        description: m.description || (m.scope === 'macro' ? 'Overall trip logistics' : 'Specific to this part of the trip'),
         category: cat,
         status: 'pending',
         scope: m.scope,
@@ -622,7 +637,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         source: m.source === 'narrative_inferred' ? 'narrative_inferred' : 'category_default',
       };
     });
-    milestones = attachDeliverablesToMilestones(milestones);
+    milestones = applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(milestones), { title, context: mergedContext, rawText: params.message });
   } else {
     milestones = generateHeuristicMilestones(
       {
@@ -724,10 +739,10 @@ export function processWithDeterministicRules(params: {
         deliverableType: m.deliverableType,
       };
     });
-    const finalMappedMilestones = attachDeliverablesToMilestones(mappedMilestones);
+    const finalMappedMilestones = applyMilestoneQualityGuardrails(attachDeliverablesToMilestones(mappedMilestones), { title: macro.title, rawText: params.message });
 
-    const focusText = `I scheduled a hierarchical multi-track plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
-    const additionText = tripDecomposition.conversational_response || `Track A covers macro travel logistics; Track B sets up dedicated lead time for your in-trip activity.`;
+    const focusText = `I built the full prep plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
+    const additionText = tripDecomposition.conversational_response || `Covers the overall trip logistics plus the specific prep for what you mentioned.`;
     const replyText = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
     const calendarEvent: CalendarEvent = {
