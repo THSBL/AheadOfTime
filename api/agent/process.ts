@@ -131,6 +131,11 @@ export default async function handler(req: any, res: any) {
           transcribedVoiceText,
           userProfile
         });
+        // Temporary diagnostic: surfaces why Gemini was bypassed directly in
+        // the response so it can be inspected from a live request without
+        // depending on the Vercel log viewer's level filtering. Remove once
+        // the underlying Gemini failure is root-caused and fixed.
+        (result as any)._debugGeminiFallbackReason = geminiError?.message || String(geminiError);
       }
     } else {
       result = processWithDeterministicRules({
@@ -143,6 +148,7 @@ export default async function handler(req: any, res: any) {
         transcribedVoiceText,
         userProfile
       });
+      (result as any)._debugGeminiFallbackReason = 'GEMINI_API_KEY was not set in this function\'s environment';
     }
 
     res.json(result);
