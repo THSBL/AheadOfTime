@@ -30,7 +30,6 @@ import { PrivacyPage } from './components/PrivacyPage';
 import { FeaturesPage } from './components/FeaturesPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AuthCallbackPage } from './components/AuthCallbackPage';
-import { MarketingGraphicPage } from './marketing/MarketingGraphicPage';
 import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
 import { SettingsProfilePage } from './components/SettingsProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -2233,7 +2232,6 @@ export default function AppWithRouter() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/feedback" element={<FeedbackPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/marketing/graphic" element={<MarketingGraphicPage />} />
 
           {/* Protected Application Routes */}
           <Route element={<ProtectedRoute />}>
