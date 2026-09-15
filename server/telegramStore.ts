@@ -656,6 +656,30 @@ export class TelegramSessionStore {
   }
 
   /**
+   * DB-backed replacement for an in-memory update_id dedup cache, which
+   * doesn't survive a Telegram retry landing on a different serverless
+   * instance - confirmed cause of "What would you like to add?" (and any
+   * other bot reply) occasionally being sent twice. Returns true the first
+   * time this update_id is seen for this chat (and records it); false if
+   * it's a duplicate, so the caller can discard it without reprocessing.
+   */
+  public static async markUpdateSeenOnce(chatId: number | string, updateId: number): Promise<boolean> {
+    await this.getOrCreateSession(chatId);
+    const row = await this.getAccountRow(chatId);
+    const metadata = { ...(row?.metadata || {}) };
+    const recent: number[] = Array.isArray(metadata.recentUpdateIds) ? metadata.recentUpdateIds : [];
+    if (recent.includes(updateId)) {
+      return false;
+    }
+    metadata.recentUpdateIds = [...recent, updateId].slice(-30);
+    await query(
+      `UPDATE integration_accounts SET metadata = $2 WHERE channel = 'telegram' AND external_id = $1`,
+      [String(chatId), JSON.stringify(metadata)]
+    );
+    return true;
+  }
+
+  /**
    * A chat mid-conversation about one event: the bot asked a clarifying
    * question and is waiting for the answer before committing anything.
    * Stored in the same integration_accounts.metadata JSONB column

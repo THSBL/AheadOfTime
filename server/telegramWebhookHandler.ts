@@ -43,15 +43,34 @@ export class TelegramWebhookHandler {
         return;
       }
 
-      // 2. Update Deduplication Check
+      // 2. Update Deduplication Check - DB-backed (per chat) rather than
+      // purely in-memory, since a Telegram retry landing on a different,
+      // cold serverless instance would never see the in-memory cache from
+      // the instance that handled the original request. This is the
+      // confirmed cause of a reply occasionally being sent twice. Falls
+      // back to the in-memory-only check when no chat id can be resolved
+      // from this update shape (better than skipping dedup entirely).
       const updateId = update.update_id;
+      const chatIdForDedup =
+        update.message?.chat?.id ||
+        update.callback_query?.message?.chat?.id ||
+        update.edited_message?.chat?.id ||
+        update.channel_post?.chat?.id;
       if (typeof updateId === 'number') {
-        if (TelegramWebhookHandler.processedUpdateIds.has(updateId)) {
-          console.log(`⚠️ Telegram duplicate update_id ${updateId} discarded.`);
+        if (chatIdForDedup) {
+          const isFirstTime = await TelegramSessionStore.markUpdateSeenOnce(chatIdForDedup, updateId);
+          if (!isFirstTime) {
+            console.log(`⚠️ Telegram duplicate update_id ${updateId} discarded (DB-backed check).`);
+            res.status(200).json({ ok: true, duplicate: true });
+            return;
+          }
+        } else if (TelegramWebhookHandler.processedUpdateIds.has(updateId)) {
+          console.log(`⚠️ Telegram duplicate update_id ${updateId} discarded (in-memory fallback).`);
           res.status(200).json({ ok: true, duplicate: true });
           return;
+        } else {
+          TelegramWebhookHandler.processedUpdateIds.set(updateId, Date.now());
         }
-        TelegramWebhookHandler.processedUpdateIds.set(updateId, Date.now());
       }
 
       // 4. Resolve application base URL
