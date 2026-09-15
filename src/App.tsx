@@ -588,6 +588,8 @@ function App() {
     const sp = new URLSearchParams(location.search);
     const eventIdParam = sp.get('event_id') || sp.get('eventId');
     const actionParam = sp.get('action') || sp.get('stage');
+    const deepLinkToken = sp.get('dlt');
+    const deepLinkExpiry = sp.get('dlte');
 
     if (eventIdParam) {
       // 1. Check local state
@@ -601,6 +603,26 @@ function App() {
       // getStoredAccessToken()+isTokenExpired() is the same check used
       // everywhere else in this file to mean "actually connected right now".
       const hasValidGoogleToken = Boolean(getStoredAccessToken() && !isTokenExpired());
+
+      const applyFoundEvent = (found: CalendarEvent) => {
+        setEvents((prev) => {
+          const updated = [found, ...prev.filter((e) => e.id !== found.id)];
+          if (currentUser?.id) {
+            saveUserEvents(updated, currentUser.id);
+          }
+          return updated;
+        });
+        setSelectedEventId(found.id);
+        setMobileDashboardView('detail');
+        setActiveTab('tasks');
+        if (actionParam === 'refine' || actionParam === 'step2_refinement') {
+          setRefinementEvent(found);
+          setWizardStage('step2_refinement');
+          setIsManualModalOpen(true);
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      };
+
       if (target) {
         setSelectedEventId(target.id);
         setMobileDashboardView('detail');
@@ -612,6 +634,28 @@ function App() {
         }
         // Clean URL parameters so manual refresh doesn't trap user
         window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (deepLinkToken && deepLinkExpiry) {
+        // A signed, single-event token minted by the bot itself when it
+        // built this link - proves the caller legitimately just interacted
+        // with this exact event via Telegram. Tried first and works
+        // regardless of Google auth state, since someone actively chatting
+        // with the bot shouldn't have to separately re-authenticate with
+        // Google just to view what they just did there.
+        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?dlt=${encodeURIComponent(deepLinkToken)}&dlte=${encodeURIComponent(deepLinkExpiry)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.event) {
+              applyFoundEvent(data.event);
+            } else {
+              setAgentConfirmationToast({
+                id: Date.now(),
+                title: 'This link has expired',
+                message: "Telegram refine links stay valid for 15 minutes. Ask the bot to resend it, or find the event in Timeline & Tasks.",
+              });
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+          })
+          .catch((err) => console.warn('Could not fetch telegram event via deep-link token:', err));
       } else if (hasValidGoogleToken) {
         // 2. Fetch from Telegram server events store
         const telegramAuthHeaders = (() => {
@@ -625,22 +669,7 @@ function App() {
           .then((data) => {
             const found = data.event;
             if (found) {
-              setEvents((prev) => {
-                const updated = [found, ...prev.filter((e) => e.id !== found.id)];
-                if (currentUser?.id) {
-                  saveUserEvents(updated, currentUser.id);
-                }
-                return updated;
-              });
-              setSelectedEventId(found.id);
-              setMobileDashboardView('detail');
-              setActiveTab('tasks');
-              if (actionParam === 'refine' || actionParam === 'step2_refinement') {
-                setRefinementEvent(found);
-                setWizardStage('step2_refinement');
-                setIsManualModalOpen(true);
-              }
-              window.history.replaceState({}, document.title, window.location.pathname);
+              applyFoundEvent(found);
             } else {
               // Fallback to searching all events
               return fetch(`/api/telegram/events?userId=${encodeURIComponent(currentUser?.id || '')}`, {
@@ -650,22 +679,7 @@ function App() {
                 .then((allData) => {
                   const f = (allData.events || []).find((e: CalendarEvent) => e.id === eventIdParam);
                   if (f) {
-                    setEvents((prev) => {
-                      const updated = [f, ...prev.filter((e) => e.id !== f.id)];
-                      if (currentUser?.id) {
-                        saveUserEvents(updated, currentUser.id);
-                      }
-                      return updated;
-                    });
-                    setSelectedEventId(f.id);
-                    setMobileDashboardView('detail');
-                    setActiveTab('tasks');
-                    if (actionParam === 'refine' || actionParam === 'step2_refinement') {
-                      setRefinementEvent(f);
-                      setWizardStage('step2_refinement');
-                      setIsManualModalOpen(true);
-                    }
-                    window.history.replaceState({}, document.title, window.location.pathname);
+                    applyFoundEvent(f);
                   } else {
                     // Signed in, but neither lookup found this event - the
                     // Telegram chat that created it isn't paired to THIS

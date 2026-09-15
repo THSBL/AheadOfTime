@@ -1,5 +1,6 @@
 import { TelegramSessionStore } from '../../../server/telegramStore.js';
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
+import { verifyEventDeepLink } from '../../../server/deepLinkToken.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -9,6 +10,20 @@ export default async function handler(req: any, res: any) {
   const eventId = req.query.id;
   if (!eventId) {
     return res.status(400).json({ ok: false, error: 'Missing event id' });
+  }
+
+  // A signed, single-event deep-link token (minted by the bot itself when
+  // it built this link) proves the caller legitimately just interacted
+  // with this exact event via Telegram - it's a stronger, more specific
+  // guarantee than "some Google account is signed in", and doesn't force
+  // a user who's actively using Telegram right now to separately
+  // re-authenticate with Google just to view what they just did.
+  if (verifyEventDeepLink(String(eventId), req.query.dlt, req.query.dlte)) {
+    const event = await TelegramSessionStore.getEvent(String(eventId));
+    if (!event) {
+      return res.status(404).json({ ok: false, error: 'Event not found' });
+    }
+    return res.status(200).json({ ok: true, event });
   }
 
   // This endpoint returns real event data, so identity must be verified

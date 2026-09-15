@@ -31,6 +31,7 @@ import { AgendaScannerService } from "./server/agendaScanner";
 import { TelegramWebhookHandler } from "./server/telegramWebhookHandler";
 import { TelegramSessionStore } from "./server/telegramStore";
 import { extractBearerToken, verifyGoogleAccessToken } from "./server/googleAuthVerify";
+import { verifyEventDeepLink } from "./server/deepLinkToken";
 import { TelegramService } from "./server/telegramService";
 
 dotenv.config();
@@ -1111,6 +1112,20 @@ app.get("/api/telegram/events", async (req: Request, res: Response) => {
 });
 
 app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {
+  // A signed, single-event deep-link token (minted by the bot itself)
+  // proves the caller legitimately just interacted with this exact event
+  // via Telegram - lets that user view it without separately
+  // re-authenticating with Google. See server/deepLinkToken.ts.
+  if (verifyEventDeepLink(req.params.id, req.query.dlt as string, req.query.dlte as string)) {
+    const event = await TelegramSessionStore.getEvent(req.params.id);
+    if (event) {
+      res.json({ ok: true, event });
+    } else {
+      res.status(404).json({ ok: false, error: "Event not found" });
+    }
+    return;
+  }
+
   // Scope through the same ownership-filtered query as /api/telegram/events
   // (this route previously called getEvent() directly with no ownership
   // check at all - the same class of bug already fixed in api/telegram/*).

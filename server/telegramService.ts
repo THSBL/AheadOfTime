@@ -1,4 +1,5 @@
 import { CalendarEvent, TMinusMilestone } from '../src/types.js';
+import { signEventDeepLink } from './deepLinkToken.js';
 
 export interface TelegramSendMessageOptions {
   parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML';
@@ -154,7 +155,14 @@ export class TelegramService {
     customText?: string
   ): Promise<{ ok: boolean; result?: any }> {
     const cleanUrl = appBaseUrl.replace(/\/+$/, '');
-    const refineDeepLink = `${cleanUrl}/?event_id=${encodeURIComponent(event.id)}&action=refine`;
+    // Signed so tapping this link works whether or not the browser has a
+    // live Google session - a user chatting with the bot right now
+    // shouldn't be asked to separately re-authenticate just to view what
+    // they just did. Falls back to a plain (Google-auth-only) link if
+    // TELEGRAM_WEBHOOK_SECRET isn't configured in this environment.
+    const deepLinkAuth = signEventDeepLink(event.id);
+    const authQuery = deepLinkAuth ? `&dlt=${deepLinkAuth.token}&dlte=${deepLinkAuth.expiresAt}` : '';
+    const refineDeepLink = `${cleanUrl}/?event_id=${encodeURIComponent(event.id)}&action=refine${authQuery}`;
 
     let text = customText;
     if (!text) {

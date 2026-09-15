@@ -3,6 +3,7 @@ import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService } from './telegramService.js';
 import { CalendarEvent } from '../src/types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
+import { signEventDeepLink } from './deepLinkToken.js';
 
 export class TelegramWebhookHandler {
   // Deduplication cache: stores update_id -> timestamp (ms)
@@ -262,7 +263,9 @@ export class TelegramWebhookHandler {
       const listText = [
         `*Active Events* (${events.length}):`,
         ...events.slice(0, 5).map((ev) => {
-          const refineUrl = `${appBaseUrl}/?event_id=${encodeURIComponent(ev.id)}&action=refine`;
+          const deepLinkAuth = signEventDeepLink(ev.id);
+          const authQuery = deepLinkAuth ? `&dlt=${deepLinkAuth.token}&dlte=${deepLinkAuth.expiresAt}` : '';
+          const refineUrl = `${appBaseUrl}/?event_id=${encodeURIComponent(ev.id)}&action=refine${authQuery}`;
           return `• *${ev.title}* (${ev.eventDate})\n  [Refine in App](${refineUrl})`;
         }),
       ].join('\n\n');
