@@ -225,6 +225,15 @@ export function parseNaturalDateRange(
   const baseRef = new Date(referenceDateISO);
   const currentYear = isNaN(baseRef.getTime()) ? 2026 : baseRef.getFullYear();
 
+  // When no explicit year is given (e.g. "1 januari"), a month/day that has
+  // already occurred this year must roll forward to next year - events are
+  // always in the future, never a past date the user didn't ask for.
+  const todayMidnight = new Date(baseRef.getFullYear(), baseRef.getMonth(), baseRef.getDate());
+  const resolveImpliedYear = (month: number, day: number): number => {
+    const candidate = new Date(currentYear, month, day);
+    return candidate.getTime() < todayMidnight.getTime() ? currentYear + 1 : currentYear;
+  };
+
   // 1. ISO format: 2026-10-15 to 2026-10-21
   const isoRangeMatch = raw.match(/\b([0-9]{4}-[0-9]{2}-[0-9]{2})\s+(?:to|-)\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\b/i);
   if (isoRangeMatch) {
@@ -261,7 +270,7 @@ export function parseNaturalDateRange(
     const endDay = parseInt(matchA[2], 10);
     const monthKey = matchA[3].toLowerCase();
     const monthIdx = monthMap[monthKey] ?? 9;
-    const year = matchA[4] ? parseInt(matchA[4], 10) : currentYear;
+    const year = matchA[4] ? parseInt(matchA[4], 10) : resolveImpliedYear(monthIdx, startDay);
 
     const s = new Date(year, monthIdx, startDay, 12, 0, 0);
     const e = new Date(year, monthIdx, endDay, 12, 0, 0);
@@ -283,7 +292,7 @@ export function parseNaturalDateRange(
     const startMonth = monthMap[matchB[2].toLowerCase()] ?? 9;
     const endDay = parseInt(matchB[3], 10);
     const endMonth = monthMap[matchB[4].toLowerCase()] ?? 9;
-    const year = matchB[5] ? parseInt(matchB[5], 10) : currentYear;
+    const year = matchB[5] ? parseInt(matchB[5], 10) : resolveImpliedYear(startMonth, startDay);
 
     const s = new Date(year, startMonth, startDay, 12, 0, 0);
     const e = new Date(year, endMonth, endDay, 12, 0, 0);
@@ -306,7 +315,7 @@ export function parseNaturalDateRange(
     const startDay = parseInt(matchC[2], 10);
     const endMonth = matchC[3] ? (monthMap[matchC[3].toLowerCase()] ?? startMonth) : startMonth;
     const endDay = parseInt(matchC[4], 10);
-    const year = matchC[5] ? parseInt(matchC[5], 10) : currentYear;
+    const year = matchC[5] ? parseInt(matchC[5], 10) : resolveImpliedYear(startMonth, startDay);
 
     const s = new Date(year, startMonth, startDay, 12, 0, 0);
     const e = new Date(year, endMonth, endDay, 12, 0, 0);
@@ -323,7 +332,7 @@ export function parseNaturalDateRange(
   if (matchD1) {
     const day = parseInt(matchD1[1], 10);
     const month = monthMap[matchD1[2].toLowerCase()] ?? 9;
-    const year = matchD1[3] ? parseInt(matchD1[3], 10) : currentYear;
+    const year = matchD1[3] ? parseInt(matchD1[3], 10) : resolveImpliedYear(month, day);
     const s = new Date(year, month, day, 12, 0, 0);
     return { startDate: s.toISOString().substring(0, 10), matchedText: matchD1[0] };
   }
@@ -333,7 +342,7 @@ export function parseNaturalDateRange(
   if (matchD2) {
     const month = monthMap[matchD2[1].toLowerCase()] ?? 9;
     const day = parseInt(matchD2[2], 10);
-    const year = matchD2[3] ? parseInt(matchD2[3], 10) : currentYear;
+    const year = matchD2[3] ? parseInt(matchD2[3], 10) : resolveImpliedYear(month, day);
     const s = new Date(year, month, day, 12, 0, 0);
     return { startDate: s.toISOString().substring(0, 10), matchedText: matchD2[0] };
   }

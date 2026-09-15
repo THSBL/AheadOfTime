@@ -62,6 +62,8 @@ export interface SyncResult {
   googleTaskIds: string[];
   totalTasksPushed: number;
   totalSynced: number;
+  /** Number of items (main event + milestones) newly created this call, as opposed to already-synced items that were left untouched. */
+  newItemsCount: number;
   updatedEvent?: CalendarEvent;
   error?: string;
 }
@@ -494,6 +496,7 @@ export async function syncEventToGoogleCalendar(
     googleTaskIds: [],
     totalTasksPushed: 0,
     totalSynced: 0,
+    newItemsCount: 0,
   };
 
   const createCalBlocks = options?.createCalendarBlocksForMilestones || options?.milestoneFormat === 'all_day' || options?.milestoneFormat === 'timed';
@@ -545,6 +548,7 @@ export async function syncEventToGoogleCalendar(
         result.mainEventId = createdMain.id;
         result.mainEventLink = createdMain.htmlLink;
         result.totalSynced += 1;
+        result.newItemsCount += 1;
       } else {
         const errData = await resMain.json().catch(() => ({}));
         result.error = errData.error?.message || `Failed to create main event (${resMain.status})`;
@@ -561,10 +565,16 @@ export async function syncEventToGoogleCalendar(
   if (event.milestones && event.milestones.length > 0) {
     for (const milestone of event.milestones) {
       const msDateOnly = extractDateOnly(milestone.calculatedDate);
-      let msCalId: string | undefined = undefined;
-      let msTaskId: string | undefined = undefined;
+      let msCalId: string | undefined = milestone.googleCalendarEventId;
+      let msTaskId: string | undefined = milestone.googleTaskId;
 
-      // Push to Google Tasks API (standard Google Calendar tasks sub-layer)
+      // Push to Google Tasks API (standard Google Calendar tasks sub-layer).
+      // Skip milestones already pushed in a previous sync - re-pushing
+      // everything on every sync duplicated the whole task list each time
+      // a single new milestone was added, instead of only adding the new one.
+      if (msTaskId) {
+        result.totalSynced += 1;
+      } else {
       const cleanMsTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
       let taskChecklist = '';
       if (milestone.deliverables && milestone.deliverables.length > 0) {
@@ -591,13 +601,16 @@ export async function syncEventToGoogleCalendar(
           result.googleTaskIds.push(taskItem.id);
           result.totalTasksPushed += 1;
           result.totalSynced += 1;
+          result.newItemsCount += 1;
         }
       } catch (gtErr) {
         console.warn('Notice pushing to Google Tasks API:', gtErr);
       }
+      }
 
-      // If calendar event blocks requested, create on primary calendar
-      if (createCalBlocks) {
+      // If calendar event blocks requested, create on primary calendar -
+      // same skip-if-already-synced rule as the task above.
+      if (createCalBlocks && !msCalId) {
         try {
           const isTimed = options?.milestoneFormat === 'timed';
           const calBody = buildMilestoneCalendarPayload(
@@ -624,6 +637,7 @@ export async function syncEventToGoogleCalendar(
             const createdMs = await resMs.json();
             msCalId = createdMs.id;
             result.milestoneEventIds.push(createdMs.id);
+            result.newItemsCount += 1;
           }
         } catch (msErr) {
           console.error('Error creating milestone calendar event:', msErr);

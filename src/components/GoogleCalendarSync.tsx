@@ -93,6 +93,14 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   const prepTasks = activeEvent?.milestones || [];
   const taskCount = prepTasks.length;
 
+  // How many items (main event + milestones) a push would actually create,
+  // vs. items already synced from a previous push that will be left alone.
+  const countPendingItems = (ev: CalendarEvent): number => {
+    const mainPending = !ev.googleEventId || ev.googleEventId.startsWith('local_') ? 1 : 0;
+    const milestonePending = (ev.milestones || []).filter((m) => !m.googleTaskId).length;
+    return mainPending + milestonePending;
+  };
+
   const toggleBatchId = (id: string) => {
     setSelectedBatchIds(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -110,6 +118,12 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   const handleBatchPushToCalendar = async () => {
     const eventsToPush = events.filter(e => selectedBatchIds.includes(e.id));
     if (eventsToPush.length === 0) return;
+
+    const pendingCount = eventsToPush.reduce((sum, ev) => sum + countPendingItems(ev), 0);
+    const confirmMessage = pendingCount === 0
+      ? 'These events are already fully synced to Google Calendar - there is nothing new to push. Push again anyway?'
+      : `We found ${pendingCount} new ${pendingCount === 1 ? 'item' : 'items'} to push across ${eventsToPush.length} event${eventsToPush.length === 1 ? '' : 's'} (already-synced items won't be duplicated). Push this now?`;
+    if (!window.confirm(confirmMessage)) return;
 
     setIsBatchSyncing(true);
     setAuthError(null);
@@ -135,7 +149,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           timeZone,
           { milestoneFormat: 'tasks_only' }
         );
-        totalTasksPushed += (ev.milestones || []).length;
+        totalTasksPushed += result.totalTasksPushed;
         if (result.mainEventLink) {
           lastLink = result.mainEventLink;
         }
@@ -248,6 +262,13 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
 
   const handlePushToCalendar = async () => {
     if (!activeEvent) return;
+
+    const pendingCount = countPendingItems(activeEvent);
+    const confirmMessage = pendingCount === 0
+      ? 'This event is already fully synced to Google Calendar - there is nothing new to push. Push again anyway?'
+      : `We found ${pendingCount} new ${pendingCount === 1 ? 'item' : 'items'} to push (already-synced items won't be duplicated). Push this now?`;
+    if (!window.confirm(confirmMessage)) return;
+
     setIsSyncing(true);
     setAuthError(null);
     setSyncSuccessResult(null);
@@ -276,7 +297,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
       setSyncSuccessResult({
         eventTitle: activeEvent.title,
         eventCount: 1,
-        taskCount: prepTasks.length,
+        taskCount: result.totalTasksPushed,
         calendarLink: result.mainEventLink || 'https://calendar.google.com',
       });
     } catch (err: any) {
