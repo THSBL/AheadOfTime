@@ -350,6 +350,25 @@ describe('applyMilestoneQualityGuardrails', () => {
     expect(result[0].id).toBe('a');
   });
 
+  it('does NOT merge two genuinely different same-category bookings due on the same day with no shared vocabulary and no slot_key', () => {
+    // Regression test for a real production data-loss bug: a user added
+    // "rental car" to a trip that already had "Flights & corporate hotel
+    // booking locked". Both are category 'booking' due around the same
+    // early-prep day (completely normal - a trip's "lock everything early"
+    // phase naturally clusters several bookings together), so the old
+    // category+timing-only fallback silently merged the new rental-car
+    // milestone away - the AI's reply truthfully said it was added, but it
+    // was discarded before ever being saved. That fallback is gone entirely
+    // now; same category + same day is no longer, on its own, evidence of
+    // being the same task.
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Flights & corporate hotel booking locked', category: 'booking', tMinusOffsetMinutes: -43200 }),
+      makeMilestone({ id: 'b', title: 'Rental car booked', category: 'booking', tMinusOffsetMinutes: -43200 }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(2);
+  });
+
   it('strips generic venue-supplied purchase milestones when the event is hosted at a bar', () => {
     const milestones = [
       makeMilestone({ id: 'a', title: 'Party beverages, snacks & ice run', category: 'shopping' }),

@@ -1294,43 +1294,36 @@ export function applyMilestoneQualityGuardrails(
         .filter((w) => !titleWords.has(w))
     );
 
-  // Last-resort fallback for two milestones sharing zero stemmed words - a
-  // narrow window, since this is now only reached when there's truly no
-  // vocabulary signal at all (stemming above already catches tense/number
-  // variants like "confirm"/"confirmed", "passport"/"passports"). A wider
-  // window here previously caused false positives between genuinely
-  // distinct same-category milestones that just land a day or two apart
-  // (e.g. a birthday plan's "Wrap gift" and "Party setup & beverage chill",
-  // both 'prep', ~45 hours apart) - narrowed to same-day-ish instead.
-  const DUPLICATE_TIME_PROXIMITY_MINUTES = 8 * 60;
-  type SeenEntry = { words: Set<string>; category?: string; offsetMinutes?: number; slotKey?: string; index: number };
+  type SeenEntry = { words: Set<string>; slotKey?: string; index: number };
   const seen: SeenEntry[] = [];
   const deduped: TMinusMilestone[] = [];
 
   for (const ms of milestones) {
     const words = significantWords(ms.title || '');
-    const offsetMinutes = typeof ms.tMinusOffsetMinutes === 'number' ? ms.tMinusOffsetMinutes : undefined;
     const slotKey = sanitizeSlotKey(ms.slotKey);
 
-    // High-confidence matches (an explicit shared slot_key, or substantial
-    // title-word overlap) mean the two milestones are almost certainly
-    // about the same real thing, so it's safe to union in a deliverable the
-    // duplicate carried that the kept one is missing. The category+timing
-    // fallback is a much looser signal - two genuinely distinct milestones
-    // in a single deterministically-generated plan can easily land in the
-    // same category within a few days of each other (e.g. "Wrap gift" and
-    // "Party setup & beverage chill", both 'prep', ~2 days apart) - so a
-    // match found ONLY that way is still deduped, but never used to graft a
-    // deliverable from one topic onto an unrelated kept milestone.
+    // Only two signals are trusted to merge milestones now: an explicit
+    // shared slot_key (the model's own "this is the same task" signal,
+    // reused deliberately on refinement), or substantial title-word overlap
+    // after stemming. A third signal - same category landing within a
+    // window of each other - USED to also count, but caused a real
+    // production data-loss bug: a trip legitimately booking flights, a
+    // hotel, AND a rental car all early in the prep window put three
+    // distinct 'booking' milestones on/near the same day, and the
+    // category+timing check silently merged a brand new "rental car"
+    // milestone into the existing flights/hotel one - the AI's reply
+    // truthfully said it added the milestone, but the guardrail then
+    // discarded it before it was ever saved. "Same category, same day" is
+    // not evidence of being the same task - trips/projects routinely have
+    // several same-category things due on the same day - so that signal is
+    // gone; only an explicit slot_key or real shared vocabulary merges now.
     let matchIdx = -1;
-    let isHighConfidenceMatch = false;
 
     for (let i = 0; i < seen.length; i++) {
       const prior = seen[i];
       if (slotKey && prior.slotKey) {
         if (slotKey === prior.slotKey) {
           matchIdx = i;
-          isHighConfidenceMatch = true;
           break;
         }
         continue;
@@ -1350,44 +1343,30 @@ export function applyMilestoneQualityGuardrails(
         }
         if (sharedCount >= 2) {
           matchIdx = i;
-          isHighConfidenceMatch = true;
           break;
         }
-      }
-      if (
-        matchIdx === -1 &&
-        ms.category && prior.category && ms.category === prior.category &&
-        typeof offsetMinutes === 'number' && typeof prior.offsetMinutes === 'number' &&
-        Math.abs(offsetMinutes - prior.offsetMinutes) <= DUPLICATE_TIME_PROXIMITY_MINUTES
-      ) {
-        matchIdx = i;
-        // Keep scanning rather than break - a later prior entry might still
-        // produce a high-confidence match, which should win.
       }
     }
 
     if (matchIdx >= 0) {
-      // Merge rather than silently drop. Only union in an extra deliverable
-      // from the duplicate for a high-confidence match - a differently-
+      // Merge rather than silently drop - union in an extra deliverable the
+      // duplicate carried that the kept one is missing, since a differently-
       // worded duplicate sometimes names a specific detail (from narrative
-      // text, or the AI's own phrasing) the first one missed, but that's
-      // only trustworthy when we're confident it's really the same task.
-      if (isHighConfidenceMatch) {
-        const keptIndex = seen[matchIdx].index;
-        const kept = deduped[keptIndex];
-        const existingTitles = new Set((kept.deliverables || []).map((d) => d.title.toLowerCase()));
-        const extraDeliverables = (ms.deliverables || []).filter((d) => !existingTitles.has(d.title.toLowerCase()));
-        if (extraDeliverables.length > 0) {
-          deduped[keptIndex] = {
-            ...kept,
-            deliverables: [...(kept.deliverables || []), ...extraDeliverables].slice(0, 3),
-          };
-        }
+      // text, or the AI's own phrasing) the first one missed.
+      const keptIndex = seen[matchIdx].index;
+      const kept = deduped[keptIndex];
+      const existingTitles = new Set((kept.deliverables || []).map((d) => d.title.toLowerCase()));
+      const extraDeliverables = (ms.deliverables || []).filter((d) => !existingTitles.has(d.title.toLowerCase()));
+      if (extraDeliverables.length > 0) {
+        deduped[keptIndex] = {
+          ...kept,
+          deliverables: [...(kept.deliverables || []), ...extraDeliverables].slice(0, 3),
+        };
       }
       continue;
     }
 
-    seen.push({ words, category: ms.category, offsetMinutes, slotKey, index: deduped.length });
+    seen.push({ words, slotKey, index: deduped.length });
     deduped.push(ms);
   }
 
