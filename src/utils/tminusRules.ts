@@ -623,7 +623,7 @@ export function generateHeuristicMilestones(
   if (role === 'guest') {
     if (category === 'birthday_party') {
       addMilestone('T-21d', -21 * 24 * 60, 'RSVP & confirm attendance', 'booking', 'Notify host of attendance and any dietary requirements', undefined, 'deliverable');
-      addMilestone('T-14d', -14 * 24 * 60, 'Contribute to gift kitty or choose solo present', 'shopping', 'Send share of group present or order personalized gift', undefined, 'deliverable', true, ['Contribute to Group Money Pool', 'Buy Solo Personalized Gift', 'Bring Flowers / Wine / Card']);
+      addMilestone('T-14d', -14 * 24 * 60, 'Contribute to shared gift fund or choose solo present', 'shopping', 'Send share of group present or order personalized gift', undefined, 'deliverable', true, ['Contribute to Group Money Pool', 'Buy Solo Personalized Gift', 'Bring Flowers / Wine / Card']);
       addMilestone('T-7d', -7 * 24 * 60, 'Check party attire & costume theme', 'costume', 'Ensure clothes match party dress code or costume requirements', undefined, 'milestone');
       addMilestone('T-2d', -2 * 24 * 60, 'Wrap gift & write birthday card', 'prep', 'Write personal card and prepare present packaging', undefined, 'milestone');
       addMilestone('T-1h', -60, 'Departure buffer & arrive at venue', 'logistics', 'Leave with travel buffer and arrive on time for party', undefined, 'milestone');
@@ -632,7 +632,7 @@ export function generateHeuristicMilestones(
 
     if (category === 'travel_trip' || category === 'booking_trip') {
       addMilestone('T-30d', -30 * 24 * 60, 'Confirm attendance & RSVP to organiser', 'booking', 'Confirm participation and secure room share with trip organiser', undefined, 'deliverable');
-      addMilestone('T-21d', -21 * 24 * 60, 'Transfer deposit / kitty share to organiser', 'booking', 'Pay share for lodging and group activity bookings', undefined, 'deliverable');
+      addMilestone('T-21d', -21 * 24 * 60, 'Transfer deposit / shared cost share to organiser', 'booking', 'Pay share for lodging and group activity bookings', undefined, 'deliverable');
       addMilestone('T-21d', -21 * 24 * 60, 'Book personal travel / flights & coordinate arrival', 'booking', 'Book transport to match group arrival window', undefined, 'deliverable', true, ['Direct Flight', 'Train / Rail Ticket', 'Carpool with Group', 'Self Driving']);
       addMilestone('T-14d', -14 * 24 * 60, 'Check passport validity & travel insurance', 'prep', 'Verify 6-month passport validity and medical/travel coverage', undefined, 'milestone');
       addMilestone('T-7d', -7 * 24 * 60, 'Check weekend theme dress code & activity gear', 'prep', 'Coordinate group outfits or prepare specific activity footwear', undefined, 'milestone');
@@ -974,7 +974,7 @@ export function generateHeuristicMilestones(
       addMilestone(
         'T-14d',
         -14 * 24 * 60,
-        'Collect group kitty & lock in attendance count',
+        'Collect shared trip fund & lock in attendance count',
         'booking',
         'Avoid last-minute dropouts and pool funds for deposits',
         undefined,
@@ -1090,6 +1090,9 @@ export function generateHeuristicMilestones(
       // work-adjacent approval buried in it).
       if (/approv|sign[\s-]?off|greenlight|sign.?ed off/i.test(note)) {
         addMilestone('T-7d', -7 * 24 * 60, 'Approval secured', 'prep', `From your note: "${note}"`, undefined, 'deliverable');
+      } else if (/dog|cat|pet|sitter|kennel/i.test(note)) {
+        // Already covered by the dedicated pet-sitter milestones above -
+        // a generic passthrough of the same note would just restate them.
       } else {
         addMilestone('T-5d', -5 * 24 * 60, `Travel prep: ${note}`, 'prep', `Travel custom requirement: ${note}`, undefined, 'milestone');
       }
@@ -1855,30 +1858,51 @@ export function decomposeComplexTripIntent(
     };
   }
 
+  // Whether this is actually a trip for a wider group of independent
+  // people (friends, colleagues, a stag/hen party) versus a solo trip, a
+  // couple's getaway, or a family holiday. Only positive signals below opt
+  // into group-coordination framing ("group activity", headcount, shared
+  // funds) - ambiguous or unspecified input defaults to the simpler,
+  // personal framing, since wrongly assuming a big group is a worse
+  // failure mode than wrongly assuming just the traveller(s) mentioned
+  // (e.g. "surprise holiday with my girlfriend" is not a group trip).
+  // Guest/co-organiser roles are only ever detected from explicit language
+  // implying other people are involved, so they also count as a group.
+  const isStagOrHenTrip = /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?/i.test(message);
+  const hasExplicitGroupSignal =
+    /\b(friends|colleagues|coworkers|the guys|the girls|the gang|everyone|whole group|our group|team)\b/i.test(message) ||
+    /\d+\s*(?:of us|people|friends|guests)\b/i.test(message) ||
+    /group of/i.test(message);
+  const isGenuineGroupTrip = isStagOrHenTrip || hasExplicitGroupSignal || role !== 'organiser';
+
   // 2. Unpack Embedded Sub-Events
   const subEvents: SubEvent[] = [];
   if (/2nd\s*day|second\s*day|day\s*2/i.test(message)) {
     subEvents.push({
-      title: 'Day 2 Group Activity',
+      title: isGenuineGroupTrip ? 'Day 2 Group Activity' : 'Day 2 Activity',
       relative_day: 'Day 2',
       target_date: day2DateStr,
-      description: 'Highlight group activity or excursion requiring advance reservation',
+      description: isGenuineGroupTrip
+        ? 'Highlight group activity or excursion requiring advance reservation'
+        : 'Highlight activity or excursion requiring advance reservation',
     });
   }
   if (/dinner|supper|restaurant/i.test(message)) {
     subEvents.push({
-      title: 'Saturday Group Dinner Reservation',
+      title: isGenuineGroupTrip ? 'Saturday Group Dinner Reservation' : 'Saturday Dinner Reservation',
       relative_day: 'Day 2 Evening',
       target_date: day2DateStr,
-      description: 'Group dining reservation with fixed menu or deposit',
+      description: isGenuineGroupTrip
+        ? 'Group dining reservation with fixed menu or deposit'
+        : 'Dining reservation, booked ahead for a table on the night',
     });
   }
   if (/theme|costume|fancy\s*dress/i.test(message)) {
     subEvents.push({
-      title: 'Themed Night & Costumes',
+      title: isGenuineGroupTrip ? 'Themed Night & Costumes' : 'Themed Outfits',
       relative_day: 'Day 2 Night',
       target_date: day2DateStr,
-      description: 'Coordinated group outfits or fancy dress',
+      description: isGenuineGroupTrip ? 'Coordinated group outfits or fancy dress' : 'Costumes or themed outfits for the night',
     });
   }
 
@@ -1887,7 +1911,9 @@ export function decomposeComplexTripIntent(
       title: 'Day 2 In-Trip Activity',
       relative_day: 'Day 2',
       target_date: day2DateStr,
-      description: 'Core group event requiring dedicated booking lead time',
+      description: isGenuineGroupTrip
+        ? 'Core group event requiring dedicated booking lead time'
+        : 'In-trip activity requiring dedicated booking lead time',
     });
   }
 
@@ -1905,6 +1931,90 @@ export function decomposeComplexTripIntent(
     'VIP Nightclub Table'
   ];
 
+  // Solo / couple / family trip: no wider group to coordinate, so skip
+  // headcount collection, shared-fund logistics, and RSVP chasing entirely
+  // - none of that applies when it's just the traveller(s) mentioned.
+  if (!isGenuineGroupTrip) {
+    const soloMilestones: StructuredMilestone[] = [
+      {
+        task: 'Book flights & lodging',
+        target_date: getMilestoneDate(30),
+        t_minus_days: 30,
+        scope: 'macro',
+        tag: 'Logistics',
+        kind: 'deliverable',
+        needsRefinement: true,
+        refinementOptions: ['Hotel / Resort Reservation', 'Airbnb / Vacation Apartment', 'Flight & Hotel Package'],
+        deliverableType: 'lodging',
+        description: 'Secures accommodation and travel rates before prices surge or rooms sell out.',
+      },
+      {
+        task: `Shortlist & book ${activityTitle}`,
+        target_date: getMilestoneDate(21),
+        t_minus_days: 21,
+        scope: 'micro',
+        tag: 'Activity',
+        kind: 'deliverable',
+        needsRefinement: true,
+        refinementOptions: activityRefinementOptions,
+        deliverableType: 'activity',
+        description: 'Popular slots sell out weeks ahead, so lock this in early.',
+      },
+      {
+        task: `Confirm reservation & timing for ${activityTitle}`,
+        target_date: getMilestoneDate(7),
+        t_minus_days: 7,
+        scope: 'micro',
+        tag: 'Reservations',
+        kind: 'deliverable',
+        needsRefinement: false,
+        description: 'Confirms the booking and locks the arrival time slot.',
+      },
+      {
+        task: 'Trip packing & travel logistics checklist',
+        target_date: getMilestoneDate(3),
+        t_minus_days: 3,
+        scope: 'macro',
+        tag: 'Logistics',
+        kind: 'milestone',
+        needsRefinement: false,
+        description: 'Pack weather-appropriate attire, roaming SIMs, and download offline maps.',
+      },
+      {
+        task: `Finalize gear & transport for ${activityTitle}`,
+        target_date: getMilestoneDate(2),
+        t_minus_days: 2,
+        scope: 'micro',
+        tag: 'Supplies',
+        kind: 'milestone',
+        needsRefinement: false,
+        description: 'Verifies required footwear, safety equipment, and pickup points.',
+      },
+    ];
+    soloMilestones.sort((a, b) => b.t_minus_days - a.t_minus_days);
+
+    return {
+      macro_event: {
+        title: macroTitle,
+        start_date: startDateStr,
+        end_date: endDateStr,
+        type: archetype,
+        destination,
+        archetype,
+      },
+      sub_events: subEvents,
+      milestones: soloMilestones,
+      conversational_response:
+        `I've built a trip timeline for **${macroTitle}** (${startDateStr} to ${endDateStr}): flights & lodging, ` +
+        `a ${activityTitle.toLowerCase()} reservation, and packing logistics. ` +
+        `To lock the plan in, here are a few ideas for the ${activityTitle.toLowerCase()}:\n` +
+        `1. *Private Boat / Yacht Cruise*\n` +
+        `2. *Craft Brewery Tour & Tasting*\n` +
+        `3. *Escape Room Challenge*\n\n` +
+        `Which direction fits, or do you have something else in mind?`,
+    };
+  }
+
   // Tailor based on User Role (Organiser vs Co-Organiser vs Guest)
   if (role === 'guest') {
     milestones.push({
@@ -1920,7 +2030,7 @@ export function decomposeComplexTripIntent(
     });
 
     milestones.push({
-      task: 'Transfer deposit / share of group kitty to organiser',
+      task: 'Transfer deposit / share of shared trip fund to organiser',
       target_date: getMilestoneDate(21),
       t_minus_days: 21,
       scope: 'macro',
@@ -2007,7 +2117,7 @@ export function decomposeComplexTripIntent(
     });
 
     milestones.push({
-      task: 'Chase unconfirmed RSVPs & help collect group kitty',
+      task: 'Chase unconfirmed RSVPs & help collect shared trip fund',
       target_date: getMilestoneDate(14),
       t_minus_days: 14,
       scope: 'macro',
@@ -2084,7 +2194,7 @@ export function decomposeComplexTripIntent(
     });
 
     milestones.push({
-      task: 'Collect group kitty & lock in attendance count',
+      task: 'Collect shared trip fund & lock in attendance count',
       target_date: getMilestoneDate(14),
       t_minus_days: 14,
       scope: 'macro',
@@ -2156,7 +2266,7 @@ export function decomposeComplexTripIntent(
   const roleLabel = role === 'guest' ? 'Guest / Attendee' : role === 'co_organiser' ? 'Co-Organiser' : 'Lead Organiser';
 
   const conversational_response = `I've decomposed your request into a hierarchical multi-track plan for **${roleLabel}**:\n\n` +
-    `• **Macro Trip Horizon:** ${macroTitle} from ${startDateStr} to ${endDateStr} (${role === 'guest' ? 'guest attendance & personal bookings' : 'operational travel, lodging & kitty'}).\n` +
+    `• **Macro Trip Horizon:** ${macroTitle} from ${startDateStr} to ${endDateStr} (${role === 'guest' ? 'guest attendance & personal bookings' : 'operational travel, lodging & shared funds'}).\n` +
     `• **Track B Micro Specifics:** ${role === 'guest' ? 'Dress code coordination & personal gear.' : 'Advance reservation runway for group activity.'}\n\n` +
     `To nail down the Day 2 activity, here are 3 tailored concepts suited for group trips:\n` +
     `1. *Outdoor Paintball & Quad Biking* (Adrenaline)\n` +

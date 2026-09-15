@@ -194,6 +194,47 @@ describe('decomposeComplexTripIntent', () => {
     const result = decomposeComplexTripIntent('Flying to Chicago for a client pitch next month', REF_DATE_ISO);
     expect(result?.macro_event.archetype).toBe('Business Trip');
   });
+
+  it('does not treat a couple\'s holiday as a group trip needing headcount/shared-fund logistics', () => {
+    // Regression test: a surprise holiday with a partner used to fall
+    // through to the same "Default Organiser" branch as an actual group
+    // trip, generating "collect group kitty & lock in attendance count",
+    // "reserve group dinner", and "coordinate shared cabs with organiser"
+    // milestones for what is just two people traveling together.
+    const result = decomposeComplexTripIntent(
+      'Going on a surprise holiday with my girlfriend from Nov 11 to Nov 18',
+      REF_DATE_ISO
+    );
+    const taskTitles = result?.milestones.map((m) => m.task).join(' | ') || '';
+    expect(taskTitles).not.toMatch(/kitty|headcount|rsvp|attendance count|shared trip fund|organiser/i);
+  });
+
+  it('does not use "group" framing in sub-event titles for a couple\'s trip', () => {
+    const result = decomposeComplexTripIntent(
+      'Going on a surprise holiday with my girlfriend from Nov 11 to Nov 18, dinner on Saturday',
+      REF_DATE_ISO
+    );
+    const subEventTitles = result?.sub_events.map((s) => s.title).join(' | ') || '';
+    expect(subEventTitles).not.toMatch(/group/i);
+  });
+
+  it('still applies group-coordination logistics when a genuine group is mentioned', () => {
+    const result = decomposeComplexTripIntent(
+      'Trip to Scottish Highlands Oct 14-18 with 4 friends',
+      REF_DATE_ISO
+    );
+    const taskTitles = result?.milestones.map((m) => m.task).join(' | ') || '';
+    expect(taskTitles).toMatch(/shared trip fund|attendance count/i);
+  });
+
+  it('never uses "kitty" terminology, even for a genuine group trip', () => {
+    const result = decomposeComplexTripIntent(
+      'Stag party trip to Prague with the guys',
+      REF_DATE_ISO
+    );
+    const taskTitles = result?.milestones.map((m) => m.task).join(' | ') || '';
+    expect(taskTitles).not.toMatch(/kitty/i);
+  });
 });
 
 describe('generateHeuristicMilestones', () => {

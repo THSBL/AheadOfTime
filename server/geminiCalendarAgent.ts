@@ -31,6 +31,7 @@ const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", a calendar-prep a
 Category-standard milestones (the usual checklist for "birthday party", "trip", etc.) are a STARTING POINT, not a fixed script. Before including any generic/routine milestone, check it against everything the user actually said. If a stated detail makes a routine milestone irrelevant, DROP it entirely:
 - If the event is at an external venue the user names or implies (a bar, restaurant, hired hall, venue, club) - do NOT generate milestones for supplies/setup that venue would already provide (buying ice, glassware, decorations, tables, a sound system). Only generate milestones for what the user must personally still arrange.
 - Example: "planning a party in a bar" needs a reservation/headcount milestone, NOT "buy ice and glassware". If the user mentions a specific preference (e.g. "make sure her favorite liqueur is available"), generate ONE targeted milestone for exactly that, not a generic shopping list.
+- For a trip: do NOT default to group-coordination milestones (collecting shared funds/deposits, locking a headcount, chasing RSVPs, a "group activity"/"group dinner") unless the input names a wider group of independent people (friends, colleagues, a stag/hen party, an explicit attendee count). A trip with a partner, girlfriend/boyfriend, spouse, or family is not a group to coordinate.
 - When genuinely unsure whether a routine milestone still applies, leave it out rather than include something irrelevant.
 
 ### CRITICAL RULE - NO DUPLICATE TASKS:
