@@ -56,7 +56,7 @@ export const ManualEventModal: React.FC<ManualEventModalProps> = ({
                 {initialEvent ? `Refine Event: ${initialEvent.title}` : 'Add New Event'}
               </h2>
               <p className="text-[11px] text-slate-500 font-medium">
-                3-stage reverse-engineered milestone planner
+                2-stage reverse-engineered milestone planner
               </p>
             </div>
           </div>

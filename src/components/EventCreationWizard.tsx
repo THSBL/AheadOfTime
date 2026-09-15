@@ -7,7 +7,6 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
-  CalendarCheck,
   ChevronDown,
   Info,
   ListTodo,
@@ -128,10 +127,6 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
   // undifferentiated block of UI rather than a few quick taps.
   const [expandedCustomInputs, setExpandedCustomInputs] = useState<Set<string>>(new Set());
 
-  // STEP 3 State
-  const [generatedMilestones, setGeneratedMilestones] = useState<TMinusMilestone[]>(() => {
-    return initialEvent?.milestones || [];
-  });
   const [isSaving, setIsSaving] = useState(false);
 
   // -------------------------------------------------------------
@@ -208,9 +203,26 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
   };
 
   // -------------------------------------------------------------
-  // STEP 2 Action: [ Generate Milestones ]
+  // STEP 2 Action: [ Build & Save ] - was a two-step "generate, then
+  // review-and-save" flow (a separate Step 3). Collapsed into one action:
+  // the preview screen added a click with no real decision to make, since
+  // there was nothing to edit there that wasn't already set in Step 2.
   // -------------------------------------------------------------
   const handleGenerateMilestones = () => {
+    setIsSaving(true);
+    try {
+      handleBuildAndSave();
+    } catch (err) {
+      // A throw anywhere in this chain (e.g. an unexpected data shape from
+      // a merged AI-refined event) used to leave the button stuck on
+      // "Saving Event..." forever with no error shown - it read as "the
+      // save silently failed" when it just had nowhere to go.
+      console.error('Failed to save event:', err);
+      setIsSaving(false);
+    }
+  };
+
+  const handleBuildAndSave = () => {
     const eventId = initialEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const freshMilestones = generateConcreteEventMilestones(
       title,
@@ -227,41 +239,17 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
     // specific narrative detail) - blindly replacing wiped those out
     // entirely. Merge fresh + existing and let the quality guardrail
     // collapse anything that just restates the same task.
-    const milestones = initialEvent?.milestones?.length
+    const mergedMilestones = initialEvent?.milestones?.length
       ? applyMilestoneQualityGuardrails(
           [...initialEvent.milestones, ...freshMilestones],
           { title, location, context: { ...(initialEvent.context || {}), canonicalCategory: selectedCategory } }
         )
       : freshMilestones;
 
-    setGeneratedMilestones(milestones);
-    setStage('step3_milestones');
-  };
-
-  // -------------------------------------------------------------
-  // STEP 3 Action: [ Save Event & Plan Milestones ]
-  // -------------------------------------------------------------
-  const handleFinalSave = () => {
-    setIsSaving(true);
-    try {
-      handleFinalSaveInner();
-    } catch (err) {
-      // isSaving was never reset on this path before - a throw anywhere in
-      // onComplete's chain (e.g. an unexpected data shape from a merged
-      // AI-refined event) left the button stuck on "Saving Event..."
-      // forever with no error shown, which read to a user as "the save
-      // silently failed" - it wasn't silent, it just had nowhere to go.
-      console.error('Failed to save event:', err);
-      setIsSaving(false);
-    }
-  };
-
-  const handleFinalSaveInner = () => {
-    const eventId = initialEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const catDef = CANONICAL_CATEGORIES.find((c) => c.id === selectedCategory);
 
-    // Re-bind milestones with this final eventId if needed
-    const finalizedMilestones: TMinusMilestone[] = generatedMilestones.map((m, idx) => ({
+    // Re-bind milestones with the final eventId
+    const finalizedMilestones: TMinusMilestone[] = mergedMilestones.map((m, idx) => ({
       ...m,
       id: `ms-${eventId}-${idx + 1}-${m.tMinusLabel.toLowerCase()}`,
       eventId,
@@ -312,7 +300,10 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
 
   return (
     <div className={`w-full ${isModalMode ? '' : 'p-4 sm:p-6 bg-white rounded-3xl border border-slate-200/90 shadow-sm'}`}>
-      {/* 3-Stage Progress Indicator */}
+      {/* 2-Stage Progress Indicator - previously 3 stages, but the third
+          (a milestone preview before saving) added a click with no real
+          decision to make since nothing there wasn't already set in Step
+          2. Step 2's action now builds and saves in one step. */}
       <div className="mb-6">
         <div className="flex items-center justify-between gap-2 max-w-xl mx-auto">
           {/* Step 1 Pill */}
@@ -332,34 +323,15 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
           <div className={`h-0.5 flex-1 transition-colors ${stage !== 'step1_title' ? 'bg-slate-900' : 'bg-slate-200'}`} />
 
           {/* Step 2 Pill */}
-          <button
-            type="button"
-            disabled={stage === 'step1_title'}
-            onClick={() => stage === 'step3_milestones' && setStage('step2_refinement')}
-            className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
-              stage === 'step2_refinement'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : stage === 'step3_milestones'
-                ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer'
-                : 'bg-slate-50 text-slate-400 cursor-not-allowed'
-            }`}
-          >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] shrink-0">2</span>
-            <span className="hidden sm:inline whitespace-nowrap">Refinement</span>
-          </button>
-
-          <div className={`h-0.5 flex-1 transition-colors ${stage === 'step3_milestones' ? 'bg-slate-900' : 'bg-slate-200'}`} />
-
-          {/* Step 3 Pill */}
           <div
             className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
-              stage === 'step3_milestones'
+              stage === 'step2_refinement'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-slate-50 text-slate-400'
             }`}
           >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] shrink-0">3</span>
-            <span className="hidden sm:inline whitespace-nowrap">Milestones</span>
+            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] shrink-0">2</span>
+            <span className="hidden sm:inline whitespace-nowrap">Refinement</span>
           </div>
         </div>
       </div>
@@ -902,135 +874,18 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
             <button
               type="button"
               onClick={handleGenerateMilestones}
+              disabled={isSaving}
               id="btn-generate-milestones"
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-slate-900 hover:bg-slate-800 text-white shadow-md active:scale-98 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-slate-900 hover:bg-slate-800 text-white shadow-md active:scale-98 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Sparkles className="w-4 h-4 text-sky-400" />
-              <span>Generate Milestones</span>
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              <span>{isSaving ? 'Saving...' : 'Build & Save Milestones'}</span>
+              {!isSaving && <ArrowRight className="w-4 h-4 stroke-[2.5]" />}
             </button>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* STAGE 3: MILESTONE & DELIVERABLE GENERATION */}
-      {/* ========================================================================= */}
-      {stage === 'step3_milestones' && (
-        <div className="space-y-5 animate-in fade-in duration-200">
-          {/* Header Summary */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{currentCategoryDef.emoji}</span>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{currentCategoryDef.badgeLabel}</span>
-              </div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900">{title}</h3>
-              <p className="text-xs text-slate-500 font-medium">
-                {targetDate} {targetTime && `at ${targetTime}`} • {generatedMilestones.length} actionable checkpoints
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setStage('step2_refinement')}
-              className="text-xs font-bold text-slate-600 hover:text-slate-900 underline cursor-pointer self-start sm:self-auto"
-            >
-              Modify Refinements
-            </button>
-          </div>
-
-          {/* Milestones & Crisp Checklist Deliverables List */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <ListTodo className="w-4 h-4 text-slate-700" />
-                <span>Reverse-Engineered Milestone Runway</span>
-              </h4>
-              <span className="text-[11px] text-slate-500 font-medium">Concrete Actions & Deliverables</span>
-            </div>
-
-            <div className="space-y-2.5">
-              {generatedMilestones.map((ms) => (
-                <div
-                  key={ms.id}
-                  className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-black px-2 py-0.5 rounded-lg bg-slate-900 text-white shadow-2xs">
-                        {ms.tMinusLabel}
-                      </span>
-                      <h5 className="text-sm font-black text-slate-900">{ms.title}</h5>
-                    </div>
-                    <span className="text-[11px] font-semibold text-slate-500 shrink-0">
-                      {new Date(ms.calculatedDate).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                  </div>
-
-                  {ms.description && (
-                    <p className="mt-1 text-xs text-slate-600 leading-relaxed">{ms.description}</p>
-                  )}
-
-                  {/* Checklist deliverables */}
-                  {ms.deliverables && ms.deliverables.length > 0 && (
-                    <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-1.5">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                        Actionable Deliverables ({ms.deliverables.length})
-                      </span>
-                      <div className="space-y-1">
-                        {ms.deliverables.map((del) => (
-                          <div key={del.deliverable_id} className="flex items-start gap-2 text-xs text-slate-700">
-                            <span className="text-slate-400 font-mono select-none">[ ]</span>
-                            <span className="font-medium">{del.title}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Calendar Payload Preview Strip */}
-          <div className="p-3.5 rounded-xl bg-sky-50/70 border border-sky-200/80 text-sky-950">
-            <div className="flex items-center gap-2 text-xs font-bold text-sky-900 mb-1">
-              <CalendarCheck className="w-3.5 h-3.5 text-sky-700" />
-              <span>Google Calendar Sync Ready</span>
-            </div>
-            <p className="text-[11px] text-sky-800 leading-normal">
-              When synced, each milestone creates a Google Calendar event formatted with concrete milestone titles and embeds all deliverables as an actionable checklist directly in event details.
-            </p>
-          </div>
-
-          {/* Final Action Bar */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setStage('step2_refinement')}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleFinalSave}
-              disabled={isSaving}
-              id="btn-save-event-plan"
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-slate-900 hover:bg-slate-800 text-white shadow-md active:scale-98 transition-all cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>{isSaving ? 'Saving Event...' : 'Save Event & Plan Milestones'}</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
