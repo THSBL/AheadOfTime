@@ -662,9 +662,22 @@ function App() {
             }
           })
           .catch((err) => console.warn('Could not fetch telegram event for refinement:', err));
+      } else {
+        // Was a silent no-op: a guest (no Google sign-in) clicking a
+        // Telegram "Refine"/"Open Full Timeline" link would land on the
+        // default dashboard tab with zero explanation, since the event
+        // fetch above requires a verified bearer token the guest doesn't
+        // have (server-side, correctly - events are scoped to the real
+        // paired email, not a client-supplied id). The event isn't lost,
+        // it's just invisible until they sign in with that same email.
+        setAgentConfirmationToast({
+          id: Date.now(),
+          title: 'Sign in to view this event',
+          message: 'This event was created via Telegram. Sign in with the same Google account you used to pair Telegram to see and refine it here.',
+        });
       }
     }
-  }, [location.search, events]);
+  }, [location.search, events, currentUser?.id]);
 
   const handleCloseManualModal = () => {
     setIsManualModalOpen(false);
