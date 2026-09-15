@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, 
   Mic, 
@@ -39,12 +39,12 @@ import {
   PromptPreset 
 } from '../data/samplePresets';
 import { ThinkingModule } from './ThinkingModule';
-import { getCleanEventTitle, formatDisplayDate } from '../utils/tminusRules';
+import { formatDisplayDate } from '../utils/tminusRules';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
 import { EventCreationWizard } from './EventCreationWizard';
-import { CanonicalCategory, CATEGORY_REFINEMENT_QUESTIONS } from '../utils/creationStateMachine';
+import { CanonicalCategory } from '../utils/creationStateMachine';
 
 function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
   if (presetId === 'hobbies') return 'hobbies';
@@ -57,14 +57,6 @@ function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
   if (presetId === 'maintenance') return 'maintenance';
   if (presetId === 'project' || presetId === 'work_projects') return 'project_management';
   return 'party';
-}
-
-// Categories detected from freeform text that have a matching chip-question
-// set to ask as a genuine follow-up before generating the plan. 'dinner' and
-// 'custom' have no good canonical match, so those skip straight to generation.
-function mapCustomCategoryToRefinementCategory(cat: string): CanonicalCategory | null {
-  if (cat === 'dinner' || cat === 'custom') return null;
-  return mapPresetIdToCanonicalCategory(cat);
 }
 
 interface ChatConsoleProps {
@@ -191,142 +183,6 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const [newPartyItemInput, setNewPartyItemInput] = useState('');
   const [customNote, setCustomNote] = useState('');
 
-  // Quick interactive intake for custom descriptions
-  const [customClarificationStep, setCustomClarificationStep] = useState<'none' | 'details' | 'refine'>('none');
-  const [customParsedCategory, setCustomParsedCategory] = useState<'birthday' | 'friends' | 'trip' | 'project' | 'dinner' | 'custom'>('custom');
-  const [customEventTitle, setCustomEventTitle] = useState('');
-  const [customWho, setCustomWho] = useState('');
-  const [customDate, setCustomDate] = useState('');
-  const [customTime, setCustomTime] = useState('19:00');
-  const [customLocation, setCustomLocation] = useState('');
-  const [clarificationReason, setClarificationReason] = useState<'unclear' | 'recognized_birthday' | 'recognized_trip' | 'recognized_friends' | 'recognized_project' | 'recognized_dinner' | 'custom'>('unclear');
-  // Follow-up chip questions shown after basic details are confirmed, before
-  // the plan is generated - reuses the same category question set as the
-  // structured New Event wizard so "describing an event" gets a genuine
-  // confirmation + follow-up instead of jumping straight to a generated plan.
-  const [customRefineRevealed, setCustomRefineRevealed] = useState(false);
-  const [customRefinementAnswers, setCustomRefinementAnswers] = useState<Record<string, string[]>>({});
-
-  // Intelligent text detector for the custom event box
-  const analyzeCustomText = (text: string) => {
-    const lower = text.toLowerCase();
-
-    // 1. Detect category
-    let category: 'birthday' | 'friends' | 'trip' | 'project' | 'dinner' | 'custom' = 'custom';
-    let detectedReason: typeof clarificationReason = 'unclear';
-
-    if (lower.includes('birthday') || lower.includes('bday') || lower.includes('born') || lower.includes('turning')) {
-      category = 'birthday';
-      detectedReason = 'recognized_birthday';
-    } else if (lower.includes('visiting') || lower.includes('staying') || lower.includes('in town') || lower.includes('guest') || lower.includes('hosting')) {
-      category = 'friends';
-      detectedReason = 'recognized_friends';
-    } else if (lower.includes('trip') || lower.includes('flight') || lower.includes('travel') || lower.includes('vacation') || lower.includes('holiday') || lower.includes('flying to') || lower.includes('hotel')) {
-      category = 'trip';
-      detectedReason = 'recognized_trip';
-    } else if (lower.includes('project') || lower.includes('launch') || lower.includes('deadline') || lower.includes('sprint') || lower.includes('deck') || lower.includes('deliverable') || lower.includes('presentation') || lower.includes('meeting') || lower.includes('review') || lower.includes('pitch') || lower.includes('proposal') || lower.includes('strategy') || lower.includes('stakeholder') || lower.includes('demo')) {
-      category = 'project';
-      detectedReason = 'recognized_project';
-    } else if (lower.includes('dinner') || lower.includes('supper') || lower.includes('restaurant') || lower.includes('brunch') || lower.includes('lunch') || lower.includes('bbq')) {
-      category = 'dinner';
-      detectedReason = 'recognized_dinner';
-    } else {
-      detectedReason = 'unclear';
-    }
-
-    // 2. Detect Person / Subject (who)
-    let extractedWho = '';
-    const nameMatch = text.match(/([A-Z][a-z]+(?:'s|\s+[A-Z][a-z]+)?)\s+(?:birthday|party|visit|trip|launch|dinner)/i) 
-      || text.match(/(?:for|with)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i)
-      || text.match(/([A-Za-z]+)'s\s+birthday/i);
-    if (nameMatch && nameMatch[1]) {
-      extractedWho = nameMatch[1].replace(/'s$/i, '').trim();
-    }
-
-    // 3. Detect Date / Time
-    let extractedDate = '';
-    const now = new Date();
-    
-    // Check for explicit dates like "2026-10-24" or "Oct 24" or "October 24th" or "next Saturday"
-    const isoDateMatch = text.match(/\b(202[5-9]-[0-1][0-9]-[0-3][0-9])\b/);
-    if (isoDateMatch) {
-      extractedDate = isoDateMatch[1];
-    } else {
-      const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-      const monthPattern = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
-      // "October 22nd" / "on October 22" (month first)
-      const monthFirstMatch = text.match(new RegExp(`(?:on\\s+)?(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?`, 'i'));
-      // "22nd of October" / "the 22nd October" (day first) - just as common in
-      // natural phrasing and previously unrecognized entirely, silently
-      // falling back to a generic +14-days guess.
-      const dayFirstMatch = text.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthPattern})\\b`, 'i'));
-      const monthMatch = monthFirstMatch
-        ? { monthStr: monthFirstMatch[1], day: monthFirstMatch[2] }
-        : dayFirstMatch
-        ? { monthStr: dayFirstMatch[2], day: dayFirstMatch[1] }
-        : null;
-      if (monthMatch) {
-        const monthStr = monthMatch.monthStr.toLowerCase().substring(0, 3);
-        const monthIndex = monthNames.indexOf(monthStr);
-        const day = parseInt(monthMatch.day, 10);
-        const year = monthIndex < 8 ? 2027 : 2026; // Ref date is Sept 2026
-        const d = new Date(year, monthIndex, day);
-        extractedDate = d.toISOString().substring(0, 10);
-      } else if (lower.includes('next week') || lower.includes('in 1 week')) {
-        const d = new Date(now);
-        d.setDate(d.getDate() + 7);
-        extractedDate = d.toISOString().substring(0, 10);
-      } else if (lower.includes('in 2 weeks') || lower.includes('two weeks')) {
-        const d = new Date(now);
-        d.setDate(d.getDate() + 14);
-        extractedDate = d.toISOString().substring(0, 10);
-      } else if (lower.includes('in 3 weeks') || lower.includes('three weeks') || category === 'birthday') {
-        const d = new Date(now);
-        d.setDate(d.getDate() + 21);
-        extractedDate = d.toISOString().substring(0, 10);
-      } else if (lower.includes('tomorrow')) {
-        const d = new Date(now);
-        d.setDate(d.getDate() + 1);
-        extractedDate = d.toISOString().substring(0, 10);
-      } else {
-        const d = new Date(now);
-        d.setDate(d.getDate() + 14);
-        extractedDate = d.toISOString().substring(0, 10);
-      }
-    }
-
-    // 4. Detect Time (e.g. 7pm, 19:00, 8:30 PM)
-    let extractedTime = '19:00';
-    const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-    if (timeMatch) {
-      let hours = parseInt(timeMatch[1], 10);
-      const mins = timeMatch[2] ? timeMatch[2] : '00';
-      const isPm = timeMatch[3].toLowerCase() === 'pm';
-      if (isPm && hours < 12) hours += 12;
-      if (!isPm && hours === 12) hours = 0;
-      extractedTime = `${String(hours).padStart(2, '0')}:${mins}`;
-    }
-
-    // 5. Detect Location (e.g. "in London", "at Hackney Loft")
-    let extractedLocation = '';
-    const locMatch = text.match(/\b(?:in|at)\s+([A-Za-z0-9\s,'-]+?)(?:\s+(?:on|at|with|next|for|\.|$)|$)/i);
-    if (locMatch && locMatch[1] && locMatch[1].length < 40 && !locMatch[1].toLowerCase().includes('pm') && !locMatch[1].toLowerCase().includes('am')) {
-      extractedLocation = locMatch[1].trim();
-    }
-
-    // Check completeness / clarity
-    const isUnclear = text.trim().split(/\s+/).length < 4 || !text.includes(' ') || detectedReason === 'unclear';
-
-    return {
-      category,
-      detectedReason: isUnclear && detectedReason === 'unclear' ? 'unclear' : detectedReason,
-      extractedWho,
-      extractedDate,
-      extractedTime,
-      extractedLocation,
-      isUnclear,
-    };
-  };
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const whoInputRef = useRef<HTMLInputElement>(null);
@@ -525,68 +381,24 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     onSendMessage(fullMessage, false);
   };
 
-  // Handle Freeform Form Submit - directly sends event description to agent and triggers Thinking Module
+  // Freeform text now goes straight to the conversational engine instead of
+  // through a local "here's what I caught" confirmation form first - the
+  // form asserted a fully-specified plan ("Please build the ... plan!"),
+  // which meant the AI's own follow-up-question mechanism never got a
+  // chance to run. Sending the user's own words directly lets it ask a real
+  // clarifying question when something's missing, then keep proposing one
+  // specific follow-up per turn as the plan is built - see the "SOMETHING
+  // OFF?" box on the event's Timeline page, which is where that
+  // conversation continues once this first message creates the event.
   const handleFreeformSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || isLoading) return;
     const textToSend = inputText.trim();
-    const analysis = analyzeCustomText(textToSend);
-    setCustomEventTitle(getCleanEventTitle(textToSend, analysis.category));
-    setCustomParsedCategory(analysis.category);
-    setClarificationReason(analysis.detectedReason);
-    setCustomWho(analysis.extractedWho);
-    setCustomDate(analysis.extractedDate);
-    setCustomTime(analysis.extractedTime);
-    setCustomLocation(analysis.extractedLocation);
-    setCustomRefineRevealed(false);
-    setCustomRefinementAnswers({});
-    setCustomClarificationStep('details');
+    setLastSubmittedPrompt(textToSend);
     setInputText('');
     setIsInputFocused(false);
     onFocusChange?.(false);
-  };
-
-  const handleConfirmCustomClarification = (e: React.FormEvent) => {
-    e.preventDefault();
-    const refinementCategory = mapCustomCategoryToRefinementCategory(customParsedCategory);
-
-    // First confirm: if there's a matching follow-up question set, ask it
-    // before generating anything - a real confirmation + follow-up instead
-    // of jumping straight to a plan.
-    if (refinementCategory && !customRefineRevealed) {
-      setCustomRefineRevealed(true);
-      return;
-    }
-
-    const refinementSummary = refinementCategory
-      ? (Object.entries(customRefinementAnswers) as [string, string[]][])
-          .filter(([, answers]) => answers.length > 0)
-          .map(([questionId, answers]) => {
-            const question = CATEGORY_REFINEMENT_QUESTIONS[refinementCategory].find((q) => q.id === questionId);
-            return question ? `${question.label}: ${answers.join(', ')}` : '';
-          })
-          .filter(Boolean)
-          .join('. ')
-      : '';
-
-    const detailsMsg = `Event: "${customEventTitle}". Category: ${customParsedCategory}.${customWho ? ` Who/Subject: ${customWho}.` : ''} Date: ${customDate} at ${customTime}${customLocation ? ` in ${customLocation}` : ''}.${refinementSummary ? ` ${refinementSummary}.` : ''} Please build the Ahead Of Time preparation plan!`;
-    setLastSubmittedPrompt(customEventTitle || detailsMsg);
-    setCustomClarificationStep('none');
-    setCustomRefineRevealed(false);
-    setCustomRefinementAnswers({});
-    onSendMessage(detailsMsg, false);
-  };
-
-  const handleCustomRefinementChipClick = (questionId: string, chipText: string, allowMultiple: boolean) => {
-    setCustomRefinementAnswers((prev) => {
-      const current = prev[questionId] || [];
-      if (allowMultiple) {
-        return current.includes(chipText)
-          ? { ...prev, [questionId]: current.filter((c) => c !== chipText) }
-          : { ...prev, [questionId]: [...current, chipText] };
-      }
-      return current.includes(chipText) ? { ...prev, [questionId]: [] } : { ...prev, [questionId]: [chipText] };
-    });
+    onSendMessage(textToSend, false);
   };
 
   // Voice recording handlers
@@ -634,7 +446,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const renderCustomItemsSection = (placeholder: string, title: string = "Anything Specific (Add Multiple Items)") => (
     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-lg">📝</span>
+        <span className="text-lg">ðŸ“</span>
         <h3 className="text-sm font-bold text-slate-900">{title}</h3>
       </div>
       <div className="space-y-2.5">
@@ -673,14 +485,14 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           <div className="flex flex-wrap gap-2 pt-1">
             {customItems.map((item, idx) => (
               <div key={idx} className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-800 shadow-xs">
-                <span>✓ {item}</span>
+                <span>âœ“ {item}</span>
                 <button
                   type="button"
                   onClick={() => setCustomItems(customItems.filter((_, i) => i !== idx))}
                   className="text-slate-400 hover:text-red-600 ml-1 cursor-pointer font-bold"
                   title="Remove item"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
             ))}
@@ -693,58 +505,35 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-transparent overflow-y-auto min-h-0 transition-all duration-300 pr-1">
       
-      {/* 1. INITIAL PRESET SELECTION & FREEFORM OPPORTUNITY OR CUSTOM CLARIFICATION CARD */}
+      {/* 1. INITIAL PRESET SELECTION & FREEFORM OPPORTUNITY */}
       {presetStep === 'initial' && !isLoading && (
         <div className="space-y-6 animate-in fade-in duration-400">
-          {customClarificationStep === 'details' ? (
-            <CustomClarificationCard
-              clarificationReason={clarificationReason}
-              customParsedCategory={customParsedCategory}
-              setCustomParsedCategory={setCustomParsedCategory}
-              customEventTitle={customEventTitle}
-              setCustomEventTitle={setCustomEventTitle}
-              customWho={customWho}
-              setCustomWho={setCustomWho}
-              customDate={customDate}
-              setCustomDate={setCustomDate}
-              customTime={customTime}
-              setCustomTime={setCustomTime}
-              customLocation={customLocation}
-              setCustomLocation={setCustomLocation}
-              setCustomClarificationStep={setCustomClarificationStep}
-              handleConfirmCustomClarification={handleConfirmCustomClarification}
-              customRefineRevealed={customRefineRevealed}
-              customRefinementAnswers={customRefinementAnswers}
-              handleCustomRefinementChipClick={handleCustomRefinementChipClick}
-            />
-          ) : (
-            <InitialPresetsAndFreeform
-              primaryPresets={categorizedPresets.primary}
-              secondaryPresets={categorizedPresets.secondary}
-              canImportSpreadsheet={categorizedPresets.canImportSpreadsheet}
-              onboardingProfile={onboardingProfile}
-              onOpenPreferences={onOpenPreferences}
-              handleSelectPreset={handleSelectPreset}
-              inputText={inputText}
-              setInputText={setInputText}
-              isInputFocused={isInputFocused}
-              setIsInputFocused={setIsInputFocused}
-              onFocusChange={onFocusChange}
-              handleFreeformSubmit={handleFreeformSubmit}
-              isRecording={isRecording}
-              startVoiceRecording={startVoiceRecording}
-              stopVoiceRecording={stopVoiceRecording}
-              isLoading={isLoading}
-              textareaRef={textareaRef}
-              savedPresets={currentSavedPresets}
-              selectedPresetId={lastSelectedPresetId}
-              activePresetExplorerTab={activePresetExplorerTab}
-              setActivePresetExplorerTab={setActivePresetExplorerTab}
-              onOpenImporter={onOpenImporter}
-              onStartLaunch={handleStartLaunch}
-              onPresetsUpdated={handleUpdatePresets}
-            />
-          )}
+          <InitialPresetsAndFreeform
+            primaryPresets={categorizedPresets.primary}
+            secondaryPresets={categorizedPresets.secondary}
+            canImportSpreadsheet={categorizedPresets.canImportSpreadsheet}
+            onboardingProfile={onboardingProfile}
+            onOpenPreferences={onOpenPreferences}
+            handleSelectPreset={handleSelectPreset}
+            inputText={inputText}
+            setInputText={setInputText}
+            isInputFocused={isInputFocused}
+            setIsInputFocused={setIsInputFocused}
+            onFocusChange={onFocusChange}
+            handleFreeformSubmit={handleFreeformSubmit}
+            isRecording={isRecording}
+            startVoiceRecording={startVoiceRecording}
+            stopVoiceRecording={stopVoiceRecording}
+            isLoading={isLoading}
+            textareaRef={textareaRef}
+            savedPresets={currentSavedPresets}
+            selectedPresetId={lastSelectedPresetId}
+            activePresetExplorerTab={activePresetExplorerTab}
+            setActivePresetExplorerTab={setActivePresetExplorerTab}
+            onOpenImporter={onOpenImporter}
+            onStartLaunch={handleStartLaunch}
+            onPresetsUpdated={handleUpdatePresets}
+          />
         </div>
       )}
 
@@ -818,204 +607,6 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   );
 };
 
-const CustomClarificationCard = ({
-  clarificationReason,
-  customParsedCategory,
-  setCustomParsedCategory,
-  customEventTitle,
-  setCustomEventTitle,
-  customWho,
-  setCustomWho,
-  customDate,
-  setCustomDate,
-  customTime,
-  setCustomTime,
-  customLocation,
-  setCustomLocation,
-  setCustomClarificationStep,
-  handleConfirmCustomClarification,
-  customRefineRevealed,
-  customRefinementAnswers,
-  handleCustomRefinementChipClick,
-}: any) => {
-  const refinementCategory = mapCustomCategoryToRefinementCategory(customParsedCategory);
-  const refinementQuestions = refinementCategory ? CATEGORY_REFINEMENT_QUESTIONS[refinementCategory] : [];
-  return (
-    <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-[32px] p-5 sm:p-7 shadow-lg shadow-slate-200/40 space-y-6 animate-in fade-in slide-in-from-bottom duration-400">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-200 flex items-center justify-center text-xl">
-            {clarificationReason === 'recognized_birthday' ? '🎉' :
-             clarificationReason === 'recognized_trip' ? '✈️' :
-             clarificationReason === 'recognized_friends' ? '🏡' :
-             clarificationReason === 'recognized_dinner' ? '🍽️' :
-             clarificationReason === 'recognized_project' ? '🚀' : '❓'}
-          </div>
-          <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">
-              Here's what I caught
-            </span>
-            <h3 className="text-base sm:text-lg font-black text-slate-900">
-              {clarificationReason === 'recognized_birthday' ? 'Birthday Celebration' :
-               clarificationReason === 'recognized_trip' ? 'Trip / Getaway' :
-               clarificationReason === 'recognized_friends' ? 'Visiting Friends / Hosting' :
-               clarificationReason === 'recognized_dinner' ? 'Dinner / Dining Event' :
-               clarificationReason === 'recognized_project' ? 'Project / Milestone' :
-               'Your Event'}
-            </h3>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setCustomClarificationStep('none')}
-          className="text-xs text-slate-400 hover:text-slate-700 font-semibold px-2.5 py-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-        >
-          Cancel
-        </button>
-      </div>
-
-      <div className="p-3.5 rounded-2xl border bg-blue-50 border-blue-200 text-blue-950 text-xs leading-relaxed">
-        <span>
-          <strong>"{customEventTitle}"</strong>
-          {customDate && <> on <strong>{formatDisplayDate(customDate)}</strong></>}
-          {customWho && <> with <strong>{customWho}</strong></>}
-          . That's my best read of it - check the fields below and fix anything I got wrong before we tailor the timeline.
-        </span>
-      </div>
-
-      <form onSubmit={handleConfirmCustomClarification} className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700">Event Description / Title</label>
-          <input
-            type="text"
-            required
-            value={customEventTitle}
-            onChange={(e) => setCustomEventTitle(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">Who's involved (optional)</label>
-            <input
-              type="text"
-              value={customWho}
-              onChange={(e) => setCustomWho(e.target.value)}
-              placeholder="e.g. Maya, or your manager and director"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">Category Type</label>
-            <select
-              value={customParsedCategory}
-              onChange={(e) => setCustomParsedCategory(e.target.value as any)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800 cursor-pointer"
-            >
-              <option value="birthday">🎉 Birthday / Celebration</option>
-              <option value="trip">✈️ Trip / Travel</option>
-              <option value="friends">🏡 Hosting / Visitors</option>
-              <option value="dinner">🍽️ Dinner / Dining</option>
-              <option value="project">🚀 Project / Deadline</option>
-              <option value="custom">📅 General Event</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">Target Date</label>
-            <input
-              type="date"
-              required
-              value={customDate}
-              onChange={(e) => setCustomDate(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">Time</label>
-            <input
-              type="time"
-              value={customTime}
-              onChange={(e) => setCustomTime(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700">Location / Venue (Optional)</label>
-          <input
-            type="text"
-            value={customLocation}
-            onChange={(e) => setCustomLocation(e.target.value)}
-            placeholder="e.g. London, Home, Restaurant..."
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:outline-none focus:border-slate-800"
-          />
-        </div>
-
-        {customRefineRevealed && refinementQuestions.length > 0 && (
-          <div className="space-y-4 pt-3 border-t border-slate-100 animate-in fade-in duration-300">
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              A few quick follow-ups
-            </p>
-            {refinementQuestions.map((q: any) => {
-              const selectedAnswers: string[] = customRefinementAnswers[q.id] || [];
-              return (
-                <div key={q.id} className="space-y-1.5">
-                  <p className="text-xs sm:text-sm font-bold text-slate-900">{q.question}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {q.chips.map((chip: string) => {
-                      const isSelected = selectedAnswers.includes(chip);
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => handleCustomRefinementChipClick(q.id, chip, Boolean(q.allowMultiple))}
-                          className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
-                              : 'bg-slate-50 hover:bg-slate-100 border-slate-200/90 text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                          <span>{chip}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="pt-2 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => setCustomClarificationStep('none')}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-          >
-            Back to Presets
-          </button>
-          <button
-            type="submit"
-            className="px-6 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-sky-300" />
-            <span>
-              {refinementQuestions.length > 0 && !customRefineRevealed ? 'Continue' : 'Build Ahead Of Time Milestones'}
-            </span>
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
 
 interface InitialPresetsAndFreeformProps {
   primaryPresets?: PromptPreset[];

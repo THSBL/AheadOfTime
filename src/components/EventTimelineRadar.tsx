@@ -34,6 +34,33 @@ import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
 
+// Category-specific example so the "SOMETHING OFF?" placeholder feels like
+// it's actually about this event, not a hardcoded party-planning example
+// shown regardless of context (e.g. on a business trip). A pending
+// proactive suggestion always wins when there is one, since that's a real
+// question about this exact plan rather than a generic hint.
+const CORRECTION_PLACEHOLDER_BY_CATEGORY: Partial<Record<CalendarEvent['category'], string>> = {
+  travel_trip: "e.g. Also need to book a rental car",
+  booking_trip: "e.g. Also need to book a rental car",
+  birthday_party: "e.g. It's just a small dinner, not a big party",
+  hosting_visitors: "e.g. They're staying 3 nights, not just one",
+  friends_family: "e.g. They're staying 3 nights, not just one",
+  festival_concert: "e.g. We already have tickets, just need transport",
+  dinner_social: "e.g. Two guests are vegetarian",
+  project_deadline: "e.g. Legal review needs to happen first",
+  kids_school: "e.g. It's a themed dress-up day",
+  kids_hobbies: "e.g. Need to arrange a carpool with another parent",
+  maintenance: "e.g. It's a different car this time",
+  subscription: "e.g. Actually keep this one, just downgrade the plan",
+};
+
+function getCorrectionPlaceholder(event: CalendarEvent | null | undefined, pendingSuggestion: IntakeQuestion | null): string {
+  if (pendingSuggestion) {
+    return `Answer above, or type your own take on: "${pendingSuggestion.question}"`;
+  }
+  return (event && CORRECTION_PLACEHOLDER_BY_CATEGORY[event.category]) || "e.g. It's just me and my partner, not a group";
+}
+
 interface EventTimelineRadarProps {
   events: CalendarEvent[];
   selectedEventId: string | null;
@@ -232,7 +259,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       setCorrectionInput('');
       setCorrectionReply(null);
       setCorrectionExchanges([]);
-      setPendingSuggestion(null);
+      // Pick up a proactive suggestion the event already carries (e.g. the
+      // very first one, returned when ChatConsole created this event) -
+      // previously reset to null unconditionally, so a follow-up question
+      // from creation was silently dropped the moment you landed here.
+      setPendingSuggestion(activeEvent.intakeQuestions?.[0] || null);
     }
   }, [activeEvent?.id, activeEvent?.status]);
 
@@ -652,7 +683,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     handleSendCorrection();
                   }
                 }}
-                placeholder="e.g. It's just me and my girlfriend, not a group"
+                placeholder={getCorrectionPlaceholder(activeEvent, pendingSuggestion)}
                 disabled={isSendingCorrection}
                 className="flex-1 min-w-0 text-xs font-medium px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
               />
