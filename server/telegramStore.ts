@@ -1,5 +1,7 @@
 import { query } from './db.js';
 import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, MilestoneCategory } from '../src/types.js';
+import { inferTaskTimingLocally } from '../src/utils/timingAI.js';
+import { applyMilestoneQualityGuardrails } from '../src/utils/tminusRules.js';
 
 export interface TelegramUserSession {
   chatId: number | string;
@@ -202,6 +204,12 @@ function rowToCalendarEvent(row: EventRow, milestoneRows: MilestoneRow[]): Calen
     location: row.location || undefined,
     status: row.status as CalendarEvent['status'],
     context: row.context || {},
+    // needsRefinement/refinedAt aren't real columns - they live inside
+    // context (see markEventConfirmed) but also need to be surfaced at the
+    // top level, since that's where CalendarEvent consumers (including this
+    // same file's own event-creation code) actually read/write them.
+    needsRefinement: row.context?.needsRefinement !== false,
+    refinedAt: row.context?.refinedAt || undefined,
     structuredPayload: row.structured_payload || undefined,
     milestones: milestoneRows
       .filter((m) => m.event_id === row.id)
@@ -649,6 +657,113 @@ export class TelegramSessionStore {
     return rowToSession(row);
   }
 
+  /**
+   * A chat mid-conversation about one event: the bot asked a clarifying
+   * question and is waiting for the answer before committing anything.
+   * Stored in the same integration_accounts.metadata JSONB column
+   * getOrCreateSession already reads/writes, rather than a new table -
+   * this is short-lived, per-chat scratch state, not a durable record.
+   */
+  public static async getPendingClarification(
+    chatId: number | string
+  ): Promise<{ originalText: string; question: string; askedAt: string } | undefined> {
+    const row = await this.getAccountRow(chatId);
+    return row?.metadata?.pendingClarification;
+  }
+
+  public static async setPendingClarification(
+    chatId: number | string,
+    pending: { originalText: string; question: string; askedAt: string } | null
+  ): Promise<void> {
+    await this.getOrCreateSession(chatId);
+    const row = await this.getAccountRow(chatId);
+    const metadata = { ...(row?.metadata || {}) };
+    if (pending) {
+      metadata.pendingClarification = pending;
+    } else {
+      delete metadata.pendingClarification;
+    }
+    await query(
+      `UPDATE integration_accounts SET metadata = $2 WHERE channel = 'telegram' AND external_id = $1`,
+      [String(chatId), JSON.stringify(metadata)]
+    );
+  }
+
+  /**
+   * A chat that clicked "Add Note" on an already-created event and is
+   * expected to type that note as their next message. Same JSONB-metadata
+   * approach as pendingClarification, kept as a separate field since it's a
+   * conceptually different wait (adding to an existing event vs. answering
+   * a question about a not-yet-created one).
+   */
+  public static async getPendingEventNote(chatId: number | string): Promise<string | undefined> {
+    const row = await this.getAccountRow(chatId);
+    return row?.metadata?.pendingNoteForEventId;
+  }
+
+  public static async setPendingEventNote(chatId: number | string, eventId: string | null): Promise<void> {
+    await this.getOrCreateSession(chatId);
+    const row = await this.getAccountRow(chatId);
+    const metadata = { ...(row?.metadata || {}) };
+    if (eventId) {
+      metadata.pendingNoteForEventId = eventId;
+    } else {
+      delete metadata.pendingNoteForEventId;
+    }
+    await query(
+      `UPDATE integration_accounts SET metadata = $2 WHERE channel = 'telegram' AND external_id = $1`,
+      [String(chatId), JSON.stringify(metadata)]
+    );
+  }
+
+  /**
+   * Turns a free-text note into one new milestone on an existing event,
+   * using the same lead-time inference and context-aware dedup/suppression
+   * guardrails as every other milestone-generation path in the app -
+   * fixes "Add Note" previously just telling the user to type it somewhere
+   * or open the web app, without ever actually doing anything with it.
+   * Returns the created milestone, or undefined if the guardrail pass
+   * determined it duplicates an existing one (nothing is added in that case).
+   */
+  public static async addNoteMilestoneToEvent(eventId: string, noteText: string): Promise<TMinusMilestone | undefined> {
+    const event = await this.getEvent(eventId);
+    if (!event) return undefined;
+
+    const timing = inferTaskTimingLocally(noteText, '', event.title || '');
+    const offsetMinutes =
+      timing.unit === 'weeks' ? -timing.amount * 7 * 24 * 60 :
+      timing.unit === 'hours' ? -timing.amount * 60 :
+      -timing.amount * 24 * 60;
+    const targetDate = new Date(new Date(event.eventDate).getTime() + offsetMinutes * 60 * 1000);
+
+    const candidate: TMinusMilestone = {
+      id: `ms_note_${Date.now()}`,
+      eventId,
+      tMinusLabel: timing.badge,
+      tMinusOffsetMinutes: offsetMinutes,
+      calculatedDate: targetDate.toISOString().substring(0, 10),
+      title: noteText.trim(),
+      description: timing.reason,
+      category: timing.category,
+      status: 'pending',
+    };
+
+    const guarded = applyMilestoneQualityGuardrails([...(event.milestones || []), candidate], {
+      title: event.title,
+      location: event.location,
+      rawText: noteText,
+    });
+    const wasKept = guarded.some((m) => m.id === candidate.id);
+    if (!wasKept) return undefined;
+
+    await query(
+      `INSERT INTO milestones (event_id, title, description, category, calculated_date, status, kind)
+       VALUES ($1, $2, $3, $4, $5, 'pending', 'milestone')`,
+      [eventId, candidate.title, candidate.description, candidate.category, candidate.calculatedDate]
+    );
+    return candidate;
+  }
+
   public static async recordEventCreated(chatId: number | string, event: CalendarEvent): Promise<void> {
     const session = await this.getOrCreateSession(chatId);
 
@@ -727,6 +842,25 @@ export class TelegramSessionStore {
     );
 
     console.log(`💾 Recorded event ${eventId} ("${event.title}") for chat ${chatId}.`);
+  }
+
+  /**
+   * Marks an event's default milestones as accepted-as-is. Fixes a real bug:
+   * the Telegram "Keep Default Runway" button used to mutate a CalendarEvent
+   * object fetched from getEvent() and then just discard it - nothing was
+   * ever written back, so the confirmation had no effect on the stored
+   * event at all. needsRefinement/refinedAt aren't real columns on `events`,
+   * so this folds them into the same context JSONB column recordEventCreated
+   * already persists and getEvent already reads back.
+   */
+  public static async markEventConfirmed(eventId: string): Promise<void> {
+    await query(
+      `UPDATE events
+       SET context = jsonb_set(jsonb_set(COALESCE(context, '{}'::jsonb), '{needsRefinement}', 'false'::jsonb, true), '{refinedAt}', to_jsonb(now()::text), true),
+           updated_at = now()
+       WHERE id = $1`,
+      [eventId]
+    );
   }
 
   public static async getEvent(eventId: string): Promise<CalendarEvent | undefined> {

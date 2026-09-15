@@ -7,6 +7,7 @@ import {
   getCleanEventTitle,
   detectEventCategory,
   attachDeliverablesToMilestones,
+  applyMilestoneQualityGuardrails,
 } from '../src/utils/tminusRules.js';
 
 export interface CalendarAgentResult {
@@ -19,12 +20,21 @@ export interface CalendarAgentResult {
   createdEvent?: CalendarEvent;
 }
 
-const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", an intelligent, high-efficiency personal executive calendar assistant communicating via Telegram.
+const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", a calendar-prep assistant communicating via Telegram. You talk like a sharp, friendly person texting - not a formal executive assistant.
 
 ### Core Objectives:
 1. Parse user scheduling requests (trips, dinners, birthdays, meetings, deadlines, conferences, vacations, weddings) into rich structured calendar events.
-2. Calculate realistic backward preparation runways (T-Minus milestones) with tangible deliverables based on real-world lead times (e.g., weddings take 6-12 months for venue/dress/caterer; dog sitters and boarding take 4-8 weeks; passports and international flights take 8-12 weeks).
-3. Manage the user's schedule with speed, clarity, and zero unnecessary conversational filler. Use clean, modern plain English (avoid archaic words like 'dispatched', 'garments', 'artifact', etc.).
+2. Calculate realistic backward preparation milestones with tangible deliverables based on real-world lead times (e.g., weddings take 6-12 months for venue/dress/caterer; dog sitters and boarding take 4-8 weeks; passports and international flights take 8-12 weeks).
+3. Manage the user's schedule with speed, clarity, and zero unnecessary conversational filler. Use clean, modern plain English (avoid archaic words like 'dispatched', 'garments', 'artifact', etc.) and never internal planning vocabulary either - no "runway", "Track A/B", "macro/micro", "checkpoint gate". Say what you actually did, the way the user themselves would describe it.
+
+### CRITICAL RULE - CONTEXT LEADS, NEVER GENERIC TEMPLATES:
+Category-standard milestones (the usual checklist for "birthday party", "trip", etc.) are a STARTING POINT, not a fixed script. Before including any generic/routine milestone, check it against everything the user actually said. If a stated detail makes a routine milestone irrelevant, DROP it entirely:
+- If the event is at an external venue the user names or implies (a bar, restaurant, hired hall, venue, club) - do NOT generate milestones for supplies/setup that venue would already provide (buying ice, glassware, decorations, tables, a sound system). Only generate milestones for what the user must personally still arrange.
+- Example: "planning a party in a bar" needs a reservation/headcount milestone, NOT "buy ice and glassware". If the user mentions a specific preference (e.g. "make sure her favorite liqueur is available"), generate ONE targeted milestone for exactly that, not a generic shopping list.
+- When genuinely unsure whether a routine milestone still applies, leave it out rather than include something irrelevant.
+
+### CRITICAL RULE - NO DUPLICATE TASKS:
+Each real-world task exists as exactly ONE milestone. Review your own list before responding and remove anything that covers the same underlying task as another entry, even if worded differently.
 
 ### Temporal Grounding Rules:
 - Every incoming user message contains dynamic system time context in the format:
@@ -33,7 +43,7 @@ const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", an intelligent, h
 - Never guess the current year or date; rely exclusively on the injected system context.
 
 ### Response Format:
-You MUST respond with a valid JSON object matching one of two schemas:
+You MUST respond with a valid JSON object matching one of three schemas:
 
 #### Option A: Event Creation / Compound Scheduling Request (e.g. "Trip to Scottish Highlands Oct 14-18 with 4 friends", "Dinner party next Friday at 7pm", "Product launch Nov 15")
 \`\`\`json
@@ -86,6 +96,15 @@ You MUST respond with a valid JSON object matching one of two schemas:
   "time_min_iso": "2026-09-09T12:00:00+01:00",
   "time_max_iso": "2026-09-09T18:00:00+01:00",
   "telegram_reply": "*Schedule for Tomorrow Afternoon* (\`2026-09-09\`):\\n• No scheduled conflicts between \`12:00\` and \`18:00\`. Your afternoon is clear."
+}
+\`\`\`
+
+#### Option C: Clarification Needed - use ONLY when a detail is genuinely necessary to plan correctly and you'd otherwise have to guess something important (e.g. the event date is completely absent, or "the pitch" doesn't say what city). Do NOT use this for things you can reasonably infer or that don't change the plan - most messages should go straight to Option A.
+Ask AT MOST 2 short questions in ONE message - never a back-and-forth interrogation. You get exactly one clarification round per event: if you already asked once for this conversation (a prior user message answered a clarification_needed question), do NOT ask again - use Option A instead, fill any remaining gaps with a clearly-labeled best guess, and say so in the telegram_reply.
+\`\`\`json
+{
+  "type": "clarification_needed",
+  "telegram_reply": "Got the shape of it - a client pitch trip to NY, next month. Two quick things:\\n1. Solo, or is anyone else from your team going?\\n2. Are flights/hotel already booked, or still to arrange?"
 }
 \`\`\`
 
@@ -216,7 +235,17 @@ export class GeminiCalendarAgent {
   }
 
   /**
-   * Main processor: executes Gemini Flash extraction or intelligent calendar parser fallback
+   * Main processor: executes Gemini Flash extraction or intelligent calendar parser fallback.
+   *
+   * Supports exactly one round of clarification per event (see Option C in
+   * COMPOUND_EVENT_SYSTEM_PROMPT): if a prior message left a question
+   * pending for this chat, this call's rawText is treated as the answer,
+   * combined with the original message, and the pending state is cleared
+   * before Gemini even runs - so a crash mid-request can't leave the chat
+   * stuck waiting forever. If Gemini asks a *second* clarifying question in
+   * a row despite the prompt's explicit "don't ask again" instruction, that
+   * request is ignored and generation is forced via the deterministic
+   * fallback instead, rather than looping.
    */
   public static async processMessage(
     chatId: number | string,
@@ -224,18 +253,29 @@ export class GeminiCalendarAgent {
     defaultTimezone: string = 'Europe/London'
   ): Promise<CalendarAgentResult> {
     const referenceDateISO = new Date().toISOString();
-    const prompt = this.ensureSystemContext(rawText, defaultTimezone, referenceDateISO);
+
+    const pending = await TelegramSessionStore.getPendingClarification(chatId);
+    let effectiveText = rawText;
+    let isSecondRound = false;
+    if (pending) {
+      await TelegramSessionStore.setPendingClarification(chatId, null);
+      effectiveText = `${pending.originalText}\n\n(Follow-up answer to "${pending.question}"): ${rawText}`;
+      isSecondRound = true;
+    }
+
+    const prompt = this.ensureSystemContext(effectiveText, defaultTimezone, referenceDateISO)
+      + (isSecondRound ? '\n\n[Note: you already asked one clarifying question in this conversation and the user just answered it - use Option A now, filling any remaining gaps with a clearly-labeled best guess. Do not ask another question.]' : '');
     const ai = this.getClient();
 
     // Deterministic trip parser (same one agentProcessor.ts uses for the web
     // app) - trusted over the model/regex fallback for title & dates, since
     // both have been observed to mangle them for messages like "Weekend trip
     // to Lisbon on 5 december...".
-    const tripDecomposition = decomposeComplexTripIntent(rawText, referenceDateISO);
+    const tripDecomposition = decomposeComplexTripIntent(effectiveText, referenceDateISO);
 
     if (ai) {
       try {
-        console.log(`🤖 Invoking Gemini for Telegram chat ${chatId}: "${rawText.slice(0, 60)}..."`);
+        console.log(`🤖 Invoking Gemini for Telegram chat ${chatId}: "${effectiveText.slice(0, 60)}..."`);
         const { text: rawJson, usedModel } = await this.generateWithFallback(ai, prompt);
         console.log(`📥 Gemini raw response (${usedModel}):`, rawJson.slice(0, 200));
 
@@ -244,7 +284,7 @@ export class GeminiCalendarAgent {
           const parsed = JSON.parse(cleaned);
 
           if (parsed.type === 'event_creation' && parsed.summary && parsed.start_date) {
-            return this.buildAndStoreEvent(chatId, parsed, rawText, referenceDateISO, tripDecomposition);
+            return this.buildAndStoreEvent(chatId, parsed, effectiveText, referenceDateISO, tripDecomposition);
           } else if (parsed.type === 'query') {
             return {
               replyText: parsed.telegram_reply || 'Checked your calendar: No conflicts found.',
@@ -256,7 +296,17 @@ export class GeminiCalendarAgent {
                 },
               ],
             };
+          } else if (parsed.type === 'clarification_needed' && parsed.telegram_reply && !isSecondRound) {
+            await TelegramSessionStore.setPendingClarification(chatId, {
+              originalText: rawText,
+              question: parsed.telegram_reply,
+              askedAt: referenceDateISO,
+            });
+            return { replyText: parsed.telegram_reply };
           }
+          // A clarification_needed response on the second round (the model
+          // ignored the "don't ask again" instruction) falls through to the
+          // deterministic engine below rather than looping forever.
         }
       } catch (err: any) {
         console.warn('⚠️ Gemini extraction error:', err.message);
@@ -264,7 +314,7 @@ export class GeminiCalendarAgent {
     }
 
     // Intelligent Deterministic NLP Engine Fallback
-    return this.intelligentNaturalLanguageEngine(chatId, rawText, referenceDateISO, tripDecomposition);
+    return this.intelligentNaturalLanguageEngine(chatId, effectiveText, referenceDateISO, tripDecomposition);
   }
 
   /**
@@ -345,7 +395,16 @@ export class GeminiCalendarAgent {
       };
     });
 
-    const milestones: TMinusMilestone[] = reconcileMilestoneDeliverables(milestonesPendingDeliverables, modelDeliverablesByIndex);
+    const reconciled = reconcileMilestoneDeliverables(milestonesPendingDeliverables, modelDeliverablesByIndex);
+    // Same context-aware dedup/suppression pass the web app's agentProcessor.ts
+    // applies to its own output - a Telegram-originated event shouldn't get a
+    // laxer quality bar than one created in the app. rawInputSnippet is the
+    // user's own message, so "a party at the bar" is caught here too.
+    const milestones: TMinusMilestone[] = applyMilestoneQualityGuardrails(reconciled, {
+      title,
+      location: parsed.location || macro?.destination,
+      rawText: rawInputSnippet,
+    });
 
     const newEvent: CalendarEvent = {
       id: eventId,

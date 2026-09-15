@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ArrowRight, Calendar, CheckCircle2, MessageSquare, ShieldCheck, Clock, Play, LayoutDashboard } from 'lucide-react';
+import { Sparkles, ArrowRight, Calendar, CheckCircle2, MessageSquare, ShieldCheck, Clock, LayoutDashboard } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
@@ -119,17 +119,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
               <span>Get Started For Free</span>
             </button>
           )}
-
-          <button
-            onClick={() => {
-              trackButtonClick('Watch Demo Video', 'landing_hero');
-              alert("Watch Demo Video: Ahead Of Time workflow walkthrough.");
-            }}
-            className="px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm border border-slate-200 shadow-sm transition-all cursor-pointer flex items-center gap-2"
-          >
-            <Play className="w-4 h-4 text-[#447463] fill-[#447463]" />
-            <span>Watch Demo Video</span>
-          </button>
+          {/* "Watch Demo Video" removed: it opened a raw browser alert() with
+              no actual video behind it - a stub CTA reads as broken right
+              under a headline about calm preparedness, which is worse than
+              no CTA at all. Restore once there's a real recording to link. */}
         </div>
 
       </div>
@@ -154,10 +147,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 <div className="w-12 h-12 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-800 group-hover:scale-110 transition-transform shrink-0">
                   <Calendar className="w-6 h-6" />
                 </div>
-                <h3 className="text-base sm:text-lg font-black text-slate-900">Automatic Calendar Sync</h3>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">Reverse-Planned Calendar Sync</h3>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                Link your calendar, and the assistant determines which events need extra preparation.
+                Link your calendar and every event that needs prep gets its own countdown of T-minus milestones — book, confirm, pack — pushed straight to Google Tasks.
               </p>
             </div>
           </div>
@@ -169,10 +162,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 <div className="w-12 h-12 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800 group-hover:scale-110 transition-transform shrink-0">
                   <MessageSquare className="w-6 h-6" />
                 </div>
-                <h3 className="text-base sm:text-lg font-black text-slate-900">Interactive Assistant &amp; Planner</h3>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">Tell It What's Coming, It Works Backward</h3>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                Use the assistant to add a new event or refine your existing events.
+                Describe the event in plain language — in the app or over Telegram — and it hands back the full prep timeline, worked out from the date backward.
               </p>
             </div>
           </div>

@@ -5,7 +5,9 @@ import {
   parseNaturalDateRange,
   decomposeComplexTripIntent,
   generateHeuristicMilestones,
+  applyMilestoneQualityGuardrails,
 } from './tminusRules';
+import type { TMinusMilestone } from '../types';
 
 // Fixed reference date used throughout so date-offset assertions are stable
 // regardless of when the suite runs.
@@ -233,5 +235,92 @@ describe('generateHeuristicMilestones', () => {
       '19:00'
     );
     expect(milestones.length).toBeGreaterThan(0);
+  });
+
+  it('does not suggest buying ice, glassware, or decor for a party hosted at a bar', () => {
+    // Regression test for the exact scenario reported: "a party in a bar"
+    // was still getting the generic self-hosting baseline (buy ice, snacks,
+    // drinks) because that fallback only got suppressed when
+    // context.foodPlan was set to the exact string 'bar' - the free-text
+    // venue mention alone did nothing.
+    const milestones = generateHeuristicMilestones(
+      { category: 'birthday_party', title: "Maya's birthday party at The Rooftop Bar", context: {} },
+      'evt-test-bar',
+      '2026-10-15',
+      '19:00'
+    );
+    const supplyTasks = milestones.filter((m) => /\bice\b|glassware|\bdecor\b|balloons?/i.test(`${m.title} ${m.description || ''}`));
+    expect(supplyTasks).toEqual([]);
+  });
+});
+
+describe('applyMilestoneQualityGuardrails', () => {
+  const makeMilestone = (overrides: Partial<TMinusMilestone> = {}): TMinusMilestone => ({
+    id: overrides.id || 'ms-1',
+    eventId: 'evt-1',
+    tMinusLabel: 'T-7d',
+    tMinusOffsetMinutes: -10080,
+    calculatedDate: '2026-10-08',
+    title: 'Buy party supplies',
+    category: 'shopping',
+    status: 'pending',
+    ...overrides,
+  });
+
+  it('collapses an exact-duplicate title down to a single milestone', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Confirm venue booking' }),
+      makeMilestone({ id: 'b', title: 'Confirm venue booking' }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+  });
+
+  it('collapses a near-restatement of the same task (one title containing the other)', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Buy gift' }),
+      makeMilestone({ id: 'b', title: 'Buy birthday gift' }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+  });
+
+  it('leaves unrelated milestones alone', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Buy gift' }),
+      makeMilestone({ id: 'b', title: 'Book restaurant table' }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(2);
+  });
+
+  it('strips generic venue-supplied purchase milestones when the event is hosted at a bar', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Party beverages, snacks & ice run', category: 'shopping' }),
+      makeMilestone({ id: 'b', title: 'Order balloon decor & party supplies', category: 'shopping' }),
+      makeMilestone({ id: 'c', title: 'Confirm reservation headcount', category: 'booking' }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones, { title: 'Party at the Rooftop Bar' });
+    const titles = result.map((m) => m.title);
+    expect(titles).not.toContain('Party beverages, snacks & ice run');
+    expect(titles).not.toContain('Order balloon decor & party supplies');
+    // A non-supply milestone (booking category) is untouched.
+    expect(titles).toContain('Confirm reservation headcount');
+  });
+
+  it('does not strip supply milestones when no external venue is mentioned', () => {
+    const milestones = [makeMilestone({ id: 'a', title: 'Party beverages, snacks & ice run', category: 'shopping' })];
+    const result = applyMilestoneQualityGuardrails(milestones, { title: "Maya's birthday party at home" });
+    expect(result).toHaveLength(1);
+  });
+
+  it('reads the venue signal from rawText/customNote, not just the title', () => {
+    const milestones = [makeMilestone({ id: 'a', title: 'Buy ice and cups', category: 'shopping' })];
+    const result = applyMilestoneQualityGuardrails(milestones, {
+      title: "Maya's birthday",
+      rawText: 'We booked a table at a restaurant for the party',
+    });
+    expect(result).toHaveLength(0);
   });
 });

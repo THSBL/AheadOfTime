@@ -16,6 +16,27 @@ import {
   X,
   Check,
   Repeat,
+  Users,
+  UtensilsCrossed,
+  Gift,
+  Home,
+  BedDouble,
+  Trophy,
+  Dumbbell,
+  ClipboardList,
+  Car,
+  Shirt,
+  Ticket,
+  Presentation,
+  FileCheck,
+  CalendarClock,
+  Database,
+  Wrench,
+  ClipboardCheck,
+  Briefcase,
+  Plane,
+  Compass,
+  type LucideIcon,
 } from 'lucide-react';
 import { CalendarEvent, EventRecurrenceConfig, RecurrenceFrequency, TMinusMilestone } from '../types';
 import {
@@ -26,6 +47,16 @@ import {
   generateConcreteEventMilestones,
 } from '../utils/creationStateMachine';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
+
+// Looked up by each RefinementQuestion's iconKey (creationStateMachine.ts) -
+// gives every question card a distinct visual anchor instead of an
+// identical numbered black label repeated down the page. Kept in the
+// component rather than the data file so that file stays framework-agnostic.
+const QUESTION_ICONS: Record<string, LucideIcon> = {
+  Users, UtensilsCrossed, Gift, Home, BedDouble, Trophy, Dumbbell,
+  ClipboardList, Car, Shirt, Ticket, Presentation, FileCheck, CalendarClock,
+  Database, Wrench, ClipboardCheck, Briefcase, CheckCircle2, Plane, Compass,
+};
 
 export interface EventCreationWizardProps {
   initialTitle?: string;
@@ -90,6 +121,11 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
   });
   // Draft input text for adding specific tasks per question
   const [customTaskInputs, setCustomTaskInputs] = useState<Record<string, string>>({});
+  // The "add a specific task" input is collapsed by default per question -
+  // every card showing a full input+button row unconditionally, on top of
+  // the chips above it, was a big part of the flow reading as one
+  // undifferentiated block of UI rather than a few quick taps.
+  const [expandedCustomInputs, setExpandedCustomInputs] = useState<Set<string>>(new Set());
 
   // STEP 3 State
   const [generatedMilestones, setGeneratedMilestones] = useState<TMinusMilestone[]>(() => {
@@ -687,30 +723,34 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
                 const selectedAnswers = refinementAnswers[q.id] || [];
                 const customTasks = selectedAnswers.filter((ans) => !q.chips.includes(ans));
                 const draftInput = customTaskInputs[q.id] || '';
+                const QuestionIcon = QUESTION_ICONS[q.iconKey] || ListTodo;
 
                 return (
                   <div key={q.id} className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <label htmlFor={`input-task-${q.id}`} className="text-xs font-black text-slate-900">
-                        {idx + 1}. {q.label}
-                      </label>
-                      {q.allowMultiple ? (
-                        <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2 py-0.5 rounded-md">
-                          Multiple choices allowed
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                          Single choice
-                        </span>
-                      )}
+                    {/* Icon avatar anchors each card visually instead of an
+                        identical numbered black label repeated down the
+                        page - was also the home of a "Single choice" /
+                        "Multiple choices allowed" badge that added clutter
+                        without helping (the chip behavior itself - toggling
+                        vs. replacing the selection - already teaches this
+                        on the first click). */}
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200/90 flex items-center justify-center shrink-0 text-slate-700">
+                        <QuestionIcon className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-0.5 pt-0.5">
+                        <label htmlFor={`input-task-${q.id}`} className="text-xs font-black text-slate-900 block">
+                          {q.label}
+                        </label>
+                        <p className="text-xs text-slate-500 font-medium leading-snug">{q.question}</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-300 shrink-0 pt-1">{idx + 1}/{questions.length}</span>
                     </div>
-
-                    <p className="text-xs text-slate-600 font-medium">{q.question}</p>
 
                     {/* Selectable preset chips (unselected by default) */}
                     <div>
                       <span className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                        {q.allowMultiple ? 'Select applicable options:' : 'Select preferred option:'}
+                        {q.allowMultiple ? 'Select all that apply:' : 'Select preferred option:'}
                       </span>
                       <div className="flex flex-wrap gap-1.5">
                         {q.chips.map((chip) => {
@@ -734,65 +774,85 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
                       </div>
                     </div>
 
-                    {/* Input field with explicit input confirmation button to add specific tasks */}
-                    <div className="space-y-1.5 pt-1 border-t border-slate-100">
-                      <label htmlFor={`input-task-${q.id}`} className="block text-[11px] font-bold text-slate-700">
-                        Add a specific task or item:
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          id={`input-task-${q.id}`}
-                          type="text"
-                          value={draftInput}
-                          onChange={(e) => setCustomTaskInputs((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddCustomTask(q.id, Boolean(q.allowMultiple));
-                            }
-                          }}
-                          placeholder={q.placeholder}
-                          className="flex-1 text-xs sm:text-sm px-3.5 py-2 rounded-xl bg-slate-50/70 border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-slate-900 focus:ring-2 focus:ring-slate-900 outline-none transition-all"
-                        />
-                        <button
-                          id={`btn-add-task-${q.id}`}
-                          type="button"
-                          onClick={() => handleAddCustomTask(q.id, Boolean(q.allowMultiple))}
-                          disabled={!draftInput.trim()}
-                          className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            draftInput.trim()
-                              ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-2xs active:scale-98'
-                              : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                          }`}
-                        >
-                          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                          <span>Add task</span>
-                        </button>
-                      </div>
-
-                      {/* Explicitly added custom tasks */}
-                      {customTasks.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Added tasks:</span>
-                          {customTasks.map((task) => (
-                            <span
-                              key={task}
-                              className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold"
+                    {/* Input field with explicit input confirmation button to add specific tasks.
+                        Collapsed by default - see expandedCustomInputs above. */}
+                    {(() => {
+                      const isInputExpanded = expandedCustomInputs.has(q.id) || customTasks.length > 0;
+                      return (
+                        <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                          {isInputExpanded ? (
+                            <>
+                              <label htmlFor={`input-task-${q.id}`} className="block text-[11px] font-bold text-slate-700">
+                                Add a specific task or item:
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  id={`input-task-${q.id}`}
+                                  type="text"
+                                  value={draftInput}
+                                  onChange={(e) => setCustomTaskInputs((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddCustomTask(q.id, Boolean(q.allowMultiple));
+                                    }
+                                  }}
+                                  placeholder={q.placeholder}
+                                  autoFocus
+                                  className="flex-1 text-xs sm:text-sm px-3.5 py-2 rounded-xl bg-slate-50/70 border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-slate-900 focus:ring-2 focus:ring-slate-900 outline-none transition-all"
+                                />
+                                <button
+                                  id={`btn-add-task-${q.id}`}
+                                  type="button"
+                                  onClick={() => handleAddCustomTask(q.id, Boolean(q.allowMultiple))}
+                                  disabled={!draftInput.trim()}
+                                  className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                    draftInput.trim()
+                                      ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-2xs active:scale-98'
+                                      : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                                  }`}
+                                >
+                                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <span>Add task</span>
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedCustomInputs((prev) => new Set(prev).add(q.id))}
+                              className="text-[11px] font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1 cursor-pointer"
                             >
-                              <span>{task}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTask(q.id, task)}
-                                className="p-0.5 hover:bg-emerald-200 rounded text-emerald-700 hover:text-emerald-900 cursor-pointer"
-                                title={`Remove "${task}"`}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          ))}
+                              <Plus className="w-3 h-3 stroke-[3]" />
+                              <span>Add a specific task or item</span>
+                            </button>
+                          )}
+
+                          {/* Explicitly added custom tasks */}
+                          {customTasks.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Added tasks:</span>
+                              {customTasks.map((task) => (
+                                <span
+                                  key={task}
+                                  className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold"
+                                >
+                                  <span>{task}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveTask(q.id, task)}
+                                    className="p-0.5 hover:bg-emerald-200 rounded text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                                    title={`Remove "${task}"`}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

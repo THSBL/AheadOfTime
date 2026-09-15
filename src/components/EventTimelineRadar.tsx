@@ -326,6 +326,30 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     return true;
   });
 
+  // Group into date-bucket sections so the list reads as a few short chunks
+  // rather than one long undifferentiated scroll - the section header itself
+  // carries the urgency framing, so individual cards don't have to repeat it
+  // as heavily (pairs with the per-card color cleanup below).
+  const milestoneBuckets = (() => {
+    const buckets: { label: string; items: typeof displayedMilestones }[] = [
+      { label: 'Overdue', items: [] },
+      { label: 'Due Soon', items: [] },
+      { label: 'Upcoming', items: [] },
+      { label: 'Done', items: [] },
+    ];
+    displayedMilestones.forEach((ms) => {
+      if (ms.status === 'completed' || ms.status === 'skipped') {
+        buckets[3].items.push(ms);
+        return;
+      }
+      const c = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
+      if (c.isOverdue) buckets[0].items.push(ms);
+      else if (c.isSoon) buckets[1].items.push(ms);
+      else buckets[2].items.push(ms);
+    });
+    return buckets.filter((b) => b.items.length > 0);
+  })();
+
   return (
     <div className="flex-1 flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs w-full">
       
@@ -718,12 +742,24 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             </button>
           </div>
         ) : (
-          displayedMilestones.map((ms) => {
+          milestoneBuckets.map((bucket) => (
+            <React.Fragment key={bucket.label}>
+              <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
+                <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                  {bucket.label}
+                </span>
+                <span className="text-[11px] font-bold text-slate-300">{bucket.items.length}</span>
+              </div>
+              {bucket.items.map((ms) => {
             const isCompleted = ms.status === 'completed';
             const isSkipped = ms.status === 'skipped';
             const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
             const isOverdue = !isCompleted && !isSkipped && msCountdown.isOverdue;
-            const isUrgentSoon = !isOverdue && !isCompleted && !isSkipped && msCountdown.diffDays <= 3;
+            // Was a separate hard-coded `diffDays <= 3` check, inconsistent
+            // with getCountdownStatus's own `isSoon` (fires at <= 5 days,
+            // "Tomorrow", "Due today"). Use the shared flag so there's one
+            // definition of "urgent soon" instead of two disagreeing ones.
+            const isUrgentSoon = !isOverdue && !isCompleted && !isSkipped && msCountdown.isSoon;
             const isDeliverable = ms.kind === 'deliverable';
             const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
             const isExpanded = expandedMilestoneIds.has(ms.id);
@@ -739,8 +775,13 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     ? 'bg-slate-50/60 border-slate-200 text-slate-400 opacity-70'
                     : isCompleted
                     ? 'bg-slate-50/90 border-slate-200 text-slate-400'
+                    // One signal per fact: overdue already shows on the due-pill
+                    // below, so the card itself carries a single left-border
+                    // accent rather than repeating rose across bg/border/ring
+                    // too - matches the same single-accent pattern already used
+                    // for the deliverable/has-deliverables states below.
                     : isOverdue
-                    ? 'bg-rose-50/60 border-rose-300 hover:border-rose-400 text-slate-800 shadow-2xs ring-1 ring-rose-200/60'
+                    ? 'bg-white border-slate-200/90 hover:border-rose-300 text-slate-800 shadow-xs border-l-4 border-l-rose-500'
                     : isDeliverable
                     ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
                     : hasDeliverables
@@ -758,11 +799,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         : isCompleted
                         ? 'bg-emerald-600 text-white shadow-2xs cursor-pointer'
-                        : isOverdue
-                        ? 'border-2 border-rose-400 hover:border-rose-600 text-transparent cursor-pointer'
-                        : isDeliverable || hasDeliverables
-                        ? 'border-2 border-[#182A42]/40 hover:border-[#182A42] text-transparent cursor-pointer'
-                        : 'border-2 border-slate-300 hover:border-sky-600 text-transparent cursor-pointer'
+                        // Checkbox encodes completion state only - overdue/
+                        // deliverable are already shown via the card's left-
+                        // border accent and the due-pill, so this doesn't
+                        // need its own copy of either signal.
+                        : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
                     }`}
                     title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
                   >
@@ -793,15 +834,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         </span>
                       )}
 
+                      {/* Category is static context, not a time-sensitive
+                          signal - one neutral badge shape for all three,
+                          differentiated by icon rather than a competing hue
+                          per category (color stays reserved for urgency and
+                          completion state elsewhere on this card). */}
                       {isReservation && (
-                        <span className="text-[10px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
                           <CalendarCheck className="w-2.5 h-2.5" />
                           <span>Reservation</span>
                         </span>
                       )}
 
                       {isPurchase && (
-                        <span className="text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
                           <ShoppingBag className="w-2.5 h-2.5" />
                           <span>Purchase</span>
                         </span>
@@ -845,21 +891,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     </div>
 
                     {/* Task Title */}
+                    {/* Overdue/deliverable already carry their own signal
+                        (left-border accent, due-pill, category badge) - the
+                        title only needs to distinguish completed from active. */}
                     <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
-                      isCompleted
-                        ? 'line-through text-slate-400'
-                        : isOverdue
-                        ? 'text-rose-950 font-black'
-                        : isDeliverable
-                        ? 'text-[#182A42]'
-                        : 'text-slate-900'
+                      isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
                     }`}>
                       {ms.title}
                     </h4>
 
                     {/* Task Description */}
                     {ms.description && (
-                      <p className={`text-[11px] sm:text-xs font-medium leading-relaxed break-words ${isOverdue ? 'text-rose-700/80' : 'text-slate-500'}`}>
+                      <p className="text-[11px] sm:text-xs font-medium leading-relaxed break-words text-slate-500">
                         {ms.description}
                       </p>
                     )}
@@ -937,8 +980,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   </button>
                 </div>
               </div>
-            );
-          })
+                );
+              })}
+            </React.Fragment>
+          ))
         )}
 
         {/* Target Deadline Summary Box */}
