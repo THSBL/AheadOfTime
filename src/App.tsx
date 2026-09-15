@@ -657,6 +657,19 @@ function App() {
                       setIsManualModalOpen(true);
                     }
                     window.history.replaceState({}, document.title, window.location.pathname);
+                  } else {
+                    // Signed in, but neither lookup found this event - the
+                    // Telegram chat that created it isn't paired to THIS
+                    // Google account (or was never paired at all). Was a
+                    // silent no-op identical to the guest case, just for a
+                    // different reason - the user just saw "the app opens
+                    // but not the new event" with zero explanation either way.
+                    setAgentConfirmationToast({
+                      id: Date.now(),
+                      title: "Couldn't find this event",
+                      message: "This event was created via Telegram, but it isn't linked to the Google account you're signed in with. Check that your Telegram is paired to this same account in Settings.",
+                    });
+                    window.history.replaceState({}, document.title, window.location.pathname);
                   }
                 });
             }
