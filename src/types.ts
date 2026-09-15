@@ -104,6 +104,7 @@ export interface StructuredMilestone {
   refinementOptions?: string[];
   applicableRoles?: UserEventRole[];
   deliverables?: Deliverable[];
+  source?: 'category_default' | 'narrative_inferred';
 }
 
 export interface StructuredPlanningPayload {
@@ -137,6 +138,7 @@ export interface TMinusMilestone {
   refinementOptions?: string[];
   applicableRoles?: UserEventRole[];
   deliverables?: Deliverable[];
+  source?: 'category_default' | 'narrative_inferred';
 }
 
 export interface WatchpointData {
