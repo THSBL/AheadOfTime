@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { WhatsAppEventSessionState } from '../src/types/whatsapp.js';
 import { TMinusMilestone, MilestoneCategory } from '../src/types.js';
+import { DEFAULT_FAST_MODELS } from './agentProcessor.js';
 
 let aiClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI {
@@ -93,7 +94,12 @@ Generate 4 to 6 tailored T-minus milestones for this event and return a JSON obj
     try {
       const ai = getGenAI();
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        // Was hardcoded to the older 'gemini-2.5-flash', a third model choice
+        // unrelated to the chat-console/Telegram pipelines' DEFAULT_FAST_MODELS.
+        // No retry-on-timeout wrapper here, so use the stronger model in that
+        // list rather than the lite one - a single attempt is worth spending
+        // on the more capable model when there's no fallback to catch a miss.
+        model: DEFAULT_FAST_MODELS[DEFAULT_FAST_MODELS.length - 1],
         contents: prompt,
         config: {
           systemInstruction,

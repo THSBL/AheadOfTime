@@ -888,8 +888,8 @@ export function generateHeuristicMilestones(
     addMilestone('T-2h', -120, 'Go/No-Go launch check & team standup', 'logistics', 'Conduct final operational sync, monitor alarms, and execute release sequence');
   }
   else if (category === 'travel_trip') {
-    const isBusinessTrip = /business|work\s*trip|conference|summit|corporate|client|pitch|tradeshow/i.test(event.title || '') || 
-      /business|work\s*trip|conference/i.test(context.customNote || '') ||
+    const isBusinessTrip = /business|work\s*trip|conference|summit|corporate|client|pitch|tradeshow/i.test(event.title || '') ||
+      /business|work\s*trip|conference|summit|corporate|client|pitch|tradeshow/i.test(context.customNote || '') ||
       /business/i.test(category || '') ||
       context.isBusinessTrip === true ||
       event.macroEvent?.archetype === 'Business Trip';
@@ -1082,7 +1082,17 @@ export function generateHeuristicMilestones(
     addMilestone('T-Return-1d', -1 * 24 * 60, 'Return trip prep & flight status check', 'logistics', 'Verify return flight status, pack return luggage, and plan hotel check-out', returnBaseDate, 'milestone');
     addMilestone('T-2h', -120, 'Departure buffer & home lockup', 'logistics', 'Final luggage zip, lock house, travel to airport / terminal', undefined, 'milestone');
     if (context.customNote && context.customNote.trim()) {
-      addMilestone('T-5d', -5 * 24 * 60, `Travel prep: ${context.customNote.trim()}`, 'prep', `Travel custom requirement: ${context.customNote.trim()}`, undefined, 'milestone');
+      const note = context.customNote.trim();
+      // A note mentioning someone else approving/signing off is a real gate,
+      // not a generic prep reminder - name and time it like one (mirrors the
+      // BUSINESS TRIP DEDICATED TRACK above, for notes that don't otherwise
+      // trip the isBusinessTrip detection, e.g. a personal trip with one
+      // work-adjacent approval buried in it).
+      if (/approv|sign[\s-]?off|greenlight|sign.?ed off/i.test(note)) {
+        addMilestone('T-7d', -7 * 24 * 60, 'Approval secured', 'prep', `From your note: "${note}"`, undefined, 'deliverable');
+      } else {
+        addMilestone('T-5d', -5 * 24 * 60, `Travel prep: ${note}`, 'prep', `Travel custom requirement: ${note}`, undefined, 'milestone');
+      }
     }
     if (Array.isArray(context.customItems)) {
       context.customItems.forEach((ci: string) => {
@@ -1622,6 +1632,12 @@ export function decomposeComplexTripIntent(
   day2Obj.setDate(day2Obj.getDate() + 1);
   const day2DateStr = day2Obj.toISOString().substring(0, 10);
 
+  const getMilestoneDate = (tMinusDays: number) => {
+    const d = new Date(startObj);
+    d.setDate(d.getDate() - tMinusDays);
+    return d.toISOString().substring(0, 10);
+  };
+
   // Determine Archetype & Macro Title
   let archetype = 'Trip';
   let macroTitle = 'Group Trip Horizon';
@@ -1657,6 +1673,78 @@ export function decomposeComplexTripIntent(
     // No specific archetype matched (stag/hen/conference/vacation) - use a
     // plain, user-facing title instead of exposing the internal sentinel.
     macroTitle = macroTitle === 'Group Trip Horizon' ? `Trip to ${destination}` : `${macroTitle} (${destination})`;
+  }
+
+  // Business trips get their own dedicated track instead of the group-trip
+  // role/activity logic below (which assumes a stag/hen/family-style group
+  // needing an "activity" reservation and guest/co-organiser roles - neither
+  // applies to a solo work trip). Mirrors the same isBusinessTrip signals and
+  // milestone content as generateHeuristicMilestones' business-trip branch,
+  // so a business trip gets client-meeting/slide-deck/attire milestones here
+  // too rather than falling through to "Shortlist Day 2 Paintball/Go-Karting."
+  const isBusinessTripIntent = /business|work\s*trip|conference|summit|corporate|client|pitch|tradeshow/i.test(message);
+  if (isBusinessTripIntent) {
+    const businessTitle = destination ? `Business Trip to ${destination}` : 'Business Trip';
+    const businessMilestones: StructuredMilestone[] = [
+      {
+        task: 'Flights & corporate hotel booking locked',
+        target_date: getMilestoneDate(30),
+        t_minus_days: 30,
+        scope: 'macro',
+        tag: 'Logistics',
+        kind: 'deliverable',
+        needsRefinement: false,
+        description: 'Lock corporate flights, hotel near meeting venue, and travel expense approval.',
+      },
+      {
+        task: 'Client meetings & stakeholder agendas confirmed',
+        target_date: getMilestoneDate(14),
+        t_minus_days: 14,
+        scope: 'macro',
+        tag: 'Reservations',
+        kind: 'deliverable',
+        needsRefinement: false,
+        description: 'Confirm meeting calendar invites, attendee availability, and discussion objectives.',
+      },
+      {
+        task: 'Presentation slide deck & briefing notes finalized',
+        target_date: getMilestoneDate(7),
+        t_minus_days: 7,
+        scope: 'micro',
+        tag: 'Prep',
+        kind: 'deliverable',
+        needsRefinement: false,
+        description: 'Finalize slides, review talking points, and prepare digital handouts / cloud backup.',
+      },
+      {
+        task: 'Business attire, laptop chargers & corporate expense card setup',
+        target_date: getMilestoneDate(3),
+        t_minus_days: 3,
+        scope: 'micro',
+        tag: 'Logistics',
+        kind: 'milestone',
+        needsRefinement: false,
+        description: 'Pack tailored suit/business clothes, device chargers, adapters, and setup expense receipt tracker.',
+      },
+    ];
+    businessMilestones.sort((a, b) => b.t_minus_days - a.t_minus_days);
+
+    return {
+      macro_event: {
+        title: businessTitle,
+        start_date: startDateStr,
+        end_date: endDateStr,
+        type: 'Business Trip',
+        destination,
+        archetype: 'Business Trip',
+      },
+      sub_events: [],
+      milestones: businessMilestones,
+      conversational_response:
+        `I've built a business-trip runway for **${businessTitle}** (${startDateStr} to ${endDateStr}): ` +
+        `flights & hotel, client meeting confirmation, slide deck prep, and travel-day logistics. ` +
+        `Let me know if there's a specific approval step (e.g. a manager sign-off) or client detail I should add as its own milestone.`,
+    };
   }
 
   // 2. Unpack Embedded Sub-Events
@@ -1697,12 +1785,6 @@ export function decomposeComplexTripIntent(
 
   // 3. Multi-Track Milestone Generation
   const milestones: StructuredMilestone[] = [];
-
-  const getMilestoneDate = (tMinusDays: number) => {
-    const d = new Date(startObj);
-    d.setDate(d.getDate() - tMinusDays);
-    return d.toISOString().substring(0, 10);
-  };
 
   const activityTitle = subEvents[0]?.title || 'Day 2 activity';
   const activityRefinementOptions = [

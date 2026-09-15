@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles, ArrowRight, Calendar, CheckCircle2, MessageSquare, ShieldCheck, Clock, LayoutDashboard } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
+import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
 
 interface LandingUSPPageProps {
   onGetStarted: () => void;
@@ -16,6 +17,11 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   onGoToDashboard,
   onOpenPrivacyPolicy,
 }) => {
+  // Explicit even though it matches the index.html default - keeps this
+  // page's title/description correct if a user lands back on "/" after
+  // usePageMeta reverted it from a page-specific value on another route.
+  usePageMeta(DEFAULT_TITLE, DEFAULT_DESCRIPTION);
+
   return (
     <div className="relative z-10 min-h-screen w-full bg-[#182A42] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#182A42] selection:text-white">
 

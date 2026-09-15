@@ -175,10 +175,15 @@ When evaluating any event (Wedding, Birthday, Holiday, Conference, or Project Ma
 
 When processing free-text user plans:
 1. Detect Date Ranges: If dates span multiple days (e.g., Friday to Sunday, or [Date X] to [Date Y]), establish the parent trip horizon (macro_event with start_date and end_date).
-2. Unpack Embedded Sub-Tasks: Explicitly scan for sub-events, side-quests, bookings, or activities mentioned within the dates (e.g., "activity for the 2nd day", "Saturday group dinner", "Costume theme night").
-3. Backward Plan Both Layers:
-   - Generate operational runway milestones for the entire trip (Track A: Macro Logistics, e.g., T-30d book travel/stay, T-14d collect group kitty/funds, T-3d packing & logistics).
-   - Generate specific preparation milestones for the embedded sub-tasks with their own required lead-times (Track B: Micro Specifics, e.g., activity booking lead times need 2-3 weeks, not just night-before, e.g., T-21d shortlist & reserve Day 2 group activity, T-7d confirm headcount & waivers).
+2. Unpack Embedded Sub-Tasks: Explicitly scan the FULL free text for anything beyond the bare event/date - not just trip/party sub-events (e.g., "activity for the 2nd day", "Saturday group dinner", "Costume theme night") but also narrative-derived obligations, dependencies, and implied prep from professional/business context:
+   - An approval or sign-off mentioned by anyone other than the user (e.g. "my manager has to approve the slide deck", "legal needs to sign off") becomes its OWN milestone gate (e.g. "Manager Approval Secured"), not a detail folded into another task.
+   - A stated activity implies its own prep even when not spelled out (e.g. "presenting to a client" implies a milestone for business attire/materials prep; "hosting a dinner" implies a menu/venue milestone).
+   - A named role, stakeholder, or dependency mentioned in passing (e.g. "my co-founder is joining", "waiting on the vendor quote") should surface as a coordination milestone if it gates something else.
+   - Do this for ANY event type, not only trips - the same scanning applies to a single-day work event, a project deadline, or a personal errand with an embedded narrative detail.
+3. Backward Plan Three Layers:
+   - Generate operational runway milestones for the whole event/trip (Track A: Macro Logistics - the category-standard track, e.g., T-30d book travel/stay, T-14d collect group kitty/funds, T-3d packing & logistics).
+   - Generate specific preparation milestones for embedded sub-events with their own required lead-times (Track B: Micro Specifics - e.g., activity booking lead times need 2-3 weeks, not just night-before, e.g., T-21d shortlist & reserve Day 2 group activity, T-7d confirm headcount & waivers).
+   - Generate a milestone for each narrative-derived obligation found in step 2 (Track C: Narrative-Inferred - tag these with source: "narrative_inferred" in the output so the app can show the user "this came from what you typed" rather than presenting it as a generic default).
 4. Interactive Clarification: If details are missing (e.g., location, group size, budget for the activity), proactively propose 2-3 tailored options while drafting the initial milestone structure.
 
 SECURITY BOUNDARIES & RULES:
@@ -284,7 +289,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
       milestones: {
         type: Type.ARRAY,
-        description: "Multi-track milestones across Track A (macro logistics) and Track B (micro specifics)",
+        description: "Multi-track milestones across Track A (macro logistics), Track B (micro specifics), and Track C (narrative-inferred)",
         items: {
           type: Type.OBJECT,
           properties: {
@@ -294,6 +299,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
             scope: { type: Type.STRING, description: "macro or micro" },
             tag: { type: Type.STRING, description: "Logistics, Activity, Reservations, or Supplies" },
             description: { type: Type.STRING },
+            source: { type: Type.STRING, description: "category_default (standard track for this event type) or narrative_inferred (derived from a specific detail the user typed, e.g. an approval gate or implied prep step)" },
           },
           required: ["task", "target_date", "t_minus_days", "scope", "tag"],
         },
@@ -400,7 +406,14 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
     }),
     DEFAULT_FAST_MODELS,
-    8000
+    // Was 8000ms. This call now asks the model to also scan for narrative-
+    // inferred milestones (approvals, implied prep) on top of the standard
+    // runway, which needs more room to reason - an 8s cutoff was punishing
+    // exactly the careful reasoning we want by racing it into the narrative-
+    // blind decomposeComplexTripIntent/generateHeuristicMilestones fallback.
+    // Paired with api/agent/process.ts's maxDuration bump so a full 2-model
+    // race (worst case ~24s) fits inside the serverless function's timeout.
+    12000
   );
 
   let rawText = response.text || "{}";
@@ -606,6 +619,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         refinementOptions: m.refinementOptions,
         applicableRoles: m.applicableRoles,
         deliverableType: m.deliverableType,
+        source: m.source === 'narrative_inferred' ? 'narrative_inferred' : 'category_default',
       };
     });
     milestones = attachDeliverablesToMilestones(milestones);

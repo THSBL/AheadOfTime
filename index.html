@@ -5,23 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ahead Of Time - The assistant for busy calendars</title>
     <meta name="description" content="Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does. Drop an entry onto your calendar or plan with our assistant, and Ahead Of Time automatically builds backward preparation milestones." />
+    <link rel="canonical" href="https://aheadoftime.app/" />
     <meta property="og:title" content="Ahead Of Time - The assistant for busy calendars" />
     <meta property="og:description" content="Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does. Less scrambling. More headspace. Time to actually enjoy it." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://aheadoftime.app/" />
+    <meta property="og:site_name" content="Ahead Of Time" />
+    <!-- Stopgap: reuses the existing wide logo banner (1281x239) so link
+         shares aren't blank/broken - summary_large_image really wants a
+         ~1.91:1 image (e.g. 1200x630), so a purpose-made social card is a
+         good follow-up rather than this banner crop. -->
+    <meta property="og:image" content="https://aheadoftime.app/assets/AheadOfTime_Large-logo-tag.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-R1QGR1397K"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-R1QGR1397K', {
-        send_page_view: true,
-        anonymize_ip: true
-      });
+    <meta name="twitter:title" content="Ahead Of Time - The assistant for busy calendars" />
+    <meta name="twitter:description" content="Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does. Less scrambling. More headspace. Time to actually enjoy it." />
+    <meta name="twitter:image" content="https://aheadoftime.app/assets/AheadOfTime_Large-logo-tag.png" />
+    <!-- Structured data for search engines and AI answer engines (GEO) -
+         no JSON-LD existed anywhere before this. SoftwareApplication
+         describes the product itself (free to start, web-based); WebSite
+         identifies the site as a distinct entity from its content. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Ahead Of Time",
+        "url": "https://aheadoftime.app/",
+        "description": "Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does. Describe an event or trip in plain language and it reverse-engineers a countdown of prep milestones, synced to Google Calendar and Google Tasks.",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
     </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Ahead Of Time",
+        "url": "https://aheadoftime.app/"
+      }
+    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Google tag (gtag.js) is intentionally NOT bootstrapped here anymore.
+         It used to load and auto-fire an initial pageview unconditionally on
+         every page load, regardless of the cookie consent choice collected
+         later by React - and independently double-counted that first
+         pageview against the one src/services/analytics.ts's router-driven
+         AnalyticsTracker already fires on every route. initAnalytics() in
+         that file is now the single place GA ever loads or fires anything,
+         gated on hasAnalyticsConsent() - nothing GA-related runs until the
+         user has explicitly opted in. -->
   </head>
   <body>
     <div id="root">
