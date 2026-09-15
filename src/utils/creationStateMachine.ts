@@ -105,6 +105,12 @@ export interface RefinementQuestion {
   placeholder: string;
   chips: string[];
   allowMultiple?: boolean;
+  // A lucide-react icon name (looked up in EventCreationWizard.tsx) - gives
+  // each question card a distinct visual anchor instead of an identical
+  // numbered black label repeated down the page. Kept as a plain string
+  // here rather than a component reference so this data file stays
+  // framework-agnostic.
+  iconKey: string;
 }
 
 export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, RefinementQuestion[]> = {
@@ -116,6 +122,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Send WhatsApp invite link, track headcount of ~15...',
       chips: ['Send digital invites', 'Track group RSVPs', 'Close family only', 'Attending as guest'],
       allowMultiple: false,
+      iconKey: 'Users',
     },
     {
       id: 'food_drinks',
@@ -124,6 +131,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Order bakery cake, party grocery run, restaurant reservation...',
       chips: ['Order bakery cake', 'Party grocery & drinks run', 'Restaurant reservation', 'Potluck / BYOB'],
       allowMultiple: true,
+      iconKey: 'UtensilsCrossed',
     },
     {
       id: 'gifts_details',
@@ -132,6 +140,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Buy solo present + card, group money pool, costume theme...',
       chips: ['Buy celebratory gift & card', 'Organize group gift pool', 'Themed attire / costume', 'No gifts requested'],
       allowMultiple: true,
+      iconKey: 'Gift',
     },
   ],
 
@@ -143,6 +152,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Hosting at our home, staying with them, hotel stay...',
       chips: ['Hosting guests at home', 'Visiting / staying with them'],
       allowMultiple: false,
+      iconKey: 'Home',
     },
     {
       id: 'lodging_prep',
@@ -151,6 +161,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Fresh bedsheets & towels, stock guest toiletries, book travel tickets...',
       chips: ['Fresh bedsheets & guest towels', 'Stock guest toiletries & charger', 'Book transit / flight tickets', 'Plan travel driving route'],
       allowMultiple: true,
+      iconKey: 'BedDouble',
     },
     {
       id: 'dining_host_gift',
@@ -159,6 +170,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Reserve Friday restaurant, grocery run for breakfast, buy host gift...',
       chips: ['Reserve local restaurant table', 'Stock breakfast & coffee essentials', 'Buy host gift & write card', 'Pack travel luggage & outfits'],
       allowMultiple: true,
+      iconKey: 'UtensilsCrossed',
     },
   ],
 
@@ -170,6 +182,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Hosting at our home, staying with them, hotel stay...',
       chips: ['Hosting guests at home', 'Visiting / staying with them'],
       allowMultiple: false,
+      iconKey: 'Home',
     },
     {
       id: 'lodging_prep',
@@ -178,6 +191,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Fresh bedsheets & towels, stock guest toiletries, book travel tickets...',
       chips: ['Fresh bedsheets & guest towels', 'Stock guest toiletries & charger', 'Book transit / flight tickets', 'Plan travel driving route'],
       allowMultiple: true,
+      iconKey: 'BedDouble',
     },
     {
       id: 'dining_host_gift',
@@ -186,6 +200,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Reserve Friday restaurant, grocery run for breakfast, buy host gift...',
       chips: ['Reserve local restaurant table', 'Stock breakfast & coffee essentials', 'Buy host gift & write card', 'Pack travel luggage & outfits'],
       allowMultiple: true,
+      iconKey: 'UtensilsCrossed',
     },
   ],
 
@@ -197,6 +212,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Half marathon race, tennis club championship, jazz gig, woodworking workshop...',
       chips: ['Sports tournament / match', 'Race / marathon prep', 'Musical gig / performance', 'Outdoor / camping trip', 'Craft workshop / class'],
       allowMultiple: false,
+      iconKey: 'Trophy',
     },
     {
       id: 'gear_readiness',
@@ -205,6 +221,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Clean kit & sports uniform, tune instrument, inspect outdoor equipment...',
       chips: ['Clean kit & sports uniform', 'Inspect & pack equipment', 'Prep nutrition & hydration', 'Download offline route / sheets'],
       allowMultiple: true,
+      iconKey: 'Dumbbell',
     },
     {
       id: 'logistics_entry',
@@ -213,6 +230,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Confirm entry fee paid, book hotel near finish line, spectator tickets...',
       chips: ['Confirm registration entry', 'Book travel / lodging', 'Parent / spectator tickets', 'DIY / local meetup'],
       allowMultiple: true,
+      iconKey: 'ClipboardList',
     },
   ],
 
@@ -224,6 +242,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Joining David\'s carpool, driving personal car, team bus...',
       chips: ['Driving our family', 'Arranging carpool', 'Team bus / shared transit', 'Local venue / walk'],
       allowMultiple: false,
+      iconKey: 'Car',
     },
     {
       id: 'gear',
@@ -232,6 +251,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Wash shin guards & team jersey, pack cleats, prep water bottle...',
       chips: ['Clean kit & jersey', 'Pack boots / shinguards', 'Prep labelled water & snacks', 'Spare uniform pack'],
       allowMultiple: true,
+      iconKey: 'Shirt',
     },
     {
       id: 'tickets',
@@ -240,6 +260,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Submit medical waiver, buy spectator wristbands, pay coach fee...',
       chips: ['Signed medical waiver', 'Parent spectator tickets', 'Coach tournament fee', 'No paperwork needed'],
       allowMultiple: true,
+      iconKey: 'Ticket',
     },
   ],
 
@@ -251,6 +272,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Buy tri-fold display board, print color diagrams, craft paper...',
       chips: ['Tri-fold board & markers', 'Science experiment kit', 'Character costume & props', 'No extra supplies needed'],
       allowMultiple: true,
+      iconKey: 'ClipboardList',
     },
     {
       id: 'presentation',
@@ -259,6 +281,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., 5-min practice run-through with timer, memorize flashcards...',
       chips: ['Timed practice run-through', 'Review rubric checklist', 'Memorize speech lines', 'Independent study check'],
       allowMultiple: true,
+      iconKey: 'Presentation',
     },
     {
       id: 'permissions',
@@ -267,6 +290,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Sign parent consent slip, submit project rubric on portal...',
       chips: ['Signed permission slip', 'Parent review sign-off', 'School portal file upload', 'No approvals needed'],
       allowMultiple: false,
+      iconKey: 'FileCheck',
     },
   ],
 
@@ -278,6 +302,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Must cancel 48h before billing, end of 30-day free trial...',
       chips: ['Cancel before trial ends', 'Audit yearly renewal cost', 'Check 30-day notice rule', 'Review plan tier'],
       allowMultiple: false,
+      iconKey: 'CalendarClock',
     },
     {
       id: 'data_billing',
@@ -286,6 +311,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Download invoices, export customer lists, remove card on file...',
       chips: ['Download receipts / invoices', 'Export personal data', 'Remove payment card', 'No data backup needed'],
       allowMultiple: true,
+      iconKey: 'Database',
     },
   ],
 
@@ -297,6 +323,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Call local garage for quote, book online appointment slot...',
       chips: ['Book appointment slot', 'Request written price quote', 'Confirm replacement parts in stock', 'DIY maintenance task'],
       allowMultiple: false,
+      iconKey: 'Wrench',
     },
     {
       id: 'prep',
@@ -305,6 +332,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Clean vehicle interior, clear access around unit, gather service history...',
       chips: ['Gather warranty / logbook', 'Clear physical access area', 'Plan alternate transport', 'Check fluid / filter type'],
       allowMultiple: true,
+      iconKey: 'ClipboardCheck',
     },
   ],
 
@@ -316,6 +344,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Client review meeting, internal lead sign-off, demo walkthrough...',
       chips: ['Client review sign-off', 'Internal team sync demo', 'Executive stakeholder approval', 'Solo delivery'],
       allowMultiple: false,
+      iconKey: 'Briefcase',
     },
     {
       id: 'qa_release',
@@ -324,6 +353,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Staging QA pass, write release notes, verify deployment runbook...',
       chips: ['QA test pass on staging', 'Write release documentation', 'Data backup & rollback plan', 'Final presentation deck check'],
       allowMultiple: true,
+      iconKey: 'CheckCircle2',
     },
   ],
 
@@ -335,6 +365,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Client review meeting, internal lead sign-off, demo walkthrough...',
       chips: ['Client review sign-off', 'Internal team sync demo', 'Executive stakeholder approval', 'Solo delivery'],
       allowMultiple: false,
+      iconKey: 'Briefcase',
     },
     {
       id: 'qa_release',
@@ -343,6 +374,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Staging QA pass, write release notes, verify deployment runbook...',
       chips: ['QA test pass on staging', 'Write release documentation', 'Data backup & rollback plan', 'Final presentation deck check'],
       allowMultiple: true,
+      iconKey: 'CheckCircle2',
     },
   ],
 
@@ -354,14 +386,19 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Hotel reservation, Airbnb confirmation, campsite reserved...',
       chips: ['Hotel booked & confirmed', 'Airbnb / Vacation rental', 'Staying with friends / family', 'Need to book stay'],
       allowMultiple: false,
+      iconKey: 'BedDouble',
     },
     {
       id: 'transport',
       label: 'Transport Mode',
-      question: 'What is the primary mode of travel?',
+      question: 'What modes of travel do you need to plan for?',
       placeholder: 'e.g., Flight + airport transfer, driving personal car, rail tickets...',
       chips: ['Flight & boarding passes', 'Road trip / Personal car', 'Train / Rail tickets', 'Rental car needed'],
-      allowMultiple: false,
+      // A trip commonly combines modes (e.g. flight + rental car at the
+      // destination) - forcing a single choice meant the second mode's prep
+      // (the rental car reservation) never got asked about at all.
+      allowMultiple: true,
+      iconKey: 'Plane',
     },
     {
       id: 'activities',
@@ -370,6 +407,7 @@ export const CATEGORY_REFINEMENT_QUESTIONS: Record<CanonicalCategory, Refinement
       placeholder: 'e.g., Book museum tickets, pack hiking boots, renew passport...',
       chips: ['Pack weather gear & outfits', 'Book excursion / tour passes', 'Passport validity & visa check', 'Casual / unstructured'],
       allowMultiple: true,
+      iconKey: 'Compass',
     },
   ],
 };
