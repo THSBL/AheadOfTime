@@ -623,24 +623,19 @@ function App() {
         window.history.replaceState({}, document.title, window.location.pathname);
       };
 
-      if (target) {
-        setSelectedEventId(target.id);
-        setMobileDashboardView('detail');
-        setActiveTab('tasks');
-        if (actionParam === 'refine' || actionParam === 'step2_refinement') {
-          setRefinementEvent(target);
-          setWizardStage('step2_refinement');
-          setIsManualModalOpen(true);
-        }
-        // Clean URL parameters so manual refresh doesn't trap user
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } else if (deepLinkToken && deepLinkExpiry) {
+      if (deepLinkToken && deepLinkExpiry) {
         // A signed, single-event token minted by the bot itself when it
         // built this link - proves the caller legitimately just interacted
-        // with this exact event via Telegram. Tried first and works
-        // regardless of Google auth state, since someone actively chatting
-        // with the bot shouldn't have to separately re-authenticate with
-        // Google just to view what they just did there.
+        // with this exact event via Telegram. Checked FIRST, ahead of any
+        // locally cached copy: the whole point of tapping a fresh link
+        // right after doing something in Telegram is to see the LATEST
+        // state, and a stale local copy from an earlier visit to this same
+        // event must never shadow that (this was the actual cause of a
+        // just-added milestone appearing to "not save" - the app was
+        // rendering the cached pre-update copy instead of fetching fresh).
+        // Works regardless of Google auth state, since someone actively
+        // chatting with the bot shouldn't have to separately re-
+        // authenticate with Google just to view what they just did there.
         fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?dlt=${encodeURIComponent(deepLinkToken)}&dlte=${encodeURIComponent(deepLinkExpiry)}`)
           .then((r) => r.json())
           .then((data) => {
@@ -656,6 +651,17 @@ function App() {
             }
           })
           .catch((err) => console.warn('Could not fetch telegram event via deep-link token:', err));
+      } else if (target) {
+        setSelectedEventId(target.id);
+        setMobileDashboardView('detail');
+        setActiveTab('tasks');
+        if (actionParam === 'refine' || actionParam === 'step2_refinement') {
+          setRefinementEvent(target);
+          setWizardStage('step2_refinement');
+          setIsManualModalOpen(true);
+        }
+        // Clean URL parameters so manual refresh doesn't trap user
+        window.history.replaceState({}, document.title, window.location.pathname);
       } else if (hasValidGoogleToken) {
         // 2. Fetch from Telegram server events store
         const telegramAuthHeaders = (() => {
