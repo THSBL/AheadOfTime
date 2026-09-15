@@ -15,6 +15,8 @@ import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructur
 import { Logo } from './Logo';
 import { ensureGisLoaded, requestGoogleCalendarToken, getStoredClientId } from '../services/googleAuth';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
+import { trackEvent } from '../services/analytics';
+import { usePageMeta } from '../utils/usePageMeta';
 
 interface OnboardingPageProps {
   initialProfile?: Partial<OnboardingProfile>;
@@ -27,6 +29,8 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   onComplete,
   onOpenPrivacyPolicy,
 }) => {
+  usePageMeta('Get Started - Ahead Of Time');
+
   const [ageRange, setAgeRange] = useState<AgeRange>(initialProfile?.ageRange || '26–35');
   const [familyStatus, setFamilyStatus] = useState<FamilyStatus>(() => {
     if (initialProfile?.family_structure === 'family_with_kids' || initialProfile?.familyStatus === 'Family with kids' || initialProfile?.familyStatus === 'Couple with kids') {
@@ -56,6 +60,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
   useEffect(() => {
     ensureGisLoaded().catch((err) => console.warn('GIS preloading notice:', err));
+    trackEvent('onboarding_start');
   }, []);
 
   const handleSubmit = async (action: 'connect_calendar' | 'go_dashboard') => {
@@ -90,13 +95,16 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
         await requestGoogleCalendarToken(getStoredClientId());
         sessionStorage.setItem('aot_open_scan_modal', 'true');
         localStorage.setItem('aot_calendar_connected', 'true');
+        trackEvent('onboarding_complete', { action, calendar_connected: true });
       } catch (err) {
         console.warn('OAuth popup closed or error:', err);
+        trackEvent('onboarding_complete', { action, calendar_connected: false });
       } finally {
         setIsConnecting(false);
         onComplete(profile, action);
       }
     } else {
+      trackEvent('onboarding_complete', { action, calendar_connected: false });
       onComplete(profile, action);
     }
   };

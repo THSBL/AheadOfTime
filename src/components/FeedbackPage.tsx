@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
 import { MessageSquare, Send, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { usePageMeta } from '../utils/usePageMeta';
 
 export const FeedbackPage: React.FC = () => {
   const navigate = useNavigate();
+  usePageMeta(
+    'Feedback - Ahead Of Time',
+    'Send feedback, report a bug, or request a feature for Ahead Of Time, the reverse-planning calendar assistant.'
+  );
   const [category, setCategory] = useState<'bug' | 'feature' | 'ux' | 'other'>('bug');
   const [feedbackText, setFeedbackText] = useState('');
   const [email, setEmail] = useState('');

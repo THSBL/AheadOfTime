@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
+import { usePageMeta } from '../utils/usePageMeta';
 import { 
   Clock, 
   Calendar, 
@@ -17,6 +18,10 @@ import {
 
 export const FeaturesPage: React.FC = () => {
   const navigate = useNavigate();
+  usePageMeta(
+    'Features - Ahead Of Time',
+    'See how Ahead Of Time turns any event or trip into a reverse-planned countdown of prep milestones, synced to Google Calendar and Google Tasks.'
+  );
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">

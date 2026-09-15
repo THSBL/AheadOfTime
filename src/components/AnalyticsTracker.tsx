@@ -4,7 +4,8 @@ import { initAnalytics, trackPageView } from '../services/analytics';
 
 /**
  * AnalyticsTracker listens to route changes via react-router-dom location
- * and automatically fires virtual pageview events to GA4, PostHog, or Segment.
+ * and fires virtual pageview events to GA4, gated on cookie consent (see
+ * initAnalytics/hasAnalyticsConsent in services/analytics.ts).
  */
 export const AnalyticsTracker: React.FC = () => {
   const location = useLocation();
@@ -17,24 +18,7 @@ export const AnalyticsTracker: React.FC = () => {
     const pagePath = location.pathname + location.search + location.hash;
     const pageTitle = document.title || 'Ahead Of Time';
 
-    // 1. Google Analytics 4 (gtag.js)
     trackPageView(pagePath, pageTitle);
-
-    // 2. PostHog Analytics
-    if (window.posthog && typeof window.posthog.capture === 'function') {
-      window.posthog.capture('$pageview', {
-        $current_url: window.location.href,
-        $pathname: location.pathname,
-      });
-    }
-
-    // 3. Segment / Standard Analytics
-    if (window.analytics && typeof window.analytics.page === 'function') {
-      window.analytics.page(pageTitle, {
-        path: pagePath,
-        url: window.location.href,
-      });
-    }
 
     // Console logging in dev mode for verification
     if (import.meta.env.DEV) {

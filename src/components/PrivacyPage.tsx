@@ -15,15 +15,23 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Logo } from './Logo';
+import { usePageMeta } from '../utils/usePageMeta';
 
 interface PrivacyPageProps {
   onNavigateHome?: () => void;
 }
 
 export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
+  // Was a bare document.title assignment with no cleanup, so the title
+  // leaked into other SPA views after navigating away without a full
+  // reload. usePageMeta reverts it (and updates the description too) on
+  // unmount.
+  usePageMeta(
+    'Privacy Policy & Google API Data Disclosure - Ahead Of Time',
+    'How Ahead Of Time handles your data, including Google Calendar and Tasks API access, storage, and deletion.'
+  );
+
   useEffect(() => {
-    // Update document title for SEO & OAuth compliance
-    document.title = 'Privacy Policy & Google API Data Disclosure - Ahead Of Time';
     window.scrollTo(0, 0);
   }, []);
 

@@ -22,6 +22,7 @@ import {
   GoogleCalendarProfile 
 } from '../services/googleCalendar';
 import { CalendarEvent } from '../types';
+import { trackEvent } from '../services/analytics';
 
 interface GoogleCalendarIntegrationCardProps {
   events?: CalendarEvent[];
@@ -80,9 +81,11 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
 
       setSuccessMessage('Successfully connected your Google Calendar and Tasks.');
       setTimeout(() => setSuccessMessage(null), 4000);
+      trackEvent('calendar_connect', { provider: 'google', success: true });
     } catch (err: any) {
       console.error('Google authorization error:', err);
       setError(err?.message || 'Google Calendar connection was cancelled or failed.');
+      trackEvent('calendar_connect', { provider: 'google', success: false });
     } finally {
       setIsConnecting(false);
     }

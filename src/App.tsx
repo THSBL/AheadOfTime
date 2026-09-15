@@ -34,6 +34,8 @@ import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
 import { SettingsProfilePage } from './components/SettingsProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
+import { Analytics as VercelAnalytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { ImportTemplateModal } from './components/ImportTemplateModal';
 import { ApplyPresetModal } from './components/ApplyPresetModal';
 import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings, CustomPreset } from './types';
@@ -57,6 +59,7 @@ import {
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clearGoogleSession, getStoredClientId } from './services/googleAuth';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
+import { trackEventCreation, trackMilestoneToggle, trackAccountAction } from './services/analytics';
 import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst } from './utils/tminusRules';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
 import { classifySubmittedTitle } from './utils/creationStateMachine';
@@ -426,6 +429,7 @@ function App() {
           setCurrentUser(user);
           setEvents(loadUserEvents(user.id));
           setMessages(loadUserMessages(user.id, user.name));
+          trackAccountAction('login', user.id);
           // setGlobalCurrentUser dispatches aot_account_switched, which
           // UserProfileContext listens for to refresh onboardingProfile.
           setCurrentView('dashboard');
@@ -456,6 +460,7 @@ function App() {
           setCurrentUser(user);
           setEvents(loadUserEvents(user.id));
           setMessages(loadUserMessages(user.id, user.name));
+          trackAccountAction('switch', user.id);
           // setGlobalCurrentUser dispatches aot_account_switched, which
           // UserProfileContext listens for to refresh onboardingProfile.
           setSelectedEventId(null);
@@ -467,6 +472,7 @@ function App() {
   };
 
   const handleSignOut = () => {
+    trackAccountAction('logout', currentUser?.id);
     logoutAndClearAccountSession();
     clearGoogleSession();
     setCurrentUser(null);
@@ -783,6 +789,7 @@ function App() {
       updatedAt: new Date().toISOString(),
     };
 
+    trackEventCreation(newEvent.category, newEvent.title, projectedMilestones.length);
     setEvents((prev) => [newEvent, ...prev]);
     setSelectedEventId(newEventId);
     setActiveTab('tasks');
@@ -1004,6 +1011,10 @@ function App() {
       const data = await response.json();
       const newEvent: CalendarEvent = data.event;
 
+      if (!events.some((e) => e.id === newEvent.id)) {
+        trackEventCreation(newEvent.category, newEvent.title, (newEvent.milestones || []).length);
+      }
+
       // Update or add event in state
       setEvents((prev) => {
         const index = prev.findIndex((e) => e.id === newEvent.id);
@@ -1077,6 +1088,7 @@ function App() {
         updatedAt: new Date().toISOString(),
       };
 
+      trackEventCreation(fallbackEvent.category, fallbackEvent.title, milestones.length);
       setEvents((prev) => [fallbackEvent, ...prev]);
       setSelectedEventId(fallbackEvent.id);
 
@@ -1339,6 +1351,10 @@ function App() {
       })
     );
 
+    if (targetMilestone) {
+      trackMilestoneToggle((targetMilestone as TMinusMilestone).title, newStatus === 'completed', (targetMilestone as TMinusMilestone).category);
+    }
+
     // Asynchronously push completion state to Google Tasks / Calendar
     const token = getStoredAccessToken();
     if (token && !isTokenExpired() && targetMilestone) {
@@ -1445,6 +1461,10 @@ function App() {
 
   // Save manual event (upsert to avoid duplicates from Telegram or calendar imports)
   const handleSaveManualEvent = (newEvent: CalendarEvent) => {
+    if (!events.some((e) => e.id === newEvent.id)) {
+      trackEventCreation(newEvent.category, newEvent.title, (newEvent.milestones || []).length);
+    }
+
     setEvents((prev) => {
       const existsIdx = prev.findIndex((e) => e.id === newEvent.id);
       let updated: CalendarEvent[];
@@ -2123,6 +2143,11 @@ export default function AppWithRouter() {
     <UserProfileProvider>
       <BrowserRouter>
         <AnalyticsTracker />
+        {/* Cookieless, no personal data collected - unlike the GA wiring in
+            AnalyticsTracker, Vercel's own analytics/speed-insights don't
+            need cookie-consent gating. */}
+        <VercelAnalytics />
+        <SpeedInsights />
         <Routes>
           {/* Public / SEO Routes */}
           <Route path="/" element={<LandingRoute />} />
