@@ -329,11 +329,21 @@ describe('applyMilestoneQualityGuardrails', () => {
 
   it('leaves unrelated milestones alone', () => {
     const milestones = [
-      makeMilestone({ id: 'a', title: 'Buy gift' }),
-      makeMilestone({ id: 'b', title: 'Book restaurant table' }),
+      makeMilestone({ id: 'a', title: 'Buy gift', category: 'gift' }),
+      makeMilestone({ id: 'b', title: 'Book restaurant table', category: 'booking', tMinusOffsetMinutes: -4320 }),
     ];
     const result = applyMilestoneQualityGuardrails(milestones);
     expect(result).toHaveLength(2);
+  });
+
+  it('collapses a differently-worded milestone in the same category landing on nearly the same day (AI-phrased vs. template-phrased duplicate)', () => {
+    const milestones = [
+      makeMilestone({ id: 'a', title: 'Book flights and accommodation', category: 'booking', tMinusOffsetMinutes: -40320 }),
+      makeMilestone({ id: 'b', title: 'Flights & Accommodations Locked', category: 'booking', tMinusOffsetMinutes: -43200 }),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
   });
 
   it('strips generic venue-supplied purchase milestones when the event is hosted at a bar', () => {

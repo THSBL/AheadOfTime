@@ -1250,23 +1250,43 @@ export function applyMilestoneQualityGuardrails(
         .filter((w) => w.length > 0 && !DEDUPE_STOPWORDS.has(w))
     );
 
-  const seen: Set<string>[] = [];
+  // A merge (e.g. re-running "Refine") can bring together an AI/Telegram-
+  // phrased milestone ("Book flights and accommodation") with the wizard's
+  // own fixed template wording for the same checkpoint ("Flights &
+  // Accommodations Locked") - completely different words, so the title
+  // overlap check below never catches it and both get kept, doubling the
+  // plan. Track category + timing alongside title words so a milestone in
+  // the same category landing within a few days of one already kept is
+  // recognized as the same logistical slot even when worded differently.
+  const DUPLICATE_TIME_PROXIMITY_MINUTES = 3 * 24 * 60;
+  const seen: { words: Set<string>; category?: string; offsetMinutes?: number }[] = [];
   const deduped = milestones.filter((ms) => {
     const words = significantWords(ms.title || '');
-    if (words.size === 0) return true;
-    // Require at least 2 significant words before treating subset-coverage
-    // as a match, so two milestones that merely share one common word (e.g.
-    // both mention "buy") don't get collapsed into each other.
+    const offsetMinutes = typeof ms.tMinusOffsetMinutes === 'number' ? ms.tMinusOffsetMinutes : undefined;
+
     const isDuplicate = seen.some((prior) => {
-      const [smaller, larger] = prior.size <= words.size ? [prior, words] : [words, prior];
-      if (smaller.size < 2) return false;
-      for (const w of smaller) {
-        if (!larger.has(w)) return false;
+      // Require at least 2 significant words before treating subset-coverage
+      // as a match, so two milestones that merely share one common word (e.g.
+      // both mention "buy") don't get collapsed into each other.
+      if (words.size > 0 && prior.words.size > 0) {
+        const [smaller, larger] = prior.words.size <= words.size ? [prior.words, words] : [words, prior.words];
+        if (smaller.size >= 2) {
+          let allWordsMatch = true;
+          for (const w of smaller) {
+            if (!larger.has(w)) { allWordsMatch = false; break; }
+          }
+          if (allWordsMatch) return true;
+        }
       }
-      return true;
+      return Boolean(
+        ms.category && prior.category && ms.category === prior.category &&
+        typeof offsetMinutes === 'number' && typeof prior.offsetMinutes === 'number' &&
+        Math.abs(offsetMinutes - prior.offsetMinutes) <= DUPLICATE_TIME_PROXIMITY_MINUTES
+      );
     });
+
     if (isDuplicate) return false;
-    seen.push(words);
+    seen.push({ words, category: ms.category, offsetMinutes });
     return true;
   });
 
