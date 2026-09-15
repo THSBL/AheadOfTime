@@ -47,6 +47,7 @@ import {
   generateConcreteEventMilestones,
 } from '../utils/creationStateMachine';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
+import { applyMilestoneQualityGuardrails } from '../utils/tminusRules';
 
 // Looked up by each RefinementQuestion's iconKey (creationStateMachine.ts) -
 // gives every question card a distinct visual anchor instead of an
@@ -210,8 +211,8 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
   // STEP 2 Action: [ Generate Milestones ]
   // -------------------------------------------------------------
   const handleGenerateMilestones = () => {
-    const eventId = `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const milestones = generateConcreteEventMilestones(
+    const eventId = initialEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const freshMilestones = generateConcreteEventMilestones(
       title,
       targetDate,
       targetTime,
@@ -219,6 +220,20 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
       refinementAnswers,
       eventId
     );
+
+    // Refining an existing event (opened via "Refine") regenerates from the
+    // category-question template alone, which has no representation for
+    // milestones the AI derived from free text (an approval gate, a
+    // specific narrative detail) - blindly replacing wiped those out
+    // entirely. Merge fresh + existing and let the quality guardrail
+    // collapse anything that just restates the same task.
+    const milestones = initialEvent?.milestones?.length
+      ? applyMilestoneQualityGuardrails(
+          [...initialEvent.milestones, ...freshMilestones],
+          { title, location, context: { ...(initialEvent.context || {}), canonicalCategory: selectedCategory } }
+        )
+      : freshMilestones;
+
     setGeneratedMilestones(milestones);
     setStage('step3_milestones');
   };
