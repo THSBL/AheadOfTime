@@ -162,6 +162,7 @@ CRITICAL RULE - CONTEXT LEADS, NEVER GENERIC TEMPLATES:
 Category-standard milestones (the usual checklist for "birthday party", "trip", etc.) are a STARTING POINT, not a fixed script. Before including any generic/routine milestone, check it against everything the user actually said. If a stated detail contradicts or makes a routine milestone irrelevant, DROP that milestone entirely rather than including it anyway:
 - If the event is at an external venue the user names or implies (a bar, restaurant, hired hall, venue, club) - do NOT generate milestones for supplies/setup that venue would already provide (buying ice, glassware, decorations, tables, chairs, a sound system). Only generate milestones for what the user must personally still arrange.
 - Example: "planning a party in a bar" needs a reservation/headcount milestone, NOT "buy ice and glassware" - the bar has that. If the user mentions a specific preference (e.g. "make sure her favorite liqueur is available" or "need a 0.0% option"), generate ONE targeted milestone for exactly that ("Confirm bar stocks [X]"), not a generic shopping list.
+- For a trip: do NOT default to group-coordination milestones (collecting shared funds/deposits from other people, locking a headcount, chasing RSVPs, booking a "group activity" or "group dinner") unless the input actually names a wider group of independent people (friends, colleagues, a stag/hen party, "the guys/girls", an explicit number of attendees). A trip described with a partner, girlfriend/boyfriend, spouse, or family is a couple/family trip, not a group to coordinate - it needs booking, packing, and activity milestones for the traveller(s) actually mentioned, nothing about pooling money or tracking who's confirmed.
 - This applies to every category and every source of input the same way - a routine task that doesn't fit the stated context should never appear just because it's usually part of that category's checklist.
 - When genuinely unsure whether a routine milestone still applies given what was said, err toward leaving it out rather than including something irrelevant - a shorter, accurate list beats a longer, generic one.
 
@@ -192,8 +193,8 @@ When processing free-text user plans:
    - A named role, stakeholder, or dependency mentioned in passing (e.g. "my co-founder is joining", "waiting on the vendor quote") should surface as a coordination milestone if it gates something else.
    - Do this for ANY event type, not only trips - the same scanning applies to a single-day work event, a project deadline, or a personal errand with an embedded narrative detail.
 3. Backward Plan Three Layers:
-   - Generate operational runway milestones for the whole event/trip (Track A: Macro Logistics - the category-standard track, e.g., T-30d book travel/stay, T-14d collect group kitty/funds, T-3d packing & logistics).
-   - Generate specific preparation milestones for embedded sub-events with their own required lead-times (Track B: Micro Specifics - e.g., activity booking lead times need 2-3 weeks, not just night-before, e.g., T-21d shortlist & reserve Day 2 group activity, T-7d confirm headcount & waivers).
+   - Generate operational runway milestones for the whole event/trip (Track A: Macro Logistics - the category-standard track, e.g., T-30d book travel/stay, T-3d packing & logistics - only add T-14d collecting shared funds/headcount if the input actually names a wider group per the CONTEXT LEADS rule above).
+   - Generate specific preparation milestones for embedded sub-events with their own required lead-times (Track B: Micro Specifics - e.g., activity booking lead times need 2-3 weeks, not just night-before, e.g., T-21d shortlist & reserve Day 2 activity, T-7d confirm the booking).
    - Generate a milestone for each narrative-derived obligation found in step 2 (Track C: Narrative-Inferred - tag these with source: "narrative_inferred" in the output so the app can show the user "this came from what you typed" rather than presenting it as a generic default).
 4. Interactive Clarification: If details are missing (e.g., location, group size, budget for the activity), proactively propose 2-3 tailored options while drafting the initial milestone structure.
 
@@ -833,6 +834,13 @@ export function processWithDeterministicRules(params: {
   if (params.userProfile?.homeZipOrLocation) {
     context.homeZipOrLocation = params.userProfile.homeZipOrLocation;
   }
+  // A plain-text correction on an existing event (no [note:] tag, no fresh
+  // trip/date signal of its own) only reaches category-specific detection
+  // (pet sitter, venue signals, etc.) via customNote - fold it in here so
+  // "we also need a dog sitter" on an already-created trip is actually seen.
+  if (params.existingEvent && params.message?.trim()) {
+    context.customNote = [context.customNote, params.message.trim()].filter(Boolean).join('. ');
+  }
   title = getCleanEventTitle(title, category, context);
 
   if (params.intakeAnswer) {
@@ -980,12 +988,49 @@ export function processWithDeterministicRules(params: {
   }
 
   // Always generate heuristic milestones for the event
-  const milestones: TMinusMilestone[] = generateHeuristicMilestones(
+  const freshMilestones: TMinusMilestone[] = generateHeuristicMilestones(
     { category, context },
     eventId,
     eventDate,
     eventTime
   );
+
+  // A correction on an existing event is additive, not a rewrite: keep
+  // what's already there and only bring in the fresh milestones that are
+  // actually explained by what the user just typed (shares a distinctive
+  // word with it) - generateHeuristicMilestones always returns a full
+  // category-default checklist (sunscreen, hiking boots, adapters...)
+  // alongside anything the note specifically triggered (a pet-sitter task),
+  // and pulling in the whole thing would bury one real addition under a
+  // pile of unrelated generic tasks - the same "irrelevant generic clutter"
+  // complaint this session's guardrail work was built to fix. Words too
+  // generic to discriminate (booking language, filler) are excluded so a
+  // near-universal word like "book" doesn't match every travel milestone.
+  const isPlainTextCorrection = Boolean(params.existingEvent?.milestones?.length) && !params.intakeAnswer && !params.batchAnswers;
+  let milestones: TMinusMilestone[] = freshMilestones;
+  if (isPlainTextCorrection) {
+    const NOISE_WORDS = new Set([
+      'also', 'need', 'needs', 'while', 'away', 'book', 'booked', 'booking',
+      'confirm', 'confirmed', 'and', 'the', 'for', 'with', 'this', 'that',
+    ]);
+    const messageWords = Array.from(new Set(
+      (params.message || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !NOISE_WORDS.has(w))
+    ));
+    const noteRelevantFreshMilestones = messageWords.length
+      ? freshMilestones.filter((m) => {
+          const text = `${m.title} ${m.description || ''}`.toLowerCase();
+          return messageWords.some((w) => new RegExp(`\\b${w}\\b`).test(text));
+        })
+      : [];
+    milestones = applyMilestoneQualityGuardrails(
+      [...params.existingEvent!.milestones, ...noteRelevantFreshMilestones],
+      { title, context, rawText: params.message }
+    );
+  }
 
   const replyText = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
