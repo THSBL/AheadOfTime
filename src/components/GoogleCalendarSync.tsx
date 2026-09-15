@@ -36,6 +36,7 @@ import {
 } from '../services/googleCalendar';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from '../services/googleTasks';
 import { formatDisplayDate } from '../utils/tminusRules';
+import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
 interface GoogleCalendarSyncProps {
   events?: CalendarEvent[];
@@ -196,6 +197,27 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
       if (profile) {
         setCalendarProfile(profile);
         sessionStorage.setItem('gcal_profile', JSON.stringify(profile));
+        // This modal only ever updated its OWN local state - it never told
+        // the rest of the app whose account this now is, so App.tsx's
+        // currentUser/events stayed on whatever was previously cached (a
+        // real cross-account privacy bug: signing into a different Google
+        // account from this "Push to Calendar" modal still showed the
+        // PREVIOUS account's calendar everywhere else in the app).
+        // setGlobalCurrentUser dispatches aot_account_switched, which
+        // App.tsx listens for to reload events strictly scoped to this
+        // profile's own email.
+        if (profile.id) {
+          const userEmail = profile.id.toLowerCase().trim();
+          const user: AuthUser = {
+            id: userEmail,
+            email: userEmail,
+            name: profile.summary || profile.id,
+            timeZone: profile.timeZone,
+            provider: 'google',
+            connectedAt: new Date().toISOString(),
+          };
+          setGlobalCurrentUser(user);
+        }
       }
     } catch (err: any) {
       const errMsg = err?.message || String(err);
@@ -217,6 +239,11 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
     setCalendarProfile(null);
     setSyncSuccessResult(null);
     setAuthError(null);
+    // Same gap as sign-in, in reverse: this app has no non-Google identity
+    // to fall back to, so disconnecting Google here IS signing out - the
+    // app-wide identity (and its cached events) must not keep showing as
+    // if still connected.
+    setGlobalCurrentUser(null);
   };
 
   const handlePushToCalendar = async () => {

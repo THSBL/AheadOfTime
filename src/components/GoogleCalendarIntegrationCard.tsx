@@ -17,12 +17,13 @@ import {
   requestGoogleCalendarToken,
   DEFAULT_CLIENT_ID
 } from '../services/googleAuth';
-import { 
-  fetchPrimaryCalendarProfile, 
-  GoogleCalendarProfile 
+import {
+  fetchPrimaryCalendarProfile,
+  GoogleCalendarProfile
 } from '../services/googleCalendar';
 import { CalendarEvent } from '../types';
 import { trackEvent } from '../services/analytics';
+import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
 interface GoogleCalendarIntegrationCardProps {
   events?: CalendarEvent[];
@@ -79,6 +80,28 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
       setCalendarProfile(profile);
       sessionStorage.setItem('gcal_profile', JSON.stringify(profile));
 
+      // This card only ever updated its OWN local state and the shared
+      // token - it never told the rest of the app whose account this now
+      // is, so App.tsx's currentUser/events stayed on whatever was
+      // previously cached (a real cross-account privacy bug: connecting a
+      // brand-new Google account here still showed the PREVIOUS account's
+      // calendar everywhere else, since nothing ever reloaded events for
+      // the newly-authenticated identity). setGlobalCurrentUser dispatches
+      // aot_account_switched, which App.tsx listens for to reload events
+      // strictly scoped to this profile's own email.
+      if (profile?.id) {
+        const userEmail = profile.id.toLowerCase().trim();
+        const user: AuthUser = {
+          id: userEmail,
+          email: userEmail,
+          name: profile.summary || profile.id,
+          timeZone: profile.timeZone,
+          provider: 'google',
+          connectedAt: new Date().toISOString(),
+        };
+        setGlobalCurrentUser(user);
+      }
+
       setSuccessMessage('Successfully connected your Google Calendar and Tasks.');
       setTimeout(() => setSuccessMessage(null), 4000);
       trackEvent('calendar_connect', { provider: 'google', success: true });
@@ -95,6 +118,11 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     clearGoogleSession();
     setAccessToken(null);
     setCalendarProfile(null);
+    // Same gap as connect, in reverse: clears this card's own display but
+    // previously left the app-wide identity (and its cached events)
+    // sitting there as if still connected. This app has no non-Google
+    // identity to fall back to, so disconnecting Google IS signing out.
+    setGlobalCurrentUser(null);
     setSuccessMessage('Google account disconnected.');
     setTimeout(() => setSuccessMessage(null), 3000);
   };
