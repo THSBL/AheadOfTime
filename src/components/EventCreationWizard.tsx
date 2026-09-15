@@ -273,6 +273,11 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
       id: eventId,
       title: title.trim(),
       eventDate: targetDate,
+      // This wizard has no UI to set/edit a trip's end date, so silently
+      // dropped it on every save when refining a multi-day event (a
+      // Telegram-created trip, for example) - preserve whatever was
+      // already there instead of discarding it.
+      endDate: initialEvent?.endDate,
       eventTime: targetTime,
       category: catDef ? catDef.internalCategory : 'birthday_party',
       location: location.trim() || undefined,

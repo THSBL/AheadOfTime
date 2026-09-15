@@ -587,7 +587,6 @@ function App() {
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const eventIdParam = sp.get('event_id') || sp.get('eventId');
-    const actionParam = sp.get('action') || sp.get('stage');
     const deepLinkToken = sp.get('dlt');
     const deepLinkExpiry = sp.get('dlte');
 
@@ -604,10 +603,18 @@ function App() {
       // everywhere else in this file to mean "actually connected right now".
       const hasValidGoogleToken = Boolean(getStoredAccessToken() && !isTokenExpired());
 
-      const applyFoundEvent = (found: CalendarEvent) => {
+      // persistToCurrentAccount: false for the deep-link-token path - that
+      // token only proves the bot itself vouches for this exact event, NOT
+      // that it belongs to whichever Google account happens to be locally
+      // signed in right now (those can be different people/browsers).
+      // Showing it for this page view is the intended "view what you just
+      // did in Telegram without re-authenticating" behavior; silently
+      // writing it into a possibly-unrelated account's permanent storage
+      // is not - that was a real cross-account contamination path.
+      const applyFoundEvent = (found: CalendarEvent, persistToCurrentAccount: boolean = true) => {
         setEvents((prev) => {
           const updated = [found, ...prev.filter((e) => e.id !== found.id)];
-          if (currentUser?.id) {
+          if (persistToCurrentAccount && currentUser?.id) {
             saveUserEvents(updated, currentUser.id);
           }
           return updated;
@@ -615,11 +622,14 @@ function App() {
         setSelectedEventId(found.id);
         setMobileDashboardView('detail');
         setActiveTab('tasks');
-        if (actionParam === 'refine' || actionParam === 'step2_refinement') {
-          setRefinementEvent(found);
-          setWizardStage('step2_refinement');
-          setIsManualModalOpen(true);
-        }
+        // Deliberately does NOT auto-open the Refine wizard, even when the
+        // link carries action=refine (every link generated before this
+        // fix does). Landing here means the user already told the bot
+        // what they wanted in Telegram - forcing them through the web
+        // wizard again to see the SAME result they just confirmed in chat
+        // was redundant, and reportedly broke saving in some cases. The
+        // existing "Refine" button in the Task overview remains available
+        // for anyone who wants the web wizard specifically.
         window.history.replaceState({}, document.title, window.location.pathname);
       };
 
@@ -640,7 +650,7 @@ function App() {
           .then((r) => r.json())
           .then((data) => {
             if (data.event) {
-              applyFoundEvent(data.event);
+              applyFoundEvent(data.event, false);
             } else {
               setAgentConfirmationToast({
                 id: Date.now(),
@@ -655,11 +665,7 @@ function App() {
         setSelectedEventId(target.id);
         setMobileDashboardView('detail');
         setActiveTab('tasks');
-        if (actionParam === 'refine' || actionParam === 'step2_refinement') {
-          setRefinementEvent(target);
-          setWizardStage('step2_refinement');
-          setIsManualModalOpen(true);
-        }
+        // No auto-opened wizard here either - see applyFoundEvent's comment.
         // Clean URL parameters so manual refresh doesn't trap user
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (hasValidGoogleToken) {
