@@ -119,6 +119,28 @@ export class TelegramWebhookHandler {
 
     const session = await TelegramSessionStore.getOrCreateSession(chatId, from);
 
+    // A chat that tapped "Add Note" on an event is expected to type that
+    // note next - checked before any command routing so e.g. a note that
+    // happens to start with "/status" doesn't get swallowed as a command.
+    const pendingNoteEventId = await TelegramSessionStore.getPendingEventNote(chatId);
+    if (pendingNoteEventId && text && !text.startsWith('/')) {
+      await TelegramSessionStore.setPendingEventNote(chatId, null);
+      const added = await TelegramSessionStore.addNoteMilestoneToEvent(pendingNoteEventId, text);
+      if (added) {
+        await TelegramService.sendMessage(
+          chatId,
+          `✅ Added *${added.title}* (${added.tMinusLabel}) to your prep list.`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        await TelegramService.sendMessage(
+          chatId,
+          `That looks like it's already covered by an existing task, so I didn't add a duplicate.`
+        );
+      }
+      return;
+    }
+
     // Command: /start (with or without pairing code)
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start=')) {
       // Extract optional payload after /start (e.g., "/start pair_987xyz")
@@ -131,9 +153,9 @@ export class TelegramWebhookHandler {
       }
 
       const welcome = [
-        `*Ahead Of Time* — Active Executive Calendar Assistant`,
+        `*Ahead Of Time*`,
         ``,
-        `I manage your schedule and build backward preparation runways so you are fully prepared when events arrive.`,
+        `Tell me what you're planning and I'll work backward from the date to build your prep checklist.`,
         ``,
         `*Quick Start*:`,
         `Send me any scheduling request in plain English, for example:`,
@@ -141,10 +163,10 @@ export class TelegramWebhookHandler {
         `• _"Alex 30th birthday dinner Oct 24 at 8pm"_`,
         `• _"Conference presentation next Thursday at 2pm"_`,
         ``,
-        `I will parse the dates, construct the Google Calendar entry, draft your T-Minus preparation timeline, and provide a direct link to customize logistics.`,
+        `I'll ask a quick follow-up question if something important is missing, then save your prep checklist here - open the app to push it to Google Calendar/Tasks.`,
         ``,
         `*Commands*:`,
-        `• /events — View your active events and runways`,
+        `• /events — View your active events and checklists`,
         `• /status — Check bot and calendar connectivity`,
         `• /help — Tips for scheduling and reverse planning`,
       ].join('\n');
@@ -209,13 +231,13 @@ export class TelegramWebhookHandler {
       if (events.length === 0) {
         await TelegramService.sendMessage(
           chatId,
-          `No active events found in this chat session yet. Send a message describing an upcoming event to create your first runway!`
+          `No active events found in this chat session yet. Send a message describing an upcoming event to get started!`
         );
         return;
       }
 
       const listText = [
-        `*Active Events & Runways* (${events.length}):`,
+        `*Active Events* (${events.length}):`,
         ...events.slice(0, 5).map((ev) => {
           const refineUrl = `${appBaseUrl}/?event_id=${encodeURIComponent(ev.id)}&action=refine`;
           return `• *${ev.title}* (${ev.eventDate})\n  [Refine in App](${refineUrl})`;
@@ -272,18 +294,22 @@ export class TelegramWebhookHandler {
     if (data.startsWith('CONFIRM_DEFAULT:')) {
       const eventId = data.replace('CONFIRM_DEFAULT:', '');
       const event = await TelegramSessionStore.getEvent(eventId);
+      // Was: mutated a CalendarEvent object fetched from getEvent() and then
+      // discarded it without writing anything back - the confirmation had
+      // zero effect on the stored event. markEventConfirmed actually persists it.
+      await TelegramSessionStore.markEventConfirmed(eventId);
 
-      if (event) {
-        event.needsRefinement = false;
-        event.refinedAt = new Date().toISOString();
-      }
-
-      await TelegramService.answerCallbackQuery(callbackId, '✅ Default runway confirmed!');
+      await TelegramService.answerCallbackQuery(callbackId, '✅ Confirmed');
 
       if (chatId) {
+        // Was "We will ping you as milestones approach" - no reminder
+        // scheduler exists anywhere in this codebase, so that was a false
+        // promise. The real next step is pushing to Google Calendar/Tasks
+        // from the app, which is where reminders actually come from.
         await TelegramService.sendMessage(
           chatId,
-          `✅ *Runway Locked*: Default milestones confirmed for *${event?.title || 'your event'}*. We will ping you as milestones approach.`
+          `✅ Prep checklist confirmed for *${event?.title || 'your event'}*. Open the app to push it to Google Calendar/Tasks: ${appBaseUrl}/?event_id=${encodeURIComponent(eventId)}&action=refine`,
+          { parse_mode: 'Markdown' }
         );
       }
       return;
@@ -291,12 +317,12 @@ export class TelegramWebhookHandler {
 
     if (data.startsWith('ADD_NOTE:')) {
       const eventId = data.replace('ADD_NOTE:', '');
-      await TelegramService.answerCallbackQuery(callbackId, 'Type your note or extra item:');
       if (chatId) {
-        await TelegramService.sendMessage(
-          chatId,
-          `💬 To add tasks or details to this event, type it directly or open the webapp:\n${appBaseUrl}/?event_id=${encodeURIComponent(eventId)}&action=refine`
-        );
+        await TelegramSessionStore.setPendingEventNote(chatId, eventId);
+      }
+      await TelegramService.answerCallbackQuery(callbackId, 'Go ahead, type your note');
+      if (chatId) {
+        await TelegramService.sendMessage(chatId, `💬 What would you like to add?`);
       }
       return;
     }

@@ -158,24 +158,24 @@ export class TelegramService {
 
     let text = customText;
     if (!text) {
-      const milestoneHighlights = (event.milestones || [])
-        .slice(0, 3)
-        .map((m: TMinusMilestone) => {
-          const badge = m.tMinusLabel || 'T-7d';
-          return `• *${badge}*: ${m.title}`;
-        })
+      const milestoneLines = (event.milestones || [])
+        .slice(0, 5)
+        .map((m: TMinusMilestone) => `📌 *${m.calculatedDate}* — ${m.title}`)
         .join('\n');
 
+      // Was "Initial Runway Created" / "lock your optimal reverse-logistics
+      // schedule" - internal planning vocabulary a user has no reason to
+      // know. Also now honest about what actually happened: the event is
+      // saved here, not pushed to Google Calendar/Tasks yet - that used to
+      // be implied by "Runway Created" without ever being stated.
       text = [
-        `📅 *New Event Parsed*: *${event.title}*`,
-        `🗓️ *Target Date*: ${event.eventDate}${event.eventTime ? ` at ${event.eventTime}` : ''}`,
-        event.location ? `📍 *Location*: ${event.location}` : null,
+        `*${event.title}*${event.eventDate ? ` — ${event.eventDate}` : ''}`,
+        event.location ? `📍 ${event.location}` : null,
         '',
-        `⏳ *Initial Runway Created* (${(event.milestones || []).length} milestones):`,
-        milestoneHighlights || '• *T-7d*: Initial review and planning',
+        `Here's your prep checklist, saved to your account:`,
+        milestoneLines || '📌 Initial review and planning',
         '',
-        '⚡ *Refinement Required*:',
-        'Customize food, transit, gear, or budget requirements to lock your optimal reverse-logistics schedule.',
+        `Not on your calendar yet - open the app to push it to Google Calendar/Tasks. Anything off? Just tell me, or tap Add Note below.`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -187,13 +187,13 @@ export class TelegramService {
         inline_keyboard: [
           [
             {
-              text: '🛠️ Refine Prep Timeline in App',
+              text: '🛠️ Open Full Timeline in App',
               url: refineDeepLink,
             },
           ],
           [
             {
-              text: '✅ Keep Default Runway',
+              text: '✅ Looks Good',
               callback_data: `CONFIRM_DEFAULT:${event.id}`,
             },
             {
