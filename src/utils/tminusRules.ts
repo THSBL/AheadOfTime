@@ -1511,15 +1511,15 @@ export function attachDeliverablesToMilestones(rawMilestones: TMinusMilestone[])
         type: 'document',
         is_completed: ms.status === 'completed',
       });
-    } else {
-      const cleanFallbackTitle = ms.title.replace(/^task:\s*/i, '').trim();
-      deliverables.push({
-        deliverable_id: `del_${ms.id}_1`,
-        title: `${cleanFallbackTitle} verified & completed`,
-        type: ms.category === 'booking' ? 'booking' : ms.category === 'shopping' ? 'purchase' : ms.category === 'logistics' ? 'document' : 'coordination',
-        is_completed: ms.status === 'completed',
-      });
     }
+    // No keyword pattern matched: previously fell back to a deliverable
+    // that just restated the milestone's own title with "verified &
+    // completed" tacked on - a checkbox with zero actual content beyond
+    // what the milestone title already said. Leaving deliverables empty
+    // here means the UI simply shows no sub-task line for this milestone
+    // (see hasDeliverables in EventTimelineRadar.tsx) instead of a fake one -
+    // a milestone with no genuinely specific deliverable to add is better
+    // shown as just a milestone than padded with a valueless placeholder.
 
     // Convert raw imperative verbs into past-participle / state checkpoint titles:
     let stateCheckpointTitle = ms.title.replace(/^task:\s*/i, '').trim();

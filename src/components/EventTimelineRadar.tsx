@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone } from '../types';
-import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones } from '../utils/tminusRules';
+import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
@@ -418,7 +418,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="text-sm sm:text-lg font-black text-slate-900 tracking-tight leading-snug break-words">
-                {activeEvent.title}
+                {getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}
               </h3>
               {activeEvent.needsRefinement && !activeEvent.refinedAt && (!activeEvent.context || Object.keys(activeEvent.context).length === 0) && (
                 <span className="text-[10px] font-mono font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
@@ -1069,7 +1069,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className={`w-3 h-3 rounded-full shadow-2xs ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#182A42]'}`} />
             <div>
-              <span className="font-bold text-slate-900">Target Event: {activeEvent.title}</span>
+              <span className="font-bold text-slate-900">Target Event: {getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}</span>
               {activeEvent.eventTime && <span className="text-slate-500 text-xs ml-2">({activeEvent.eventTime})</span>}
               {countdown.isOverdue && (
                 <span className="ml-2 font-mono font-bold text-rose-700 text-xs bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-300 inline-flex items-center gap-1">
