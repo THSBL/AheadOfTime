@@ -256,6 +256,8 @@ export interface SimpleAheadStatus {
   sub: string;
   overdueCount: number;
   dueSoonCount: number;
+  completedCount: number;
+  totalCount: number;
 }
 
 /**
@@ -278,9 +280,15 @@ export function computeSimpleAheadStatus(
 ): SimpleAheadStatus {
   let overdueCount = 0;
   let dueSoonCount = 0;
+  let completedCount = 0;
+  let totalCount = 0;
 
   for (const event of events) {
-    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
+    const actionable = actionableMilestones(event.milestones);
+    totalCount += actionable.length;
+    completedCount += actionable.filter((m) => m.status === 'completed').length;
+
+    const outstanding = actionable.filter((m) => m.status !== 'completed');
     for (const milestone of outstanding) {
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
       if (countdown.isOverdue) {
@@ -291,32 +299,31 @@ export function computeSimpleAheadStatus(
     }
   }
 
+  const base = { overdueCount, dueSoonCount, completedCount, totalCount };
+
   if (overdueCount > 0) {
     return {
+      ...base,
       level: 'behind',
       label: "You're behind",
       sub: `${overdueCount} task${overdueCount > 1 ? 's are' : ' is'} overdue`,
-      overdueCount,
-      dueSoonCount,
     };
   }
 
   if (dueSoonCount > 0) {
     return {
+      ...base,
       level: 'almost_ahead',
       label: "You're almost ahead",
       sub: `${dueSoonCount} item${dueSoonCount > 1 ? 's need' : ' needs'} your attention`,
-      overdueCount,
-      dueSoonCount,
     };
   }
 
   return {
+    ...base,
     level: 'ahead',
     label: "You're ahead",
     sub: 'Nothing else due this week',
-    overdueCount,
-    dueSoonCount,
   };
 }
 
@@ -431,28 +438,51 @@ export function computeNextBestActionForEvent(event: CalendarEvent, referenceDat
   };
 }
 
-export type ActionTheme = 'documents' | 'packing' | 'gifts' | 'money' | 'calls_confirmations' | 'logistics' | 'other';
+export type ActionTheme =
+  | 'bookings_logistics'
+  | 'purchases_gifts_supplies'
+  | 'deliverables_preparation'
+  | 'outreach_communication'
+  | 'administration'
+  | 'packing_essentials'
+  | 'other';
 
 const THEME_LABELS: Record<ActionTheme, string> = {
-  documents: 'Documents',
-  packing: 'Packing',
-  gifts: 'Gifts',
-  money: 'Money',
-  calls_confirmations: 'Calls and confirmations',
-  logistics: 'Logistics',
+  bookings_logistics: 'Bookings & Logistics',
+  purchases_gifts_supplies: 'Purchases, Gifts & Supplies',
+  deliverables_preparation: 'Deliverables & Preparation',
+  outreach_communication: 'Outreach & Communication',
+  administration: 'Administration',
+  packing_essentials: 'Packing & Essentials',
   other: 'Other',
 };
 
 // Checked in this order (first match wins) - most specific topics before
-// the more generic ones, so e.g. "Book flight" lands in logistics rather
-// than the broader calls_confirmations bucket.
+// the more generic ones. administration and deliverables_preparation go
+// first since their keywords are the most distinctive; bookings_logistics
+// is checked before outreach_communication so e.g. "Book flight tickets"
+// lands in logistics rather than the broader outreach "book" keyword;
+// purchases is checked before packing so e.g. "Buy hiking boots" lands in
+// purchases rather than packing's bare "boots" keyword.
 const THEME_PATTERNS: Array<[ActionTheme, RegExp]> = [
-  ['documents', /\b(passport|visa|esta|eta|permit|licen[cs]e|insurance|waiver|entry\s*authorization|travel\s*authorization)\b/i],
-  ['packing', /\b(pack(?:ing|ed)?|luggage|suitcase|kit\s*bag|gear|uniform|boots|cleats|shin\s*guards?|backpack|outfit|wardrobe|clothes|costume)\b/i],
-  ['gifts', /\b(gift|present|flowers|\bcard\b)\b/i],
-  ['money', /\b(budget|payment|deposit|invoice|kitty|expense)\b/i],
-  ['logistics', /\b(transport|travel|flight|flights|carpool|parking|directions?|address|departure|airport)\b/i],
-  ['calls_confirmations', /\b(confirm(?:ed|ation)?|book(?:ing|ed)?|rsvps?|reservation|reserve[d]?|call|phone|appointment)\b/i],
+  [
+    'administration',
+    /\b(cutoff|cancel(?:led|lation)?|membership|trial|budget|expense|settle|invoice|payment|deposit|passport|visa|esta|eta|permit|licen[cs]e|insurance|waiver|authorization|documents?|renewal)\b/i,
+  ],
+  [
+    'deliverables_preparation',
+    /\b(draft|peer[\s-]?review|rehearsal|dry[\s-]?run|a\/?v\s*check|agenda|scope|deck|slides?|presentation|recital|practice|demo)\b/i,
+  ],
+  [
+    'bookings_logistics',
+    /\b(flights?|hotels?|trains?|tours?|rental\s*(?:car|vehicle)|vehicle\s*rental|transit|transport|airport|departure|carpool|parking|directions?|\baddress\b)\b/i,
+  ],
+  [
+    'outreach_communication',
+    /\b(rsvps?|invit(?:e|ation)s?|confirm(?:ed|ation)?|reservation|reserve[d]?|book(?:ing|ed)?|call|phone|appointment|stakeholders?|alignment|coordinate)\b/i,
+  ],
+  ['purchases_gifts_supplies', /\b(gift|present|buy|purchase|order|cake|drinks?|grocery|groceries|supplies|adapters?|sunscreen|flowers|\bcard\b)\b/i],
+  ['packing_essentials', /\b(pack(?:ing|ed)?|luggage|suitcase|kit\s*bag|gear|uniform|boots|cleats|shin\s*guards?|backpack|outfit|wardrobe|clothes|costume)\b/i],
 ];
 
 /**
@@ -486,7 +516,7 @@ export interface MilestoneCluster {
  * own single-item entry, so callers can render every item uniformly and
  * tell grouped from standalone apart via `items.length`.
  */
-function clusterMilestoneItemsByTheme(items: UpcomingMilestoneItem[]): MilestoneCluster[] {
+export function clusterMilestoneItemsByTheme(items: UpcomingMilestoneItem[]): MilestoneCluster[] {
   const byTheme = new Map<ActionTheme, UpcomingMilestoneItem[]>();
   for (const item of items) {
     const list = byTheme.get(item.theme) || [];
@@ -517,9 +547,12 @@ function clusterMilestoneItemsByTheme(items: UpcomingMilestoneItem[]): Milestone
  * list behind computeSimpleAheadStatus's "N tasks are overdue" count, so
  * that number is always backed by N visible, clickable items instead of a
  * single highlighted "next best action" that leaves the rest invisible.
- * Most-overdue first, grouped by theme like the weekly preview below.
+ * Deliberately flat, not theme-clustered: this (and the "this week" bucket
+ * of the weekly preview) is the "what should I focus on right now" view,
+ * where folding items into a collapsed topic would hide exactly the detail
+ * that matters most. Most-overdue first.
  */
-export function computeOverdueMilestones(events: CalendarEvent[], referenceDateISO: string): MilestoneCluster[] {
+export function computeOverdueMilestones(events: CalendarEvent[], referenceDateISO: string): UpcomingMilestoneItem[] {
   const items: UpcomingMilestoneItem[] = [];
 
   for (const event of events) {
@@ -542,12 +575,13 @@ export function computeOverdueMilestones(events: CalendarEvent[], referenceDateI
   }
 
   items.sort((a, b) => a.diffDays - b.diffDays);
-  return clusterMilestoneItemsByTheme(items);
+  return items;
 }
 
 export interface WeeklyMilestoneBucket {
   key: string;
   label: string;
+  items: UpcomingMilestoneItem[];
   clusters: MilestoneCluster[];
 }
 
@@ -594,12 +628,16 @@ export function computeWeeklyMilestonePreview(
   }
 
   return buckets
-    .map((items, index) => ({
-      key: `week-${index}`,
-      label: WEEK_BUCKET_LABELS[index] ?? `In ${index + 1} weeks`,
-      clusters: clusterMilestoneItemsByTheme([...items].sort((a, b) => a.diffDays - b.diffDays)),
-    }))
-    .filter((bucket) => bucket.clusters.length > 0);
+    .map((rawItems, index) => {
+      const items = [...rawItems].sort((a, b) => a.diffDays - b.diffDays);
+      return {
+        key: `week-${index}`,
+        label: WEEK_BUCKET_LABELS[index] ?? `In ${index + 1} weeks`,
+        items,
+        clusters: clusterMilestoneItemsByTheme(items),
+      };
+    })
+    .filter((bucket) => bucket.items.length > 0);
 }
 
 /**

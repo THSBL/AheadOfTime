@@ -154,58 +154,57 @@ describe('computeOverallAheadStatus', () => {
 });
 
 describe('inferActionTheme', () => {
-  it('classifies passport/visa items as documents', () => {
-    expect(inferActionTheme(makeMilestone({ title: 'Passport validity & renewal check' }))).toBe('documents');
+  it('classifies passport/visa/cutoff/budget items as administration', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Passport validity & renewal check' }))).toBe('administration');
+    expect(inferActionTheme(makeMilestone({ title: 'Notice cutoff & cancel Lux membership' }))).toBe('administration');
+    expect(inferActionTheme(makeMilestone({ title: 'Settle budget & expenses' }))).toBe('administration');
   });
 
-  it('classifies packing/gear items as packing, even when a booking verb is also present', () => {
-    expect(inferActionTheme(makeMilestone({ title: 'Pack Uniform & Shinguards' }))).toBe('packing');
+  it('classifies prep/work items as deliverables_preparation', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Draft deliverable & internal peer review' }))).toBe('deliverables_preparation');
+    expect(inferActionTheme(makeMilestone({ title: 'Dry run rehearsal & AV check' }))).toBe('deliverables_preparation');
   });
 
-  it('classifies flight/transport items as logistics rather than calls_confirmations', () => {
-    expect(inferActionTheme(makeMilestone({ title: 'Book flight tickets' }))).toBe('logistics');
+  it('classifies packing/gear items as packing_essentials, even when a booking verb is also present', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Pack Uniform & Shinguards' }))).toBe('packing_essentials');
   });
 
-  it('classifies booking/RSVP items with no logistics keyword as calls_confirmations', () => {
-    expect(inferActionTheme(makeMilestone({ title: 'Confirm restaurant reservation' }))).toBe('calls_confirmations');
+  it('classifies flight/transport items as bookings_logistics rather than outreach_communication', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Book flight tickets' }))).toBe('bookings_logistics');
+  });
+
+  it('classifies booking/RSVP items with no logistics keyword as outreach_communication', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Confirm restaurant reservation' }))).toBe('outreach_communication');
   });
 
   it('classifies the plural "RSVPs" the same as singular "RSVP"', () => {
-    expect(inferActionTheme(makeMilestone({ title: 'Invitations & RSVPs Sent' }))).toBe('calls_confirmations');
+    expect(inferActionTheme(makeMilestone({ title: 'Invitations & RSVPs Sent' }))).toBe('outreach_communication');
+  });
+
+  it('classifies stakeholder alignment as outreach_communication, not deliverables_preparation', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Stakeholder deliverables alignment' }))).toBe('outreach_communication');
+  });
+
+  it('classifies buy/order/gift items as purchases_gifts_supplies', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Buy hiking boots' }))).toBe('purchases_gifts_supplies');
+    expect(inferActionTheme(makeMilestone({ title: 'Order personalized birthday gift' }))).toBe('purchases_gifts_supplies');
   });
 
   it('falls back to other for unmatched titles', () => {
-    expect(inferActionTheme(makeMilestone({ title: 'Review project scope with the team' }))).toBe('other');
+    expect(inferActionTheme(makeMilestone({ title: 'Water the office plants' }))).toBe('other');
   });
 });
 
 describe('computeOverdueMilestones', () => {
-  it('returns only overdue, outstanding milestones, most overdue first', () => {
+  it('returns only overdue, outstanding milestones, most overdue first, never clustered', () => {
     const event = makeEvent([
       makeMilestone({ id: 'soon', title: 'Confirm venue', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'overdue-1', title: 'Book flowers', calculatedDate: '2026-09-05' }),
+      makeMilestone({ id: 'overdue-1', title: 'Order flowers', calculatedDate: '2026-09-05' }),
       makeMilestone({ id: 'overdue-2', title: 'Order cake', calculatedDate: '2026-09-01' }),
     ]);
 
-    const clusters = computeOverdueMilestones([event], REF_DATE_ISO);
-    const ids = clusters.flatMap((c) => c.items.map((i) => i.milestoneId));
-    expect(ids).toEqual(['overdue-2', 'overdue-1']);
-  });
-
-  it('groups same-theme overdue items across events into one cluster', () => {
-    const eventA = makeEvent(
-      [makeMilestone({ id: 'a1', title: 'Book restaurant reservation', calculatedDate: '2026-09-01' })],
-      { id: 'evt-a', title: "Maya's Party" }
-    );
-    const eventB = makeEvent(
-      [makeMilestone({ id: 'b1', title: 'Confirm RSVP headcount', calculatedDate: '2026-09-02' })],
-      { id: 'evt-b', title: "Leo's Party" }
-    );
-
-    const clusters = computeOverdueMilestones([eventA, eventB], REF_DATE_ISO);
-    expect(clusters).toHaveLength(1);
-    expect(clusters[0].theme).toBe('calls_confirmations');
-    expect(clusters[0].items).toHaveLength(2);
+    const items = computeOverdueMilestones([event], REF_DATE_ISO);
+    expect(items.map((i) => i.milestoneId)).toEqual(['overdue-2', 'overdue-1']);
   });
 
   it('excludes completed and skipped milestones', () => {
@@ -257,9 +256,10 @@ describe('computeWeeklyMilestonePreview', () => {
 
     const buckets = computeWeeklyMilestonePreview([event], REF_DATE_ISO);
     const thisWeek = buckets[0];
-    const packingCluster = thisWeek.clusters.find((c) => c.theme === 'packing');
+    expect(thisWeek.items).toHaveLength(3);
+    const packingCluster = thisWeek.clusters.find((c) => c.theme === 'packing_essentials');
     expect(packingCluster?.items).toHaveLength(2);
-    const giftCluster = thisWeek.clusters.find((c) => c.theme === 'gifts');
+    const giftCluster = thisWeek.clusters.find((c) => c.theme === 'purchases_gifts_supplies');
     expect(giftCluster?.items).toHaveLength(1);
   });
 });
@@ -377,6 +377,20 @@ describe('computeSimpleAheadStatus', () => {
       makeMilestone({ id: 'skipped', calculatedDate: '2026-09-01', status: 'skipped' }),
     ]);
     expect(computeSimpleAheadStatus([event], REF_DATE_ISO).level).toBe('ahead');
+  });
+
+  it('reports completedCount and totalCount alongside the overdue/due-soon verdict', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'done-1', calculatedDate: '2026-09-01', status: 'completed' }),
+      makeMilestone({ id: 'done-2', calculatedDate: '2026-09-01', status: 'completed' }),
+      makeMilestone({ id: 'skipped', calculatedDate: '2026-09-01', status: 'skipped' }),
+      makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01', status: 'pending' }),
+    ]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    expect(status.completedCount).toBe(2);
+    // Skipped milestones are excluded from the actionable total, same as
+    // everywhere else in this file.
+    expect(status.totalCount).toBe(3);
   });
 });
 
