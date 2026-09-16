@@ -368,18 +368,38 @@ describe('computeSimpleAheadStatus', () => {
     const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
     expect(status.level).toBe('almost_ahead');
     expect(status.dueSoonCount).toBe(1);
-    expect(status.sub).toBe('1 item needs your attention');
+    expect(status.sub).toBe('1 item to wrap up this week');
   });
 
-  it('is "behind" whenever anything is overdue, even alongside due-soon or future items', () => {
+  it('is "behind" once 3 or more items are overdue, even if each is only barely late', () => {
     const event = makeEvent([
-      makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01', status: 'pending' }),
-      makeMilestone({ id: 'soon', calculatedDate: '2026-09-14', status: 'pending' }),
+      makeMilestone({ id: 'o1', calculatedDate: '2026-09-09', status: 'pending' }),
+      makeMilestone({ id: 'o2', calculatedDate: '2026-09-09', status: 'pending' }),
+      makeMilestone({ id: 'o3', calculatedDate: '2026-09-09', status: 'pending' }),
     ]);
     const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
     expect(status.level).toBe('behind');
+    expect(status.overdueCount).toBe(3);
+    expect(status.sub).toBe('3 items need attention before moving ahead');
+  });
+
+  it('is "behind" when a single item is overdue by more than 3 days, even alone', () => {
+    const event = makeEvent([makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01', status: 'pending' })]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    expect(status.level).toBe('behind');
     expect(status.overdueCount).toBe(1);
-    expect(status.sub).toBe('1 task is overdue');
+    expect(status.sub).toBe('1 item needs attention before moving ahead');
+  });
+
+  it('tolerates 1-2 minor overdue items (within 3 days) as "almost_ahead", not "behind"', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'minor-overdue', calculatedDate: '2026-09-09', status: 'pending' }),
+      makeMilestone({ id: 'due-soon', calculatedDate: '2026-09-14', status: 'pending' }),
+    ]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    expect(status.level).toBe('almost_ahead');
+    expect(status.overdueCount).toBe(1);
+    expect(status.sub).toBe('2 items to wrap up this week');
   });
 
   it('ignores completed and skipped milestones', () => {

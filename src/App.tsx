@@ -1819,6 +1819,7 @@ function App() {
                     setFocusMode('welcome');
                   }}
                   onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
+                  onUpdateMilestone={handleUpdateMilestone}
                 />
               ) : activeTab === 'tasks' ? (
                 <EventTimelineRadar

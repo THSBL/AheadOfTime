@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, Plane, ClipboardList, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
-import { CalendarEvent } from '../types';
+import { Sparkles, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, Plane, ClipboardList, PhoneCall, Layers, ChevronDown, Search, CalendarClock } from 'lucide-react';
+import { CalendarEvent, TMinusMilestone } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
   computeAheadStatus,
@@ -47,6 +47,7 @@ interface MyWeekAheadProps {
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
   onOpenNewEventModal: () => void;
   onOpenScanAgenda: () => void;
+  onUpdateMilestone?: (eventId: string, updatedMilestone: TMinusMilestone) => void;
 }
 
 const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string; iconBg: string; border: string }> = {
@@ -105,6 +106,60 @@ const ThemeTag: React.FC<{ theme: ActionTheme }> = ({ theme }) => {
   );
 };
 
+/**
+ * A compact "move this to tomorrow / next week" menu for an overdue item -
+ * softening the status logic doesn't help much if clearing an overdue
+ * item still requires navigating away to the full event view.
+ */
+const RescheduleMenu: React.FC<{ onReschedule: (target: 'tomorrow' | 'next_week') => void }> = ({ onReschedule }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
+        title="Reschedule"
+      >
+        <CalendarClock className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <>
+          {/* Click-outside catcher, behind the menu itself. */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-md py-1 w-36">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReschedule('tomorrow');
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Move to tomorrow
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReschedule('next_week');
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Move to next week
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (eventId: string) => void; overdue?: boolean }> = ({
   item,
   onSelectEvent,
@@ -141,8 +196,9 @@ const FlatMilestoneRow: React.FC<{
   onSelectEvent: (eventId: string) => void;
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
   overdue?: boolean;
-}> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue }) => (
-  <div className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-50/60">
+  onReschedule?: (target: 'tomorrow' | 'next_week') => void;
+}> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue, onReschedule }) => (
+  <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-slate-50/60">
     <button
       type="button"
       onClick={() => onToggleMilestoneStatus(item.eventId, item.milestoneId)}
@@ -163,6 +219,7 @@ const FlatMilestoneRow: React.FC<{
     >
       {item.dueLabel}
     </span>
+    {overdue && onReschedule && <RescheduleMenu onReschedule={onReschedule} />}
   </div>
 );
 
@@ -295,6 +352,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   onToggleMilestoneStatus,
   onOpenNewEventModal,
   onOpenScanAgenda,
+  onUpdateMilestone,
 }) => {
   const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
   const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
@@ -330,12 +388,25 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
   const simpleStatus = computeSimpleAheadStatus(activeEvents, currentReferenceDate);
   const overdueItems = computeOverdueMilestones(activeEvents, currentReferenceDate);
-  const weeklyPreview = computeWeeklyMilestonePreview(activeEvents, currentReferenceDate);
+  // "Looking ahead" only looks 4 weeks out - far enough to plan against,
+  // not so far it turns into an undifferentiated backlog.
+  const weeklyPreview = computeWeeklyMilestonePreview(activeEvents, currentReferenceDate, { weeks: 4 });
   // Week 0 ("This week") is deliberately flat, not folded into topics -
   // same reasoning as overdueItems: this is the "focus on this now" zone,
   // where a collapsed cluster would hide the detail that matters most.
   const thisWeekBucket = weeklyPreview.find((bucket) => bucket.key === 'week-0');
   const futureBuckets = weeklyPreview.filter((bucket) => bucket.key !== 'week-0');
+
+  const handleReschedule = (item: UpcomingMilestoneItem, target: 'tomorrow' | 'next_week') => {
+    if (!onUpdateMilestone) return;
+    const event = activeEvents.find((e) => e.id === item.eventId);
+    const milestone = event?.milestones?.find((m) => m.id === item.milestoneId);
+    if (!milestone) return;
+
+    const newDate = new Date(currentReferenceDate);
+    newDate.setDate(newDate.getDate() + (target === 'tomorrow' ? 1 : 7));
+    onUpdateMilestone(item.eventId, { ...milestone, calculatedDate: newDate.toISOString().slice(0, 10) });
+  };
   // Nothing overdue and nothing due this week - the "focus on now" zone is
   // genuinely empty, so say so instead of leaving a silent gap before
   // "Looking ahead".
@@ -392,6 +463,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
                   overdue
                   onSelectEvent={onSelectEvent}
                   onToggleMilestoneStatus={onToggleMilestoneStatus}
+                  onReschedule={onUpdateMilestone ? (target) => handleReschedule(item, target) : undefined}
                 />
               ))}
             </div>

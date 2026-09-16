@@ -268,9 +268,12 @@ export interface SimpleAheadStatus {
  * lists further down the page, but its summary text ("Nothing due yet." +
  * "One important item is still outstanding.") can read as self-
  * contradictory when both clauses fire at once. This collapses the same
- * underlying counts into a single clean verdict instead:
- * - "behind": anything is overdue, full stop.
- * - "almost_ahead": nothing overdue, but something is due within the week.
+ * underlying counts into a single clean verdict instead - deliberately
+ * softened so a couple of barely-late items don't read as a crisis:
+ * - "behind": 3+ items overdue, or any single item overdue by more than 3
+ *   days - genuinely falling behind, not just a little late.
+ * - "almost_ahead": otherwise, anything overdue (tolerated - 1-2 minor,
+ *   recent items) or due within the week still needs wrapping up.
  * - "ahead": nothing overdue and nothing due this week either.
  */
 export function computeSimpleAheadStatus(
@@ -279,6 +282,7 @@ export function computeSimpleAheadStatus(
   withinDays: number = 7
 ): SimpleAheadStatus {
   let overdueCount = 0;
+  let maxOverdueDays = 0;
   let dueSoonCount = 0;
   let completedCount = 0;
   let totalCount = 0;
@@ -293,6 +297,7 @@ export function computeSimpleAheadStatus(
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
       if (countdown.isOverdue) {
         overdueCount += 1;
+        maxOverdueDays = Math.max(maxOverdueDays, Math.abs(countdown.diffDays));
       } else if (countdown.diffDays <= withinDays) {
         dueSoonCount += 1;
       }
@@ -301,28 +306,29 @@ export function computeSimpleAheadStatus(
 
   const base = { overdueCount, dueSoonCount, completedCount, totalCount };
 
-  if (overdueCount > 0) {
+  if (overdueCount >= 3 || maxOverdueDays > 3) {
     return {
       ...base,
       level: 'behind',
-      label: "You're behind",
-      sub: `${overdueCount} task${overdueCount > 1 ? 's are' : ' is'} overdue`,
+      label: 'You are falling behind',
+      sub: `${overdueCount} item${overdueCount === 1 ? '' : 's'} need${overdueCount === 1 ? 's' : ''} attention before moving ahead`,
     };
   }
 
-  if (dueSoonCount > 0) {
+  const wrapUpCount = overdueCount + dueSoonCount;
+  if (wrapUpCount > 0) {
     return {
       ...base,
       level: 'almost_ahead',
-      label: "You're almost ahead",
-      sub: `${dueSoonCount} item${dueSoonCount > 1 ? 's need' : ' needs'} your attention`,
+      label: 'You are almost ahead',
+      sub: `${wrapUpCount} item${wrapUpCount === 1 ? '' : 's'} to wrap up this week`,
     };
   }
 
   return {
     ...base,
     level: 'ahead',
-    label: "You're ahead",
+    label: 'You are Ahead of Time',
     sub: 'Nothing else due this week',
   };
 }
