@@ -8,6 +8,8 @@ import {
   inferActionTheme,
   computeThisWeekFocus,
   isNextBestActionThisWeek,
+  computeSimpleAheadStatus,
+  computeUpcomingMilestones,
 } from './readiness';
 import { CalendarEvent, TMinusMilestone } from '../types';
 
@@ -338,5 +340,71 @@ describe('computeNextBestAction (cross-event)', () => {
 
   it('returns null when there are no events at all', () => {
     expect(computeNextBestAction([], REF_DATE_ISO)).toBeNull();
+  });
+});
+
+describe('computeSimpleAheadStatus', () => {
+  it('is "ahead" with no overdue and nothing due within the week', () => {
+    const event = makeEvent([makeMilestone({ calculatedDate: '2026-10-15', status: 'pending' })]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    expect(status.level).toBe('ahead');
+    expect(status.sub).toBe('Nothing else due this week');
+  });
+
+  it('is "almost_ahead" when something is due within the week but nothing is overdue', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'soon', calculatedDate: '2026-09-14', status: 'pending' }),
+      makeMilestone({ id: 'later', calculatedDate: '2026-10-15', status: 'pending' }),
+    ]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    expect(status.level).toBe('almost_ahead');
+    expect(status.dueSoonCount).toBe(1);
+    expect(status.sub).toBe('1 item needs your attention');
+  });
+
+  it('is "behind" whenever anything is overdue, even alongside due-soon or future items', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01', status: 'pending' }),
+      makeMilestone({ id: 'soon', calculatedDate: '2026-09-14', status: 'pending' }),
+    ]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    expect(status.level).toBe('behind');
+    expect(status.overdueCount).toBe(1);
+    expect(status.sub).toBe('1 task is overdue');
+  });
+
+  it('ignores completed and skipped milestones', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'done', calculatedDate: '2026-09-01', status: 'completed' }),
+      makeMilestone({ id: 'skipped', calculatedDate: '2026-09-01', status: 'skipped' }),
+    ]);
+    expect(computeSimpleAheadStatus([event], REF_DATE_ISO).level).toBe('ahead');
+  });
+});
+
+describe('computeUpcomingMilestones', () => {
+  it('buckets outstanding milestones by how far out they are due, excluding overdue ones', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01', status: 'pending' }),
+      makeMilestone({ id: 'this-week', calculatedDate: '2026-09-14', status: 'pending' }),
+      makeMilestone({ id: 'next-month', calculatedDate: '2026-09-30', status: 'pending' }),
+      makeMilestone({ id: 'further', calculatedDate: '2026-12-01', category: 'booking', status: 'pending' }),
+    ]);
+
+    const result = computeUpcomingMilestones([event], REF_DATE_ISO);
+
+    expect(result.thisWeek.map((i) => i.milestoneId)).toEqual(['this-week']);
+    expect(result.nextMonth.map((i) => i.milestoneId)).toEqual(['next-month']);
+    expect(result.further.map((i) => i.milestoneId)).toEqual(['further']);
+  });
+
+  it('sorts "further" items by importance before due date', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'routine-sooner', calculatedDate: '2026-12-01', category: 'shopping', status: 'pending' }),
+      makeMilestone({ id: 'critical-later', calculatedDate: '2026-12-15', category: 'booking', status: 'pending' }),
+    ]);
+
+    const result = computeUpcomingMilestones([event], REF_DATE_ISO);
+    expect(result.further.map((i) => i.milestoneId)).toEqual(['critical-later', 'routine-sooner']);
   });
 });

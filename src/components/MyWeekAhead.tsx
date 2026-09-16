@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, AlertTriangle, AlertCircle, Clock, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
+import { Sparkles, ArrowRight, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, DollarSign, Truck, PhoneCall, Layers, ChevronDown, Search } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
-  computeOverallAheadStatus,
   computeNextBestAction,
   computeAheadStatus,
   computeThisWeekFocus,
+  computeSimpleAheadStatus,
+  computeUpcomingMilestones,
   isNextBestActionThisWeek,
   AheadLevel,
   ActionTheme,
+  SimpleAheadLevel,
+  UpcomingMilestoneItem,
 } from '../utils/readiness';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
@@ -28,15 +31,6 @@ const EMPTY_WEEK_LINES = [
   "Nothing ahead. That's what being ahead looks like.",
   'A clear week is a finished one. Nothing left to prep.',
   "No prep needed right now - that's the goal, not a gap.",
-];
-
-// Same idea for the narrower case: there IS a next best action somewhere,
-// it's just not due soon - still worth leading with the achievement
-// rather than the future item.
-const CAUGHT_UP_LINES = [
-  "Nothing urgent this week. You're ahead of it.",
-  "This week is clear. Everything else can wait its turn.",
-  "You're covered for now - the rest is just future planning.",
 ];
 
 /** Picks a stable line for the session's reference date rather than
@@ -63,14 +57,51 @@ const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string; iconBg: str
   ready: { badge: 'text-slate-700 bg-slate-100 border-slate-300', dot: 'bg-slate-400', iconBg: 'bg-slate-100 text-slate-500', border: 'border-l-slate-300' },
 };
 
-const OVERALL_ICONS: Record<AheadLevel, React.ElementType> = {
-  at_risk: AlertTriangle,
-  attention: AlertCircle,
-  on_track: CheckCircle2,
-  ahead: CheckCircle2,
-  not_yet_due: Clock,
-  ready: CheckCircle2,
+// Same converging-runway-stripe motif as the app logo, repurposed as a
+// "how far ahead are you" gauge: stripes fill from the bottom (now) upward,
+// in the status color, so the shape that's already the brand's own visual
+// language for "ahead of time" carries the meaning instead of a generic icon.
+const RUNWAY_STRIPE_POINTS = [
+  '38,24 102,24 94,6 46,6', // top, narrowest
+  '24,46 116,46 106,28 34,28', // middle
+  '10,68 130,68 118,50 22,50', // bottom, widest
+];
+
+const RUNWAY_FILLED_COUNT: Record<SimpleAheadLevel, number> = { ahead: 3, almost_ahead: 2, behind: 1 };
+
+const SIMPLE_STATUS_STYLES: Record<SimpleAheadLevel, { fill: string; iconBg: string; cardBg: string; cardBorder: string }> = {
+  ahead: { fill: '#059669', iconBg: 'bg-emerald-100', cardBg: 'bg-emerald-50/70', cardBorder: 'border-emerald-200' },
+  almost_ahead: { fill: '#d97706', iconBg: 'bg-amber-100', cardBg: 'bg-amber-50/70', cardBorder: 'border-amber-200' },
+  behind: { fill: '#e11d48', iconBg: 'bg-rose-100', cardBg: 'bg-rose-50/70', cardBorder: 'border-rose-200' },
 };
+
+const RunwayStripes: React.FC<{ level: SimpleAheadLevel; className?: string }> = ({ level, className }) => {
+  const filledCount = RUNWAY_FILLED_COUNT[level];
+  const filledColor = SIMPLE_STATUS_STYLES[level].fill;
+  return (
+    <svg viewBox="0 0 140 70" className={className} aria-hidden="true">
+      {RUNWAY_STRIPE_POINTS.map((points, index) => {
+        // index 0 is the top (narrowest) stripe; fill from the bottom up.
+        const isFilled = index >= RUNWAY_STRIPE_POINTS.length - filledCount;
+        return <polygon key={index} points={points} fill={isFilled ? filledColor : '#e2e8f0'} />;
+      })}
+    </svg>
+  );
+};
+
+const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (eventId: string) => void }> = ({ item, onSelectEvent }) => (
+  <button
+    type="button"
+    onClick={() => onSelectEvent(item.eventId)}
+    className="w-full text-left flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/80 transition-all cursor-pointer"
+  >
+    <div className="min-w-0 flex-1">
+      <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+      <p className="text-[11px] text-slate-400 truncate">{item.eventTitle}</p>
+    </div>
+    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-500 bg-slate-100 shrink-0">{item.dueLabel}</span>
+  </button>
+);
 
 export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   events,
@@ -111,9 +142,11 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
     );
   }
 
-  const overall = computeOverallAheadStatus(activeEvents, currentReferenceDate);
+  const simpleStatus = computeSimpleAheadStatus(activeEvents, currentReferenceDate);
   const nextBestAction = computeNextBestAction(activeEvents, currentReferenceDate);
   const thisWeekFocus = computeThisWeekFocus(activeEvents, currentReferenceDate);
+  const upcoming = computeUpcomingMilestones(activeEvents, currentReferenceDate);
+  const workAheadItems = upcoming.further.filter((item) => item.importance !== 'routine').slice(0, 4);
 
   const perEvent = sortEventsUpcomingFirst(activeEvents, currentReferenceDate).map((event) => ({
     event,
@@ -122,84 +155,110 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
   const needsAttention = perEvent.filter((e) => e.status.level === 'at_risk' || e.status.level === 'attention');
   const alreadyAhead = perEvent.filter((e) => e.status.level === 'ahead' || e.status.level === 'ready');
-  const comingUp = perEvent.filter(
-    (e) => !needsAttention.includes(e) && !alreadyAhead.includes(e)
-  );
 
-  const OverallIcon = OVERALL_ICONS[overall.level];
-  const overallStyle = AHEAD_STYLES[overall.level];
+  const simpleStyle = SIMPLE_STATUS_STYLES[simpleStatus.level];
 
   return (
     <div className="flex-1 flex flex-col h-full milky-glass rounded-3xl overflow-hidden shadow-xs w-full">
       <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 sm:space-y-5">
-        {/* AHEAD - overall readiness */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-start gap-3.5">
-          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center shrink-0 ${overallStyle.iconBg}`}>
-            <OverallIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+        {/* Confirmation - one clean, non-contradictory read of "am I ahead?",
+            with the logo's own runway-stripe motif as the "how far ahead"
+            gauge: more stripes filled (in the status color) means more
+            clear. */}
+        <div className={`p-4 sm:p-5 rounded-2xl border shadow-xs flex items-center gap-4 ${simpleStyle.cardBg} ${simpleStyle.cardBorder}`}>
+          <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shrink-0 p-3 ${simpleStyle.iconBg}`}>
+            <RunwayStripes level={simpleStatus.level} className="w-full h-full" />
           </div>
           <div className="min-w-0 flex-1 space-y-0.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Ahead</p>
-            <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{overall.label}</h2>
-            <p className="text-xs sm:text-sm text-slate-600">{overall.summary}</p>
+            <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
+            <p className="text-xs sm:text-sm text-slate-600">{simpleStatus.sub}</p>
           </div>
         </div>
 
-        {/* Next Best Action - urgent styling only when it's actually due
-            this week. Otherwise lead with the achievement (nothing urgent
-            right now) and show the future item calmly underneath, rather
-            than making a 6-week-out task look like something to worry
-            about today. */}
-        {nextBestAction && (
-          isNextBestActionThisWeek(nextBestAction) ? (
-            <button
-              type="button"
-              onClick={() => onSelectEvent(nextBestAction.eventId)}
-              className={`w-full text-left p-4 sm:p-5 rounded-2xl border shadow-xs transition-all hover:shadow-md active:scale-[0.99] cursor-pointer ${
-                nextBestAction.isOverdue
-                  ? 'bg-rose-50/80 border-rose-200'
-                  : nextBestAction.importance === 'critical'
-                  ? 'bg-amber-50/80 border-amber-200'
-                  : 'bg-sky-50/70 border-sky-200'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Next best action</p>
-                  <p className="text-sm sm:text-base font-black text-slate-900 truncate">{nextBestAction.title}</p>
-                  <p className="text-xs text-slate-600">{nextBestAction.reason}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span
-                    className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                      nextBestAction.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-700 bg-white border border-slate-200'
-                    }`}
-                  >
-                    {nextBestAction.dueLabel}
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-slate-400" />
-                </div>
+        {/* Next Best Action - only shown when something is actually due
+            this week. A future item with no real urgency used to render
+            here anyway ("Looking further ahead") even when the top card
+            already said everything was clear - reading as a to-do the
+            moment you open the page. That's moved to "Want to get further
+            ahead?" below, framed as an opportunity rather than a pending
+            task. */}
+        {nextBestAction && isNextBestActionThisWeek(nextBestAction) && (
+          <button
+            type="button"
+            onClick={() => onSelectEvent(nextBestAction.eventId)}
+            className={`w-full text-left p-4 sm:p-5 rounded-2xl border shadow-xs transition-all hover:shadow-md active:scale-[0.99] cursor-pointer ${
+              nextBestAction.isOverdue
+                ? 'bg-rose-50/80 border-rose-200'
+                : nextBestAction.importance === 'critical'
+                ? 'bg-amber-50/80 border-amber-200'
+                : 'bg-sky-50/70 border-sky-200'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Next best action</p>
+                <p className="text-sm sm:text-base font-black text-slate-900 truncate">{nextBestAction.title}</p>
+                <p className="text-xs text-slate-600">{nextBestAction.reason}</p>
               </div>
-            </button>
-          ) : (
-            <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs space-y-3">
-              <p className="text-sm sm:text-base font-black text-slate-900">
-                {pickStableLine(CAUGHT_UP_LINES, currentReferenceDate)}
-              </p>
-              <button
-                type="button"
-                onClick={() => onSelectEvent(nextBestAction.eventId)}
-                className="w-full text-left pt-3 border-t border-slate-100 flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Looking further ahead</p>
-                  <p className="text-xs sm:text-sm font-bold text-slate-700 truncate group-hover:text-slate-900">{nextBestAction.title}</p>
-                </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-500 bg-slate-100 shrink-0">
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <span
+                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                    nextBestAction.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-700 bg-white border border-slate-200'
+                  }`}
+                >
                   {nextBestAction.dueLabel}
                 </span>
-              </button>
+                <ArrowRight className="w-4 h-4 text-slate-400" />
+              </div>
             </div>
-          )
+          </button>
+        )}
+
+        {/* Coming up - individual outstanding milestones, split by how far
+            out they are. Distinct from "This week, focus on" below (which
+            only surfaces themes with 2+ items to batch): this shows every
+            outstanding item, including lone ones a theme cluster would
+            skip. */}
+        {(upcoming.thisWeek.length > 0 || upcoming.nextMonth.length > 0) && (
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Coming up</h3>
+            {upcoming.thisWeek.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 px-1">This week</p>
+                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
+                  {upcoming.thisWeek.map((item) => (
+                    <MilestoneListRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {upcoming.nextMonth.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 px-1">Next month</p>
+                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
+                  {upcoming.nextMonth.map((item) => (
+                    <MilestoneListRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Want to get further ahead? - important items beyond the next
+            month, framed as an opportunity to tackle now rather than a
+            pending obligation - this is where a due-but-not-urgent item
+            belongs, instead of surfacing as "Next best action" the moment
+            you open the page with nothing actually due. */}
+        {workAheadItems.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Want to get further ahead?</h3>
+            <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
+              {workAheadItems.map((item) => (
+                <MilestoneListRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} />
+              ))}
+            </div>
+          </div>
         )}
 
         {/* This Week's Focus - actions grouped by theme across events, so
@@ -278,18 +337,6 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Needs attention</h3>
             <div className="space-y-2">
               {needsAttention.map(({ event, status }) => (
-                <EventRow key={event.id} event={event} status={status} currentReferenceDate={currentReferenceDate} onSelectEvent={onSelectEvent} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Coming Up */}
-        {comingUp.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Coming up</h3>
-            <div className="space-y-2">
-              {comingUp.map(({ event, status }) => (
                 <EventRow key={event.id} event={event} status={status} currentReferenceDate={currentReferenceDate} onSelectEvent={onSelectEvent} />
               ))}
             </div>

@@ -248,7 +248,150 @@ export function computeOverallAheadStatus(events: CalendarEvent[], referenceDate
   };
 }
 
+export type SimpleAheadLevel = 'ahead' | 'almost_ahead' | 'behind';
+
+export interface SimpleAheadStatus {
+  level: SimpleAheadLevel;
+  label: string;
+  sub: string;
+  overdueCount: number;
+  dueSoonCount: number;
+}
+
+/**
+ * A single, unambiguous "am I ahead of time?" reading for the whole
+ * dashboard - exactly three states, each with one non-contradictory line.
+ * computeOverallAheadStatus's six-level model is genuinely useful for
+ * categorizing events into "needs attention"/"coming up"/"already ahead"
+ * lists further down the page, but its summary text ("Nothing due yet." +
+ * "One important item is still outstanding.") can read as self-
+ * contradictory when both clauses fire at once. This collapses the same
+ * underlying counts into a single clean verdict instead:
+ * - "behind": anything is overdue, full stop.
+ * - "almost_ahead": nothing overdue, but something is due within the week.
+ * - "ahead": nothing overdue and nothing due this week either.
+ */
+export function computeSimpleAheadStatus(
+  events: CalendarEvent[],
+  referenceDateISO: string,
+  withinDays: number = 7
+): SimpleAheadStatus {
+  let overdueCount = 0;
+  let dueSoonCount = 0;
+
+  for (const event of events) {
+    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
+    for (const milestone of outstanding) {
+      const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
+      if (countdown.isOverdue) {
+        overdueCount += 1;
+      } else if (countdown.diffDays <= withinDays) {
+        dueSoonCount += 1;
+      }
+    }
+  }
+
+  if (overdueCount > 0) {
+    return {
+      level: 'behind',
+      label: "You're behind",
+      sub: `${overdueCount} task${overdueCount > 1 ? 's are' : ' is'} overdue`,
+      overdueCount,
+      dueSoonCount,
+    };
+  }
+
+  if (dueSoonCount > 0) {
+    return {
+      level: 'almost_ahead',
+      label: "You're almost ahead",
+      sub: `${dueSoonCount} item${dueSoonCount > 1 ? 's need' : ' needs'} your attention`,
+      overdueCount,
+      dueSoonCount,
+    };
+  }
+
+  return {
+    level: 'ahead',
+    label: "You're ahead",
+    sub: 'Nothing else due this week',
+    overdueCount,
+    dueSoonCount,
+  };
+}
+
+export interface UpcomingMilestoneItem {
+  eventId: string;
+  eventTitle: string;
+  milestoneId: string;
+  title: string;
+  dueLabel: string;
+  diffDays: number;
+  importance: ActionImportance;
+}
+
+export interface UpcomingMilestones {
+  thisWeek: UpcomingMilestoneItem[];
+  nextMonth: UpcomingMilestoneItem[];
+  further: UpcomingMilestoneItem[];
+}
+
 const IMPORTANCE_WEIGHT: Record<ActionImportance, number> = { critical: 0, important: 1, routine: 2 };
+
+/**
+ * Buckets every outstanding, non-overdue milestone by how far out it is due
+ * - overdue items are deliberately excluded here, since those already
+ * surface as "behind" in computeSimpleAheadStatus and under Needs Attention;
+ * this is only for the calm, forward-looking view of what's still ahead.
+ * `further` (beyond nextMonthDays) is meant for a "want to get further
+ * ahead?" prompt, so it's sorted by importance first - a lone routine task
+ * six months out isn't worth surfacing, but a critical one is.
+ */
+export function computeUpcomingMilestones(
+  events: CalendarEvent[],
+  referenceDateISO: string,
+  options: { thisWeekDays?: number; nextMonthDays?: number } = {}
+): UpcomingMilestones {
+  const thisWeekDays = options.thisWeekDays ?? 7;
+  const nextMonthDays = options.nextMonthDays ?? 30;
+
+  const thisWeek: UpcomingMilestoneItem[] = [];
+  const nextMonth: UpcomingMilestoneItem[] = [];
+  const further: UpcomingMilestoneItem[] = [];
+
+  for (const event of events) {
+    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
+    for (const milestone of outstanding) {
+      const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
+      if (countdown.isOverdue) continue;
+
+      const item: UpcomingMilestoneItem = {
+        eventId: event.id,
+        eventTitle: event.title,
+        milestoneId: milestone.id,
+        title: milestone.title,
+        dueLabel: countdown.label,
+        diffDays: countdown.diffDays,
+        importance: inferMilestoneImportance(milestone),
+      };
+
+      if (countdown.diffDays <= thisWeekDays) {
+        thisWeek.push(item);
+      } else if (countdown.diffDays <= nextMonthDays) {
+        nextMonth.push(item);
+      } else {
+        further.push(item);
+      }
+    }
+  }
+
+  const byDueDate = (a: UpcomingMilestoneItem, b: UpcomingMilestoneItem) => a.diffDays - b.diffDays;
+  thisWeek.sort(byDueDate);
+  nextMonth.sort(byDueDate);
+  further.sort((a, b) => IMPORTANCE_WEIGHT[a.importance] - IMPORTANCE_WEIGHT[b.importance] || byDueDate(a, b));
+
+  return { thisWeek, nextMonth, further };
+}
 
 /**
  * The single most urgent outstanding action for one event: overdue items
