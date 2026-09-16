@@ -60,6 +60,7 @@ If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with t
 - Your "milestones" output must be the COMPLETE resulting plan: every existing milestone that's still relevant (unchanged or lightly adjusted), plus whatever the new message adds or changes. Returning only milestones derived from the new message discards the entire existing plan - never do that.
 - Only treat something the new message mentions as "already covered" if an existing milestone's title OR one of its deliverables names that SAME specific thing - a broad or vague existing title (e.g. "Logistics & Bookings") is never enough on its own to justify skipping a specific new request (e.g. "book a rental car", "dry clean my suit"). When in doubt, add it as a new deliverable under the most relevant existing milestone, or its own milestone if it doesn't fit anywhere - never silently drop a specific, concrete request.
 - Only drop or rewrite an existing milestone if the new message explicitly contradicts it.
+- "MERGE" applies to the milestone list, not to staying silent about the event's own date/title/location: if the new message states an explicit date, title, or location, output that as the top-level start_date/summary/location too, even when merging - never let an old date survive when the user just gave a new one.
 - If genuinely something is unclear about the ADDITION itself (not the whole event), use Option C to ask about that one thing - e.g. "Got it, one thing: is the dog sitter needed for the full week or just a couple of days?"
 
 ### Temporal Grounding Rules:

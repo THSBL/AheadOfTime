@@ -536,7 +536,15 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   }
 
   const eventId = existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-  const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || existingEvent?.eventDate || params.refDateStr;
+  // Deterministic safety net, independent of whether the model bothered to
+  // repeat the date on a merge turn: if the user's own raw text names an
+  // explicit date, that wins over a stale existing-event date regardless of
+  // what the model output (or omitted) - a real bug let an old event's date
+  // survive a message that plainly gave a new one, because the model's
+  // merge-mode output didn't re-populate target_date/eventDate and the code
+  // fell back to the existing event's stale value instead.
+  const explicitMessageDate = existingEvent ? parseNaturalDateRange(params.message, params.currentReferenceDate)?.startDate : undefined;
+  const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || explicitMessageDate || existingEvent?.eventDate || params.refDateStr;
   const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || existingEvent?.endDate || undefined;
   const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
 

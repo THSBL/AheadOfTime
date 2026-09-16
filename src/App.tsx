@@ -1062,12 +1062,21 @@ function App() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      // targetEventId used to be hardcoded undefined here, so the server had
-      // no way to know a message continued a conversation about the event
-      // already open in the UI - every message created a brand-new event
-      // (the root cause of duplicate events from one evolving chat).
-      // selectedEventId is only ever a HINT: the server's target-resolution
-      // still lets a message that's clearly about something else win.
+      // Deliberately NOT selectedEventId: this handler is ChatConsole's
+      // "Presets & New Event" composer, which shows no indication of which
+      // event (if any) is currently selected elsewhere in the app.
+      // selectedEventId is global state that can point at whatever the user
+      // last viewed on the Timeline tab, completely unrelated to what
+      // they're typing here - passing it as a hint caused a real production
+      // bug: describing a brand-new, unrelated event silently inherited the
+      // stale date/details of whatever was last selected, because the
+      // server defaults to that hint whenever the model doesn't confidently
+      // override it. activeEvents (sent below) already lets the server
+      // recognize a genuine follow-up by matching message content against
+      // real candidates - the correct, lower-risk way to catch that case.
+      // The event's own correction box (EventTimelineRadar) is the one
+      // place a "definitely this event" hint belongs, and it already passes
+      // its own targetEventId directly.
       const response = await fetch('/api/agent/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1075,7 +1084,7 @@ function App() {
           message: text,
           currentReferenceDate,
           activeEvents: events,
-          targetEventId: selectedEventId ?? undefined,
+          targetEventId: undefined,
           userProfile: { homeZipOrLocation: onboardingProfile?.homeZipOrLocation },
         }),
       });
