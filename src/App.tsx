@@ -766,6 +766,7 @@ function App() {
   // rather than the raw Active Events list - that list is a picker you
   // drill into a specific event's timeline from, not the landing screen.
   const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>('detail');
+  const [isEventSidebarCollapsed, setIsEventSidebarCollapsed] = useState(false);
 
   // Custom Presets & Spreadsheet Importer State
   const [isImportTemplateModalOpen, setIsImportTemplateModalOpen] = useState(false);
@@ -1770,7 +1771,7 @@ function App() {
                 only Timeline & Tasks actually uses it to pick an event. */}
             <div className={`${
               activeTab === 'feed' || activeTab === 'chat' ? 'hidden' : mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'
-            } lg:col-span-5 xl:col-span-4 h-[calc(100vh-140px)] flex-col w-full`}>
+            } ${isEventSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-5 xl:col-span-4'} h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
                 events={sortedEvents}
                 selectedEventId={selectedEventId}
@@ -1785,20 +1786,27 @@ function App() {
                   navigate('/events/new');
                 }}
                 onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
-                onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
                 currentReferenceDate={currentReferenceDate}
                 selectedEventIds={selectedBulkEventIds}
                 onToggleSelectEvent={handleToggleSelectEvent}
                 onSelectAllEvents={handleSelectAllEvents}
                 onDeselectAllEvents={handleDeselectAllEvents}
                 onOpenBulkDeleteModal={() => setIsBulkDeleteModalOpen(true)}
+                isCollapsed={isEventSidebarCollapsed}
+                onToggleCollapse={() => setIsEventSidebarCollapsed((v) => !v)}
               />
             </div>
 
             {/* Right Console: Main Preparation Workspace / Presets Planner (Screen State 2 on mobile) */}
             <div className={`${
               mobileDashboardView === 'list' && activeTab !== 'feed' && activeTab !== 'chat' ? 'hidden lg:flex' : 'flex'
-            } ${activeTab === 'feed' || activeTab === 'chat' ? 'lg:col-span-12' : 'lg:col-span-7 xl:col-span-8'} h-[calc(100vh-140px)] flex-col w-full`}>
+            } ${
+              activeTab === 'feed' || activeTab === 'chat'
+                ? 'lg:col-span-12'
+                : isEventSidebarCollapsed
+                ? 'lg:col-span-11'
+                : 'lg:col-span-7 xl:col-span-8'
+            } h-[calc(100vh-140px)] flex-col w-full`}>
 
               {/* Workspace Content */}
               {activeTab === 'feed' ? (
@@ -1855,11 +1863,6 @@ function App() {
                   }}
                   onOpenGoogleCalendarSync={() => setIsGoogleCalendarModalOpen(true)}
                   onOpenApplyPreset={handleOpenApplyPreset}
-                  onOpenRefine={(event) => {
-                    setRefinementEvent(event);
-                    setWizardStage('step2_refinement');
-                    setIsManualModalOpen(true);
-                  }}
                   onSelectVariable={handleSelectVariable}
                   currentReferenceDate={currentReferenceDate}
                   isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}

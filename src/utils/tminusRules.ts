@@ -895,6 +895,10 @@ export function generateHeuristicMilestones(
     // Deployment & Runbook
     addMilestone('T-1d', -1 * 24 * 60, 'Deployment runbook & roll-back rehearsal', 'logistics', 'Verify staging environment, database migrations, credentials, and backup status');
     addMilestone('T-2h', -120, 'Go/No-Go launch check & team standup', 'logistics', 'Conduct final operational sync, monitor alarms, and execute release sequence');
+    // Post-launch follow-up - shipping isn't the last checkpoint. A few days
+    // after launch there's a real task waiting: did it actually work, and
+    // what did the team learn.
+    addMilestone('Day +3', 3 * 24 * 60, 'Post-launch review & retro', 'review', 'Check launch metrics/error rates and run a short team retro on what went well or should change next time');
   }
   else if (category === 'travel_trip') {
     const isBusinessTrip = /business|work\s*trip|conference|summit|corporate|client|pitch|tradeshow/i.test(event.title || '') ||
@@ -1087,9 +1091,24 @@ export function generateHeuristicMilestones(
 
     addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack clothes, toiletries, chargers, and activate roaming/eSIM', undefined, 'milestone');
     addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & out-of-office setup', 'logistics', 'Check in for flights 24h prior, download offline maps, and set email out-of-office', undefined, 'milestone');
-    const returnBaseDate = context.returnDate || eventDate;
+    const returnBaseDate = context.returnDate || event.endDate || eventDate;
     addMilestone('T-Return-1d', -1 * 24 * 60, 'Return trip prep & flight status check', 'logistics', 'Verify return flight status, pack return luggage, and plan hotel check-out', returnBaseDate, 'milestone');
     addMilestone('T-2h', -120, 'Departure buffer & home lockup', 'logistics', 'Final luggage zip, lock house, travel to airport / terminal', undefined, 'milestone');
+    // Post-trip follow-up - the return flight isn't the last thing on this
+    // list. A day after getting back, there's real work still outstanding:
+    // unpacking/reimbursement for a personal trip, or an expense report and
+    // team debrief for a business one.
+    addMilestone(
+      'Day +1',
+      1 * 24 * 60,
+      isBusinessTrip ? 'Submit expense report & trip debrief' : 'Unpack & submit trip expenses',
+      'logistics',
+      isBusinessTrip
+        ? 'File the travel expense report and share a short debrief/summary with the team'
+        : 'Unpack luggage and file any reimbursable trip expenses',
+      returnBaseDate,
+      'milestone'
+    );
     if (context.customNote && context.customNote.trim()) {
       const note = context.customNote.trim();
       // A note mentioning someone else approving/signing off is a real gate,

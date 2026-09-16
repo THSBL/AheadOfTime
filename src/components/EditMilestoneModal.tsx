@@ -144,11 +144,21 @@ export const EditMilestoneModal: React.FC<EditMilestoneModalProps> = ({
     setDate(newDateStr);
     const targetTime = new Date(`${eventDate}T${eventTime}:00`).getTime();
     const taskTime = new Date(`${newDateStr}T09:00:00`).getTime();
-    const diffDays = Math.max(0, Math.round((targetTime - taskTime) / (1000 * 60 * 60 * 24)));
+    const diffDays = Math.round((targetTime - taskTime) / (1000 * 60 * 60 * 24));
     if (diffDays > 0) {
       setAmount(diffDays);
       setUnit('days');
       setCustomBadge(`T-${diffDays}d`);
+    } else if (diffDays < 0) {
+      // A date after the event is a real "Day +N" follow-up (a post-trip or
+      // post-launch task), not an error - label it correctly instead of
+      // silently keeping whatever "before" label was set before this edit.
+      const daysAfter = Math.abs(diffDays);
+      setAmount(daysAfter);
+      setUnit('days');
+      setCustomBadge(`Day +${daysAfter}`);
+    } else {
+      setCustomBadge('T-Day');
     }
   };
 
@@ -156,11 +166,19 @@ export const EditMilestoneModal: React.FC<EditMilestoneModalProps> = ({
     e.preventDefault();
     if (!title.trim() || !date) return;
 
-    const offsetMinutes = unit === 'weeks'
-      ? -Math.round(amount * 7 * 24 * 60)
+    const magnitudeMinutes = unit === 'weeks'
+      ? Math.round(amount * 7 * 24 * 60)
       : unit === 'hours'
-      ? -Math.round(amount * 60)
-      : -Math.round(amount * 24 * 60);
+      ? Math.round(amount * 60)
+      : Math.round(amount * 24 * 60);
+
+    // Sign follows the actual picked date relative to the event, not the
+    // (before-oriented) amount/unit inputs alone - so manually picking a
+    // post-event date always produces a correct positive offset instead of
+    // inheriting whatever sign the milestone had before this edit.
+    const dateTime = new Date(`${date}T09:00:00`).getTime();
+    const eventDateTime = new Date(`${eventDate}T${eventTime}:00`).getTime();
+    const offsetMinutes = dateTime > eventDateTime ? magnitudeMinutes : -magnitudeMinutes;
 
     const updated: TMinusMilestone = {
       ...milestone,

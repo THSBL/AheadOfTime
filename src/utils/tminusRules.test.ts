@@ -297,6 +297,62 @@ describe('generateHeuristicMilestones', () => {
     const supplyTasks = milestones.filter((m) => /\bice\b|glassware|\bdecor\b|balloons?/i.test(`${m.title} ${m.description || ''}`));
     expect(supplyTasks).toEqual([]);
   });
+
+  it('adds a post-trip follow-up milestone dated after the event, not just pre-departure tasks', () => {
+    const milestones = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Trip to Paris', context: {} },
+      'evt-test-posttrip',
+      '2026-10-15',
+      '19:00'
+    );
+    const postTrip = milestones.find((m) => m.tMinusLabel === 'Day +1');
+    expect(postTrip).toBeDefined();
+    expect(postTrip!.title).toMatch(/unpack/i);
+    expect(postTrip!.category).toBe('logistics');
+    // Dated after the event's own start date, not before it like every
+    // other milestone in this list.
+    expect(new Date(postTrip!.calculatedDate).getTime()).toBeGreaterThan(new Date('2026-10-15').getTime());
+  });
+
+  it('gives the post-trip follow-up business-appropriate wording for a business trip', () => {
+    const milestones = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Business trip to Chicago for client meetings', context: { isBusinessTrip: true } },
+      'evt-test-postbiz',
+      '2026-10-15',
+      '19:00'
+    );
+    const postTrip = milestones.find((m) => m.tMinusLabel === 'Day +1');
+    expect(postTrip).toBeDefined();
+    expect(postTrip!.title).toMatch(/expense report/i);
+  });
+
+  it('dates the post-trip follow-up off the return/end date, not the departure date, for multi-day trips', () => {
+    const milestones = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Trip to Paris', endDate: '2026-10-22', context: {} },
+      'evt-test-posttrip-enddate',
+      '2026-10-15',
+      '19:00'
+    );
+    const postTrip = milestones.find((m) => m.tMinusLabel === 'Day +1');
+    expect(postTrip).toBeDefined();
+    // One day after the trip's end date (Oct 22), not one day after the
+    // start date (Oct 15).
+    expect(postTrip!.calculatedDate.slice(0, 10)).toBe('2026-10-23');
+  });
+
+  it('adds a post-launch review milestone dated after the deadline for project_deadline events', () => {
+    const milestones = generateHeuristicMilestones(
+      { category: 'project_deadline', context: {} },
+      'evt-test-launch',
+      '2026-10-15',
+      '19:00'
+    );
+    const postLaunch = milestones.find((m) => m.tMinusLabel === 'Day +3');
+    expect(postLaunch).toBeDefined();
+    expect(postLaunch!.title).toMatch(/review|retro/i);
+    expect(postLaunch!.category).toBe('review');
+    expect(new Date(postLaunch!.calculatedDate).getTime()).toBeGreaterThan(new Date('2026-10-15').getTime());
+  });
 });
 
 describe('applyMilestoneQualityGuardrails', () => {

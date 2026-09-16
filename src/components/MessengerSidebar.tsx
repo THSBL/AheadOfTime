@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { 
-  Calendar, 
-  Plus, 
-  Search, 
-  CheckCircle2, 
-  Clock, 
-  Home, 
-  Cake, 
-  Plane, 
+import {
+  Calendar,
+  Plus,
+  Search,
+  CheckCircle2,
+  Clock,
+  Home,
+  Cake,
+  Plane,
   Sparkles,
   Music,
   CalendarDays,
@@ -16,9 +16,11 @@ import {
   CheckSquare,
   Square,
   Repeat,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
-import { formatDisplayDate, getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
+import { getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
 
 interface MessengerSidebarProps {
   events: CalendarEvent[];
@@ -26,13 +28,14 @@ interface MessengerSidebarProps {
   onSelectEvent: (eventId: string) => void;
   onOpenNewEventModal: () => void;
   onOpenScanAgenda?: () => void;
-  onOpenGoogleCalendarSync?: () => void;
   currentReferenceDate: string;
   selectedEventIds: string[];
   onToggleSelectEvent: (eventId: string) => void;
   onSelectAllEvents: () => void;
   onDeselectAllEvents: () => void;
   onOpenBulkDeleteModal: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
@@ -41,13 +44,14 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onSelectEvent,
   onOpenNewEventModal,
   onOpenScanAgenda,
-  onOpenGoogleCalendarSync,
   currentReferenceDate,
   selectedEventIds,
   onToggleSelectEvent,
   onSelectAllEvents,
   onDeselectAllEvents,
   onOpenBulkDeleteModal,
+  isCollapsed,
+  onToggleCollapse,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -87,6 +91,27 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
   const allFilteredSelected = filteredEvents.length > 0 && filteredEvents.every((e) => selectedEventIds.includes(e.id));
 
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col items-center h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="w-8 h-8 rounded-xl bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 border border-sky-200/80 shadow-xs flex items-center justify-center cursor-pointer transition-all"
+          title="Expand event list"
+        >
+          <PanelLeftOpen className="w-4 h-4" />
+        </button>
+        <div className="w-8 h-8 rounded-xl bg-sky-100/80 border border-sky-200 flex items-center justify-center">
+          <CalendarDays className="w-4 h-4 text-sky-900" />
+        </div>
+        <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-950 font-mono font-bold border border-sky-200">
+          {events.length}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs">
       
@@ -109,21 +134,12 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             {onOpenScanAgenda && (
               <button
                 onClick={onOpenScanAgenda}
-                className="px-3 py-1.5 rounded-full bg-[#447463] hover:bg-[#376052] text-white transition-all cursor-pointer border border-[#376052]/50 shadow-xs flex items-center gap-1.5 text-xs font-bold active:scale-95"
+                className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer border border-slate-200 shadow-xs flex items-center gap-1.5 text-xs font-bold active:scale-95"
                 title="Scan for existing events in your agenda"
               >
-                <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
+                <Sparkles className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                 <span className="hidden sm:inline">Scan agenda</span>
                 <span className="sm:hidden">Scan</span>
-              </button>
-            )}
-            {onOpenGoogleCalendarSync && events.length > 0 && (
-              <button
-                onClick={onOpenGoogleCalendarSync}
-                className="p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 transition-all cursor-pointer border border-sky-200/80 shadow-xs active:scale-95 flex items-center justify-center"
-                title="Push events to Google Calendar"
-              >
-                <Calendar className="w-4 h-4" />
               </button>
             )}
             <button
@@ -133,6 +149,16 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
             </button>
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="hidden lg:flex p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 border border-sky-200/80 shadow-xs items-center justify-center cursor-pointer transition-all"
+                title="Collapse event list"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -202,7 +228,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
             const displayTitle = getCleanEventTitle(evt.title, evt.category, evt.context);
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
-            const formattedDeadline = formatDisplayDate(evt.eventDate);
 
             const isUnrefined = evt.needsRefinement === true && !evt.refinedAt && (!evt.context || Object.keys(evt.context).length === 0);
 
@@ -227,12 +252,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 onClick={() => onSelectEvent(evt.id)}
                 className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-2.5 relative group ${
                   isSelected
-                    ? isUnrefined
-                      ? 'bg-white border-2 border-slate-900 border-l-4 border-l-amber-500 shadow-sm'
-                      : 'bg-white border-2 border-slate-900 shadow-sm'
-                    : isUnrefined
-                      ? 'bg-white/95 border border-slate-200/80 border-l-4 border-l-amber-500 hover:border-slate-300 hover:shadow-xs shadow-2xs'
-                      : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
+                    ? 'bg-white border-2 border-slate-900 shadow-sm'
+                    : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
                 }`}
               >
                 {/* Checkbox for Bulk Deletion */}
@@ -262,31 +283,28 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                       {displayTitle}
                     </h4>
                     <div className="flex items-center gap-1 shrink-0">
-                      {isUnrefined ? (
-                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider text-amber-950 bg-amber-200/90 border border-amber-300 px-1.5 py-0.5 rounded-full shadow-2xs animate-pulse">
-                          <Sparkles className="w-2.5 h-2.5 text-amber-700" />
-                          <span>Unrefined</span>
-                        </span>
-                      ) : null}
                       <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md">
                         {countdown.label}
                       </span>
                     </div>
                   </div>
 
-                  {/* Middle Row: Deadline Date */}
-                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
-                    <span className="inline-flex items-center gap-1 text-slate-600 font-medium shrink-0">
-                      <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span>Deadline: <strong className="text-slate-800 font-semibold">{formattedDeadline}</strong></span>
-                    </span>
-                    {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-900 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded-md">
-                        <Repeat className="w-2.5 h-2.5 text-sky-700" />
-                        <span>{evt.recurrence?.recurrencePatternText || evt.context?.recurrencePatternText || 'Recurring'}</span>
-                      </span>
-                    )}
-                  </div>
+                  {(isUnrefined || evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
+                      {isUnrefined && (
+                        <span className="inline-flex items-center gap-1 text-slate-500 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                          <span>Needs review</span>
+                        </span>
+                      )}
+                      {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-900 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded-md">
+                          <Repeat className="w-2.5 h-2.5 text-sky-700" />
+                          <span>{evt.recurrence?.recurrencePatternText || evt.context?.recurrencePatternText || 'Recurring'}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Bottom Row: Next Preparation Task */}
                   {nextTask && (

@@ -27,6 +27,7 @@ import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
+import { computeOverdueMilestones, computeWeeklyMilestonePreview, WeeklyMilestoneBucket } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { DeleteEventModal } from './DeleteEventModal';
@@ -77,7 +78,6 @@ interface EventTimelineRadarProps {
   onOpenNewEventModal: () => void;
   onOpenGoogleCalendarSync?: () => void;
   onOpenApplyPreset?: (event: CalendarEvent) => void;
-  onOpenRefine: (event: CalendarEvent) => void;
   onSelectVariable?: (eventId: string, key: string, value: any, label: string) => void;
   currentReferenceDate: string;
   isGoogleConnected?: boolean;
@@ -101,7 +101,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   onOpenNewEventModal,
   onOpenGoogleCalendarSync,
   onOpenApplyPreset,
-  onOpenRefine,
   currentReferenceDate,
   isGoogleConnected,
   isSyncingWithGoogle,
@@ -130,6 +129,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [pendingSuggestion, setPendingSuggestion] = useState<IntakeQuestion | null>(null);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
+  const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
+  const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
 
   const toggleMilestoneExpanded = (milestoneId: string) => {
     setExpandedMilestoneIds((prev) => {
@@ -418,29 +419,261 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     return true;
   });
 
-  // Group into date-bucket sections so the list reads as a few short chunks
-  // rather than one long undifferentiated scroll - the section header itself
-  // carries the urgency framing, so individual cards don't have to repeat it
-  // as heavily (pairs with the per-card color cleanup below).
-  const milestoneBuckets = (() => {
-    const buckets: { label: string; items: typeof displayedMilestones }[] = [
-      { label: 'Overdue', items: [] },
-      { label: 'Due Soon', items: [] },
-      { label: 'Upcoming', items: [] },
-      { label: 'Done', items: [] },
-    ];
-    displayedMilestones.forEach((ms) => {
-      if (ms.status === 'completed' || ms.status === 'skipped') {
-        buckets[3].items.push(ms);
-        return;
-      }
-      const c = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
-      if (c.isOverdue) buckets[0].items.push(ms);
-      else if (c.isSoon) buckets[1].items.push(ms);
-      else buckets[2].items.push(ms);
-    });
-    return buckets.filter((b) => b.items.length > 0);
-  })();
+  // Group into the same Overdue / This week / Looking-ahead sections the "My
+  // Week Ahead" dashboard uses (src/utils/readiness.ts), instead of this
+  // file's own, older Overdue/Due Soon/Upcoming/Done split - one algorithm
+  // decides "what counts as overdue / this week / which week" everywhere in
+  // the app. Unlike the dashboard's 4-week-capped triage view, this is the
+  // full one-event deep-dive, so nothing is capped - every future week with
+  // an item gets shown. A synthetic single-event array (milestones replaced
+  // with the scope-filtered `displayedMilestones`) keeps the existing scope
+  // filter (all/macro/micro) working exactly as before.
+  const milestonesById = new Map<string, TMinusMilestone>(displayedMilestones.map((ms) => [ms.id, ms]));
+  const syntheticEvents = [{ ...activeEvent, milestones: displayedMilestones }];
+  const overdueItems = computeOverdueMilestones(syntheticEvents, currentReferenceDate)
+    .map((item) => milestonesById.get(item.milestoneId))
+    .filter((ms): ms is TMinusMilestone => Boolean(ms));
+  const weeklyPreview = computeWeeklyMilestonePreview(syntheticEvents, currentReferenceDate);
+  const thisWeekBucket = weeklyPreview.find((bucket) => bucket.key === 'week-0');
+  const futureBuckets = weeklyPreview.filter((bucket) => bucket.key !== 'week-0');
+  const doneMilestones = displayedMilestones.filter((ms) => ms.status === 'completed' || ms.status === 'skipped');
+
+  // Extracted so the same rich card (sub-tasks, category badge, per-item
+  // Refine, edit/delete) can be reused across every section below - Overdue,
+  // This week, and each nested week/topic level under Looking ahead -
+  // without duplicating this ~200-line block per section.
+  const renderMilestoneCard = (ms: TMinusMilestone) => {
+    const isCompleted = ms.status === 'completed';
+    const isSkipped = ms.status === 'skipped';
+    const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
+    const isOverdue = !isCompleted && !isSkipped && msCountdown.isOverdue;
+    // Was a separate hard-coded `diffDays <= 3` check, inconsistent
+    // with getCountdownStatus's own `isSoon` (fires at <= 5 days,
+    // "Tomorrow", "Due today"). Use the shared flag so there's one
+    // definition of "urgent soon" instead of two disagreeing ones.
+    const isUrgentSoon = !isOverdue && !isCompleted && !isSkipped && msCountdown.isSoon;
+    const isDeliverable = ms.kind === 'deliverable';
+    const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
+    const isExpanded = expandedMilestoneIds.has(ms.id);
+    const isReservation = ms.category === 'booking' || ms.category === 'tickets';
+    const isPurchase = ms.category === 'shopping' || ms.category === 'gift';
+    const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
+
+    return (
+      <div
+        key={ms.id}
+        className={`group p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 w-full ${
+          isSkipped
+            ? 'bg-slate-50/60 border-slate-200 text-slate-400 opacity-70'
+            : isCompleted
+            ? 'bg-slate-50/90 border-slate-200 text-slate-400'
+            // One signal per fact: overdue already shows on the due-pill
+            // below, so the card itself carries a single left-border
+            // accent rather than repeating rose across bg/border/ring
+            // too - matches the same single-accent pattern already used
+            // for the deliverable/has-deliverables states below.
+            : isOverdue
+            ? 'bg-white border-slate-200/90 hover:border-rose-300 text-slate-800 shadow-xs border-l-4 border-l-rose-500'
+            : isDeliverable
+            ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
+            : hasDeliverables
+            ? 'bg-white border-slate-200/90 hover:border-[#182A42]/40 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]/70'
+            : 'bg-white/80 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-2xs'
+        }`}
+      >
+        {/* Checkbox & Task Information */}
+        <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0 w-full">
+          <button
+            onClick={() => !isSkipped && handleMilestoneClick(activeEvent.id, ms)}
+            disabled={isSkipped}
+            className={`w-5 h-5 rounded-md mt-0.5 flex items-center justify-center transition-all shrink-0 ${
+              isSkipped
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : isCompleted
+                ? 'bg-emerald-600 text-white shadow-2xs cursor-pointer'
+                // Checkbox encodes completion state only - overdue/
+                // deliverable are already shown via the card's left-
+                // border accent and the due-pill, so this doesn't
+                // need its own copy of either signal.
+                : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
+            }`}
+            title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
+          >
+            {isSkipped ? <X className="w-3 h-3 stroke-[3]" /> : <Check className="w-3 h-3 stroke-[3]" />}
+          </button>
+
+          <div className="space-y-1 min-w-0 flex-1 w-full">
+            {/* Line 1: the actual calendar date */}
+            <div className="text-xs sm:text-sm font-bold text-slate-700">
+              {formatDisplayDate(ms.calculatedDate)}
+            </div>
+
+            {/* Line 2: due-in countdown, type label, and status badges */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              {!isCompleted && !isSkipped && (
+                <span
+                  className={`text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 inline-flex items-center gap-1 ${
+                    isOverdue
+                      ? 'text-rose-800 bg-rose-100 border-rose-300'
+                      : isUrgentSoon
+                      ? 'text-amber-900 bg-amber-100 border-amber-300'
+                      : 'text-slate-600 bg-slate-100 border-slate-200'
+                  }`}
+                  title={ms.tMinusLabel}
+                >
+                  {isOverdue && <AlertTriangle className="w-2.5 h-2.5 shrink-0" />}
+                  <span>{msCountdown.label}</span>
+                </span>
+              )}
+
+              {/* Category is static context, not a time-sensitive
+                  signal - one neutral badge shape for all three,
+                  differentiated by icon rather than a competing hue
+                  per category (color stays reserved for urgency and
+                  completion state elsewhere on this card). */}
+              {isReservation && (
+                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                  <CalendarCheck className="w-2.5 h-2.5" />
+                  <span>Reservation</span>
+                </span>
+              )}
+
+              {isPurchase && (
+                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                  <ShoppingBag className="w-2.5 h-2.5" />
+                  <span>Purchase</span>
+                </span>
+              )}
+
+              {!isReservation && !isPurchase && ms.category === 'logistics' && (
+                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">
+                  Logistics
+                </span>
+              )}
+
+              {isSkipped && (
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
+                  <X className="w-2.5 h-2.5" />
+                  <span>Skipped - removed in Google Tasks</span>
+                </span>
+              )}
+
+              {/* Refine Button for Deliverables needing more details */}
+              {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRefiningDeliverable(ms);
+                  }}
+                  className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
+                  title="Refine specifics for this deliverable"
+                >
+                  <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                  <span>Refine</span>
+                </button>
+              )}
+
+              {ms.tMinusLabel === 'T-Day' && (
+                <span className="text-[10px] font-bold text-white bg-[#182A42] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />
+                  <span>Main Event</span>
+                </span>
+              )}
+            </div>
+
+            {/* Task Title */}
+            {/* Overdue/deliverable already carry their own signal
+                (left-border accent, due-pill, category badge) - the
+                title only needs to distinguish completed from active. */}
+            <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
+              isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
+            }`}>
+              {ms.title}
+            </h4>
+
+            {/* Task Description */}
+            {ms.description && (
+              <p className="text-[11px] sm:text-xs font-medium leading-relaxed break-words text-slate-500">
+                {ms.description}
+              </p>
+            )}
+
+            {/* Sub-tasks - collapsed by default. Google Calendar/Tasks only
+                ever shows the milestone, never these, so they're kept
+                deliberately lightweight and secondary rather than a second
+                tier of full task cards. */}
+            {hasDeliverables && (
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMilestoneExpanded(ms.id);
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                  <span>{completedDelivCount}/{ms.deliverables!.length} sub-tasks</span>
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-1.5 pl-4 space-y-1">
+                    {ms.deliverables!.map((deliv) => {
+                      const isDelivDone = deliv.is_completed;
+                      return (
+                        <div
+                          key={deliv.deliverable_id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleDeliverable(ms, deliv.deliverable_id);
+                          }}
+                          className="flex items-center gap-2 py-0.5 cursor-pointer group/deliv"
+                        >
+                          <button
+                            type="button"
+                            className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                              isDelivDone
+                                ? 'bg-[#182A42] text-white'
+                                : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
+                            }`}
+                            title={isDelivDone ? 'Mark sub-task as pending' : 'Mark sub-task as complete'}
+                          >
+                            <Check className="w-2 h-2 stroke-[3]" />
+                          </button>
+                          <span className={`text-[11px] sm:text-xs truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
+                            {deliv.title}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions (Edit & Delete) - quiet by default, not competing with content */}
+        <div className="flex items-center gap-1 self-end sm:self-start opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+          <button
+            onClick={() => setEditingMilestone(ms)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
+            title="Edit task date, topic, or description"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => handleDeleteTask(ms.id)}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+            title="Delete this task"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs w-full">
@@ -473,19 +706,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 {getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}
               </h3>
               {activeEvent.needsRefinement && !activeEvent.refinedAt && (!activeEvent.context || Object.keys(activeEvent.context).length === 0) && (
-                <span className="text-[10px] font-mono font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
-                  <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                  <span>Unrefined</span>
-                </span>
-              )}
-              {countdown.isOverdue ? (
-                <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-300 shadow-2xs flex items-center gap-1 shrink-0">
-                  <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
-                  <span>{countdown.label}</span>
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200 shadow-2xs shrink-0">
-                  {countdown.label}
+                <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                  <span>Needs review</span>
                 </span>
               )}
               {(activeEvent.recurrence?.isRecurring || activeEvent.context?.isRecurring) && (
@@ -518,6 +741,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   <span className="truncate">{activeEvent.location}</span>
                 </div>
               )}
+              {countdown.isOverdue ? (
+                <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-300 shadow-2xs flex items-center gap-1 shrink-0">
+                  <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                  <span>{countdown.label}</span>
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200 shadow-2xs shrink-0">
+                  {countdown.label}
+                </span>
+              )}
             </div>
           </div>
 
@@ -525,20 +758,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="flex items-center gap-1.5 shrink-0 relative">
             <button
               onClick={() => setIsPushModalOpen(true)}
-              className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className="bg-[#447463] hover:bg-[#376052] text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
               title="Push 1 event + prep tasks to Google Calendar"
             >
-              <Calendar className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+              <Calendar className="w-3.5 h-3.5 text-white/90 shrink-0" />
               <span>Push to Cal</span>
-            </button>
-
-            <button
-              onClick={() => onOpenRefine(activeEvent)}
-              className="bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl border border-amber-200 flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
-              title="Answer follow-up questions to customize schedule"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>Refine</span>
             </button>
 
             {/* More Actions Menu */}
@@ -655,7 +879,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </div>
           <button
             onClick={() => onAddCustomMilestone(activeEvent.id)}
-            className="text-sky-950 hover:text-slate-900 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+            className="text-slate-500 hover:text-slate-900 px-1.5 py-0.5 flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer border-b border-transparent hover:border-slate-300"
           >
             <Plus className="w-3 h-3 stroke-[2.5]" />
             <span>Add Task</span>
@@ -667,7 +891,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             the same conversational engine and quality guardrails as chat
             or Telegram, targeting this specific event. */}
         {onUpdateEvent && (
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-2xs space-y-2">
+          <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3 shadow-2xs space-y-2">
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
               <span>Something off? Tell us in your own words</span>
@@ -900,251 +1124,122 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             </button>
           </div>
         ) : (
-          milestoneBuckets.map((bucket) => (
-            <React.Fragment key={bucket.label}>
-              <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
-                <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">
-                  {bucket.label}
-                </span>
-                <span className="text-[11px] font-bold text-slate-300">{bucket.items.length}</span>
-              </div>
-              {bucket.items.map((ms) => {
-            const isCompleted = ms.status === 'completed';
-            const isSkipped = ms.status === 'skipped';
-            const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
-            const isOverdue = !isCompleted && !isSkipped && msCountdown.isOverdue;
-            // Was a separate hard-coded `diffDays <= 3` check, inconsistent
-            // with getCountdownStatus's own `isSoon` (fires at <= 5 days,
-            // "Tomorrow", "Due today"). Use the shared flag so there's one
-            // definition of "urgent soon" instead of two disagreeing ones.
-            const isUrgentSoon = !isOverdue && !isCompleted && !isSkipped && msCountdown.isSoon;
-            const isDeliverable = ms.kind === 'deliverable';
-            const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
-            const isExpanded = expandedMilestoneIds.has(ms.id);
-            const isReservation = ms.category === 'booking' || ms.category === 'tickets';
-            const isPurchase = ms.category === 'shopping' || ms.category === 'gift';
-            const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
+          <>
+            {/* Overdue - flat and fully detailed, never folded into a topic,
+                since this is exactly what needs attention right now. */}
+            {overdueItems.length > 0 && (
+              <React.Fragment>
+                <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
+                  <span className="text-[11px] font-black uppercase tracking-wide text-rose-600">Overdue</span>
+                  <span className="text-[11px] font-bold text-slate-300">{overdueItems.length}</span>
+                </div>
+                {overdueItems.map((ms) => renderMilestoneCard(ms))}
+              </React.Fragment>
+            )}
 
-            return (
-              <div
-                key={ms.id}
-                className={`group p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 w-full ${
-                  isSkipped
-                    ? 'bg-slate-50/60 border-slate-200 text-slate-400 opacity-70'
-                    : isCompleted
-                    ? 'bg-slate-50/90 border-slate-200 text-slate-400'
-                    // One signal per fact: overdue already shows on the due-pill
-                    // below, so the card itself carries a single left-border
-                    // accent rather than repeating rose across bg/border/ring
-                    // too - matches the same single-accent pattern already used
-                    // for the deliverable/has-deliverables states below.
-                    : isOverdue
-                    ? 'bg-white border-slate-200/90 hover:border-rose-300 text-slate-800 shadow-xs border-l-4 border-l-rose-500'
-                    : isDeliverable
-                    ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
-                    : hasDeliverables
-                    ? 'bg-white border-slate-200/90 hover:border-[#182A42]/40 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]/70'
-                    : 'bg-white/80 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-2xs'
-                }`}
-              >
-                {/* Checkbox & Task Information */}
-                <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0 w-full">
-                  <button
-                    onClick={() => !isSkipped && handleMilestoneClick(activeEvent.id, ms)}
-                    disabled={isSkipped}
-                    className={`w-5 h-5 rounded-md mt-0.5 flex items-center justify-center transition-all shrink-0 ${
-                      isSkipped
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        : isCompleted
-                        ? 'bg-emerald-600 text-white shadow-2xs cursor-pointer'
-                        // Checkbox encodes completion state only - overdue/
-                        // deliverable are already shown via the card's left-
-                        // border accent and the due-pill, so this doesn't
-                        // need its own copy of either signal.
-                        : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
-                    }`}
-                    title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
-                  >
-                    {isSkipped ? <X className="w-3 h-3 stroke-[3]" /> : <Check className="w-3 h-3 stroke-[3]" />}
-                  </button>
+            {/* This week - same flat treatment, directly follows Overdue so
+                "what's late" and "what's due this week" read as one
+                continuous focus zone. */}
+            {thisWeekBucket && (
+              <React.Fragment>
+                <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
+                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">This week</span>
+                  <span className="text-[11px] font-bold text-slate-300">{thisWeekBucket.items.length}</span>
+                </div>
+                {thisWeekBucket.items.map((item) => {
+                  const ms = milestonesById.get(item.milestoneId);
+                  return ms ? renderMilestoneCard(ms) : null;
+                })}
+              </React.Fragment>
+            )}
 
-                  <div className="space-y-1 min-w-0 flex-1 w-full">
-                    {/* Line 1: the actual calendar date */}
-                    <div className="text-xs sm:text-sm font-bold text-slate-700">
-                      {formatDisplayDate(ms.calculatedDate)}
-                    </div>
-
-                    {/* Line 2: due-in countdown, type label, and status badges */}
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      {!isCompleted && !isSkipped && (
-                        <span
-                          className={`text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 inline-flex items-center gap-1 ${
-                            isOverdue
-                              ? 'text-rose-800 bg-rose-100 border-rose-300'
-                              : isUrgentSoon
-                              ? 'text-amber-900 bg-amber-100 border-amber-300'
-                              : 'text-slate-600 bg-slate-100 border-slate-200'
-                          }`}
-                          title={ms.tMinusLabel}
-                        >
-                          {isOverdue && <AlertTriangle className="w-2.5 h-2.5 shrink-0" />}
-                          <span>{msCountdown.label}</span>
+            {/* Looking ahead - everything beyond this week, nested: week
+                (collapsed to a label + count) -> topic cluster -> task -
+                same three-level fold as the dashboard, showing every future
+                week with something in it rather than capping at 4 weeks. */}
+            {futureBuckets.length > 0 && (
+              <React.Fragment>
+                <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
+                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Looking ahead</span>
+                </div>
+                {futureBuckets.map((bucket) => {
+                  const isWeekOpen = expandedWeekKey === bucket.key;
+                  return (
+                    <div key={bucket.key} className="rounded-xl sm:rounded-2xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedWeekKey(isWeekOpen ? null : bucket.key)}
+                        className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs sm:text-sm font-bold text-slate-900">{bucket.label}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {bucket.items.length} item{bucket.items.length === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
+                          {bucket.items.length}
                         </span>
-                      )}
-
-                      {/* Category is static context, not a time-sensitive
-                          signal - one neutral badge shape for all three,
-                          differentiated by icon rather than a competing hue
-                          per category (color stays reserved for urgency and
-                          completion state elsewhere on this card). */}
-                      {isReservation && (
-                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
-                          <CalendarCheck className="w-2.5 h-2.5" />
-                          <span>Reservation</span>
-                        </span>
-                      )}
-
-                      {isPurchase && (
-                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
-                          <ShoppingBag className="w-2.5 h-2.5" />
-                          <span>Purchase</span>
-                        </span>
-                      )}
-
-                      {!isReservation && !isPurchase && ms.category === 'logistics' && (
-                        <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">
-                          Logistics
-                        </span>
-                      )}
-
-                      {isSkipped && (
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
-                          <X className="w-2.5 h-2.5" />
-                          <span>Skipped - removed in Google Tasks</span>
-                        </span>
-                      )}
-
-                      {/* Refine Button for Deliverables needing more details */}
-                      {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRefiningDeliverable(ms);
-                          }}
-                          className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
-                          title="Refine specifics for this deliverable"
-                        >
-                          <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                          <span>Refine</span>
-                        </button>
-                      )}
-
-                      {ms.tMinusLabel === 'T-Day' && (
-                        <span className="text-[10px] font-bold text-white bg-[#182A42] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />
-                          <span>Main Event</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Task Title */}
-                    {/* Overdue/deliverable already carry their own signal
-                        (left-border accent, due-pill, category badge) - the
-                        title only needs to distinguish completed from active. */}
-                    <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
-                      isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
-                    }`}>
-                      {ms.title}
-                    </h4>
-
-                    {/* Task Description */}
-                    {ms.description && (
-                      <p className="text-[11px] sm:text-xs font-medium leading-relaxed break-words text-slate-500">
-                        {ms.description}
-                      </p>
-                    )}
-
-                    {/* Sub-tasks - collapsed by default. Google Calendar/Tasks only
-                        ever shows the milestone, never these, so they're kept
-                        deliberately lightweight and secondary rather than a second
-                        tier of full task cards. */}
-                    {hasDeliverables && (
-                      <div className="pt-0.5">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleMilestoneExpanded(ms.id);
-                          }}
-                          className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-                        >
-                          <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                          <span>{completedDelivCount}/{ms.deliverables!.length} sub-tasks</span>
-                        </button>
-
-                        {isExpanded && (
-                          <div className="mt-1.5 pl-4 space-y-1">
-                            {ms.deliverables!.map((deliv) => {
-                              const isDelivDone = deliv.is_completed;
-                              return (
-                                <div
-                                  key={deliv.deliverable_id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleToggleDeliverable(ms, deliv.deliverable_id);
-                                  }}
-                                  className="flex items-center gap-2 py-0.5 cursor-pointer group/deliv"
+                        <ChevronRight className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isWeekOpen ? 'rotate-90' : ''}`} />
+                      </button>
+                      {isWeekOpen && (
+                        <div className="border-t border-slate-100 p-2 space-y-2 bg-slate-50/50">
+                          {bucket.clusters.map((cluster) => {
+                            const clusterKey = `${bucket.key}-${cluster.theme}`;
+                            const isClusterOpen = expandedClusterKey === clusterKey;
+                            if (cluster.items.length === 1) {
+                              const ms = milestonesById.get(cluster.items[0].milestoneId);
+                              return ms ? <React.Fragment key={clusterKey}>{renderMilestoneCard(ms)}</React.Fragment> : null;
+                            }
+                            return (
+                              <div key={clusterKey} className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedClusterKey(isClusterOpen ? null : clusterKey)}
+                                  className="w-full text-left p-2.5 hover:bg-slate-50/80 transition-all flex items-center gap-2.5 cursor-pointer"
                                 >
-                                  <button
-                                    type="button"
-                                    className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
-                                      isDelivDone
-                                        ? 'bg-[#182A42] text-white'
-                                        : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
-                                    }`}
-                                    title={isDelivDone ? 'Mark sub-task as pending' : 'Mark sub-task as complete'}
-                                  >
-                                    <Check className="w-2 h-2 stroke-[3]" />
-                                  </button>
-                                  <span className={`text-[11px] sm:text-xs truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
-                                    {deliv.title}
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-bold text-slate-900">{cluster.label}</p>
+                                    <p className="text-[11px] text-slate-500">{cluster.items.length} items</p>
+                                  </div>
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
+                                    {cluster.items.length}
                                   </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                                  <ChevronRight className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isClusterOpen ? 'rotate-90' : ''}`} />
+                                </button>
+                                {isClusterOpen && (
+                                  <div className="border-t border-slate-100 p-2 space-y-2">
+                                    {cluster.items.map((item) => {
+                                      const ms = milestonesById.get(item.milestoneId);
+                                      return ms ? renderMilestoneCard(ms) : null;
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            )}
 
-                {/* Actions (Edit & Delete) - quiet by default, not competing with content */}
-                <div className="flex items-center gap-1 self-end sm:self-start opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
-                  <button
-                    onClick={() => setEditingMilestone(ms)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
-                    title="Edit task date, topic, or description"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteTask(ms.id)}
-                    className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-                    title="Delete this task"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+            {/* Done - unchanged from before. */}
+            {doneMilestones.length > 0 && (
+              <React.Fragment>
+                <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
+                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Done</span>
+                  <span className="text-[11px] font-bold text-slate-300">{doneMilestones.length}</span>
                 </div>
-              </div>
-                );
-              })}
-            </React.Fragment>
-          ))
+                {doneMilestones.map((ms) => renderMilestoneCard(ms))}
+              </React.Fragment>
+            )}
+          </>
         )}
 
-        {/* Target Deadline Summary Box */}
+        {/* Event Date Summary Box */}
         <div className={`mt-4 p-4 rounded-2xl border flex items-center justify-between text-xs sm:text-sm shadow-xs ${
           countdown.isOverdue
             ? 'bg-rose-50/70 border-rose-300 text-rose-950'
@@ -1153,7 +1248,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className={`w-3 h-3 rounded-full shadow-2xs ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#182A42]'}`} />
             <div>
-              <span className="font-bold text-slate-900">Target Event: {getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}</span>
+              <span className="font-bold text-slate-900">{getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}</span>
               {activeEvent.eventTime && <span className="text-slate-500 text-xs ml-2">({activeEvent.eventTime})</span>}
               {countdown.isOverdue && (
                 <span className="ml-2 font-mono font-bold text-rose-700 text-xs bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-300 inline-flex items-center gap-1">
@@ -1163,9 +1258,23 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               )}
             </div>
           </div>
-          <span className={`font-mono font-bold ${countdown.isOverdue ? 'text-rose-700' : 'text-slate-900'}`}>
-            {formatDisplayDate(activeEvent.eventDate)}
-          </span>
+          <div className="text-right">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mr-1.5">Event start date</span>
+              <span className={`font-mono font-bold ${countdown.isOverdue ? 'text-rose-700' : 'text-slate-900'}`}>
+                {formatDisplayDate(activeEvent.eventDate)}
+              </span>
+            </div>
+            {(activeEvent.endDate || activeEvent.macroEvent?.end_date) &&
+              (activeEvent.endDate || activeEvent.macroEvent?.end_date) !== activeEvent.eventDate && (
+              <div className="mt-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mr-1.5">Event end date</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {formatDisplayDate(activeEvent.endDate || activeEvent.macroEvent?.end_date || '')}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
