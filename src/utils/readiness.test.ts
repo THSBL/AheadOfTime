@@ -6,10 +6,11 @@ import {
   computeNextBestAction,
   inferMilestoneImportance,
   inferActionTheme,
-  computeThisWeekFocus,
   isNextBestActionThisWeek,
   computeSimpleAheadStatus,
   computeUpcomingMilestones,
+  computeOverdueMilestones,
+  computeWeeklyMilestonePreview,
 } from './readiness';
 import { CalendarEvent, TMinusMilestone } from '../types';
 
@@ -169,100 +170,97 @@ describe('inferActionTheme', () => {
     expect(inferActionTheme(makeMilestone({ title: 'Confirm restaurant reservation' }))).toBe('calls_confirmations');
   });
 
+  it('classifies the plural "RSVPs" the same as singular "RSVP"', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Invitations & RSVPs Sent' }))).toBe('calls_confirmations');
+  });
+
   it('falls back to other for unmatched titles', () => {
     expect(inferActionTheme(makeMilestone({ title: 'Review project scope with the team' }))).toBe('other');
   });
 });
 
-describe('computeThisWeekFocus', () => {
-  it('groups same-theme actions across different events into one cluster', () => {
+describe('computeOverdueMilestones', () => {
+  it('returns only overdue, outstanding milestones, most overdue first', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'soon', title: 'Confirm venue', calculatedDate: '2026-09-15' }),
+      makeMilestone({ id: 'overdue-1', title: 'Book flowers', calculatedDate: '2026-09-05' }),
+      makeMilestone({ id: 'overdue-2', title: 'Order cake', calculatedDate: '2026-09-01' }),
+    ]);
+
+    const clusters = computeOverdueMilestones([event], REF_DATE_ISO);
+    const ids = clusters.flatMap((c) => c.items.map((i) => i.milestoneId));
+    expect(ids).toEqual(['overdue-2', 'overdue-1']);
+  });
+
+  it('groups same-theme overdue items across events into one cluster', () => {
     const eventA = makeEvent(
-      [makeMilestone({ id: 'a1', title: 'Pack hiking boots', calculatedDate: '2026-09-15' })],
-      { id: 'evt-a', title: 'Highlands Trip' }
+      [makeMilestone({ id: 'a1', title: 'Book restaurant reservation', calculatedDate: '2026-09-01' })],
+      { id: 'evt-a', title: "Maya's Party" }
     );
     const eventB = makeEvent(
-      [makeMilestone({ id: 'b1', title: 'Pack Uniform & Shinguards', calculatedDate: '2026-09-16' })],
-      { id: 'evt-b', title: 'Football Tournament' }
+      [makeMilestone({ id: 'b1', title: 'Confirm RSVP headcount', calculatedDate: '2026-09-02' })],
+      { id: 'evt-b', title: "Leo's Party" }
     );
 
-    const clusters = computeThisWeekFocus([eventA, eventB], REF_DATE_ISO);
-
+    const clusters = computeOverdueMilestones([eventA, eventB], REF_DATE_ISO);
     expect(clusters).toHaveLength(1);
-    expect(clusters[0].theme).toBe('packing');
-    expect(clusters[0].count).toBe(2);
-    expect(clusters[0].eventTitles.sort()).toEqual(['Football Tournament', 'Highlands Trip']);
-  });
-
-  it('excludes clusters below the minimum size (no batching value from a single item)', () => {
-    const event = makeEvent([makeMilestone({ title: 'Pack hiking boots', calculatedDate: '2026-09-15' })]);
-    expect(computeThisWeekFocus([event], REF_DATE_ISO)).toHaveLength(0);
-  });
-
-  it('excludes actions further out than the horizon, but always includes overdue ones', () => {
-    const farOut = makeEvent(
-      [
-        makeMilestone({ id: 'f1', title: 'Pack bag one', calculatedDate: '2026-12-01' }),
-        makeMilestone({ id: 'f2', title: 'Pack bag two', calculatedDate: '2026-12-02' }),
-      ],
-      { id: 'evt-far' }
-    );
-    expect(computeThisWeekFocus([farOut], REF_DATE_ISO, { withinDays: 14 })).toHaveLength(0);
-
-    const overdue = makeEvent(
-      [
-        makeMilestone({ id: 'o1', title: 'Pack bag one', calculatedDate: '2026-01-01' }),
-        makeMilestone({ id: 'o2', title: 'Pack bag two', calculatedDate: '2026-01-02' }),
-      ],
-      { id: 'evt-overdue' }
-    );
-    expect(computeThisWeekFocus([overdue], REF_DATE_ISO, { withinDays: 14 })).toHaveLength(1);
+    expect(clusters[0].theme).toBe('calls_confirmations');
+    expect(clusters[0].items).toHaveLength(2);
   });
 
   it('excludes completed and skipped milestones', () => {
     const event = makeEvent([
-      makeMilestone({ id: 'p1', title: 'Pack bag one', status: 'completed', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'p2', title: 'Pack bag two', status: 'skipped', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'p3', title: 'Pack bag three', status: 'pending', calculatedDate: '2026-09-15' }),
+      makeMilestone({ id: 'done', status: 'completed', calculatedDate: '2026-09-01' }),
+      makeMilestone({ id: 'skipped', status: 'skipped', calculatedDate: '2026-09-01' }),
     ]);
-    expect(computeThisWeekFocus([event], REF_DATE_ISO)).toHaveLength(0);
+    expect(computeOverdueMilestones([event], REF_DATE_ISO)).toHaveLength(0);
+  });
+});
+
+describe('computeWeeklyMilestonePreview', () => {
+  it('buckets outstanding, non-overdue milestones into weekly windows labeled by recency', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'this-week', title: 'Confirm venue', calculatedDate: '2026-09-14' }),
+      makeMilestone({ id: 'next-week', title: 'Book flowers', calculatedDate: '2026-09-20' }),
+    ]);
+
+    const buckets = computeWeeklyMilestonePreview([event], REF_DATE_ISO);
+    expect(buckets[0].label).toBe('This week');
+    expect(buckets[0].clusters.flatMap((c) => c.items.map((i) => i.milestoneId))).toEqual(['this-week']);
+    expect(buckets[1].label).toBe('Next week');
+    expect(buckets[1].clusters.flatMap((c) => c.items.map((i) => i.milestoneId))).toEqual(['next-week']);
   });
 
-  it('never returns the "other" catch-all as a cluster', () => {
+  it('excludes overdue items and anything beyond the requested number of weeks', () => {
     const event = makeEvent([
-      makeMilestone({ id: 'm1', title: 'Review project scope', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'm2', title: 'Review budget allocation', calculatedDate: '2026-09-15' }),
+      makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01' }),
+      makeMilestone({ id: 'far-out', calculatedDate: '2026-12-01' }),
     ]);
-    const clusters = computeThisWeekFocus([event], REF_DATE_ISO);
-    expect(clusters.every((c) => c.theme !== 'other')).toBe(true);
+    const buckets = computeWeeklyMilestonePreview([event], REF_DATE_ISO, { weeks: 4 });
+    const allIds = buckets.flatMap((b) => b.clusters.flatMap((c) => c.items.map((i) => i.milestoneId)));
+    expect(allIds).toEqual([]);
   });
 
-  it('includes due-status on each action and sorts overdue ones first within a cluster', () => {
-    const event = makeEvent([
-      makeMilestone({ id: 'soon', title: 'Pack bag one', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'overdue', title: 'Pack bag two', calculatedDate: '2026-09-01' }),
-    ]);
-    const clusters = computeThisWeekFocus([event], REF_DATE_ISO);
-    expect(clusters).toHaveLength(1);
-    expect(clusters[0].actions[0].milestoneId).toBe('overdue');
-    expect(clusters[0].actions[0].isOverdue).toBe(true);
-    expect(clusters[0].actions[1].isOverdue).toBe(false);
-    expect(clusters[0].actions[0].dueLabel).toBeTruthy();
+  it('omits empty weeks entirely rather than returning a blank bucket', () => {
+    const event = makeEvent([makeMilestone({ calculatedDate: '2026-09-14' })]);
+    const buckets = computeWeeklyMilestonePreview([event], REF_DATE_ISO, { weeks: 4 });
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0].label).toBe('This week');
   });
 
-  it('sorts largest cluster first and caps at maxClusters', () => {
+  it('clusters same-theme items within a week and leaves lone items standalone', () => {
     const event = makeEvent([
-      makeMilestone({ id: 'd1', title: 'Passport check', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'd2', title: 'Visa application', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'p1', title: 'Pack suitcase', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'p2', title: 'Pack boots', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'p3', title: 'Pack costume', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'g1', title: 'Buy gift', calculatedDate: '2026-09-15' }),
-      makeMilestone({ id: 'g2', title: 'Wrap present', calculatedDate: '2026-09-15' }),
+      makeMilestone({ id: 'p1', title: 'Pack hiking boots', calculatedDate: '2026-09-14' }),
+      makeMilestone({ id: 'p2', title: 'Pack Uniform & Shinguards', calculatedDate: '2026-09-15' }),
+      makeMilestone({ id: 'g1', title: 'Buy gift', calculatedDate: '2026-09-14' }),
     ]);
-    const clusters = computeThisWeekFocus([event], REF_DATE_ISO, { maxClusters: 2 });
-    expect(clusters).toHaveLength(2);
-    expect(clusters[0].theme).toBe('packing');
-    expect(clusters[0].count).toBe(3);
+
+    const buckets = computeWeeklyMilestonePreview([event], REF_DATE_ISO);
+    const thisWeek = buckets[0];
+    const packingCluster = thisWeek.clusters.find((c) => c.theme === 'packing');
+    expect(packingCluster?.items).toHaveLength(2);
+    const giftCluster = thisWeek.clusters.find((c) => c.theme === 'gifts');
+    expect(giftCluster?.items).toHaveLength(1);
   });
 });
 

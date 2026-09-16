@@ -328,6 +328,7 @@ export interface UpcomingMilestoneItem {
   dueLabel: string;
   diffDays: number;
   importance: ActionImportance;
+  theme: ActionTheme;
 }
 
 export interface UpcomingMilestones {
@@ -373,6 +374,7 @@ export function computeUpcomingMilestones(
         dueLabel: countdown.label,
         diffDays: countdown.diffDays,
         importance: inferMilestoneImportance(milestone),
+        theme: inferActionTheme(milestone),
       };
 
       if (countdown.diffDays <= thisWeekDays) {
@@ -450,7 +452,7 @@ const THEME_PATTERNS: Array<[ActionTheme, RegExp]> = [
   ['gifts', /\b(gift|present|flowers|\bcard\b)\b/i],
   ['money', /\b(budget|payment|deposit|invoice|kitty|expense)\b/i],
   ['logistics', /\b(transport|travel|flight|flights|carpool|parking|directions?|address|departure|airport)\b/i],
-  ['calls_confirmations', /\b(confirm(?:ed|ation)?|book(?:ing|ed)?|rsvp|reservation|reserve[d]?|call|phone|appointment)\b/i],
+  ['calls_confirmations', /\b(confirm(?:ed|ation)?|book(?:ing|ed)?|rsvps?|reservation|reserve[d]?|call|phone|appointment)\b/i],
 ];
 
 /**
@@ -468,87 +470,136 @@ export function inferActionTheme(milestone: TMinusMilestone): ActionTheme {
   return 'other';
 }
 
-export interface ThemeClusterAction {
-  eventId: string;
-  eventTitle: string;
-  milestoneId: string;
-  title: string;
-  dueLabel: string;
-  isOverdue: boolean;
-}
-
-export interface ThemeCluster {
+export interface MilestoneCluster {
   theme: ActionTheme;
   label: string;
-  count: number;
-  eventTitles: string[];
-  actions: ThemeClusterAction[];
+  items: UpcomingMilestoneItem[];
 }
 
 /**
- * Groups outstanding actions across every active event by inferred theme -
- * "This week, focus on: Packing (3 items across 2 trips)" instead of
- * listing the same kind of task separately under each event. Only themes
- * with at least `minClusterSize` items are returned (a lone item isn't a
- * batching opportunity), sorted largest-first and capped at `maxClusters`
- * so this stays a short, actionable suggestion rather than a full taxonomy.
- * `other` is never returned - it's a catch-all with no coherent batching
- * value by definition.
+ * Groups milestone items by inferred theme so similar tasks (e.g. four
+ * separate "send invitations" items, or every flight/hotel booking) can be
+ * presented as one "Calls and confirmations (4)" row instead of four
+ * near-identical lines. A theme only becomes a real cluster (`items.length
+ * > 1`, `label` = the theme name) once at least two items share it; a lone
+ * item - or any 'other' item, too generic to name as a group - stays its
+ * own single-item entry, so callers can render every item uniformly and
+ * tell grouped from standalone apart via `items.length`.
  */
-export function computeThisWeekFocus(
-  events: CalendarEvent[],
-  referenceDateISO: string,
-  options: { withinDays?: number; minClusterSize?: number; maxClusters?: number } = {}
-): ThemeCluster[] {
-  const withinDays = options.withinDays ?? 14;
-  const minClusterSize = options.minClusterSize ?? 2;
-  const maxClusters = options.maxClusters ?? 3;
+function clusterMilestoneItemsByTheme(items: UpcomingMilestoneItem[]): MilestoneCluster[] {
+  const byTheme = new Map<ActionTheme, UpcomingMilestoneItem[]>();
+  for (const item of items) {
+    const list = byTheme.get(item.theme) || [];
+    list.push(item);
+    byTheme.set(item.theme, list);
+  }
 
-  const clusters = new Map<ActionTheme, ThemeCluster>();
+  const clusters: MilestoneCluster[] = [];
+  const standalone: UpcomingMilestoneItem[] = [];
+  for (const [theme, list] of byTheme) {
+    if (theme !== 'other' && list.length >= 2) {
+      clusters.push({ theme, label: THEME_LABELS[theme], items: list });
+    } else {
+      standalone.push(...list);
+    }
+  }
+
+  clusters.sort((a, b) => b.items.length - a.items.length);
+  standalone
+    .sort((a, b) => a.diffDays - b.diffDays)
+    .forEach((item) => clusters.push({ theme: item.theme, label: item.title, items: [item] }));
+
+  return clusters;
+}
+
+/**
+ * Every overdue, outstanding milestone across active events - the concrete
+ * list behind computeSimpleAheadStatus's "N tasks are overdue" count, so
+ * that number is always backed by N visible, clickable items instead of a
+ * single highlighted "next best action" that leaves the rest invisible.
+ * Most-overdue first, grouped by theme like the weekly preview below.
+ */
+export function computeOverdueMilestones(events: CalendarEvent[], referenceDateISO: string): MilestoneCluster[] {
+  const items: UpcomingMilestoneItem[] = [];
 
   for (const event of events) {
     const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
     for (const milestone of outstanding) {
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
-      const withinHorizon = countdown.isOverdue || countdown.diffDays <= withinDays;
-      if (!withinHorizon) continue;
+      if (!countdown.isOverdue) continue;
 
-      const theme = inferActionTheme(milestone);
-      if (theme === 'other') continue;
-
-      const existing = clusters.get(theme) || {
-        theme,
-        label: THEME_LABELS[theme],
-        count: 0,
-        eventTitles: [],
-        actions: [],
-      };
-      existing.count += 1;
-      if (!existing.eventTitles.includes(event.title)) {
-        existing.eventTitles.push(event.title);
-      }
-      existing.actions.push({
+      items.push({
         eventId: event.id,
         eventTitle: event.title,
         milestoneId: milestone.id,
         title: milestone.title,
         dueLabel: countdown.label,
-        isOverdue: countdown.isOverdue,
+        diffDays: countdown.diffDays,
+        importance: inferMilestoneImportance(milestone),
+        theme: inferActionTheme(milestone),
       });
-      clusters.set(theme, existing);
     }
   }
 
-  return Array.from(clusters.values())
-    .filter((c) => c.count >= minClusterSize)
-    .map((c) => ({
-      ...c,
-      // Most urgent action in the cluster first, so opening it up shows
-      // what actually needs doing soonest rather than insertion order.
-      actions: [...c.actions].sort((a, b) => Number(b.isOverdue) - Number(a.isOverdue)),
+  items.sort((a, b) => a.diffDays - b.diffDays);
+  return clusterMilestoneItemsByTheme(items);
+}
+
+export interface WeeklyMilestoneBucket {
+  key: string;
+  label: string;
+  clusters: MilestoneCluster[];
+}
+
+const WEEK_BUCKET_LABELS = ['This week', 'Next week'];
+
+/**
+ * A rolling, week-by-week preview of what's outstanding over the next
+ * `weeks` weeks (overdue items excluded - those belong to
+ * computeOverdueMilestones instead). A calendar-shaped view rather than one
+ * flat "coming up" list, so planning further out still feels concrete ("3
+ * things due the week after next") instead of an undifferentiated pile -
+ * and each week's items are theme-clustered the same way as the overdue
+ * list, so the "batch similar tasks together" view isn't a separate,
+ * easy-to-miss section anymore.
+ */
+export function computeWeeklyMilestonePreview(
+  events: CalendarEvent[],
+  referenceDateISO: string,
+  options: { weeks?: number } = {}
+): WeeklyMilestoneBucket[] {
+  const weeks = options.weeks ?? 4;
+  const buckets: UpcomingMilestoneItem[][] = Array.from({ length: weeks }, () => []);
+
+  for (const event of events) {
+    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
+    for (const milestone of outstanding) {
+      const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
+      if (countdown.isOverdue) continue;
+
+      const weekIndex = Math.floor(countdown.diffDays / 7);
+      if (weekIndex < 0 || weekIndex >= weeks) continue;
+
+      buckets[weekIndex].push({
+        eventId: event.id,
+        eventTitle: event.title,
+        milestoneId: milestone.id,
+        title: milestone.title,
+        dueLabel: countdown.label,
+        diffDays: countdown.diffDays,
+        importance: inferMilestoneImportance(milestone),
+        theme: inferActionTheme(milestone),
+      });
+    }
+  }
+
+  return buckets
+    .map((items, index) => ({
+      key: `week-${index}`,
+      label: WEEK_BUCKET_LABELS[index] ?? `In ${index + 1} weeks`,
+      clusters: clusterMilestoneItemsByTheme([...items].sort((a, b) => a.diffDays - b.diffDays)),
     }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, maxClusters);
+    .filter((bucket) => bucket.clusters.length > 0);
 }
 
 /**

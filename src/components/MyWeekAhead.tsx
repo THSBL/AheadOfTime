@@ -5,14 +5,16 @@ import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '
 import {
   computeNextBestAction,
   computeAheadStatus,
-  computeThisWeekFocus,
   computeSimpleAheadStatus,
   computeUpcomingMilestones,
+  computeOverdueMilestones,
+  computeWeeklyMilestonePreview,
   isNextBestActionThisWeek,
   AheadLevel,
   ActionTheme,
   SimpleAheadLevel,
   UpcomingMilestoneItem,
+  MilestoneCluster,
 } from '../utils/readiness';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
@@ -89,7 +91,11 @@ const RunwayStripes: React.FC<{ level: SimpleAheadLevel; className?: string }> =
   );
 };
 
-const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (eventId: string) => void }> = ({ item, onSelectEvent }) => (
+const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (eventId: string) => void; overdue?: boolean }> = ({
+  item,
+  onSelectEvent,
+  overdue,
+}) => (
   <button
     type="button"
     onClick={() => onSelectEvent(item.eventId)}
@@ -99,9 +105,90 @@ const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (
       <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
       <p className="text-[11px] text-slate-400 truncate">{item.eventTitle}</p>
     </div>
-    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-500 bg-slate-100 shrink-0">{item.dueLabel}</span>
+    <span
+      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
+        overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
+      }`}
+    >
+      {item.dueLabel}
+    </span>
   </button>
 );
+
+/**
+ * Renders one MilestoneCluster: a lone item (or an 'other' item, too
+ * generic to name as a group) is just a plain row, while a real cluster
+ * (2+ items sharing a theme, e.g. four separate "send invitations" tasks)
+ * becomes an expandable "Calls and confirmations (4)" card - the "batch
+ * similar tasks together" view, now built into every section that lists
+ * milestones instead of being a separate, easy-to-miss one.
+ */
+const MilestoneClusterCard: React.FC<{
+  cluster: MilestoneCluster;
+  isOpen: boolean;
+  onToggleOpen: () => void;
+  onSelectEvent: (eventId: string) => void;
+  onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
+  overdue?: boolean;
+}> = ({ cluster, isOpen, onToggleOpen, onSelectEvent, onToggleMilestoneStatus, overdue }) => {
+  if (cluster.items.length === 1) {
+    return <MilestoneListRow item={cluster.items[0]} onSelectEvent={onSelectEvent} overdue={overdue} />;
+  }
+
+  const Icon = THEME_ICONS[cluster.theme];
+
+  return (
+    <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer"
+      >
+        <Icon className="w-4 h-4 text-slate-500 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs sm:text-sm font-bold text-slate-900">{cluster.label}</p>
+          <p className="text-[11px] text-slate-500 truncate">{cluster.items.length} items</p>
+        </div>
+        <span
+          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+            overdue ? 'text-rose-800 bg-rose-100 border-rose-200' : 'text-slate-700 bg-slate-100 border-slate-200'
+          }`}
+        >
+          {cluster.items.length}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-slate-100 divide-y divide-slate-100">
+          {cluster.items.map((item) => (
+            <div key={item.milestoneId} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50/60">
+              <button
+                type="button"
+                onClick={() => onToggleMilestoneStatus(item.eventId, item.milestoneId)}
+                className="w-4 h-4 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
+                title="Mark as complete"
+              >
+                <Check className="w-2.5 h-2.5 stroke-[3]" />
+              </button>
+              <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
+                <p className="text-xs font-semibold text-slate-800 truncate">{item.title}</p>
+                <p className="text-[10px] text-slate-400 truncate">{item.eventTitle}</p>
+              </button>
+              <span
+                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                  overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
+                }`}
+              >
+                {item.dueLabel}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   events,
@@ -111,7 +198,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   onOpenNewEventModal,
   onOpenScanAgenda,
 }) => {
-  const [expandedTheme, setExpandedTheme] = useState<ActionTheme | null>(null);
+  const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
   const activeEvents = events.filter((e) => e.status !== 'completed');
 
   if (activeEvents.length === 0) {
@@ -144,8 +231,12 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
   const simpleStatus = computeSimpleAheadStatus(activeEvents, currentReferenceDate);
   const nextBestAction = computeNextBestAction(activeEvents, currentReferenceDate);
-  const thisWeekFocus = computeThisWeekFocus(activeEvents, currentReferenceDate);
-  const upcoming = computeUpcomingMilestones(activeEvents, currentReferenceDate);
+  const overdueClusters = computeOverdueMilestones(activeEvents, currentReferenceDate);
+  const weeklyPreview = computeWeeklyMilestonePreview(activeEvents, currentReferenceDate);
+  // Aligned to the 4-week (28-day) horizon computeWeeklyMilestonePreview
+  // covers above, so nothing falls into a gap between the two: further
+  // means "beyond week 4", not "beyond a mismatched 30-day cutoff".
+  const upcoming = computeUpcomingMilestones(activeEvents, currentReferenceDate, { nextMonthDays: 27 });
   const workAheadItems = upcoming.further.filter((item) => item.importance !== 'routine').slice(0, 4);
 
   const perEvent = sortEventsUpcomingFirst(activeEvents, currentReferenceDate).map((event) => ({
@@ -175,23 +266,46 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
           </div>
         </div>
 
-        {/* Next Best Action - only shown when something is actually due
-            this week. A future item with no real urgency used to render
-            here anyway ("Looking further ahead") even when the top card
-            already said everything was clear - reading as a to-do the
-            moment you open the page. That's moved to "Want to get further
-            ahead?" below, framed as an opportunity rather than a pending
-            task. */}
-        {nextBestAction && isNextBestActionThisWeek(nextBestAction) && (
+        {/* Overdue - every overdue milestone, not just the single most
+            urgent one. The top card's "N tasks are overdue" needs N
+            visible, clickable items behind it, not one highlighted action
+            that leaves the rest invisible. Grouped by theme like every
+            other list here. */}
+        {overdueClusters.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 px-1">
+              Overdue ({overdueClusters.reduce((sum, c) => sum + c.items.length, 0)})
+            </h3>
+            <div className="space-y-2">
+              {overdueClusters.map((cluster) => (
+                <MilestoneClusterCard
+                  key={cluster.theme + cluster.items[0].milestoneId}
+                  cluster={cluster}
+                  overdue
+                  isOpen={expandedClusterKey === `overdue-${cluster.theme}`}
+                  onToggleOpen={() =>
+                    setExpandedClusterKey(expandedClusterKey === `overdue-${cluster.theme}` ? null : `overdue-${cluster.theme}`)
+                  }
+                  onSelectEvent={onSelectEvent}
+                  onToggleMilestoneStatus={onToggleMilestoneStatus}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Next Best Action - only shown when nothing is overdue (the
+            Overdue list above covers that case) and something not-yet-late
+            is still due this week. A future item with no real urgency used
+            to render here anyway ("Looking further ahead") even when the
+            top card already said everything was clear - that's moved to
+            "Want to get further ahead?" below instead. */}
+        {nextBestAction && !nextBestAction.isOverdue && isNextBestActionThisWeek(nextBestAction) && (
           <button
             type="button"
             onClick={() => onSelectEvent(nextBestAction.eventId)}
             className={`w-full text-left p-4 sm:p-5 rounded-2xl border shadow-xs transition-all hover:shadow-md active:scale-[0.99] cursor-pointer ${
-              nextBestAction.isOverdue
-                ? 'bg-rose-50/80 border-rose-200'
-                : nextBestAction.importance === 'critical'
-                ? 'bg-amber-50/80 border-amber-200'
-                : 'bg-sky-50/70 border-sky-200'
+              nextBestAction.importance === 'critical' ? 'bg-amber-50/80 border-amber-200' : 'bg-sky-50/70 border-sky-200'
             }`}
           >
             <div className="flex items-start justify-between gap-3">
@@ -201,11 +315,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
                 <p className="text-xs text-slate-600">{nextBestAction.reason}</p>
               </div>
               <div className="flex flex-col items-end gap-1.5 shrink-0">
-                <span
-                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                    nextBestAction.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-700 bg-white border border-slate-200'
-                  }`}
-                >
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-white border border-slate-200">
                   {nextBestAction.dueLabel}
                 </span>
                 <ArrowRight className="w-4 h-4 text-slate-400" />
@@ -214,42 +324,37 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
           </button>
         )}
 
-        {/* Coming up - individual outstanding milestones, split by how far
-            out they are. Distinct from "This week, focus on" below (which
-            only surfaces themes with 2+ items to batch): this shows every
-            outstanding item, including lone ones a theme cluster would
-            skip. */}
-        {(upcoming.thisWeek.length > 0 || upcoming.nextMonth.length > 0) && (
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Coming up</h3>
-            {upcoming.thisWeek.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 px-1">This week</p>
-                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
-                  {upcoming.thisWeek.map((item) => (
-                    <MilestoneListRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {upcoming.nextMonth.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 px-1">Next month</p>
-                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
-                  {upcoming.nextMonth.map((item) => (
-                    <MilestoneListRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} />
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* Weekly preview - a rolling, week-by-week look at what's still
+            outstanding (This week / Next week / In 3 weeks / In 4 weeks),
+            each week grouped by theme so similar tasks (e.g. four separate
+            "send invitations" items) batch together instead of listing
+            separately. Seeing it broken out by week - rather than one flat
+            "coming up" pile - makes the plan feel concrete further out. */}
+        {weeklyPreview.map((bucket) => (
+          <div key={bucket.key} className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">{bucket.label}</h3>
+            <div className="space-y-2">
+              {bucket.clusters.map((cluster) => (
+                <MilestoneClusterCard
+                  key={cluster.theme + cluster.items[0].milestoneId}
+                  cluster={cluster}
+                  isOpen={expandedClusterKey === `${bucket.key}-${cluster.theme}`}
+                  onToggleOpen={() =>
+                    setExpandedClusterKey(
+                      expandedClusterKey === `${bucket.key}-${cluster.theme}` ? null : `${bucket.key}-${cluster.theme}`
+                    )
+                  }
+                  onSelectEvent={onSelectEvent}
+                  onToggleMilestoneStatus={onToggleMilestoneStatus}
+                />
+              ))}
+            </div>
           </div>
-        )}
+        ))}
 
-        {/* Want to get further ahead? - important items beyond the next
-            month, framed as an opportunity to tackle now rather than a
-            pending obligation - this is where a due-but-not-urgent item
-            belongs, instead of surfacing as "Next best action" the moment
-            you open the page with nothing actually due. */}
+        {/* Want to get further ahead? - important items beyond the 4-week
+            preview above, framed as an opportunity to tackle now rather
+            than a pending obligation. */}
         {workAheadItems.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Want to get further ahead?</h3>
@@ -257,76 +362,6 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
               {workAheadItems.map((item) => (
                 <MilestoneListRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} />
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* This Week's Focus - actions grouped by theme across events, so
-            similar tasks (e.g. everything packing-related) can be batched
-            together instead of only being visible one event at a time. */}
-        {thisWeekFocus.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">This week, focus on</h3>
-            <div className="space-y-2">
-              {thisWeekFocus.map((cluster) => {
-                const Icon = THEME_ICONS[cluster.theme];
-                const isOpen = expandedTheme === cluster.theme;
-                const eventsPhrase =
-                  cluster.eventTitles.length > 1
-                    ? `across ${cluster.eventTitles.slice(0, 2).join(' and ')}${cluster.eventTitles.length > 2 ? ' and more' : ''}`
-                    : `for ${cluster.eventTitles[0]}`;
-                return (
-                  <div key={cluster.theme} className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedTheme(isOpen ? null : cluster.theme)}
-                      className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer"
-                    >
-                      <Icon className="w-4 h-4 text-slate-500 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs sm:text-sm font-bold text-slate-900">{cluster.label}</p>
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {cluster.count} items {eventsPhrase}
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
-                        {cluster.count}
-                      </span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {isOpen && (
-                      <div className="border-t border-slate-100 divide-y divide-slate-100">
-                        {cluster.actions.map((action) => (
-                          <div key={action.milestoneId} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50/60">
-                            <button
-                              type="button"
-                              onClick={() => onToggleMilestoneStatus(action.eventId, action.milestoneId)}
-                              className="w-4 h-4 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
-                              title="Mark as complete"
-                            >
-                              <Check className="w-2.5 h-2.5 stroke-[3]" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onSelectEvent(action.eventId)}
-                              className="min-w-0 flex-1 text-left cursor-pointer"
-                            >
-                              <p className="text-xs font-semibold text-slate-800 truncate">{action.title}</p>
-                              <p className="text-[10px] text-slate-400 truncate">{action.eventTitle}</p>
-                            </button>
-                            <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                              action.isOverdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
-                            }`}>
-                              {action.dueLabel}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}
