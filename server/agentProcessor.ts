@@ -712,12 +712,24 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       };
     });
     milestones = finalizeMilestonePlan(milestones, { title, context: mergedContext, rawText: params.message });
+  } else if (existingEvent) {
+    // The model answered without touching the milestone schema fields at
+    // all - plausible for a small correction ("two guests are vegetarian")
+    // that it judged didn't need a full runway/macro_event re-plan. REFINEMENT
+    // MEANS MERGE, NEVER REPLACE applies here too: silently regenerating a
+    // brand-new, generic category template and discarding the real,
+    // already-persisted plan (every custom deliverable, every completed
+    // checkbox) was a severe data-loss bug, confirmed live - a dietary-
+    // requirement correction wiped and replaced an entire dinner plan with
+    // an unrelated fresh template that only coincidentally looked similar.
+    // No milestones array means "I didn't change the plan", not "start over".
+    milestones = existingEvent.milestones;
   } else {
     milestones = generateHeuristicMilestones(
       {
         category: finalCategory,
         context: mergedContext,
-        userRole: existingEvent?.userRole || mergedContext.userRole,
+        userRole: mergedContext.userRole,
         title,
       },
       eventId,
