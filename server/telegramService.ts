@@ -17,6 +17,28 @@ export interface TelegramSendMessageOptions {
   disable_web_page_preview?: boolean;
 }
 
+/**
+ * Builds the signed (when possible) deep link back into the web app for a
+ * given event, landing on that event's Timeline & Tasks view - the same
+ * place the pre-existing "Open Full Timeline in App" button has always
+ * pointed to. Shared so every Telegram message that offers a way back into
+ * the app (the initial plan reply, the "Push to Calendar" button, the
+ * post-confirmation follow-up) builds the exact same URL shape rather than
+ * hand-rolling it in three places.
+ *
+ * `action` is informational only (currently `App.tsx` does not branch on
+ * it - see its deep-link effect's own comments on why auto-opening modals
+ * from a URL param was deliberately removed after it caused a save bug).
+ * It's kept so the link's intent is legible in logs/analytics and so a
+ * future, carefully-tested client change has a hook to key off.
+ */
+export function buildEventDeepLink(eventId: string, appBaseUrl: string, action: 'refine' | 'push' = 'refine'): string {
+  const cleanUrl = appBaseUrl.replace(/\/+$/, '');
+  const deepLinkAuth = signEventDeepLink(eventId);
+  const authQuery = deepLinkAuth ? `&dlt=${deepLinkAuth.token}&dlte=${deepLinkAuth.expiresAt}` : '';
+  return `${cleanUrl}/?event_id=${encodeURIComponent(eventId)}&action=${action}${authQuery}`;
+}
+
 export class TelegramService {
   private static getBotToken(): string | null {
     return process.env.TELEGRAM_BOT_TOKEN?.trim() || null;
@@ -178,15 +200,21 @@ export class TelegramService {
     appBaseUrl: string,
     customText?: string
   ): Promise<{ ok: boolean; result?: any }> {
-    const cleanUrl = appBaseUrl.replace(/\/+$/, '');
     // Signed so tapping this link works whether or not the browser has a
     // live Google session - a user chatting with the bot right now
     // shouldn't be asked to separately re-authenticate just to view what
     // they just did. Falls back to a plain (Google-auth-only) link if
     // TELEGRAM_WEBHOOK_SECRET isn't configured in this environment.
-    const deepLinkAuth = signEventDeepLink(event.id);
-    const authQuery = deepLinkAuth ? `&dlt=${deepLinkAuth.token}&dlte=${deepLinkAuth.expiresAt}` : '';
-    const refineDeepLink = `${cleanUrl}/?event_id=${encodeURIComponent(event.id)}&action=refine${authQuery}`;
+    const refineDeepLink = buildEventDeepLink(event.id, appBaseUrl, 'refine');
+    // Same event, same deep-link mechanism, distinct label/intent: there is
+    // no server-side Google OAuth token for Telegram users (the bot runs
+    // headless, with nothing analogous to the browser's stored access
+    // token that src/services/googleAuth.ts relies on), so an in-chat
+    // one-tap push isn't possible yet. This instead lands the user on the
+    // event's Timeline & Tasks view, where the pre-existing "Push to Cal"
+    // button (EventTimelineRadar.tsx) is one tap away using whatever
+    // Google session the browser already has.
+    const pushToCalDeepLink = buildEventDeepLink(event.id, appBaseUrl, 'push');
 
     let text = customText;
     if (!text) {
@@ -221,6 +249,12 @@ export class TelegramService {
             {
               text: '🛠️ Open Full Timeline in App',
               url: refineDeepLink,
+            },
+          ],
+          [
+            {
+              text: '📅 Push to Calendar',
+              url: pushToCalDeepLink,
             },
           ],
           [

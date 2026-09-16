@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { TelegramSessionStore } from './telegramStore.js';
-import { TelegramService } from './telegramService.js';
+import { TelegramService, buildEventDeepLink } from './telegramService.js';
 import { CalendarEvent } from '../src/types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 import { signEventDeepLink } from './deepLinkToken.js';
@@ -404,10 +404,25 @@ export class TelegramWebhookHandler {
         // scheduler exists anywhere in this codebase, so that was a false
         // promise. The real next step is pushing to Google Calendar/Tasks
         // from the app, which is where reminders actually come from.
+        // The button (rather than the previous bare URL in the text) uses
+        // the same signed deep link as sendRefinementPrompt, so it works
+        // immediately even if the browser's Google session has expired.
         await TelegramService.sendMessage(
           chatId,
-          `✅ Prep checklist confirmed for *${event?.title || 'your event'}*. Open the app to push it to Google Calendar/Tasks: ${appBaseUrl}/?event_id=${encodeURIComponent(eventId)}&action=refine`,
-          { parse_mode: 'Markdown' }
+          `✅ Prep checklist confirmed for *${event?.title || 'your event'}*.`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '📅 Push to Calendar',
+                    url: buildEventDeepLink(eventId, appBaseUrl, 'push'),
+                  },
+                ],
+              ],
+            },
+          }
         );
       }
       return;
