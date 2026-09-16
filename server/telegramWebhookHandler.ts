@@ -4,6 +4,7 @@ import { TelegramService, buildEventDeepLink } from './telegramService.js';
 import { CalendarEvent } from '../src/types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 import { signEventDeepLink } from './deepLinkToken.js';
+import { logQualityEvent, checkAndLogRapidCorrection } from './qualityStore.js';
 
 export class TelegramWebhookHandler {
   // Deduplication cache: stores update_id -> timestamp (ms)
@@ -303,6 +304,14 @@ export class TelegramWebhookHandler {
         // sendRefinementPrompt fall through to its own default builds the
         // real milestone list instead.
         await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl);
+        // Pure logging, fire-and-forget - gives checkAndLogRapidCorrection
+        // something to compare a later correction against.
+        logQualityEvent({
+          sourceChannel: 'telegram',
+          eventId: agentResult.createdEvent.id,
+          signalType: 'plan_generated',
+          severity: 'low',
+        });
       } else {
         // Schedule query or status response
         await TelegramService.sendMessage(chatId, agentResult.replyText, {
@@ -311,6 +320,13 @@ export class TelegramWebhookHandler {
       }
     } catch (err: any) {
       console.error('Error in processNaturalLanguageEvent:', err);
+      await logQualityEvent({
+        sourceChannel: 'telegram',
+        signalType: 'explicit_failure_reply',
+        severity: 'high',
+        errorDetail: err?.message || String(err),
+        rawUserMessage: rawText,
+      });
       await TelegramService.sendMessage(
         chatId,
         `⚠️ *Error Processing Request*: ${err.message || 'Could not access calendar tool.'}`
@@ -373,8 +389,21 @@ export class TelegramWebhookHandler {
       }
 
       await TelegramService.sendMessage(chatId, result.replyText, { parse_mode: 'Markdown' });
+
+      // Pure logging, fire-and-forget - a correction shortly after a plan
+      // was generated for this same event is strong evidence the first
+      // answer was wrong (see checkAndLogRapidCorrection's own doc comment).
+      checkAndLogRapidCorrection(eventId, null, 'telegram', text);
     } catch (err: any) {
       console.error('Error in refineEventInChat:', err);
+      await logQualityEvent({
+        sourceChannel: 'telegram',
+        eventId,
+        signalType: 'explicit_failure_reply',
+        severity: 'high',
+        errorDetail: err?.message || String(err),
+        rawUserMessage: text,
+      });
       await TelegramService.sendMessage(chatId, `⚠️ Couldn't process that change: ${err.message || 'please try again.'}`);
     } finally {
       stopTyping();

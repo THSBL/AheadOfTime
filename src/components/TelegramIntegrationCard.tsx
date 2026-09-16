@@ -1,20 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Send, 
-  CheckCircle2, 
-  AlertCircle, 
-  RefreshCw, 
-  Check, 
-  ExternalLink, 
-  LogOut, 
-  Loader2, 
-  Smartphone, 
+import {
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Check,
+  ExternalLink,
+  LogOut,
+  Loader2,
+  Smartphone,
   ShieldCheck,
   UserCheck,
   Sparkles,
   Copy
 } from 'lucide-react';
-import { CalendarEvent } from '../types';
 import { getStoredAccessToken } from '../services/googleAuth';
 
 interface TelegramStatusResponse {
@@ -46,16 +44,14 @@ interface TelegramStatusResponse {
 }
 
 interface TelegramIntegrationCardProps {
-  events?: CalendarEvent[];
   userId?: string;
 }
 
-export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ events = [], userId }) => {
+export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = ({ userId }) => {
   const [status, setStatus] = useState<TelegramStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLinking, setIsLinking] = useState<boolean>(false);
   const [isVerifyingManual, setIsVerifyingManual] = useState<boolean>(false);
-  const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [isUnlinking, setIsUnlinking] = useState<boolean>(false);
 
   const [isLinked, setIsLinked] = useState<boolean>(() => {
@@ -383,111 +379,6 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     }
   };
 
-  /**
-   * Send test reminder alert
-   */
-  const handleSendTestMessage = async () => {
-    if (!chatId || chatId === '123456789' || chatId === 123456789) {
-      setFeedback({
-        type: 'error',
-        message: 'No active Telegram chat linked yet. Click "Connect Telegram" and tap Start in @AheadTimebot first to link your chat.',
-      });
-      return;
-    }
-
-    setIsSendingTest(true);
-    setFeedback(null);
-
-    try {
-      const sampleEvent: CalendarEvent = events[0] || {
-        id: `evt_${Date.now()}`,
-        title: 'Scottish Highlands Trip (with 4 friends)',
-        eventDate: '2026-10-14',
-        endDate: '2026-10-18',
-        eventTime: '09:00',
-        location: 'Scottish Highlands',
-        status: 'milestones_active',
-        category: 'travel_trip',
-        context: {
-          customNote: 'Scottish Highlands trip with friends',
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        milestones: [
-          {
-            id: 'ms-1',
-            eventId: `evt_${Date.now()}`,
-            title: 'Lodging & Transport Locked',
-            tMinusLabel: 'T-21d',
-            tMinusOffsetMinutes: -30240,
-            calculatedDate: '2026-09-23',
-            category: 'logistics',
-            status: 'pending',
-            deliverables: [
-              { deliverable_id: 'del-1', title: 'Book rental car / train passes', type: 'coordination', is_completed: false },
-              { deliverable_id: 'del-2', title: 'Reserve group stay / cabin', type: 'coordination', is_completed: false }
-            ]
-          },
-          {
-            id: 'ms-2',
-            eventId: `evt_${Date.now()}`,
-            title: 'Headcount & Group Costs Settled',
-            tMinusLabel: 'T-14d',
-            tMinusOffsetMinutes: -20160,
-            calculatedDate: '2026-09-30',
-            category: 'logistics',
-            status: 'pending',
-            deliverables: [
-              { deliverable_id: 'del-3', title: 'Confirm headcount with all 4 friends', type: 'coordination', is_completed: false },
-              { deliverable_id: 'del-4', title: 'Collect shared budget/expenses', type: 'coordination', is_completed: false }
-            ]
-          },
-          {
-            id: 'ms-3',
-            eventId: `evt_${Date.now()}`,
-            title: 'Gear & Bags Packed',
-            tMinusLabel: 'T-2d',
-            tMinusOffsetMinutes: -2880,
-            calculatedDate: '2026-10-12',
-            category: 'logistics',
-            status: 'pending',
-            deliverables: [
-              { deliverable_id: 'del-5', title: 'Pack hiking boots & weather gear', type: 'coordination', is_completed: false },
-              { deliverable_id: 'del-6', title: 'Check offline trail maps', type: 'coordination', is_completed: false }
-            ]
-          }
-        ]
-      };
-
-      const res = await fetch('/api/telegram/send-refine', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          event: sampleEvent,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.ok) {
-        setFeedback({
-          type: 'success',
-          message: 'Test alert sent! Check your Telegram chat.',
-        });
-        setTimeout(() => setFeedback(null), 4000);
-      } else {
-        setFeedback({
-          type: 'error',
-          message: data.description || 'Dispatched alert simulation to Telegram session.',
-        });
-      }
-    } catch (err: any) {
-      setFeedback({ type: 'error', message: err?.message || 'Network error' });
-    } finally {
-      setIsSendingTest(false);
-    }
-  };
-
   const formattedUsername = username.startsWith('@') ? username : `@${username}`;
 
   return (
@@ -554,17 +445,6 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                id="btn-send-telegram-test"
-                type="button"
-                onClick={handleSendTestMessage}
-                disabled={isSendingTest}
-                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              >
-                <Send className={`w-3.5 h-3.5 ${isSendingTest ? 'animate-spin text-sky-600' : 'text-slate-500'}`} />
-                <span>{isSendingTest ? 'Sending...' : 'Try a Message'}</span>
-              </button>
-
               <button
                 id="btn-disconnect-telegram"
                 type="button"

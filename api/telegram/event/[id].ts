@@ -3,13 +3,26 @@ import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/goo
 import { verifyEventDeepLink } from '../../../server/deepLinkToken.js';
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'DELETE') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const eventId = req.query.id;
   if (!eventId) {
     return res.status(400).json({ ok: false, error: 'Missing event id' });
+  }
+
+  if (req.method === 'DELETE') {
+    // Deletion is a destructive, ownership-scoped action - unlike the GET
+    // branch below, a deep-link token (proof you once viewed this event via
+    // Telegram) is not enough to permanently remove it. Require a verified
+    // Google identity, same as /api/telegram/events.
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    if (!verified) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const deleted = await TelegramSessionStore.deleteEvent(String(eventId), verified.email);
+    return res.status(200).json({ ok: true, deleted });
   }
 
   // A signed, single-event deep-link token (minted by the bot itself when

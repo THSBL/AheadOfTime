@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Calendar, 
-  Clock, 
-  Plus, 
-  RotateCcw, 
-  CheckCircle2, 
+  Calendar,
+  Clock,
+  Plus,
+  CheckCircle2,
   CalendarDays,
   Sparkles,
   Home,
@@ -75,8 +74,6 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
   onSignIn,
 }) => {
-  const [isEditingDate, setIsEditingDate] = useState(false);
-  const [dateInputVal, setDateInputVal] = useState(currentReferenceDate.substring(0, 10));
   const [isHorizonOpen, setIsHorizonOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -129,21 +126,6 @@ export const Header: React.FC<HeaderProps> = ({
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHorizonOpen(false);
     }, 280);
-  };
-
-  const handleDateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (dateInputVal) {
-      onReferenceDateChange(`${dateInputVal}T09:00:00.000Z`);
-      setIsEditingDate(false);
-    }
-  };
-
-  const handleResetToToday = () => {
-    const today = new Date().toISOString();
-    setDateInputVal(today.substring(0, 10));
-    onReferenceDateChange(today);
-    setIsEditingDate(false);
   };
 
   // Determine furthest month covered by the agenda horizon (3, 6, 12 months)
@@ -209,31 +191,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="relative"
             >
               <div className="bg-white/90 hover:bg-white backdrop-blur-md border border-white/95 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 text-xs text-slate-700 shadow-xs transition-all">
-                {isEditingDate ? (
-                  <form onSubmit={handleDateSubmit} className="flex items-center gap-1.5">
-                    <input
-                      type="date"
-                      value={dateInputVal}
-                      onChange={(e) => setDateInputVal(e.target.value)}
-                      className="bg-white text-slate-800 text-xs px-2 py-0.5 rounded-lg border border-slate-300 focus:outline-none focus:border-slate-900 font-mono"
-                      autoFocus
-                    />
-                    <button
-                      type="submit"
-                      className="bg-[#182A42] hover:bg-slate-800 text-white px-2 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-xs"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingDate(false)}
-                      className="text-slate-400 hover:text-slate-700 text-xs px-1 cursor-pointer"
-                    >
-                      ✕
-                    </button>
-                  </form>
-                ) : (
-                  <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                     {/* Primary Agenda Trigger Pill */}
                     <button
                       type="button"
@@ -250,22 +208,12 @@ export const Header: React.FC<HeaderProps> = ({
 
                       {/* Agenda label utilizing available space on mobile and desktop */}
                       <span className="font-semibold text-slate-900 text-xs sm:text-sm whitespace-nowrap leading-none flex items-baseline">
-                        <span className="hidden lg:inline">Agenda up to date until </span>
-                        <span className="lg:hidden">Agenda up to date · </span>
+                        <span className="hidden lg:inline">Agenda synced until </span>
+                        <span className="lg:hidden">Agenda synced · </span>
                         <span className="text-sky-950 font-bold">{getFurthestMonth(agendaHorizonMonths)}</span>
                       </span>
 
                       <ChevronDown className={`w-3.5 h-3.5 text-sky-700 transition-transform duration-150 shrink-0 ${isHorizonOpen ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {/* Change horizon quick badge on desktop */}
-                    <button
-                      type="button"
-                      onClick={() => setIsHorizonOpen((prev) => !prev)}
-                      title="Update agenda coverage horizon (3, 6, or 12 months)"
-                      className="hidden md:flex text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-50 hover:bg-sky-100 text-sky-950 border border-sky-200/90 shadow-2xs items-center gap-0.5 transition-all cursor-pointer shrink-0"
-                    >
-                      <span>{agendaHorizonMonths}m</span>
                     </button>
 
                     {/* Force sync icon button on desktop */}
@@ -286,8 +234,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncingWithGoogle ? 'animate-spin text-sky-800' : ''}`} />
                       </button>
                     )}
-                  </div>
-                )}
+                </div>
               </div>
 
               {/* Mobile Backdrop Overlay for guaranteed reliable closing on tap */}
@@ -429,19 +376,6 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>Google Sync &amp; Account Settings</span>
                       </button>
                     )}
-
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsHorizonOpen(false);
-                          setIsEditingDate(true);
-                        }}
-                        className="text-[11px] text-slate-400 hover:text-slate-700 underline cursor-pointer w-full text-center"
-                      >
-                        Simulate reference date
-                      </button>
-                    </div>
                   </div>
                 </div>
               )}

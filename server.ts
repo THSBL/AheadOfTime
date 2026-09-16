@@ -29,10 +29,12 @@ import { WhatsAppSessionStore } from "./server/whatsappStore";
 import { WhatsAppService } from "./server/whatsappService";
 import { AgendaScannerService } from "./server/agendaScanner";
 import { TelegramWebhookHandler } from "./server/telegramWebhookHandler";
-import { TelegramSessionStore } from "./server/telegramStore";
+import { TelegramSessionStore, findOrCreateUserByEmail } from "./server/telegramStore";
 import { extractBearerToken, verifyGoogleAccessToken } from "./server/googleAuthVerify";
 import { verifyEventDeepLink } from "./server/deepLinkToken";
 import { TelegramService } from "./server/telegramService";
+import { logQualityEvent, QualitySignalType } from "./server/qualityStore";
+import { getFeedbackEligibility, submitFeedback } from "./server/feedbackStore";
 
 dotenv.config();
 
@@ -671,6 +673,14 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         }
       } catch (geminiError: any) {
         console.warn("Fast Gemini notice, seamlessly using deterministic rules engine:", geminiError?.message || "Fallback");
+        // Pure logging - does not affect the deterministic fallback below.
+        await logQualityEvent({
+          sourceChannel: 'web',
+          signalType: 'gemini_fallback',
+          severity: 'medium',
+          errorDetail: geminiError?.message || String(geminiError),
+          rawUserMessage: message,
+        });
         result = processWithDeterministicRules({
           message,
           refDateStr,
@@ -698,7 +708,33 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
     res.json(result);
   } catch (error: any) {
     console.error("Agent process handler error:", error);
+    await logQualityEvent({
+      sourceChannel: 'web',
+      signalType: 'gemini_error',
+      severity: 'high',
+      errorDetail: error?.message || String(error),
+    });
     res.status(500).json({ error: error.message || "Failed to process request" });
+  }
+});
+
+app.post("/api/quality/report-client-error", async (req: Request, res: Response) => {
+  try {
+    const { signalType, errorDetail, rawUserMessage, eventId } = req.body || {};
+    const allowedSignalTypes: QualitySignalType[] = ['explicit_failure_reply', 'gemini_error'];
+    const safeSignalType: QualitySignalType = allowedSignalTypes.includes(signalType) ? signalType : 'explicit_failure_reply';
+    await logQualityEvent({
+      sourceChannel: 'web',
+      signalType: safeSignalType,
+      severity: 'high',
+      errorDetail: typeof errorDetail === 'string' ? errorDetail : undefined,
+      rawUserMessage: typeof rawUserMessage === 'string' ? rawUserMessage : undefined,
+      eventId: typeof eventId === 'string' && /^[0-9a-f-]{36}$/i.test(eventId) ? eventId : undefined,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('report-client-error handler notice:', err);
+    res.json({ ok: false });
   }
 });
 
@@ -1140,6 +1176,61 @@ app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {
     res.json({ ok: true, event });
   } else {
     res.status(404).json({ ok: false, error: "Event not found" });
+  }
+});
+
+app.delete("/api/telegram/event/:id", async (req: Request, res: Response) => {
+  // Deletion is destructive and ownership-scoped - unlike the GET route
+  // above, a deep-link token is not enough to permanently remove an event.
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const deleted = await TelegramSessionStore.deleteEvent(req.params.id, verified.email);
+  res.json({ ok: true, deleted });
+});
+
+app.get("/api/feedback/eligibility", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  try {
+    const userId = await findOrCreateUserByEmail(verified.email);
+    const eligibility = await getFeedbackEligibility(userId);
+    res.json({ ok: true, ...eligibility });
+  } catch (err: any) {
+    console.error("feedback eligibility error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Failed to check eligibility" });
+  }
+});
+
+app.post("/api/feedback/submit", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  try {
+    const { responseType, score, feedbackText } = req.body || {};
+    if (responseType !== "csat" && responseType !== "general_feedback") {
+      res.status(400).json({ ok: false, error: "Invalid responseType" });
+      return;
+    }
+    const userId = await findOrCreateUserByEmail(verified.email);
+    const result = await submitFeedback({
+      userId,
+      responseType,
+      score: typeof score === "number" ? score : undefined,
+      feedbackText: typeof feedbackText === "string" ? feedbackText.trim().slice(0, 2000) : undefined,
+      sourceChannel: "web",
+    });
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    console.error("feedback submit error:", err);
+    res.status(400).json({ ok: false, error: err?.message || "Failed to submit feedback" });
   }
 });
 

@@ -27,7 +27,7 @@ import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
-import { computeOverdueMilestones, computeWeeklyMilestonePreview, WeeklyMilestoneBucket } from '../utils/readiness';
+import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { DeleteEventModal } from './DeleteEventModal';
@@ -129,8 +129,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [pendingSuggestion, setPendingSuggestion] = useState<IntakeQuestion | null>(null);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
-  const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
-  const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
 
   const toggleMilestoneExpanded = (milestoneId: string) => {
     setExpandedMilestoneIds((prev) => {
@@ -196,6 +194,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         updatedAt: new Date().toISOString(),
         milestones: localMilestones,
       });
+      // Best-effort relay into the same quality-signal log the server
+      // writes to. Never awaited: a logging failure must not affect this
+      // UI flow, which already succeeded via the local fallback above.
+      fetch('/api/quality/report-client-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signalType: 'gemini_error',
+          errorDetail: e instanceof Error ? e.message : String(e),
+          eventId: activeEvent.id,
+        }),
+      }).catch(() => {});
     } finally {
       setIsDeepRefining(false);
     }
@@ -240,6 +250,19 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       const failureText = "Couldn't process that just now - please try again.";
       setCorrectionReply(failureText);
       setCorrectionExchanges((prev) => [...prev, { text: failureText, isUser: false }]);
+      // Best-effort relay into the same quality-signal log the server
+      // writes to - the browser can't reach Postgres directly. Never
+      // awaited: a logging failure must not affect this UI flow.
+      fetch('/api/quality/report-client-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signalType: 'explicit_failure_reply',
+          errorDetail: e instanceof Error ? e.message : String(e),
+          rawUserMessage: text,
+          eventId: activeEvent.id,
+        }),
+      }).catch(() => {});
     } finally {
       setIsSendingCorrection(false);
     }
@@ -435,7 +458,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     .filter((ms): ms is TMinusMilestone => Boolean(ms));
   const weeklyPreview = computeWeeklyMilestonePreview(syntheticEvents, currentReferenceDate);
   const thisWeekBucket = weeklyPreview.find((bucket) => bucket.key === 'week-0');
-  const futureBuckets = weeklyPreview.filter((bucket) => bucket.key !== 'week-0');
+  // Looking ahead is a flat, always-open scan of everything beyond this
+  // week - no week split, no topic clustering - so it's one merged,
+  // date-ordered list rather than the nested per-week buckets themselves.
+  const futureItems = weeklyPreview
+    .filter((bucket) => bucket.key !== 'week-0')
+    .flatMap((bucket) => bucket.items)
+    .map((item) => milestonesById.get(item.milestoneId))
+    .filter((ms): ms is TMinusMilestone => Boolean(ms))
+    .sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate));
   const doneMilestones = displayedMilestones.filter((ms) => ms.status === 'completed' || ms.status === 'skipped');
 
   // Extracted so the same rich card (sub-tasks, category badge, per-item
@@ -675,6 +706,75 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     );
   };
 
+  // Deliberately lighter-weight than renderMilestoneCard: Looking ahead is a
+  // flat, always-open list meant to read as "smaller & further away" (no
+  // left-border accent, no category/deliverable badges, no sub-task
+  // expansion) so it doesn't visually compete with Overdue/This week, while
+  // still surfacing enough (date, title, due-in, edit/delete) to catch a
+  // missing prep milestone at a glance.
+  const renderCompactFutureRow = (ms: TMinusMilestone) => {
+    const isCompleted = ms.status === 'completed';
+    const isSkipped = ms.status === 'skipped';
+    const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
+
+    return (
+      <div
+        key={ms.id}
+        className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all ${
+          isSkipped
+            ? 'bg-slate-50/50 border-slate-200 text-slate-400 opacity-70'
+            : isCompleted
+            ? 'bg-slate-50/70 border-slate-200 text-slate-400'
+            : 'bg-white/80 border-slate-200/70 hover:border-slate-300 text-slate-700'
+        }`}
+      >
+        <button
+          onClick={() => !isSkipped && handleMilestoneClick(activeEvent.id, ms)}
+          disabled={isSkipped}
+          className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition-all ${
+            isSkipped
+              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              : isCompleted
+              ? 'bg-emerald-600 text-white cursor-pointer'
+              : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
+          }`}
+          title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
+        >
+          {isSkipped ? <X className="w-2.5 h-2.5 stroke-[3]" /> : <Check className="w-2.5 h-2.5 stroke-[3]" />}
+        </button>
+
+        <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
+          {formatDisplayDate(ms.calculatedDate)}
+        </span>
+
+        <span className={`text-xs font-semibold truncate flex-1 min-w-0 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+          {ms.title}
+        </span>
+
+        {!isCompleted && !isSkipped && (
+          <span className="text-[10px] font-bold text-slate-400 shrink-0">{msCountdown.label}</span>
+        )}
+
+        <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+          <button
+            onClick={() => setEditingMilestone(ms)}
+            className="p-1 rounded text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
+            title="Edit task date, topic, or description"
+          >
+            <Edit3 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => handleDeleteTask(ms.id)}
+            className="p-1 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+            title="Delete this task"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs w-full">
       
@@ -894,7 +994,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3 shadow-2xs space-y-2">
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-              <span>Something off? Tell us in your own words</span>
+              <span>Want to add or change something? Tell us in your own words</span>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1153,76 +1253,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               </React.Fragment>
             )}
 
-            {/* Looking ahead - everything beyond this week, nested: week
-                (collapsed to a label + count) -> topic cluster -> task -
-                same three-level fold as the dashboard, showing every future
-                week with something in it rather than capping at 4 weeks. */}
-            {futureBuckets.length > 0 && (
+            {/* Looking ahead - flat and always open: every future milestone
+                in date order, no week split and no topic nesting. This is
+                the "did I miss a prep step" scan, not a drill-down, so
+                rows are deliberately compact/inline rather than the full
+                Overdue/This week card. */}
+            {futureItems.length > 0 && (
               <React.Fragment>
                 <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
                   <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Looking ahead</span>
+                  <span className="text-[11px] font-bold text-slate-300">{futureItems.length}</span>
                 </div>
-                {futureBuckets.map((bucket) => {
-                  const isWeekOpen = expandedWeekKey === bucket.key;
-                  return (
-                    <div key={bucket.key} className="rounded-xl sm:rounded-2xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedWeekKey(isWeekOpen ? null : bucket.key)}
-                        className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs sm:text-sm font-bold text-slate-900">{bucket.label}</p>
-                          <p className="text-[11px] text-slate-500">
-                            {bucket.items.length} item{bucket.items.length === 1 ? '' : 's'}
-                          </p>
-                        </div>
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
-                          {bucket.items.length}
-                        </span>
-                        <ChevronRight className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isWeekOpen ? 'rotate-90' : ''}`} />
-                      </button>
-                      {isWeekOpen && (
-                        <div className="border-t border-slate-100 p-2 space-y-2 bg-slate-50/50">
-                          {bucket.clusters.map((cluster) => {
-                            const clusterKey = `${bucket.key}-${cluster.theme}`;
-                            const isClusterOpen = expandedClusterKey === clusterKey;
-                            if (cluster.items.length === 1) {
-                              const ms = milestonesById.get(cluster.items[0].milestoneId);
-                              return ms ? <React.Fragment key={clusterKey}>{renderMilestoneCard(ms)}</React.Fragment> : null;
-                            }
-                            return (
-                              <div key={clusterKey} className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedClusterKey(isClusterOpen ? null : clusterKey)}
-                                  className="w-full text-left p-2.5 hover:bg-slate-50/80 transition-all flex items-center gap-2.5 cursor-pointer"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-xs font-bold text-slate-900">{cluster.label}</p>
-                                    <p className="text-[11px] text-slate-500">{cluster.items.length} items</p>
-                                  </div>
-                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
-                                    {cluster.items.length}
-                                  </span>
-                                  <ChevronRight className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isClusterOpen ? 'rotate-90' : ''}`} />
-                                </button>
-                                {isClusterOpen && (
-                                  <div className="border-t border-slate-100 p-2 space-y-2">
-                                    {cluster.items.map((item) => {
-                                      const ms = milestonesById.get(item.milestoneId);
-                                      return ms ? renderMilestoneCard(ms) : null;
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                <div className="space-y-1">
+                  {futureItems.map((ms) => renderCompactFutureRow(ms))}
+                </div>
               </React.Fragment>
             )}
 

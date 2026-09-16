@@ -9,7 +9,8 @@ import {
   Briefcase,
   MapPin,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  PawPrint
 } from 'lucide-react';
 import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
 import { Logo } from './Logo';
@@ -54,6 +55,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
     return 'Mixed (Personal & Work)';
   });
   const [homeZipOrLocation, setHomeZipOrLocation] = useState<string>(initialProfile?.homeZipOrLocation || '');
+  const [hasPet, setHasPet] = useState<boolean>(initialProfile?.hasPet ?? false);
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
@@ -83,6 +85,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       family_structure,
       calendar_type,
       homeZipOrLocation: homeZipOrLocation.trim(),
+      hasPet,
       familyStatus,
       calendarType,
       privacyConsentAccepted: true,
@@ -290,6 +293,33 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
               <p className="text-[11px] text-slate-500 leading-normal">
                 This will only be used to improve your T-minus plan by calculating travel distance, drive times, and departure buffers for local and away events.
+              </p>
+            </div>
+
+            {/* Dependent Pets - feeds pet-sitter/pet-care prep milestones for trips */}
+            <div className="space-y-2 pt-1 border-t border-slate-100">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <PawPrint className="w-3.5 h-3.5 text-sky-700" />
+                <span>Do You Own Animals That Are Dependent on You?</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {([true, false] as const).map((val) => (
+                  <button
+                    key={String(val)}
+                    type="button"
+                    onClick={() => setHasPet(val)}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      hasPet === val
+                        ? 'bg-[#182A42] text-white border-[#182A42] shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {val ? 'Yes' : 'No'}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                So trips can include prep milestones like booking a pet sitter or boarding.
               </p>
             </div>
 

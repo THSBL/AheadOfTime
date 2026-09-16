@@ -5,6 +5,7 @@ import {
   processWithGemini,
   processWithDeterministicRules,
 } from '../../server/agentProcessor.js';
+import { logQualityEvent } from '../../server/qualityStore.js';
 
 // Main intelligent agent processing endpoint (Vercel serverless equivalent of
 // server.ts's POST /api/agent/process route). Logic is ported verbatim from
@@ -121,6 +122,16 @@ export default async function handler(req: any, res: any) {
         }
       } catch (geminiError: any) {
         console.warn("Fast Gemini notice, seamlessly using deterministic rules engine:", geminiError?.message || "Fallback");
+        // Pure logging - does not affect the deterministic fallback below.
+        // Note: web-chat events use client-generated ids (evt-...), not
+        // Postgres UUIDs, so eventId is intentionally omitted here.
+        await logQualityEvent({
+          sourceChannel: 'web',
+          signalType: 'gemini_fallback',
+          severity: 'medium',
+          errorDetail: geminiError?.message || String(geminiError),
+          rawUserMessage: message,
+        });
         result = processWithDeterministicRules({
           message,
           refDateStr,
@@ -148,6 +159,12 @@ export default async function handler(req: any, res: any) {
     res.json(result);
   } catch (error: any) {
     console.error("Agent process handler error:", error);
+    await logQualityEvent({
+      sourceChannel: 'web',
+      signalType: 'gemini_error',
+      severity: 'high',
+      errorDetail: error?.message || String(error),
+    });
     res.status(500).json({ error: error.message || "Failed to process request" });
   }
 }

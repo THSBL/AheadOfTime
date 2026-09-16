@@ -29,6 +29,7 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { PrivacyPage } from './components/PrivacyPage';
 import { FeaturesPage } from './components/FeaturesPage';
 import { FeedbackPage } from './components/FeedbackPage';
+import { FaqPage } from './components/FaqPage';
 import { AuthCallbackPage } from './components/AuthCallbackPage';
 import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
 import { SettingsProfilePage } from './components/SettingsProfilePage';
@@ -171,6 +172,33 @@ function App() {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  // Ids the user explicitly deleted this session. Deleting an event only
+  // ever filtered local React state - it never told the server (Telegram
+  // events live in Postgres) or Google Calendar/Tasks to forget it, so the
+  // periodic background syncs below (syncTelegramEvents polls every 4s,
+  // runGoogleTaskSync on focus/interval) would see the still-existing
+  // server/Google record as "new" and silently re-add it a few seconds
+  // later. The server-side delete call now makes that fix durable, but this
+  // ref is kept as a synchronous guard against the delete-request-in-flight
+  // race where a poll tick fires before that call resolves.
+  const deletedEventIdsRef = useRef<Set<string>>(new Set());
+
+  // Best-effort: also remove the server-side (Telegram-sourced) copy of an
+  // event so background syncs stop finding it. Not every deleted event was
+  // created via Telegram (a 404 there is expected and fine), so failures are
+  // swallowed rather than surfaced - the local deletion below is what the
+  // user actually sees and already succeeded.
+  const deleteServerEventRecord = (eventId: string) => {
+    deletedEventIdsRef.current.add(eventId);
+    const accessToken = getStoredAccessToken();
+    fetch(`/api/telegram/event/${encodeURIComponent(eventId)}`, {
+      method: 'DELETE',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    }).catch(() => {
+      // Silently ignore - see comment above.
+    });
+  };
 
   // Persist events to user-scoped storage whenever events change
   useEffect(() => {
@@ -353,13 +381,19 @@ function App() {
           headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
         });
         const data = await res.json();
-        if (data.ok && Array.isArray(data.events) && data.events.length > 0) {
+        // Drop anything the user deleted this session before it can be
+        // treated as "new" below - closes the race where this poll's
+        // response was already in flight when the delete call fired.
+        const incomingEvents: CalendarEvent[] = data.ok && Array.isArray(data.events)
+          ? data.events.filter((e: CalendarEvent) => !deletedEventIdsRef.current.has(e.id))
+          : [];
+        if (incomingEvents.length > 0) {
           // Double check user didn't log out while request was in flight
           if (!currentUser?.id) return;
 
           setEvents((prev) => {
             const prevIds = new Set(prev.map((e) => e.id));
-            const newIncoming = data.events.filter((e: CalendarEvent) => !prevIds.has(e.id));
+            const newIncoming = incomingEvents.filter((e: CalendarEvent) => !prevIds.has(e.id));
 
             if (newIncoming.length > 0) {
               // Add notification message to agent chat console for newly detected Telegram events
@@ -371,7 +405,7 @@ function App() {
                 focusText: `Parsed from Telegram chat: ${newEvent.title}`,
                 additionText: `Activated ${newEvent.milestones?.length || 0} T-Minus milestones for ${newEvent.eventDate}.`,
                 timestamp: new Date().toISOString(),
-                mode: 'EVENT_FOCUS',
+                mode: 'NORMAL',
               }));
 
               setMessages((prevMsgs) => {
@@ -388,7 +422,7 @@ function App() {
               }
             }
 
-            const merged = mergeEvents(prev, data.events);
+            const merged = mergeEvents(prev, incomingEvents);
             saveUserEvents(merged, currentUser?.id);
             return merged;
           });
@@ -895,6 +929,7 @@ function App() {
   };
 
   const handleBulkDeleteAppOnly = (ids: string[]) => {
+    ids.forEach(deleteServerEventRecord);
     setEvents((prev) => prev.filter((e) => !ids.includes(e.id)));
     if (selectedEventId && ids.includes(selectedEventId)) {
       const remaining = events.filter((e) => !ids.includes(e.id));
@@ -904,6 +939,7 @@ function App() {
   };
 
   const handleBulkDeleteAppAndCalendar = (ids: string[], cleanup: { calCount: number; taskCount: number }) => {
+    ids.forEach(deleteServerEventRecord);
     setEvents((prev) => prev.filter((e) => !ids.includes(e.id)));
     if (selectedEventId && ids.includes(selectedEventId)) {
       const remaining = events.filter((e) => !ids.includes(e.id));
@@ -956,7 +992,7 @@ function App() {
       const currentEvents = eventsRef.current;
       const summary: TaskSyncSummary = await syncGoogleTasksWithLocalEvents(token, currentEvents);
       if (summary.updatedEvents) {
-        setEvents((prev) => mergeEvents(prev, summary.updatedEvents));
+        setEvents((prev) => mergeEvents(prev, summary.updatedEvents.filter((e) => !deletedEventIdsRef.current.has(e.id))));
       }
       const nowTs = Date.now();
       localStorage.setItem('aot_last_task_sync_time', nowTs.toString());
@@ -1458,6 +1494,7 @@ function App() {
 
   // Delete event
   const handleDeleteEvent = (eventId: string) => {
+    deleteServerEventRecord(eventId);
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
     if (selectedEventId === eventId) {
       const remaining = events.filter((e) => e.id !== eventId);
@@ -2243,7 +2280,7 @@ export default function AppWithRouter() {
           <Route path="/onboarding" element={<OnboardingRoute />} />
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/faq" element={<FaqPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
           {/* Protected Application Routes */}
@@ -2255,6 +2292,7 @@ export default function AppWithRouter() {
             <Route path="/events/:id/edit" element={<App />} />
             <Route path="/settings/credentials" element={<SettingsCredentialsPage />} />
             <Route path="/settings/profile" element={<SettingsProfilePage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
           </Route>
 
           {/* Catch-all Fallback */}

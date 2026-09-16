@@ -294,6 +294,28 @@ export interface SyncOptions {
   taskListId?: string;
 }
 
+const MILESTONE_SYNC_FORMAT_KEY = 'aot_milestone_sync_format';
+
+/**
+ * User-facing preference for how prep milestones show up in Google:
+ * as checkable Google Tasks (recommended - they don't compete for space on
+ * the calendar grid) or as 30-minute timed Calendar Events. Every push call
+ * used to hardcode 'tasks_only' with no way for a user to choose otherwise,
+ * even though buildMilestoneCalendarPayload already fully supports a timed
+ * block - this just exposes that existing capability as a real preference.
+ */
+export function getMilestoneSyncFormat(): MilestoneSyncFormat {
+  if (typeof window === 'undefined') return 'tasks_only';
+  const stored = localStorage.getItem(MILESTONE_SYNC_FORMAT_KEY);
+  return stored === 'timed' || stored === 'all_day' ? stored : 'tasks_only';
+}
+
+export function setMilestoneSyncFormat(format: MilestoneSyncFormat): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(MILESTONE_SYNC_FORMAT_KEY, format);
+  }
+}
+
 /**
  * Single shared title formatter for anywhere a milestone's title reaches
  * Google Calendar or Google Tasks - replaces three previously-competing

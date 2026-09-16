@@ -25,6 +25,7 @@ import {
   buildCandidateEventIndex,
   resolveTargetEvent,
 } from "./planningPipeline.js";
+import { logQualityEvent } from "./qualityStore.js";
 
 // Lazy initialize Gemini SDK
 let aiClient: GoogleGenAI | null = null;
@@ -477,6 +478,14 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   } catch (parseErr) {
     console.warn("JSON parse notice for Gemini output, falling back gracefully:", parseErr);
     parsed = {};
+    // Pure logging - does not affect the empty-parsed fallthrough below.
+    await logQualityEvent({
+      sourceChannel: 'web',
+      signalType: 'json_parse_failure',
+      severity: 'medium',
+      errorDetail: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      rawUserMessage: params.message,
+    });
   }
 
   // Resolve which event this message actually targets. params.existingEvent
@@ -1148,6 +1157,26 @@ export function processWithDeterministicRules(params: {
     createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+
+  // Pure logging, fire-and-forget - never awaited so it can't add latency
+  // to a successful response, and logQualityEvent never throws. Web-chat
+  // event ids (evt-...) aren't Postgres UUIDs, so eventId is intentionally
+  // omitted here rather than passed through.
+  if (mode === 'RESOLVE_MILESTONES' && milestones.length === 0) {
+    logQualityEvent({
+      sourceChannel: 'web',
+      signalType: 'empty_plan_returned',
+      severity: 'medium',
+      rawUserMessage: params.message,
+    });
+  } else {
+    logQualityEvent({
+      sourceChannel: 'web',
+      signalType: params.existingEvent ? 'plan_refined' : 'plan_generated',
+      severity: 'low',
+      rawUserMessage: params.message,
+    });
+  }
 
   return {
     mode,

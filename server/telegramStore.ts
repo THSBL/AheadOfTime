@@ -115,7 +115,7 @@ function toDateOnly(value: string | Date | null | undefined): string | undefined
 /** Finds a user by email, creating one if it doesn't exist yet (per
  * schema.sql's own doc comment: users are populated on first verified
  * contact, "there is no separate sign up step"). Returns the user's uuid. */
-async function findOrCreateUserByEmail(email: string, name?: string): Promise<string> {
+export async function findOrCreateUserByEmail(email: string, name?: string): Promise<string> {
   const normalized = email.trim().toLowerCase();
   const rows = await query<{ id: string }>(
     `INSERT INTO users (email, name)
@@ -929,6 +929,31 @@ export class TelegramSessionStore {
     );
 
     return eventRows.map((row) => rowToCalendarEvent(row, milestoneRows));
+  }
+
+  /**
+   * Permanently removes a stored event (and, via ON DELETE CASCADE, its
+   * milestones) - scoped to the owning user so one user can't delete
+   * another's event by guessing an id. Without this, an event created via
+   * Telegram lived in Postgres forever: the app's own delete only ever
+   * touched local React state, so /api/telegram/events kept returning the
+   * "deleted" event on its next poll and the client's mergeEvents logic
+   * (anything server-side but missing locally looks "new") silently
+   * resurrected it a few seconds later.
+   */
+  public static async deleteEvent(eventId: string, userId: string): Promise<boolean> {
+    const normUserId = userId.toLowerCase().trim();
+    if (!normUserId || normUserId === 'guest' || normUserId === 'anonymous') {
+      return false;
+    }
+    const deleted = await query<{ id: string }>(
+      `DELETE FROM events e
+       USING users u
+       WHERE e.id = $1 AND e.user_id = u.id AND lower(u.email) = lower($2)
+       RETURNING e.id`,
+      [eventId, normUserId]
+    );
+    return deleted.length > 0;
   }
 
   public static async getRecentEventsForChat(chatId: number | string): Promise<CalendarEvent[]> {

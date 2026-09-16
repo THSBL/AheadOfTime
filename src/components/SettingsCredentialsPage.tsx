@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleCalendarIntegrationCard } from './GoogleCalendarIntegrationCard';
 import { TelegramIntegrationCard } from './TelegramIntegrationCard';
-import { AdvancedDeveloperSettingsDrawer } from './AdvancedDeveloperSettingsDrawer';
 import { ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, Settings2, Check } from 'lucide-react';
 import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
@@ -31,6 +30,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
   const [editFamilyStructure, setEditFamilyStructure] = useState<string>(onboardingProfile?.family_structure || 'single');
   const [editCalendarScope, setEditCalendarScope] = useState<string>(onboardingProfile?.calendar_type || 'mixed');
   const [editHomeLocation, setEditHomeLocation] = useState<string>(onboardingProfile?.homeZipOrLocation || '');
+  const [editHasPet, setEditHasPet] = useState<boolean>(onboardingProfile?.hasPet ?? false);
   const [savedSuccessMessage, setSavedSuccessMessage] = useState(false);
 
   useEffect(() => {
@@ -38,6 +38,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
       setEditFamilyStructure(onboardingProfile.family_structure || 'single');
       setEditCalendarScope(onboardingProfile.calendar_type || 'mixed');
       setEditHomeLocation(onboardingProfile.homeZipOrLocation || '');
+      setEditHasPet(onboardingProfile.hasPet ?? false);
     }
   }, [onboardingProfile]);
 
@@ -50,6 +51,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
       familyStatus: editFamilyStructure === 'family_with_kids' ? 'Family with kids' : editFamilyStructure === 'couple' ? 'Couple' : 'Single',
       calendarType: editCalendarScope === 'business' ? 'Business' : editCalendarScope === 'personal' ? 'Personal only' : 'Mixed (Personal & Work)',
       homeZipOrLocation: editHomeLocation,
+      hasPet: editHasPet,
     };
     saveProfile(updatedProfile);
     setSavedSuccessMessage(true);
@@ -102,7 +104,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
           />
 
           {/* CARD 2: TELEGRAM ASSISTANT BOT */}
-          <TelegramIntegrationCard events={events} userId={currentUser?.id} />
+          <TelegramIntegrationCard userId={currentUser?.id} />
 
           {/* CARD 3: QUESTIONNAIRE PROFILE & PRESET HEURISTICS */}
           <div className="bg-white border border-sky-200/90 rounded-2xl p-5 shadow-xs">
@@ -163,6 +165,26 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Do You Own Animals That Are Dependent on You?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([true, false] as const).map((val) => (
+                    <button
+                      key={String(val)}
+                      type="button"
+                      onClick={() => setEditHasPet(val)}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                        editHasPet === val
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {val ? 'Yes' : 'No'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
@@ -174,11 +196,6 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
               </div>
             </form>
           </div>
-        </div>
-
-        {/* Collapsible Advanced Developer Drawer */}
-        <div className="pt-2">
-          <AdvancedDeveloperSettingsDrawer events={events} />
         </div>
 
         {/* Done / Return to Dashboard Action */}

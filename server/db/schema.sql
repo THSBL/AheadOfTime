@@ -109,3 +109,47 @@ CREATE TABLE IF NOT EXISTS agent_actions (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agent_actions_due ON agent_actions(scheduled_for) WHERE status = 'pending';
+
+-- Bug/quality-signal log: every place the AI pipeline already silently
+-- fails, falls back, or gets an empty/garbage response gets a row here
+-- instead of just a console.warn nobody sees. high-severity rows are
+-- pushed to the owner over Telegram in real time; medium/low rows are
+-- rolled into a weekly Telegram digest instead of paging on every routine
+-- model flake. This table is pure logging - nothing here changes what the
+-- AI pipeline actually does with a request.
+CREATE TABLE IF NOT EXISTS ai_quality_events (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           UUID REFERENCES users(id) ON DELETE CASCADE, -- nullable: pre-auth / unlinked Telegram chat
+  event_id          UUID REFERENCES events(id) ON DELETE SET NULL, -- the CalendarEvent this was about, if any
+  source_channel    TEXT NOT NULL,          -- 'web' | 'telegram' | 'whatsapp'
+  signal_type       TEXT NOT NULL,          -- 'gemini_error' | 'gemini_fallback' | 'json_parse_failure' |
+                                             -- 'explicit_failure_reply' | 'empty_plan_returned' | 'rapid_correction' |
+                                             -- 'plan_generated' | 'plan_refined'
+  severity          TEXT NOT NULL DEFAULT 'medium', -- 'low' | 'medium' | 'high'
+  related_event_row UUID REFERENCES ai_quality_events(id), -- links a rapid_correction back to the plan row it's reacting to
+  raw_user_message  TEXT,                   -- the message/correction that triggered this, truncated
+  error_detail      TEXT,                   -- exception message / parse error, if any
+  model_used        TEXT,                   -- which Gemini model was in play, if known
+  context           JSONB NOT NULL DEFAULT '{}', -- free-form extra detail (request payload snippet, mode, etc.)
+  notified_at       TIMESTAMPTZ,            -- when (if) a Telegram alert was sent for this row
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_quality_events_created ON ai_quality_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_quality_events_event ON ai_quality_events(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_quality_events_unnotified ON ai_quality_events(created_at) WHERE notified_at IS NULL;
+
+-- Monthly-gated CSAT score + freeform comment, kept separate from the
+-- anytime "general feedback" flow (same table, distinguished by
+-- response_type) so a quick satisfaction pulse doesn't get mixed up with
+-- an urgent bug report that shouldn't wait for the next monthly prompt.
+CREATE TABLE IF NOT EXISTS csat_responses (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  response_type   TEXT NOT NULL DEFAULT 'csat', -- 'csat' | 'general_feedback'
+  score           SMALLINT CHECK (score BETWEEN 1 AND 5), -- null for general_feedback
+  feedback_text   TEXT,
+  tags            TEXT[] NOT NULL DEFAULT '{}',
+  source_channel  TEXT NOT NULL DEFAULT 'web', -- 'web' | 'telegram' | 'whatsapp'
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_csat_responses_user_recent ON csat_responses(user_id, created_at DESC);

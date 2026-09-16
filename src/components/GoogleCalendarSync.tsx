@@ -27,12 +27,15 @@ import {
   isAuthErrorMessage,
   DEFAULT_CLIENT_ID
 } from '../services/googleAuth';
-import { 
-  syncEventToGoogleCalendar, 
-  fetchPrimaryCalendarProfile, 
+import {
+  syncEventToGoogleCalendar,
+  fetchPrimaryCalendarProfile,
   wipeMilestoneCalendarEventsOnly,
+  getMilestoneSyncFormat,
+  setMilestoneSyncFormat,
   GoogleCalendarProfile,
-  SyncResult
+  SyncResult,
+  MilestoneSyncFormat
 } from '../services/googleCalendar';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from '../services/googleTasks';
 import { formatDisplayDate } from '../utils/tminusRules';
@@ -72,6 +75,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   const [completionSyncReport, setCompletionSyncReport] = useState<string | null>(null);
   const [isCleaningDuplicates, setIsCleaningDuplicates] = useState<boolean>(false);
   const [cleanDuplicatesReport, setCleanDuplicatesReport] = useState<string | null>(null);
+  const [milestoneSyncFormat, setMilestoneSyncFormatState] = useState<MilestoneSyncFormat>(() => getMilestoneSyncFormat());
   const [authError, setAuthError] = useState<string | null>(null);
   const [syncSuccessResult, setSyncSuccessResult] = useState<{
     eventTitle: string;
@@ -85,8 +89,58 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
     calendarLink?: string;
   } | null>(null);
 
+  const handleMilestoneSyncFormatChange = (format: MilestoneSyncFormat) => {
+    setMilestoneSyncFormatState(format);
+    setMilestoneSyncFormat(format);
+  };
+
+  // Shared preference control: Google Tasks (recommended - doesn't compete
+  // for space on the calendar grid) vs a 30-minute timed Calendar Event
+  // block per milestone. Rendered above the push button in both single and
+  // batch mode so the choice applies no matter which flow is used.
+  const renderMilestoneFormatToggle = () => (
+    <div className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2">
+      <span className="text-xs font-bold text-slate-700">Show preparation tasks in Google as:</span>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => handleMilestoneSyncFormatChange('tasks_only')}
+          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+            milestoneSyncFormat === 'tasks_only'
+              ? 'bg-[#182A42] border-slate-900 text-white shadow-sm'
+              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-xs font-bold flex items-center gap-1.5">
+            <span>Google Tasks</span>
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+              milestoneSyncFormat === 'tasks_only' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            }`}>Recommended</span>
+          </div>
+          <p className={`text-[11px] mt-0.5 ${milestoneSyncFormat === 'tasks_only' ? 'text-slate-300' : 'text-slate-500'}`}>
+            Checkable to-dos, don't crowd your calendar grid
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleMilestoneSyncFormatChange('timed')}
+          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+            milestoneSyncFormat === 'timed'
+              ? 'bg-[#182A42] border-slate-900 text-white shadow-sm'
+              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <div className="text-xs font-bold">Calendar Events</div>
+          <p className={`text-[11px] mt-0.5 ${milestoneSyncFormat === 'timed' ? 'text-slate-300' : 'text-slate-500'}`}>
+            30-minute blocks on your calendar
+          </p>
+        </button>
+      </div>
+    </div>
+  );
+
   // Determine active event to push
-  const activeEvent = selectedEventId 
+  const activeEvent = selectedEventId
     ? events.find((e) => e.id === selectedEventId) || events[0]
     : events[0];
 
@@ -147,7 +201,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           token,
           ev,
           timeZone,
-          { milestoneFormat: 'tasks_only' }
+          { milestoneFormat: milestoneSyncFormat }
         );
         totalTasksPushed += result.totalTasksPushed;
         if (result.mainEventLink) {
@@ -282,12 +336,11 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
       }
 
       const timeZone = calendarProfile?.timeZone || 'Europe/Amsterdam';
-      // Use 'tasks_only' to ensure milestones are pushed strictly to Google Tasks and NOT duplicated as calendar event blocks
       const result: SyncResult = await syncEventToGoogleCalendar(
         token,
         activeEvent,
         timeZone,
-        { milestoneFormat: 'tasks_only' }
+        { milestoneFormat: milestoneSyncFormat }
       );
 
       if (result.updatedEvent && onUpdateEvent) {
@@ -614,6 +667,8 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                   })}
                 </div>
 
+                {renderMilestoneFormatToggle()}
+
                 {/* Action Buttons */}
                 <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
                   {onClose && (
@@ -697,12 +752,16 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-sky-600" />
                     <h4 className="text-sm font-bold">
-                      Clean Calendar Sync: 1 Main Event + {taskCount} Google Tasks
+                      Clean Calendar Sync: 1 Main Event + {taskCount} {milestoneSyncFormat === 'tasks_only' ? 'Google Tasks' : 'Calendar Events'}
                     </h4>
                   </div>
                   <p className="text-xs text-sky-800 leading-relaxed pl-6">
                     <strong>1 Calendar Event:</strong> Scheduled on your target event date ({activeEvent.eventDate}).<br />
-                    <strong>{taskCount} Preparation Tasks:</strong> Pushed strictly to Google Tasks with due dates and checkboxes (preventing duplicate event blocks from crowding your calendar).
+                    {milestoneSyncFormat === 'tasks_only' ? (
+                      <><strong>{taskCount} Preparation Tasks:</strong> Pushed strictly to Google Tasks with due dates and checkboxes (preventing duplicate event blocks from crowding your calendar).</>
+                    ) : (
+                      <><strong>{taskCount} Preparation Tasks:</strong> Added as 30-minute Calendar Events on each task's due date.</>
+                    )}
                   </p>
                 </div>
 
@@ -757,7 +816,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 shrink-0">
-                                Google Task
+                                {milestoneSyncFormat === 'tasks_only' ? 'Google Task' : 'Calendar Event'}
                               </span>
                               <div className="font-mono text-xs text-slate-500 shrink-0">
                                 {formatDisplayDate(task.calculatedDate)}
@@ -769,6 +828,8 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {renderMilestoneFormatToggle()}
 
                 {/* Action Buttons */}
                 <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
