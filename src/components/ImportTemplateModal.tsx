@@ -21,6 +21,9 @@ import {
 import {
   parseSpreadsheetFile,
   parseSpreadsheetForAI,
+  extractTextFromDocx,
+  extractTextFromPdf,
+  textToAISheets,
   autoDetectColumnMapping,
   mapRowsToMilestones,
   generateSampleCSV,
@@ -94,92 +97,20 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFile = async (file: File) => {
-    setIsParsing(true);
-    setParseError(null);
-    setSmartImportNotice(null);
-    setSuggestedAdditions([]);
-    setFileName(file.name);
-    setUploadedFile(file);
-
-    try {
-      const { headers, rows } = await parseSpreadsheetFile(file);
-      setRawHeaders(headers);
-      setRawRows(rows);
-
-      // Auto-detect mapping
-      const detected = autoDetectColumnMapping(headers);
-      setMapping(detected);
-
-      // Initial name proposal from file name
-      const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ');
-      setPresetTitle(cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1));
-
-      // Process initial milestones
-      const mapped = mapRowsToMilestones(rows, detected);
-      setMilestones(mapped);
-
-      // Move to mapping or preview
-      if (!detected.taskCol || !detected.offsetCol) {
-        setStep('mapping');
-      } else {
-        setStep('preview');
-      }
-    } catch (err: any) {
-      setParseError(err?.message || 'Failed to read spreadsheet file');
-    } finally {
-      setIsParsing(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        handleFile(file);
-      } else {
-        setParseError('Please upload a valid .csv, .xlsx, or .xls file.');
-      }
-    }
-  };
-
-  const handleDownloadSample = (type: 'app_launch' | 'onboarding' | 'generic') => {
-    const csvContent = generateSampleCSV(type);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `ahead-of-time-sample-${type}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleApplyMapping = () => {
-    if (!mapping.taskCol) {
-      setParseError('Please select a column for Task Name / Milestone Title.');
-      return;
-    }
-    setParseError(null);
-    const mapped = mapRowsToMilestones(rawRows, mapping);
-    setMilestones(mapped);
-    setStep('preview');
-  };
-
-  const handleSmartImport = async () => {
-    if (!uploadedFile) return;
+  // Shared by both the spreadsheet "Smart Import" button (handleSmartImport)
+  // and Word/PDF uploads (handleFile) - prose documents have no columns to
+  // map, so they skip straight to this AI extraction path instead of the
+  // deterministic column-mapping flow below.
+  const runSmartImport = async (sheets: { name: string; rows: any[][] }[], apiFileName: string) => {
     setIsSmartImporting(true);
     setParseError(null);
     setSmartImportNotice(null);
 
     try {
-      const { sheets } = await parseSpreadsheetForAI(uploadedFile);
       const response = await fetch('/api/presets/smart-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: uploadedFile.name, sheets }),
+        body: JSON.stringify({ fileName: apiFileName, sheets }),
       });
 
       if (!response.ok) {
@@ -232,6 +163,103 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
     } finally {
       setIsSmartImporting(false);
     }
+  };
+
+  const SPREADSHEET_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
+  const DOCUMENT_EXTENSIONS = ['.docx', '.pdf'];
+  const isSpreadsheetFile = (name: string) => SPREADSHEET_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
+  const isDocumentFile = (name: string) => DOCUMENT_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
+
+  const handleFile = async (file: File) => {
+    setIsParsing(true);
+    setParseError(null);
+    setSmartImportNotice(null);
+    setSuggestedAdditions([]);
+    setFileName(file.name);
+    setUploadedFile(file);
+
+    const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ');
+    setPresetTitle(cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1));
+
+    try {
+      if (isDocumentFile(file.name)) {
+        // Word/PDF have no tabular structure to auto-detect - extract raw
+        // text and go straight to AI smart import, since manual column
+        // mapping doesn't apply to prose.
+        const text = file.name.toLowerCase().endsWith('.pdf')
+          ? await extractTextFromPdf(file)
+          : await extractTextFromDocx(file);
+        setIsParsing(false);
+        const { sheets } = textToAISheets(text, file.name);
+        await runSmartImport(sheets, file.name);
+        return;
+      }
+
+      const { headers, rows } = await parseSpreadsheetFile(file);
+      setRawHeaders(headers);
+      setRawRows(rows);
+
+      // Auto-detect mapping
+      const detected = autoDetectColumnMapping(headers);
+      setMapping(detected);
+
+      // Process initial milestones
+      const mapped = mapRowsToMilestones(rows, detected);
+      setMilestones(mapped);
+
+      // Move to mapping or preview
+      if (!detected.taskCol || !detected.offsetCol) {
+        setStep('mapping');
+      } else {
+        setStep('preview');
+      }
+    } catch (err: any) {
+      setParseError(err?.message || 'Failed to read file');
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (isSpreadsheetFile(file.name) || isDocumentFile(file.name)) {
+        handleFile(file);
+      } else {
+        setParseError('Please upload a valid .csv, .xlsx, .xls, .docx, or .pdf file.');
+      }
+    }
+  };
+
+  const handleDownloadSample = (type: 'app_launch' | 'onboarding' | 'generic') => {
+    const csvContent = generateSampleCSV(type);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ahead-of-time-sample-${type}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleApplyMapping = () => {
+    if (!mapping.taskCol) {
+      setParseError('Please select a column for Task Name / Milestone Title.');
+      return;
+    }
+    setParseError(null);
+    const mapped = mapRowsToMilestones(rawRows, mapping);
+    setMilestones(mapped);
+    setStep('preview');
+  };
+
+  const handleSmartImport = async () => {
+    if (!uploadedFile) return;
+    const { sheets } = await parseSpreadsheetForAI(uploadedFile);
+    await runSmartImport(sheets, uploadedFile.name);
   };
 
   const handleAddSuggestion = (suggestion: SuggestedAddition) => {
@@ -343,13 +371,13 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
-                <span>Spreadsheet Workflow Importer</span>
+                <span>Workflow Template Importer</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
                   Dual-Track Engine
                 </span>
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Upload CSV or Excel spreadsheets to project deterministic T-Minus milestones with zero LLM latency.
+                Upload a spreadsheet for deterministic, zero-latency T-Minus milestones, or a Word doc / PDF for AI-powered extraction from unorganized plans.
               </p>
             </div>
           </div>
@@ -438,12 +466,12 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
                       handleFile(e.target.files[0]);
                     }
                   }}
-                  accept=".csv,.xlsx,.xls"
+                  accept=".csv,.xlsx,.xls,.docx,.pdf"
                   className="hidden"
                 />
 
                 <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner">
-                  {isParsing ? (
+                  {isParsing || isSmartImporting ? (
                     <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <UploadCloud className="w-7 h-7" />
@@ -452,10 +480,14 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
 
                 <div>
                   <p className="text-sm font-black text-slate-800">
-                    {isParsing ? 'Reading spreadsheet structure...' : 'Click to upload or drag & drop spreadsheet'}
+                    {isParsing
+                      ? 'Reading file structure...'
+                      : isSmartImporting
+                      ? 'AI is reading your document...'
+                      : 'Click to upload or drag & drop a file'}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Supports Microsoft Excel (.xlsx, .xls) and Comma-Separated Values (.csv)
+                    Supports Excel (.xlsx, .xls), CSV, Word (.docx), and PDF
                   </p>
                 </div>
 

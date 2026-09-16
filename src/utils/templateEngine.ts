@@ -449,6 +449,72 @@ export async function parseSpreadsheetForAI(file: File): Promise<{ sheets: { nam
 }
 
 /**
+ * Extracts plain text from an uploaded Word (.docx) file. Unlike a
+ * spreadsheet, prose has no tabular structure to auto-detect columns from -
+ * the caller is expected to route this straight into the AI smart-import
+ * path (see textToAISheets below) rather than the deterministic
+ * column-mapping flow.
+ */
+export async function extractTextFromDocx(file: File): Promise<string> {
+  // Lazy-loaded: mammoth is only needed by the rare user who uploads a
+  // .docx, so it shouldn't bloat the main bundle every page load pays for.
+  const mammoth = await import('mammoth');
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  if (!result.value || !result.value.trim()) {
+    throw new Error('No readable text found in this Word document.');
+  }
+  return result.value;
+}
+
+/**
+ * Extracts plain text from an uploaded PDF file, page by page. Same
+ * "route to AI smart import" caveat as extractTextFromDocx above.
+ */
+export async function extractTextFromPdf(file: File): Promise<string> {
+  // Lazy-loaded for the same reason as mammoth above - pdfjs-dist (plus its
+  // worker asset) is sizeable and only needed for PDF uploads.
+  const pdfjsLib = await import('pdfjs-dist');
+  const pdfWorkerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  const pageTexts: string[] = [];
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item: any) => ('str' in item ? item.str : '')).join(' ');
+    pageTexts.push(pageText);
+  }
+
+  const fullText = pageTexts.join('\n');
+  if (!fullText.trim()) {
+    throw new Error('No readable text found in this PDF (it may be a scanned image without a text layer).');
+  }
+  return fullText;
+}
+
+/**
+ * Wraps plain extracted text (from a Word doc or PDF) into the same
+ * `{ sheets }` shape parseSpreadsheetForAI produces for a real workbook, so
+ * both feed the identical AI smart-import endpoint - one line of text per
+ * "row", which the smart-import prompt already handles fine since it treats
+ * each row as free-form `cell | cell` text, not a strict table.
+ */
+export function textToAISheets(text: string, sheetName: string): { sheets: { name: string; rows: any[][] }[] } {
+  const MAX_LINES = 400;
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_LINES);
+
+  return { sheets: [{ name: sheetName, rows: lines.map((line) => [line]) }] };
+}
+
+/**
  * Intelligently auto-detects column mappings based on typical spreadsheet header names
  */
 export function autoDetectColumnMapping(headers: string[]): SpreadsheetColumnMapping {
