@@ -8,7 +8,6 @@ import {
   inferActionTheme,
   isNextBestActionThisWeek,
   computeSimpleAheadStatus,
-  computeUpcomingMilestones,
   computeOverdueMilestones,
   computeWeeklyMilestonePreview,
 } from './readiness';
@@ -247,6 +246,18 @@ describe('computeWeeklyMilestonePreview', () => {
     expect(buckets[0].label).toBe('This week');
   });
 
+  it('defaults to a full-year horizon, so far-out items are never silently dropped', () => {
+    // Regression test: an earlier version defaulted to a hard 4-week
+    // cutoff, so a trip's milestones 30-60 days out (well beyond any
+    // "Next week"/"In 3 weeks"/"In 4 weeks" bucket) vanished from the
+    // preview entirely with nowhere left to show them once the separate
+    // "Later" catch-all was removed.
+    const event = makeEvent([makeMilestone({ id: 'far-out', calculatedDate: '2026-11-15' })]);
+    const buckets = computeWeeklyMilestonePreview([event], REF_DATE_ISO);
+    const allIds = buckets.flatMap((b) => b.items.map((i) => i.milestoneId));
+    expect(allIds).toEqual(['far-out']);
+  });
+
   it('clusters same-theme items within a week and leaves lone items standalone', () => {
     const event = makeEvent([
       makeMilestone({ id: 'p1', title: 'Pack hiking boots', calculatedDate: '2026-09-14' }),
@@ -394,29 +405,3 @@ describe('computeSimpleAheadStatus', () => {
   });
 });
 
-describe('computeUpcomingMilestones', () => {
-  it('buckets outstanding milestones by how far out they are due, excluding overdue ones', () => {
-    const event = makeEvent([
-      makeMilestone({ id: 'overdue', calculatedDate: '2026-09-01', status: 'pending' }),
-      makeMilestone({ id: 'this-week', calculatedDate: '2026-09-14', status: 'pending' }),
-      makeMilestone({ id: 'next-month', calculatedDate: '2026-09-30', status: 'pending' }),
-      makeMilestone({ id: 'further', calculatedDate: '2026-12-01', category: 'booking', status: 'pending' }),
-    ]);
-
-    const result = computeUpcomingMilestones([event], REF_DATE_ISO);
-
-    expect(result.thisWeek.map((i) => i.milestoneId)).toEqual(['this-week']);
-    expect(result.nextMonth.map((i) => i.milestoneId)).toEqual(['next-month']);
-    expect(result.further.map((i) => i.milestoneId)).toEqual(['further']);
-  });
-
-  it('sorts "further" items by importance before due date', () => {
-    const event = makeEvent([
-      makeMilestone({ id: 'routine-sooner', calculatedDate: '2026-12-01', category: 'shopping', status: 'pending' }),
-      makeMilestone({ id: 'critical-later', calculatedDate: '2026-12-15', category: 'booking', status: 'pending' }),
-    ]);
-
-    const result = computeUpcomingMilestones([event], REF_DATE_ISO);
-    expect(result.further.map((i) => i.milestoneId)).toEqual(['critical-later', 'routine-sooner']);
-  });
-});

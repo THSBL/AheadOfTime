@@ -5,15 +5,15 @@ import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '
 import {
   computeAheadStatus,
   computeSimpleAheadStatus,
-  computeUpcomingMilestones,
   computeOverdueMilestones,
   computeWeeklyMilestonePreview,
-  clusterMilestoneItemsByTheme,
   AheadLevel,
   ActionTheme,
   SimpleAheadLevel,
   UpcomingMilestoneItem,
   MilestoneCluster,
+  WeeklyMilestoneBucket,
+  THEME_LABELS,
 } from '../utils/readiness';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
@@ -90,6 +90,21 @@ const RunwayStripes: React.FC<{ level: SimpleAheadLevel; className?: string }> =
   );
 };
 
+/**
+ * The task's own topic - shown on every single row, clustered or not, so a
+ * task never loses its category just because it's standing alone (only a
+ * 2+ item cluster used to carry a visible label).
+ */
+const ThemeTag: React.FC<{ theme: ActionTheme }> = ({ theme }) => {
+  const Icon = THEME_ICONS[theme];
+  return (
+    <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full mt-0.5 max-w-full">
+      <Icon className="w-2.5 h-2.5 shrink-0" />
+      <span className="truncate">{THEME_LABELS[theme]}</span>
+    </span>
+  );
+};
+
 const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (eventId: string) => void; overdue?: boolean }> = ({
   item,
   onSelectEvent,
@@ -103,6 +118,7 @@ const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (
     <div className="min-w-0 flex-1">
       <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
       <p className="text-[11px] text-slate-400 truncate">{item.eventTitle}</p>
+      <ThemeTag theme={item.theme} />
     </div>
     <span
       className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
@@ -138,6 +154,7 @@ const FlatMilestoneRow: React.FC<{
     <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
       <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
       <p className="text-[11px] text-slate-400 truncate">{item.eventTitle}</p>
+      <ThemeTag theme={item.theme} />
     </button>
     <span
       className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
@@ -224,6 +241,53 @@ const MilestoneClusterCard: React.FC<{
   );
 };
 
+/**
+ * One week of the "Looking ahead" preview, collapsed by default to just its
+ * label and item count - opening it reveals the theme-clustered cards
+ * (which each open further to individual tasks). Three levels of fold in
+ * total: week -> topic -> task, so the calmer, further-out weeks stay out
+ * of the way until the user actually wants to look.
+ */
+const WeekBucketCard: React.FC<{
+  bucket: WeeklyMilestoneBucket;
+  isOpen: boolean;
+  onToggleOpen: () => void;
+  expandedClusterKey: string | null;
+  onToggleCluster: (key: string) => void;
+  onSelectEvent: (eventId: string) => void;
+  onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
+}> = ({ bucket, isOpen, onToggleOpen, expandedClusterKey, onToggleCluster, onSelectEvent, onToggleMilestoneStatus }) => (
+  <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
+    <button type="button" onClick={onToggleOpen} className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs sm:text-sm font-bold text-slate-900">{bucket.label}</p>
+        <p className="text-[11px] text-slate-500 truncate">
+          {bucket.items.length} item{bucket.items.length === 1 ? '' : 's'}
+        </p>
+      </div>
+      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
+        {bucket.items.length}
+      </span>
+      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+    </button>
+
+    {isOpen && (
+      <div className="border-t border-slate-100 p-2 space-y-2 bg-slate-50/50">
+        {bucket.clusters.map((cluster) => (
+          <MilestoneClusterCard
+            key={cluster.theme + cluster.items[0].milestoneId}
+            cluster={cluster}
+            isOpen={expandedClusterKey === `${bucket.key}-${cluster.theme}`}
+            onToggleOpen={() => onToggleCluster(`${bucket.key}-${cluster.theme}`)}
+            onSelectEvent={onSelectEvent}
+            onToggleMilestoneStatus={onToggleMilestoneStatus}
+          />
+        ))}
+      </div>
+    )}
+  </div>
+);
+
 export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   events,
   currentReferenceDate,
@@ -233,6 +297,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   onOpenScanAgenda,
 }) => {
   const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
+  const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
   const activeEvents = events.filter((e) => e.status !== 'completed');
 
   if (activeEvents.length === 0) {
@@ -271,19 +336,16 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   // where a collapsed cluster would hide the detail that matters most.
   const thisWeekBucket = weeklyPreview.find((bucket) => bucket.key === 'week-0');
   const futureBuckets = weeklyPreview.filter((bucket) => bucket.key !== 'week-0');
-  // Aligned to the 4-week (28-day) horizon computeWeeklyMilestonePreview
-  // covers above, so nothing falls into a gap between the two: further
-  // means "beyond week 4", not "beyond a mismatched 30-day cutoff".
-  const upcoming = computeUpcomingMilestones(activeEvents, currentReferenceDate, { nextMonthDays: 27 });
-  const laterClusters = clusterMilestoneItemsByTheme(upcoming.further.filter((item) => item.importance !== 'routine').slice(0, 8));
-  const hasWantToWorkAhead = futureBuckets.length > 0 || laterClusters.length > 0;
+  // Nothing overdue and nothing due this week - the "focus on now" zone is
+  // genuinely empty, so say so instead of leaving a silent gap before
+  // "Looking ahead".
+  const isFocusZoneClear = overdueItems.length === 0 && !thisWeekBucket;
 
   const perEvent = sortEventsUpcomingFirst(activeEvents, currentReferenceDate).map((event) => ({
     event,
     status: computeAheadStatus(event, currentReferenceDate),
   }));
 
-  const needsAttention = perEvent.filter((e) => e.status.level === 'at_risk' || e.status.level === 'attention');
   const alreadyAhead = perEvent.filter((e) => e.status.level === 'ahead' || e.status.level === 'ready');
 
   const simpleStyle = SIMPLE_STATUS_STYLES[simpleStatus.level];
@@ -351,62 +413,35 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
           </div>
         )}
 
-        {/* Want to work ahead? - everything beyond this week, folded into
-            topic clusters and collapsed by default: Next week / In 3 weeks
-            / In 4 weeks / Later. Framed as an opportunity to get ahead
-            rather than a pending obligation, so it reads as optional
-            planning, not more to-dos. */}
-        {hasWantToWorkAhead && (
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Want to work ahead?</h3>
-            {futureBuckets.map((bucket) => (
-              <div key={bucket.key} className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 px-1">{bucket.label}</p>
-                <div className="space-y-2">
-                  {bucket.clusters.map((cluster) => (
-                    <MilestoneClusterCard
-                      key={cluster.theme + cluster.items[0].milestoneId}
-                      cluster={cluster}
-                      isOpen={expandedClusterKey === `${bucket.key}-${cluster.theme}`}
-                      onToggleOpen={() =>
-                        setExpandedClusterKey(
-                          expandedClusterKey === `${bucket.key}-${cluster.theme}` ? null : `${bucket.key}-${cluster.theme}`
-                        )
-                      }
-                      onSelectEvent={onSelectEvent}
-                      onToggleMilestoneStatus={onToggleMilestoneStatus}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-            {laterClusters.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 px-1">Later</p>
-                <div className="space-y-2">
-                  {laterClusters.map((cluster) => (
-                    <MilestoneClusterCard
-                      key={cluster.theme + cluster.items[0].milestoneId}
-                      cluster={cluster}
-                      isOpen={expandedClusterKey === `later-${cluster.theme}`}
-                      onToggleOpen={() => setExpandedClusterKey(expandedClusterKey === `later-${cluster.theme}` ? null : `later-${cluster.theme}`)}
-                      onSelectEvent={onSelectEvent}
-                      onToggleMilestoneStatus={onToggleMilestoneStatus}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* Nothing overdue, nothing due this week - say so, the same way
+            the fully-empty-dashboard state does, instead of leaving a
+            silent gap before "Looking ahead". */}
+        {isFocusZoneClear && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs text-center">
+            <p className="text-sm sm:text-base font-black text-slate-900">{pickStableLine(EMPTY_WEEK_LINES, currentReferenceDate)}</p>
           </div>
         )}
 
-        {/* Needs Attention */}
-        {needsAttention.length > 0 && (
+        {/* Looking ahead - everything beyond this week, nested three levels
+            deep: week (collapsed to a label + item count) -> topic cluster
+            -> individual task. Framed as an opportunity to get ahead rather
+            than a pending obligation, so it reads as optional planning, not
+            more to-dos, and stays out of the way until opened. */}
+        {futureBuckets.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Needs attention</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Looking ahead</h3>
             <div className="space-y-2">
-              {needsAttention.map(({ event, status }) => (
-                <EventRow key={event.id} event={event} status={status} currentReferenceDate={currentReferenceDate} onSelectEvent={onSelectEvent} />
+              {futureBuckets.map((bucket) => (
+                <WeekBucketCard
+                  key={bucket.key}
+                  bucket={bucket}
+                  isOpen={expandedWeekKey === bucket.key}
+                  onToggleOpen={() => setExpandedWeekKey(expandedWeekKey === bucket.key ? null : bucket.key)}
+                  expandedClusterKey={expandedClusterKey}
+                  onToggleCluster={(key) => setExpandedClusterKey(expandedClusterKey === key ? null : key)}
+                  onSelectEvent={onSelectEvent}
+                  onToggleMilestoneStatus={onToggleMilestoneStatus}
+                />
               ))}
             </div>
           </div>

@@ -338,69 +338,7 @@ export interface UpcomingMilestoneItem {
   theme: ActionTheme;
 }
 
-export interface UpcomingMilestones {
-  thisWeek: UpcomingMilestoneItem[];
-  nextMonth: UpcomingMilestoneItem[];
-  further: UpcomingMilestoneItem[];
-}
-
 const IMPORTANCE_WEIGHT: Record<ActionImportance, number> = { critical: 0, important: 1, routine: 2 };
-
-/**
- * Buckets every outstanding, non-overdue milestone by how far out it is due
- * - overdue items are deliberately excluded here, since those already
- * surface as "behind" in computeSimpleAheadStatus and under Needs Attention;
- * this is only for the calm, forward-looking view of what's still ahead.
- * `further` (beyond nextMonthDays) is meant for a "want to get further
- * ahead?" prompt, so it's sorted by importance first - a lone routine task
- * six months out isn't worth surfacing, but a critical one is.
- */
-export function computeUpcomingMilestones(
-  events: CalendarEvent[],
-  referenceDateISO: string,
-  options: { thisWeekDays?: number; nextMonthDays?: number } = {}
-): UpcomingMilestones {
-  const thisWeekDays = options.thisWeekDays ?? 7;
-  const nextMonthDays = options.nextMonthDays ?? 30;
-
-  const thisWeek: UpcomingMilestoneItem[] = [];
-  const nextMonth: UpcomingMilestoneItem[] = [];
-  const further: UpcomingMilestoneItem[] = [];
-
-  for (const event of events) {
-    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
-    for (const milestone of outstanding) {
-      const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
-      if (countdown.isOverdue) continue;
-
-      const item: UpcomingMilestoneItem = {
-        eventId: event.id,
-        eventTitle: event.title,
-        milestoneId: milestone.id,
-        title: milestone.title,
-        dueLabel: countdown.label,
-        diffDays: countdown.diffDays,
-        importance: inferMilestoneImportance(milestone),
-        theme: inferActionTheme(milestone),
-      };
-
-      if (countdown.diffDays <= thisWeekDays) {
-        thisWeek.push(item);
-      } else if (countdown.diffDays <= nextMonthDays) {
-        nextMonth.push(item);
-      } else {
-        further.push(item);
-      }
-    }
-  }
-
-  const byDueDate = (a: UpcomingMilestoneItem, b: UpcomingMilestoneItem) => a.diffDays - b.diffDays;
-  thisWeek.sort(byDueDate);
-  nextMonth.sort(byDueDate);
-  further.sort((a, b) => IMPORTANCE_WEIGHT[a.importance] - IMPORTANCE_WEIGHT[b.importance] || byDueDate(a, b));
-
-  return { thisWeek, nextMonth, further };
-}
 
 /**
  * The single most urgent outstanding action for one event: overdue items
@@ -447,7 +385,7 @@ export type ActionTheme =
   | 'packing_essentials'
   | 'other';
 
-const THEME_LABELS: Record<ActionTheme, string> = {
+export const THEME_LABELS: Record<ActionTheme, string> = {
   bookings_logistics: 'Bookings & Logistics',
   purchases_gifts_supplies: 'Purchases, Gifts & Supplies',
   deliverables_preparation: 'Deliverables & Preparation',
@@ -588,22 +526,25 @@ export interface WeeklyMilestoneBucket {
 const WEEK_BUCKET_LABELS = ['This week', 'Next week'];
 
 /**
- * A rolling, week-by-week preview of what's outstanding over the next
- * `weeks` weeks (overdue items excluded - those belong to
- * computeOverdueMilestones instead). A calendar-shaped view rather than one
- * flat "coming up" list, so planning further out still feels concrete ("3
- * things due the week after next") instead of an undifferentiated pile -
- * and each week's items are theme-clustered the same way as the overdue
- * list, so the "batch similar tasks together" view isn't a separate,
- * easy-to-miss section anymore.
+ * A rolling, week-by-week preview of everything outstanding (overdue items
+ * excluded - those belong to computeOverdueMilestones instead), out to
+ * `weeks` weeks. A calendar-shaped view rather than one flat "coming up"
+ * list, so planning further out still feels concrete ("3 things due the
+ * week after next") instead of an undifferentiated pile - and each week's
+ * items are theme-clustered the same way as the overdue list, so the
+ * "batch similar tasks together" view isn't a separate, easy-to-miss
+ * section anymore. Only weeks that actually have something in them produce
+ * a bucket. Defaults to a full year: every week collapses to a single
+ * label + count until opened, so a generous horizon costs nothing visually
+ * and nothing genuinely outstanding silently falls off the edge.
  */
 export function computeWeeklyMilestonePreview(
   events: CalendarEvent[],
   referenceDateISO: string,
   options: { weeks?: number } = {}
 ): WeeklyMilestoneBucket[] {
-  const weeks = options.weeks ?? 4;
-  const buckets: UpcomingMilestoneItem[][] = Array.from({ length: weeks }, () => []);
+  const maxWeeks = options.weeks ?? 52;
+  const buckets = new Map<number, UpcomingMilestoneItem[]>();
 
   for (const event of events) {
     const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
@@ -612,9 +553,10 @@ export function computeWeeklyMilestonePreview(
       if (countdown.isOverdue) continue;
 
       const weekIndex = Math.floor(countdown.diffDays / 7);
-      if (weekIndex < 0 || weekIndex >= weeks) continue;
+      if (weekIndex < 0 || weekIndex >= maxWeeks) continue;
 
-      buckets[weekIndex].push({
+      const list = buckets.get(weekIndex) || [];
+      list.push({
         eventId: event.id,
         eventTitle: event.title,
         milestoneId: milestone.id,
@@ -624,11 +566,13 @@ export function computeWeeklyMilestonePreview(
         importance: inferMilestoneImportance(milestone),
         theme: inferActionTheme(milestone),
       });
+      buckets.set(weekIndex, list);
     }
   }
 
-  return buckets
-    .map((rawItems, index) => {
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([index, rawItems]) => {
       const items = [...rawItems].sort((a, b) => a.diffDays - b.diffDays);
       return {
         key: `week-${index}`,
@@ -636,8 +580,7 @@ export function computeWeeklyMilestonePreview(
         items,
         clusters: clusterMilestoneItemsByTheme(items),
       };
-    })
-    .filter((bucket) => bucket.items.length > 0);
+    });
 }
 
 /**
