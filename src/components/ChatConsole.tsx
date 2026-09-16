@@ -679,23 +679,29 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             <span>Core Presets</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActivePresetExplorerTab?.('saved')}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-              activePresetExplorerTab === 'saved'
-                ? 'bg-[#182A42] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-indigo-400" />
-            <span>My Saved Presets</span>
-            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
-              activePresetExplorerTab === 'saved' ? 'bg-indigo-500/40 text-indigo-100' : 'bg-indigo-100 text-indigo-700'
-            }`}>
-              {savedPresets?.length || 0}
-            </span>
-          </button>
+          {/* Gated the same way as the Import button below (Rule C:
+              Mixed/Business profiles only) - a personal-only profile can
+              never populate this tab via Import, so showing it would just
+              be a permanently-empty dead end. */}
+          {canImportSpreadsheet && (
+            <button
+              type="button"
+              onClick={() => setActivePresetExplorerTab?.('saved')}
+              className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                activePresetExplorerTab === 'saved'
+                  ? 'bg-[#182A42] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span>My Saved Presets</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
+                activePresetExplorerTab === 'saved' ? 'bg-indigo-500/40 text-indigo-100' : 'bg-indigo-100 text-indigo-700'
+              }`}>
+                {savedPresets?.length || 0}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Import Template Button - Retained for Mixed & Business intent per Rule C */}
@@ -712,7 +718,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
         )}
       </div>
 
-      {activePresetExplorerTab === 'saved' ? (
+      {activePresetExplorerTab === 'saved' && canImportSpreadsheet ? (
         <MySavedPresetsView
           presets={savedPresets || []}
           onOpenImporter={onOpenImporter || (() => {})}
