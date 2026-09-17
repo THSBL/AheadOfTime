@@ -91,7 +91,13 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     });
 
     return sortEventsUpcomingFirst(matched, currentReferenceDate);
-  }, [events, searchQuery, currentReferenceDate]);
+    // showOnlyNew is read inside the filter above but was missing here -
+    // useMemo only recomputes when a LISTED dependency changes, so toggling
+    // the "Newly added" checkbox updated the checkbox's own visual state
+    // but never actually re-ran this filter. The list only looked "fixed"
+    // whenever events/searchQuery/currentReferenceDate happened to change
+    // for some unrelated reason afterward.
+  }, [events, searchQuery, currentReferenceDate, showOnlyNew]);
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -221,11 +227,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   {showOnlyNew ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                   <span>Newly added ({newlyAddedCount})</span>
                 </button>
-              )}
-              {selectedEventIds.length > 0 && (
-                <span className="font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-lg">
-                  {selectedEventIds.length} selected
-                </span>
               )}
             </div>
 
