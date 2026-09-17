@@ -555,7 +555,7 @@ export function generateConcreteEventMilestones(
     label: string,
     offsetMinutes: number,
     msTitle: string,
-    cat: 'logistics' | 'booking' | 'shopping' | 'prep' | 'admin',
+    cat: 'logistics' | 'booking' | 'shopping' | 'prep' | 'admin' | 'review',
     description: string,
     deliverables: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[]
   ): TMinusMilestone => {
@@ -1091,6 +1091,23 @@ export function generateConcreteEventMilestones(
           ]
         )
       );
+
+      // Post-launch follow-up - shipping isn't the last checkpoint. A few
+      // days after launch there's a real task waiting: did it actually
+      // work, and what did the team learn.
+      milestones.push(
+        createMilestone(
+          'Day +3',
+          3 * 24 * 60,
+          'Post-launch review & retro',
+          'review',
+          'Check launch metrics/error rates and run a short team retro on what went well or should change next time.',
+          [
+            { title: 'Review launch metrics and error rates', type: 'document' },
+            { title: 'Run a short team retro', type: 'coordination' },
+          ]
+        )
+      );
       break;
     }
 
@@ -1440,6 +1457,23 @@ export function generateConcreteEventMilestones(
           'Head to terminal with buffer for security screening and bag drop.',
           [
             { title: 'Arrive at airport 2.5 hours early for baggage drop', type: 'coordination' },
+          ]
+        )
+      );
+
+      // Post-trip follow-up - this wizard has no field for a trip's return
+      // date, so this lands a day after the same eventDate every other
+      // milestone here is anchored to. Getting home isn't the last task:
+      // unpacking and filing reimbursable expenses still need doing.
+      milestones.push(
+        createMilestone(
+          'Day +1',
+          1 * 24 * 60,
+          'Unpack & submit trip expenses',
+          'logistics',
+          'Unpack luggage and file any reimbursable trip expenses.',
+          [
+            { title: 'File any reimbursable trip expenses', type: 'document' },
           ]
         )
       );
