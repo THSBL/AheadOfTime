@@ -1,6 +1,38 @@
 {
   "rewrites": [
     {
+      "source": "/api/feedback/eligibility",
+      "destination": "/api/feedback"
+    },
+    {
+      "source": "/api/feedback/submit",
+      "destination": "/api/feedback"
+    },
+    {
+      "source": "/api/auth/google/authorize",
+      "destination": "/api/auth/google?action=authorize"
+    },
+    {
+      "source": "/api/auth/google/status",
+      "destination": "/api/auth/google?action=status"
+    },
+    {
+      "source": "/api/presets/calibrate-offsets",
+      "destination": "/api/presets?action=calibrate-offsets"
+    },
+    {
+      "source": "/api/presets/smart-import",
+      "destination": "/api/presets?action=smart-import"
+    },
+    {
+      "source": "/api/agent/transcribe",
+      "destination": "/api/agent?action=transcribe"
+    },
+    {
+      "source": "/api/agent/process",
+      "destination": "/api/agent?action=process"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

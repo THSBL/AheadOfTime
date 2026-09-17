@@ -7,21 +7,76 @@ import {
 } from '../../server/agentProcessor.js';
 import { logQualityEvent } from '../../server/qualityStore.js';
 
-// Main intelligent agent processing endpoint (Vercel serverless equivalent of
-// server.ts's POST /api/agent/process route). Logic is ported verbatim from
-// that route handler; the actual processing lives in server/agentProcessor.ts
-// so both deployment targets share the same implementation.
+// Consolidated Vercel function for /api/agent/transcribe (POST) and
+// /api/agent/process (POST) - vercel.json rewrites both old paths here
+// with an ?action= query param, so the frontend and server.ts's own
+// Express routes need no changes. Vercel's Hobby plan caps a deployment
+// at 12 serverless functions; merging same-domain endpoints like this is
+// how this project stays under that cap as routes are added over time
+// (see api/telegram/[...path].ts for the same pattern applied earlier).
+// Logic below is ported verbatim from the two files this replaces, each
+// kept as its own function - this touches nothing inside
+// server/agentProcessor.ts itself, only how these two routes reach it.
 //
-// The Gemini extraction call can race up to 2 models at 12s each (see
-// processWithGemini's generateContentFast timeout) - default Vercel function
-// duration is too short to safely cover that worst case, so raise it here.
-// (On plans capped below 30s, Vercel silently uses the plan's own ceiling -
-// this is a no-op there, not an error.)
+// The Gemini extraction call (handleProcess) can race up to 2 models at
+// 12s each (see processWithGemini's generateContentFast timeout) -
+// default Vercel function duration is too short to safely cover that
+// worst case, so raise it here for the whole file. (On plans capped
+// below 30s, Vercel silently uses the plan's own ceiling - this is a
+// no-op there, not an error.) handleTranscribe never needs this much,
+// but sharing the file with handleProcess means it also gets this
+// ceiling - harmless, since it's a maximum, not a fixed wait.
 export const config = {
   maxDuration: 30,
 };
 
-export default async function handler(req: any, res: any) {
+async function handleTranscribe(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed. /api/agent/transcribe requires POST.' });
+    return;
+  }
+
+  try {
+    const { audioBase64, mimeType = 'audio/webm' } = req.body;
+    if (!audioBase64) {
+      res.status(400).json({ error: 'audioBase64 is required' });
+      return;
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      res.json({ transcribedText: 'Voice memo captured (Gemini API key not configured for live transcription).' });
+      return;
+    }
+
+    const audioPart = {
+      inlineData: {
+        mimeType: mimeType || 'audio/webm',
+        data: audioBase64,
+      },
+    };
+
+    const result = await generateContentFast(
+      () => ({
+        contents: {
+          parts: [
+            audioPart,
+            { text: 'Transcribe this conversational calendar voice memo exactly. Output ONLY the transcribed speech text.' }
+          ]
+        },
+      }),
+      TRANSCRIBE_MODELS,
+      4500
+    );
+
+    const transcribedText = result.text?.trim() || '';
+    res.json({ transcribedText });
+  } catch (error: any) {
+    console.warn('Audio transcription notice:', error?.message || 'Unavailable');
+    res.json({ transcribedText: 'Voice memo captured successfully. (Transcription fallback applied).' });
+  }
+}
+
+async function handleProcess(req: any, res: any) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed. /api/agent/process requires POST.' });
     return;
@@ -167,4 +222,17 @@ export default async function handler(req: any, res: any) {
     });
     res.status(500).json({ error: error.message || "Failed to process request" });
   }
+}
+
+export default async function handler(req: any, res: any) {
+  const action = req.query?.action as string;
+
+  if (action === 'transcribe') {
+    return handleTranscribe(req, res);
+  }
+  if (action === 'process') {
+    return handleProcess(req, res);
+  }
+
+  return res.status(404).json({ error: 'Unknown action' });
 }
