@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, ListChecks, MapPin, ChevronRight, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import { Logo } from './Logo';
-import { RoadAheadHero, IntroPhase } from './RoadAheadHero';
 import { getCurrentUser, loadUserEvents, setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 import {
   getStoredAccessToken,
@@ -59,17 +58,21 @@ function prefersReducedMotion(): boolean {
   }
 }
 
-// Cumulative timeline (ms) for each beat - see RoadAheadHero's INTRO_PHASES.
-// Stripe draw-in itself (~250/200/250ms, accelerating) is handled inside
-// StripeButton via CSS transition-delay, not here; this schedule only
-// covers when the calendar/squares/pin/settle beats kick off, landing the
-// whole intro around 2.5s total as spec'd.
+// Intro phases - simpler than the earlier hand-drawn-SVG badge version,
+// which needed intermediate beats ('calendar', 'squares', 'pin') to drive
+// its own sequential draw-in. The hero is now a real rendered image (see
+// the img below) with just one fade/scale entrance, so the only phases
+// anything still reads are 'settle' (stripes start expanding) and 'done'
+// (stripes become clickable).
+const INTRO_PHASES = ['stripes', 'settle', 'done'] as const;
+type IntroPhase = (typeof INTRO_PHASES)[number];
+
+// Cumulative timeline (ms) for each beat. Stripe draw-in itself
+// (~250/200/250ms, accelerating) is handled inside StripeButton via CSS
+// transition-delay, not here.
 const PHASE_SCHEDULE: Array<{ phase: IntroPhase; at: number }> = [
-  { phase: 'calendar', at: 700 },
-  { phase: 'squares', at: 1200 },
-  { phase: 'pin', at: 1600 },
-  { phase: 'settle', at: 2100 },
-  { phase: 'done', at: 2500 },
+  { phase: 'settle', at: 700 },
+  { phase: 'done', at: 1050 },
 ];
 
 // How long the "selected" navigation transition holds on screen before the
@@ -241,18 +244,21 @@ export const RecurringUserLanding: React.FC = () => {
           </svg>
 
           <div className="relative flex flex-col items-center pt-6 pb-7 px-4 sm:px-6">
-            {/* The hero badge - the same calendar+pin mark from the app
-                icon, drawn live. It stays on screen after the intro
-                finishes (it never needs to disappear - "the animation IS
-                the loading of the nav", not a splash bolted in front of
-                it). Builds up smoothly on mount via its own phase-driven
-                Motion timeline (draw-in outline, sequential square pop,
-                spring pin drop). */}
-            <RoadAheadHero
-              phase={phase}
-              reducedMotion={reducedMotion || skipIntro}
-              className="w-28 h-28 sm:w-36 sm:h-36"
-              style={{ filter: 'drop-shadow(0 14px 22px rgba(0,0,0,0.4)) drop-shadow(0 2px 10px rgba(161,200,186,0.3))' }}
+            {/* The hero mark - a real rendered image (public/assets/road-ahead-hero.png)
+                instead of a hand-drawn SVG recreation, which could never
+                match this look. It stays on screen after the intro finishes
+                (it never needs to disappear - "the animation IS the loading
+                of the nav", not a splash bolted in front of it) and just
+                fades/scales in on mount rather than the old sequential
+                draw-in, since there's no longer a separate outline/grid/pin
+                to animate piece by piece. */}
+            <img
+              src="/assets/road-ahead-hero.png"
+              alt="Ahead Of Time"
+              className={`w-32 h-32 sm:w-44 sm:h-44 object-contain transition-[opacity,transform] duration-500 ease-out ${
+                mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
+              }`}
+              style={{ filter: 'drop-shadow(0 14px 24px rgba(0,0,0,0.45)) drop-shadow(0 2px 10px rgba(161,200,186,0.25))' }}
             />
 
             {/* The three road stripes - decorative during the intro, real
