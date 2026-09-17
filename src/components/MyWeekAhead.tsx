@@ -280,12 +280,15 @@ const FlatMilestoneRow: React.FC<{
 };
 
 /**
- * Renders one MilestoneCluster: a lone item (or an 'other' item, too
- * generic to name as a group) is just a plain row, while a real cluster
- * (2+ items sharing a theme, e.g. four separate "send invitations" tasks)
- * becomes an expandable "Calls and confirmations (4)" card - the "batch
- * similar tasks together" view, now built into every section that lists
- * milestones instead of being a separate, easy-to-miss one.
+ * Renders one MilestoneCluster: a lone item is normally just a plain row,
+ * while a real cluster (2+ items sharing a theme, e.g. four separate "send
+ * invitations" tasks) becomes an expandable "Calls and confirmations (4)"
+ * card - the "batch similar tasks together" view, now built into every
+ * section that lists milestones instead of being a separate, easy-to-miss
+ * one. forceTopicView overrides the lone-item case (see WeekBucketCard):
+ * far-out weeks always fold every task into a named topic, even a topic of
+ * one, so a week that's still 6 months away doesn't read as a denser wall
+ * of individual tasks than the near-term weeks right above it.
  */
 const MilestoneClusterCard: React.FC<{
   cluster: MilestoneCluster;
@@ -294,12 +297,19 @@ const MilestoneClusterCard: React.FC<{
   onSelectEvent: (eventId: string) => void;
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
   overdue?: boolean;
-}> = ({ cluster, isOpen, onToggleOpen, onSelectEvent, onToggleMilestoneStatus, overdue }) => {
-  if (cluster.items.length === 1) {
+  forceTopicView?: boolean;
+}> = ({ cluster, isOpen, onToggleOpen, onSelectEvent, onToggleMilestoneStatus, overdue, forceTopicView }) => {
+  if (cluster.items.length === 1 && !forceTopicView) {
     return <MilestoneListRow item={cluster.items[0]} onSelectEvent={onSelectEvent} overdue={overdue} />;
   }
 
   const Icon = THEME_ICONS[cluster.theme];
+  // cluster.label is the theme label for a real (2+ item) cluster already,
+  // but a solo entry's label is that one item's own title (see
+  // clusterMilestoneItemsByTheme) - reading THEME_LABELS directly here
+  // instead makes both cases show an actual topic name in the header, not
+  // the task's own title standing in for one.
+  const topicLabel = THEME_LABELS[cluster.theme];
 
   return (
     <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
@@ -310,8 +320,8 @@ const MilestoneClusterCard: React.FC<{
       >
         <Icon className="w-4 h-4 text-slate-500 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm font-bold text-slate-900">{cluster.label}</p>
-          <p className="text-[11px] text-slate-500 truncate">{cluster.items.length} items</p>
+          <p className="text-xs sm:text-sm font-bold text-slate-900">{topicLabel}</p>
+          <p className="text-[11px] text-slate-500 truncate">{cluster.items.length} item{cluster.items.length === 1 ? '' : 's'}</p>
         </div>
         <span
           className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${
@@ -408,7 +418,18 @@ const WeekBucketCard: React.FC<{
   onToggleCluster: (key: string) => void;
   onSelectEvent: (eventId: string) => void;
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
-}> = ({ bucket, isOpen, onToggleOpen, expandedClusterKey, onToggleCluster, onSelectEvent, onToggleMilestoneStatus }) => (
+}> = ({ bucket, isOpen, onToggleOpen, expandedClusterKey, onToggleCluster, onSelectEvent, onToggleMilestoneStatus }) => {
+  // bucket.key is "week-N" (see computeWeeklyMilestonePreview) - week 0 is
+  // "This week" and never reaches here (MyWeekAhead filters it into its own
+  // section), so N>=3 here means the bucket is showing "In 4 weeks" or
+  // later: more than 3 weeks out. Beyond that horizon, force every task
+  // into a named topic (even a topic of one) rather than a flat row, so a
+  // week 6 months away doesn't read as MORE granular/denser than the
+  // weeks right above it - the opposite of how "further out" should feel.
+  const weekIndex = Number(bucket.key.slice('week-'.length));
+  const isFarFuture = Number.isFinite(weekIndex) && weekIndex >= 3;
+
+  return (
   <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
     <button type="button" onClick={onToggleOpen} className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer">
       <div className="min-w-0 flex-1">
@@ -444,12 +465,14 @@ const WeekBucketCard: React.FC<{
             onToggleOpen={() => onToggleCluster(`${bucket.key}-${cluster.theme}`)}
             onSelectEvent={onSelectEvent}
             onToggleMilestoneStatus={onToggleMilestoneStatus}
+            forceTopicView={isFarFuture}
           />
         ))}
       </div>
     )}
   </div>
-);
+  );
+};
 
 export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   events,

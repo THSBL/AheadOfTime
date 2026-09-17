@@ -128,6 +128,14 @@ function mergeEvents(existingEvents: CalendarEvent[], syncedEvents: CalendarEven
     return {
       ...evt,
       ...synced,
+      // Same reasoning as completion status just above: once this client
+      // has a createdAt for an event, a later sync should never overwrite
+      // it. The Telegram/Postgres row this polls can fall back to "now" for
+      // its own createdAt when the column is empty (see telegramStore.ts),
+      // and without this, every 4s poll would re-stamp that as "just now" -
+      // making the event look perpetually newly-added instead of aging out
+      // of that state like it should.
+      createdAt: evt.createdAt || synced.createdAt,
       milestones: mergedMilestones,
     };
   });

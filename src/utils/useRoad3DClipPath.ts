@@ -36,21 +36,25 @@ export function useRoad3DClipPath<T extends HTMLElement>(shape: RoadStripeShapeO
 
 /**
  * The fake embossed/3D border+bevel that goes with the clip-path above: a
- * light highlight top-left and a dark shadow bottom-right (as if lit from
- * above), plus an inset highlight/shadow band for a rounder, more embossed
- * feel than a plain outline. Border and inset box-shadow both still render
- * within the element's own painted box, so clip-path clips them along with
- * everything else - they hug the shape's actual cut corners instead of a
- * plain rectangle, unlike an outer box-shadow (which clip-path effectively
+ * brighter white highlight top-left fading to a dimmer (still white, never
+ * tinted) white bottom-right, as if lit from above, plus an inset
+ * highlight/shadow band for a rounder, more embossed feel than a plain
+ * outline. All white, no navy/grey tint on any side - an earlier version
+ * used a dark navy tint for the "shadow" sides, which read as a muddy grey
+ * border rather than a clean bevel, especially against light card
+ * backgrounds. Border and inset box-shadow both still render within the
+ * element's own painted box, so clip-path clips them along with everything
+ * else - they hug the shape's actual cut corners instead of a plain
+ * rectangle, unlike an outer box-shadow (which clip-path effectively
  * swallows; depth/lift for a clipped shape has to come from a wrapping
  * element's filter:drop-shadow instead).
  */
 export const ROAD_3D_BEVEL_STYLE: CSSProperties = {
   borderWidth: '3px',
   borderStyle: 'solid',
-  borderTopColor: 'rgba(255,255,255,0.85)',
-  borderLeftColor: 'rgba(255,255,255,0.55)',
-  borderRightColor: 'rgba(15,23,42,0.32)',
-  borderBottomColor: 'rgba(15,23,42,0.45)',
-  boxShadow: 'inset 0 2px 3px rgba(255,255,255,0.5), inset 0 -3px 5px rgba(15,23,42,0.18)',
+  borderTopColor: 'rgba(255,255,255,0.95)',
+  borderLeftColor: 'rgba(255,255,255,0.8)',
+  borderRightColor: 'rgba(255,255,255,0.35)',
+  borderBottomColor: 'rgba(255,255,255,0.25)',
+  boxShadow: 'inset 0 2px 3px rgba(255,255,255,0.6), inset 0 -3px 5px rgba(0,0,0,0.12)',
 };
