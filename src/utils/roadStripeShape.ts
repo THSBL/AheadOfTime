@@ -90,14 +90,24 @@ export function buildRoadStripeClipPath(width: number, height: number, options: 
 }
 
 /**
- * Per-stripe shape config for the 3 RecurringUserLanding nav buttons -
- * decreasing topInsetRatio from stripe 1 to 3 keeps the existing
- * "farthest/narrowest first, closest/widest last" perspective (paired with
- * each stripe's own increasing outer width from marginClassName), just
- * with rounded, bowed edges instead of a straight polygon cut.
+ * Per-stripe shape config for the 3 RecurringUserLanding nav buttons - each
+ * stripe's own outer width comes from its marginClassName (12% / 6% / 0%
+ * inward margin, so 76% / 88% / 100% of the nav's width), and topInsetRatio
+ * here is chosen so each stripe's TOP width, in absolute terms, exactly
+ * equals the PREVIOUS stripe's BOTTOM width (which is just its full,
+ * uninset box width) - i.e. bottom-of-stripe-N === top-of-stripe-(N+1),
+ * a continuous telescoping cascade rather than 3 independently-tapered
+ * boxes that happen to sit near each other. Concretely, at 76/88/100
+ * (percent of nav width): stripe 1 tapers 76 -> 64, stripe 2 tapers
+ * 88 -> 76 (matching stripe 1's bottom), stripe 3 tapers 100 -> 88
+ * (matching stripe 2's bottom). Since clip-path insets are a ratio of the
+ * element's OWN measured width (not the nav's), each ratio below is
+ * (thisStripeWidth - targetTopWidth) / 2 / thisStripeWidth - if either
+ * stripe's own outer width class ever changes, these ratios must be
+ * recomputed to match, or the cascade breaks again.
  */
 export const ROAD_STRIPE_SHAPES: RoadStripeShapeOptions[] = [
-  { topInsetRatio: 0.1, cornerRadius: 16, bow: 7 },
-  { topInsetRatio: 0.055, cornerRadius: 16, bow: 6 },
-  { topInsetRatio: 0.02, cornerRadius: 16, bow: 5 },
+  { topInsetRatio: 0.079, cornerRadius: 16, bow: 7 },
+  { topInsetRatio: 0.068, cornerRadius: 16, bow: 6 },
+  { topInsetRatio: 0.06, cornerRadius: 16, bow: 5 },
 ];

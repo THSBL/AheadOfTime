@@ -232,7 +232,7 @@ export const RecurringUserLanding: React.FC = () => {
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
             aria-hidden="true"
-            style={{ filter: 'drop-shadow(0 22px 40px rgba(0,0,0,0.45)) drop-shadow(0 2px 14px rgba(161,200,186,0.18))' }}
+            style={{ filter: 'drop-shadow(0 28px 46px rgba(0,0,0,0.55)) drop-shadow(0 3px 16px rgba(161,200,186,0.22))' }}
           >
             <path
               d="M 33,0 L 67,0 Q 75,0 75,6 L 75,22 C 75,29 92,38 98,52 L 98,92 Q 98,100 89,100 L 11,100 Q 2,100 2,92 L 2,52 C 8,38 25,29 25,22 L 25,6 Q 25,0 33,0 Z"
@@ -258,24 +258,26 @@ export const RecurringUserLanding: React.FC = () => {
               className={`w-32 h-32 sm:w-44 sm:h-44 object-contain transition-[opacity,transform] duration-500 ease-out hover:scale-110 ${
                 mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
               }`}
-              style={{ filter: 'drop-shadow(0 14px 24px rgba(0,0,0,0.45)) drop-shadow(0 2px 10px rgba(161,200,186,0.25))' }}
+              style={{ filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.3))' }}
             />
 
             {/* The three road stripes - decorative during the intro, real
-                clickable navigation once settled. Increasing horizontal
-                margin per stripe (widest/closest last) plus a rounded,
-                gently-bowed trapezoid clip-path (see roadStripeShape.ts -
-                measured from each button's real size via ResizeObserver so
-                the curve/corners stay correct at any width) recreate the
-                logo's receding-road perspective as one flowing shape
-                instead of a plain rectangle. */}
+                clickable navigation once settled. Each stripe's outer
+                margin (12% / 6% / 0%, i.e. 76% / 88% / 100% wide) and its
+                own clip-path top-taper (see ROAD_STRIPE_SHAPES) are chosen
+                together so bottom-of-stripe-N lines up exactly with
+                top-of-stripe-(N+1) - a continuous telescoping cascade
+                rather than 3 independently-tapered boxes that only
+                approximately lined up. If either a margin or a
+                topInsetRatio changes, the other stripe's matching edge has
+                to be recomputed too, or the seam breaks again. */}
             <nav
               aria-label="Quick navigation"
               className="mt-8 sm:mt-10 w-full flex flex-col gap-2 sm:gap-3"
             >
               <StripeButton
             index={0}
-            marginClassName="mx-10 sm:mx-16"
+            marginClassName="mx-[12%]"
             shapeIndex={0}
             colorClassName={`${stripeOneStyle.bg} ${stripeOneStyle.border}`}
             barColorClassName={stripeOneStyle.dot}
@@ -298,7 +300,7 @@ export const RecurringUserLanding: React.FC = () => {
 
           <StripeButton
             index={1}
-            marginClassName="mx-5 sm:mx-8"
+            marginClassName="mx-[6%]"
             shapeIndex={1}
             colorClassName="bg-white border-slate-200"
             barColorClassName="bg-[#447463]"
@@ -547,8 +549,11 @@ const StripeButton: React.FC<StripeButtonProps> = ({
         // overflow-hidden on the button can never interfere with the shadow
         // rendering outside its box. drop-shadow (not box-shadow) is
         // required here because it follows the button's actual clipped
-        // silhouette instead of its rectangular border-box.
-        filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.35)) drop-shadow(0 1px 5px rgba(255,255,255,0.16))',
+        // silhouette instead of its rectangular border-box. Kept small/tight
+        // relative to the shared panel's own shadow (see the panel <svg>'s
+        // filter) - this is just enough to lift the button off the panel,
+        // not a second competing shadow of its own.
+        filter: 'drop-shadow(0 4px 7px rgba(0,0,0,0.28))',
       }}
     >
       <button
@@ -563,15 +568,20 @@ const StripeButton: React.FC<StripeButtonProps> = ({
           // Fakes a 3D/embossed edge: border color set per-side (inline,
           // since colorClassName's single border-{color} utility can't
           // express this) with a light "highlight" top-left and a dark
-          // "shadow" bottom-right, as if lit from above. Border - not
-          // box-shadow - is what can do this here, because clip-path clips
-          // the whole painted box including its border, so it still hugs
-          // the trapezoid's actual cut corners instead of a plain rectangle.
-          borderWidth: '2px',
-          borderTopColor: 'rgba(255,255,255,0.75)',
-          borderLeftColor: 'rgba(255,255,255,0.45)',
-          borderRightColor: 'rgba(15,23,42,0.22)',
-          borderBottomColor: 'rgba(15,23,42,0.32)',
+          // "shadow" bottom-right, as if lit from above, plus inset
+          // highlight/shadow bands along the top and bottom for a rounder,
+          // more embossed (not just outlined) look. Border and inset
+          // box-shadow both still render within the button's own painted
+          // box, so - unlike an outer box-shadow, which clip-path would
+          // otherwise swallow - they still hug the trapezoid's actual cut
+          // corners instead of a plain rectangle.
+          borderWidth: '3px',
+          borderTopColor: 'rgba(255,255,255,0.85)',
+          borderLeftColor: 'rgba(255,255,255,0.55)',
+          borderRightColor: 'rgba(15,23,42,0.32)',
+          borderBottomColor: 'rgba(15,23,42,0.45)',
+          boxShadow:
+            'inset 0 2px 3px rgba(255,255,255,0.5), inset 0 -3px 5px rgba(15,23,42,0.18)',
         }}
         className={[
           'relative w-full border text-left overflow-hidden',
