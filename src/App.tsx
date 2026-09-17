@@ -22,6 +22,7 @@ import { ScanAgendaModal } from './components/ScanAgendaModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
 import { OnboardingPage } from './components/OnboardingPage';
 import { LandingUSPPage } from './components/LandingUSPPage';
+import { RecurringUserLanding } from './components/RecurringUserLanding';
 import { PreferencesModal } from './components/PreferencesModal';
 import { CookieBanner } from './components/CookieBanner';
 import { CookiePreferencesModal } from './components/CookiePreferencesModal';
@@ -267,7 +268,25 @@ function App() {
   }, [events, currentReferenceDate]);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>(() => {
+    // RecurringUserLanding's "NEXT 30 DAYS" stripe wants to land on the
+    // Timeline & Tasks tab specifically, but activeTab has no URL
+    // representation of its own. Follows the exact same "set a flag before
+    // navigating, consume it once on mount" convention already used for
+    // aot_open_scan_modal (see OnboardingPage.tsx / the scan-trigger effect
+    // below) rather than inventing a new mechanism. Read + clear
+    // synchronously here (not in an effect) so the very first paint already
+    // lands on the right tab instead of flashing 'feed' then swapping.
+    try {
+      if (sessionStorage.getItem('aot_open_tab') === 'tasks') {
+        sessionStorage.removeItem('aot_open_tab');
+        return 'tasks';
+      }
+    } catch {
+      // Fall through to the default tab.
+    }
+    return 'feed';
+  });
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
   const [isWizardInputFocused, setIsWizardInputFocused] = useState(false);
 
@@ -2234,11 +2253,19 @@ function LandingRoute() {
     navigate(target);
   };
 
+  // Recurring users (already onboarded, or already connected Google
+  // Calendar) skip the marketing pitch entirely and land on the animated
+  // "Road Ahead" stripe navigation instead - additive only: a brand-new
+  // user (neither flag set) still gets the exact LandingUSPPage flow below,
+  // unchanged. hasDeepLinkEvent already short-circuited above this point.
+  if (hasCompleted || isConnected) {
+    return <RecurringUserLanding />;
+  }
+
   return (
     <LandingUSPPage
       onGetStarted={() => navigate('/onboarding')}
       onExploreDashboard={handleEnterApp}
-      onGoToDashboard={hasCompleted || isConnected ? handleEnterApp : undefined}
       onOpenPrivacyPolicy={() => navigate('/privacy')}
     />
   );
