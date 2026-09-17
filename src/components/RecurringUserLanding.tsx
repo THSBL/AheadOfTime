@@ -616,7 +616,15 @@ const StripeButton: React.FC<StripeButtonProps> = ({
                 <div className={`text-[10px] sm:text-xs font-bold uppercase tracking-wide ${eyebrowClassName}`}>
                   {eyebrow}
                 </div>
-                <div className={`text-sm sm:text-base font-bold truncate ${contentClassName}`}>{content}</div>
+                {/* No truncate - on a narrow phone, this stripe's own
+                    inward margin (part of the telescoping-cascade taper
+                    tuned for desktop widths) leaves little enough room
+                    that real copy ("Nothing tracked yet") was clipping to
+                    "Nothing tracke...". Wrapping to a second line instead
+                    keeps every word readable; the grid-rows animation
+                    above already sizes to whatever height the content
+                    actually needs, wrapped or not. */}
+                <div className={`text-sm sm:text-base font-bold leading-snug ${contentClassName}`}>{content}</div>
               </div>
               <ChevronRight className="w-5 h-5 shrink-0 text-slate-400" />
             </div>
