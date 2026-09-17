@@ -105,11 +105,21 @@ function mergeEvents(existingEvents: CalendarEvent[], syncedEvents: CalendarEven
     const mergedMilestones = (evt.milestones || []).map((m) => {
       const syncedMs = syncedMsMap.get(m.id) || (m.googleTaskId ? synced.milestones?.find((sm) => sm.googleTaskId === m.googleTaskId) : undefined);
       if (syncedMs) {
+        // Completion only ever moves pending -> completed here, never back.
+        // This used to take syncedMs.status unconditionally - but the
+        // Telegram/Postgres store this polls every 4s has no way to learn
+        // about a completion made in the web app (that only pushes to
+        // Google Tasks, a separate system elsewhere in this handler), so a
+        // poll landing shortly after the user checked a task off would
+        // silently revert it back to pending, making it reappear in
+        // Overdue/This week as if it had never been checked - "checking a
+        // task doesn't always remove it" was this, not a rendering bug.
+        const nextStatus = m.status === 'completed' ? 'completed' : syncedMs.status;
         return {
           ...m,
-          status: syncedMs.status,
+          status: nextStatus,
           googleTaskId: syncedMs.googleTaskId || m.googleTaskId,
-          completedAt: syncedMs.completedAt || m.completedAt,
+          completedAt: nextStatus === 'completed' ? (m.completedAt || syncedMs.completedAt) : (syncedMs.completedAt || m.completedAt),
         };
       }
       return m;

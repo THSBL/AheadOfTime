@@ -22,6 +22,21 @@ import {
 import { CalendarEvent } from '../types';
 import { getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
 
+// How long an event counts as "newly added" for the sidebar's own filter
+// chip and highlight - measured against real wall-clock time (not
+// currentReferenceDate, which is this app's mockable planning reference
+// date and can be set arbitrarily far from "now"), since this is about
+// when the event record was actually created, not where it falls on the
+// calendar.
+const NEWLY_ADDED_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function isNewlyAddedEvent(event: CalendarEvent): boolean {
+  if (!event.createdAt) return false;
+  const createdAtMs = new Date(event.createdAt).getTime();
+  if (isNaN(createdAtMs)) return false;
+  return Date.now() - createdAtMs < NEWLY_ADDED_WINDOW_MS;
+}
+
 interface MessengerSidebarProps {
   events: CalendarEvent[];
   selectedEventId: string | null;
@@ -54,9 +69,13 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onToggleCollapse,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showOnlyNew, setShowOnlyNew] = useState(false);
+
+  const newlyAddedCount = React.useMemo(() => events.filter(isNewlyAddedEvent).length, [events]);
 
   const filteredEvents = React.useMemo(() => {
     const matched = events.filter((e) => {
+      if (showOnlyNew && !isNewlyAddedEvent(e)) return false;
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase().trim();
       const displayTitle = getCleanEventTitle(e.title, e.category, e.context).toLowerCase();
@@ -174,6 +193,25 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           />
         </div>
 
+        {/* Newly-added filter - only worth showing at all when there's
+            something to filter for, otherwise it's a chip that never does
+            anything. */}
+        {newlyAddedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowOnlyNew((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border cursor-pointer transition-all ${
+              showOnlyNew
+                ? 'bg-amber-400 border-amber-500 text-amber-950'
+                : 'bg-amber-100/80 border-amber-200 text-amber-800 hover:bg-amber-100'
+            }`}
+            title={showOnlyNew ? 'Showing only newly added events' : 'Show only newly added events'}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Newly added ({newlyAddedCount})</span>
+          </button>
+        )}
+
         {/* Bulk Selection & Deletion Actions Bar */}
         {events.length > 0 && (
           <div className="flex items-center justify-between pt-1 text-xs">
@@ -230,6 +268,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
 
             const isUnrefined = evt.needsRefinement === true && !evt.refinedAt && (!evt.context || Object.keys(evt.context).length === 0);
+            const isNewlyAdded = isNewlyAddedEvent(evt);
 
             // Month section header - only when the month actually changes
             // from the previous (already date-sorted) event, so scanning a
@@ -253,6 +292,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-2.5 relative group ${
                   isSelected
                     ? 'bg-white border-2 border-slate-900 shadow-sm'
+                    : isNewlyAdded
+                    ? 'bg-amber-50 border border-amber-200 hover:border-amber-300 hover:shadow-xs shadow-2xs'
                     : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
                 }`}
               >

@@ -207,6 +207,23 @@ const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (
 );
 
 /**
+ * Compacts tminusRules.ts's overdue phrasing ("Overdue by 4 days") down to
+ * "4d" for the flat milestone rows, where the full title and event name
+ * already take priority over this badge for the row's limited width -
+ * already-compact forms ("2mo 3d", "Overdue just now") pass through
+ * unchanged since none of the patterns below match them.
+ */
+function formatCompactOverdueLabel(label: string): string {
+  if (label === 'Overdue just now') return 'Just now';
+  return label
+    .replace(/^Overdue by /, '')
+    .replace(/\s*months?\b/, 'mo')
+    .replace(/\s*days?\b/, 'd')
+    .replace(/\s*hours?\b/, 'h')
+    .replace(/\s*mins?\b/, 'm');
+}
+
+/**
  * A single milestone row with a complete-checkbox, used where every task
  * must stay individually visible and in full detail rather than folded
  * into a topic - Overdue and This week, the "what should I focus on right
@@ -218,39 +235,64 @@ const FlatMilestoneRow: React.FC<{
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
   overdue?: boolean;
   onReschedule?: (target: 'tomorrow' | 'next_week') => void;
-}> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue, onReschedule }) => (
-  <div className="flex items-start gap-2 px-3 py-2.5 hover:bg-slate-50/60">
+}> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue, onReschedule }) => {
+  // Checking a task off used to just vanish it from the list the instant
+  // you clicked - the state update and the list re-filtering both happen
+  // in the same tick, so there was no visible confirmation the click had
+  // registered before the row was simply gone. This holds the row on
+  // screen just long enough to show a filled checkmark first, then fires
+  // the real (list-removing) toggle.
+  const [isChecking, setIsChecking] = useState(false);
+
+  const handleCheck = () => {
+    if (isChecking) return;
+    setIsChecking(true);
+    window.setTimeout(() => {
+      onToggleMilestoneStatus(item.eventId, item.milestoneId);
+    }, 500);
+  };
+
+  return (
+  <div className={`flex items-start gap-2 px-3 py-2.5 hover:bg-slate-50/60 transition-opacity duration-300 ${isChecking ? 'opacity-50' : ''}`}>
     <button
       type="button"
-      onClick={() => onToggleMilestoneStatus(item.eventId, item.milestoneId)}
-      className="w-4 h-4 mt-0.5 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
+      onClick={handleCheck}
+      disabled={isChecking}
+      className={`w-4 h-4 mt-0.5 rounded border flex items-center justify-center shrink-0 transition-all duration-200 ${
+        isChecking
+          ? 'bg-emerald-500 border-emerald-500 text-white scale-125 cursor-default'
+          : 'border-slate-300 hover:border-[#182A42] text-transparent hover:text-slate-400 cursor-pointer'
+      }`}
       title="Mark as complete"
     >
       <Check className="w-2.5 h-2.5 stroke-[3]" />
     </button>
-    {/* The due-by badge used to sit inline with the title, on the same row -
-        at any real width it squeezed the title down to a couple of
-        truncated words before you could even tell what the task was. It
-        now sits on the title's own second line instead, where it competes
-        with the (less critical) event name/theme tag for space rather than
-        the title itself. */}
+    {/* The full milestone title and event name are the whole point of this
+        row - they take priority over everything else here. The due-by
+        badge moved to its own line below rather than crowd the title (see
+        the earlier fix), the topic tag is gone entirely now (one more
+        thing competing for the same line as the event name), and the
+        overdue copy is compacted to "4d" instead of "Overdue by 4 days" -
+        in that order, freeing space for the title/event first before
+        trimming anything else. Both lines wrap instead of truncating, so
+        a genuinely long title still shows in full, just taller. */}
     <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
-      <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+      <p className="text-xs sm:text-sm font-semibold text-slate-800">{item.title}</p>
       <div className="flex items-center gap-1.5 mt-0.5">
-        <p className="text-[11px] text-slate-400 truncate min-w-0">{item.eventTitle}</p>
-        <ThemeTag theme={item.theme} />
+        <p className="text-[11px] text-slate-400 min-w-0 flex-1">{item.eventTitle}</p>
         <span
-          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ml-auto ${
+          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
             overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
           }`}
         >
-          {item.dueLabel}
+          {overdue ? formatCompactOverdueLabel(item.dueLabel) : item.dueLabel}
         </span>
       </div>
     </button>
     {overdue && onReschedule && <RescheduleMenu onReschedule={onReschedule} />}
   </div>
-);
+  );
+};
 
 /**
  * Renders one MilestoneCluster: a lone item (or an 'other' item, too
@@ -495,17 +537,13 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
               <RunwayStripes level={simpleStatus.level} className="w-full h-full" />
             </div>
             <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
-                {/* Pairs the problem count with a progress count, so the card
-                    never reads as only bad news - per feedback, this
-                    shouldn't stress people out more than necessary. */}
-                {simpleStatus.completedCount > 0 && (
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-emerald-800 bg-emerald-100 shrink-0">
-                    {simpleStatus.completedCount} done
-                  </span>
-                )}
-              </div>
+              {/* The green "N done" pill that used to sit next to this
+                  title read as a second, conflicting signal whenever the
+                  card itself was in its red "falling behind" state - a
+                  reassuring green badge inside an alarmed red card sends
+                  two different messages at once. Removed; simpleStatus.sub
+                  below already frames outstanding vs. completed. */}
+              <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
               <p className="text-xs sm:text-sm text-slate-600">{simpleStatus.sub}</p>
             </div>
           </div>

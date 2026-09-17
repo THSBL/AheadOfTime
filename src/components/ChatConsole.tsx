@@ -806,19 +806,6 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             </button>
           )}
         </div>
-
-        {/* Import Template Button - Retained for Mixed & Business intent per Rule C */}
-        {canImportSpreadsheet && onOpenImporter && (
-          <button
-            type="button"
-            onClick={onOpenImporter}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95 shrink-0"
-            title="Import an existing workflow from a spreadsheet, Word doc, or PDF"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-purple-700" />
-            <span>Import Template</span>
-          </button>
-        )}
       </div>
 
       {activePresetExplorerTab === 'saved' && canImportSpreadsheet ? (
@@ -895,6 +882,26 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             );
           })}
         </div>
+      )}
+
+      {/* Import Template - moved below the preset grid (was inline with the
+          Core/Work/Imported tab buttons above, where a filled purple button
+          competed for attention with the actual navigation) and restyled
+          quiet/secondary to match "Plan something new"'s own dashed-ghost
+          treatment elsewhere - importing a template is a fallback path, not
+          the primary action on this screen. Not shown on the Imported
+          Presets tab itself, which already has its own identical CTA in
+          its empty state. */}
+      {activePresetExplorerTab !== 'saved' && canImportSpreadsheet && onOpenImporter && (
+        <button
+          type="button"
+          onClick={onOpenImporter}
+          className="w-full px-4 py-2.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-700 border border-dashed border-[#182A42]/30 hover:border-[#182A42]/50 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98]"
+          title="Import an existing workflow from a spreadsheet, Word doc, or PDF"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5" />
+          <span>Import Template</span>
+        </button>
       )}
     </div>
   );
