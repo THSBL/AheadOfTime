@@ -234,17 +234,21 @@ export const RecurringUserLanding: React.FC = () => {
             preserveAspectRatio="none"
             aria-hidden="true"
             style={{
-              // Three stacked drop-shadows, not one: a tight one for a
-              // crisp edge right at the panel's own silhouette, a big
-              // far-offset one that lets the flare's own diagonal
-              // shoulders cast a long trailing shadow continuing that same
-              // diagonal further down the page (this is what makes the
-              // shadow read as following the shape's flow instead of just
-              // sitting as a generic blurred halo around it), and a faint
-              // mint-tinted glow for warmth. All three follow the SVG's
-              // actual rendered alpha shape, not a bounding box.
+              // A 70px-offset shadow layer used to live here to make the
+              // flare's diagonal shoulders "trail" a shadow further down
+              // the page - in practice it did the opposite of "follow the
+              // shape": shifted 70px down, its copy of the (narrow) top
+              // read as a wide, disconnected halo bulging past the
+              // shoulders, while its copy of the (wide) bottom landed well
+              // past the panel's own bottom edge, leaving the actual
+              // bottom corners with barely any shadow at all. Replaced
+              // with a tight edge shadow plus one moderate-offset shadow
+              // that stays visually attached to the silhouette at both the
+              // narrow top and the wide bottom corners, plus the same
+              // faint mint-tinted glow for warmth. All three follow the
+              // SVG's actual rendered alpha shape, not a bounding box.
               filter:
-                'drop-shadow(0 10px 16px rgba(0,0,0,0.45)) drop-shadow(0 70px 60px rgba(0,0,0,0.4)) drop-shadow(0 3px 16px rgba(161,200,186,0.2))',
+                'drop-shadow(0 4px 8px rgba(0,0,0,0.4)) drop-shadow(0 20px 28px rgba(0,0,0,0.38)) drop-shadow(0 3px 16px rgba(161,200,186,0.2))',
             }}
           >
             <path

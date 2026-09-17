@@ -671,7 +671,13 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
     <div className="space-y-6">
       {/* Freeform input - moved above the preset catalogue: it's the
           fastest path for anyone who already knows what they want to
-          type, so it shouldn't be buried below a full grid of presets. */}
+          type, so it shouldn't be buried below a full grid of presets. A
+          small, muted label sits above it now - without any heading at
+          all, a plain textarea reads as an unlabeled, generic input
+          rather than the start of "describe your event". */}
+      <p className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">
+        Describe your calendar event
+      </p>
       <div className="relative z-30 space-y-2">
         <form
           onSubmit={handleFreeformSubmit}

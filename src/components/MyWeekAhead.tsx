@@ -22,7 +22,15 @@ import { useRoad3DClipPath, ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPa
 // proportions there would look like an exaggerated wedge instead of a
 // subtle flow. Corner radius/bow scaled up to match the bar's own larger
 // size instead of reusing the stripes' own tuned-for-a-different-shape values.
-const AHEAD_BAR_SHAPE = { topInsetRatio: 0.022, cornerRadius: 22, bow: 10 };
+// topInsetRatio has to be big enough that buildRoadStripeClipPath's own
+// corner-radius clamp (radius <= topInset * 0.85, so two adjacent rounded
+// corners can never overlap) doesn't silently cap cornerRadius far below
+// what's requested here - 0.022 was so small the effective radius came out
+// under 14px regardless of cornerRadius, which read as barely-rounded and
+// out of step with the front page's own stripes (topInsetRatio 0.06-0.1).
+// Bumped both together for real, visible rounding that's actually in line
+// with them.
+const AHEAD_BAR_SHAPE = { topInsetRatio: 0.05, cornerRadius: 30, bow: 14 };
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
   bookings_logistics: Plane,
@@ -211,27 +219,35 @@ const FlatMilestoneRow: React.FC<{
   overdue?: boolean;
   onReschedule?: (target: 'tomorrow' | 'next_week') => void;
 }> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue, onReschedule }) => (
-  <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-slate-50/60">
+  <div className="flex items-start gap-2 px-3 py-2.5 hover:bg-slate-50/60">
     <button
       type="button"
       onClick={() => onToggleMilestoneStatus(item.eventId, item.milestoneId)}
-      className="w-4 h-4 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
+      className="w-4 h-4 mt-0.5 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
       title="Mark as complete"
     >
       <Check className="w-2.5 h-2.5 stroke-[3]" />
     </button>
+    {/* The due-by badge used to sit inline with the title, on the same row -
+        at any real width it squeezed the title down to a couple of
+        truncated words before you could even tell what the task was. It
+        now sits on the title's own second line instead, where it competes
+        with the (less critical) event name/theme tag for space rather than
+        the title itself. */}
     <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
       <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
-      <p className="text-[11px] text-slate-400 truncate">{item.eventTitle}</p>
-      <ThemeTag theme={item.theme} />
+      <div className="flex items-center gap-1.5 mt-0.5">
+        <p className="text-[11px] text-slate-400 truncate min-w-0">{item.eventTitle}</p>
+        <ThemeTag theme={item.theme} />
+        <span
+          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ml-auto ${
+            overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
+          }`}
+        >
+          {item.dueLabel}
+        </span>
+      </div>
     </button>
-    <span
-      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
-        overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
-      }`}
-    >
-      {item.dueLabel}
-    </span>
     {overdue && onReschedule && <RescheduleMenu onReschedule={onReschedule} />}
   </div>
 );

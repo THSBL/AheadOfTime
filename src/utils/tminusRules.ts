@@ -437,7 +437,6 @@ export function getOverdueDurationString(targetDateIso: string, referenceDateIso
   const totalMinutes = Math.floor(overdueMs / (1000 * 60));
   const totalHours = Math.floor(overdueMs / (1000 * 60 * 60));
   const totalDays = Math.floor(overdueMs / (1000 * 60 * 60 * 24));
-  const remainingHours = totalHours % 24;
 
   let overdueText = '';
   let shortLabel = '';
@@ -448,13 +447,12 @@ export function getOverdueDurationString(targetDateIso: string, referenceDateIso
     overdueText = remDays > 0 ? `Overdue by ${months}mo ${remDays}d` : `Overdue by ${months} month${months > 1 ? 's' : ''}`;
     shortLabel = `${months}mo overdue`;
   } else if (totalDays >= 1) {
-    if (remainingHours > 0 && totalDays < 5) {
-      overdueText = `Overdue by ${totalDays}d ${remainingHours}h`;
-      shortLabel = `${totalDays}d ${remainingHours}h overdue`;
-    } else {
-      overdueText = `Overdue by ${totalDays} day${totalDays > 1 ? 's' : ''}`;
-      shortLabel = `${totalDays}d overdue`;
-    }
+    // Days alone, never "3d 12h" - a combined unit reads as more precise
+    // than it needs to be for an at-a-glance badge, and it was also the
+    // single biggest reason these badges crowded out the milestone title
+    // next to them (see FlatMilestoneRow).
+    overdueText = `Overdue by ${totalDays} day${totalDays > 1 ? 's' : ''}`;
+    shortLabel = `${totalDays}d overdue`;
   } else if (totalHours >= 1) {
     overdueText = `Overdue by ${totalHours} hour${totalHours > 1 ? 's' : ''}`;
     shortLabel = `${totalHours}h overdue`;
