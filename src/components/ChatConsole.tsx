@@ -115,8 +115,14 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
   // Custom Presets State
   const [localSavedPresets, setLocalSavedPresets] = useState<CustomPreset[]>(() => loadCustomPresets());
-  const currentSavedPresets = propSavedPresets || localSavedPresets;
-  const [activePresetExplorerTab, setActivePresetExplorerTab] = useState<'core' | 'saved'>('core');
+  // loadCustomPresets() always merges in a handful of app-provided
+  // "verified built-in" runway templates (used elsewhere by
+  // ApplyPresetModal for applying a template to an existing event) -
+  // excluded here so the Imported Presets tab genuinely starts empty and
+  // only ever shows what the user themselves imported or saved, matching
+  // its own description.
+  const currentSavedPresets = (propSavedPresets || localSavedPresets).filter((p) => !p.isBuiltIn);
+  const [activePresetExplorerTab, setActivePresetExplorerTab] = useState<'core' | 'work' | 'saved'>('core');
   const [selectedLaunchPreset, setSelectedLaunchPreset] = useState<CustomPreset | null>(null);
   const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
 
@@ -509,8 +515,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       {presetStep === 'initial' && !isLoading && (
         <div className="space-y-6 animate-in fade-in duration-400">
           <InitialPresetsAndFreeform
-            primaryPresets={categorizedPresets.primary}
-            secondaryPresets={categorizedPresets.secondary}
+            corePresets={categorizedPresets.core}
+            workPresets={categorizedPresets.work}
             canImportSpreadsheet={categorizedPresets.canImportSpreadsheet}
             onboardingProfile={onboardingProfile}
             onOpenPreferences={onOpenPreferences}
@@ -609,8 +615,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
 
 interface InitialPresetsAndFreeformProps {
-  primaryPresets?: PromptPreset[];
-  secondaryPresets?: PromptPreset[];
+  corePresets?: PromptPreset[];
+  workPresets?: PromptPreset[];
   canImportSpreadsheet?: boolean;
   onboardingProfile?: OnboardingProfile | null;
   onOpenPreferences?: () => void;
@@ -627,8 +633,8 @@ interface InitialPresetsAndFreeformProps {
   isLoading: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
   savedPresets?: CustomPreset[];
-  activePresetExplorerTab?: 'core' | 'saved';
-  setActivePresetExplorerTab?: (tab: 'core' | 'saved') => void;
+  activePresetExplorerTab?: 'core' | 'work' | 'saved';
+  setActivePresetExplorerTab?: (tab: 'core' | 'work' | 'saved') => void;
   onOpenImporter?: () => void;
   onStartLaunch?: (preset: CustomPreset) => void;
   onPresetsUpdated?: (presets: CustomPreset[]) => void;
@@ -636,8 +642,8 @@ interface InitialPresetsAndFreeformProps {
 }
 
 const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
-  primaryPresets = [],
-  secondaryPresets = [],
+  corePresets = [],
+  workPresets = [],
   canImportSpreadsheet = true,
   onboardingProfile,
   onOpenPreferences,
@@ -757,6 +763,19 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             <span>Core Presets</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => setActivePresetExplorerTab?.('work')}
+            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+              activePresetExplorerTab === 'work'
+                ? 'bg-[#182A42] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+            }`}
+          >
+            <Briefcase className="w-3.5 h-3.5 text-amber-500" />
+            <span>Work Presets</span>
+          </button>
+
           {/* Gated the same way as the Import button below (Rule C:
               Mixed/Business profiles only) - a personal-only profile can
               never populate this tab via Import, so showing it would just
@@ -772,7 +791,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
               }`}
             >
               <Layers className="w-3.5 h-3.5 text-indigo-400" />
-              <span>My Saved Presets</span>
+              <span>Imported Presets</span>
               <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
                 activePresetExplorerTab === 'saved' ? 'bg-indigo-500/40 text-indigo-100' : 'bg-indigo-100 text-indigo-700'
               }`}>
@@ -803,77 +822,72 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
           onApplyPresetToNewEvent={onStartLaunch || (() => {})}
           onPresetsUpdated={onPresetsUpdated || (() => {})}
         />
+      ) : activePresetExplorerTab === 'work' ? (
+        /* Work Presets tab - business/admin presets split out of Core.
+           Kept in the same compact, description-free card style
+           Subscriptions/Maintenance already used as a secondary row below
+           Core, rather than promoting them to the larger card now that
+           they're a first-class tab - that was a deliberate size
+           reduction, not just a byproduct of being "secondary" before. */
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+          {workPresets.map((preset: PromptPreset) => {
+            const isSelected = preset.id === selectedPresetId;
+            return (
+            <button
+              key={preset.id}
+              onClick={() => handleSelectPreset(preset)}
+              className={`group relative text-left p-2 rounded-xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 ${
+                isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/80'
+              }`}
+            >
+              <div className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 rounded-lg bg-slate-100 text-sm sm:text-base flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                {preset.emoji}
+              </div>
+              <h4 className="text-[11px] sm:text-xs font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate flex-1 min-w-0">
+                {preset.title}
+              </h4>
+              <div className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
+              }`}>
+                {isSelected ? <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <ChevronRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
+              </div>
+            </button>
+            );
+          })}
+        </div>
       ) : (
-        <div className="space-y-3">
-          {/* Primary Presets Grid - compact horizontal row, matching the
-              secondary presets' already-tighter layout below rather than a
-              vertical stack that leaves a large icon box as the only thing
-              on its own row. */}
-          <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
-            {primaryPresets.map((preset: PromptPreset) => {
-              const isSelected = preset.id === selectedPresetId;
-              return (
-              <button
-                key={preset.id}
-                onClick={() => handleSelectPreset(preset)}
-                className={`group relative text-left p-2.5 sm:p-3 rounded-2xl bg-white border shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 sm:gap-3 ${
-                  isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/90'
-                }`}
-              >
-                <div className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-xl bg-slate-100 text-base sm:text-lg flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
-                  {preset.emoji}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate">
-                    {preset.title}
-                  </h3>
-                  <p className="hidden sm:block text-[11px] text-slate-500 font-normal leading-snug mt-0.5 line-clamp-2">
-                    {preset.description}
-                  </p>
-                </div>
-                <div className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
-                  isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-100 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
-                }`}>
-                  {isSelected ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
-                </div>
-              </button>
-              );
-            })}
-          </div>
-
-          {/* Secondary Presets Row (e.g. Subscription, Maintenance in
-              Mixed/Business) - deliberately smaller/lighter than the
-              primary grid above: no description, smaller icon and text,
-              since these are lower-priority utility presets rather than
-              the main event types. */}
-          {secondaryPresets && secondaryPresets.length > 0 && (
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 pt-1">
-              {secondaryPresets.map((preset: PromptPreset) => {
-                const isSelected = preset.id === selectedPresetId;
-                return (
-                <button
-                  key={preset.id}
-                  onClick={() => handleSelectPreset(preset)}
-                  className={`group relative text-left p-2 rounded-xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 ${
-                    isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/80'
-                  }`}
-                >
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 rounded-lg bg-slate-100 text-sm sm:text-base flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
-                    {preset.emoji}
-                  </div>
-                  <h4 className="text-[11px] sm:text-xs font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate flex-1 min-w-0">
-                    {preset.title}
-                  </h4>
-                  <div className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 rounded-full flex items-center justify-center transition-colors ${
-                    isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
-                  }`}>
-                    {isSelected ? <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <ChevronRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
-                  </div>
-                </button>
-                );
-              })}
-            </div>
-          )}
+        /* Core Presets tab - personal/life event types, full-size cards
+            with a description line. */
+        <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
+          {corePresets.map((preset: PromptPreset) => {
+            const isSelected = preset.id === selectedPresetId;
+            return (
+            <button
+              key={preset.id}
+              onClick={() => handleSelectPreset(preset)}
+              className={`group relative text-left p-2.5 sm:p-3 rounded-2xl bg-white border shadow-2xs hover:border-slate-800 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 sm:gap-3 ${
+                isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/90'
+              }`}
+            >
+              <div className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-xl bg-slate-100 text-base sm:text-lg flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                {preset.emoji}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate">
+                  {preset.title}
+                </h3>
+                <p className="hidden sm:block text-[11px] text-slate-500 font-normal leading-snug mt-0.5 line-clamp-2">
+                  {preset.description}
+                </p>
+              </div>
+              <div className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-100 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
+              }`}>
+                {isSelected ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+              </div>
+            </button>
+            );
+          })}
         </div>
       )}
     </div>

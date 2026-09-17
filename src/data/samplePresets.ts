@@ -238,8 +238,8 @@ export function normalizeProfile(profile?: Partial<OnboardingProfile> | null): {
 }
 
 export interface CategorizedPresets {
-  primary: PromptPreset[];
-  secondary: PromptPreset[];
+  core: PromptPreset[];
+  work: PromptPreset[];
   all: PromptPreset[];
   hasKids: boolean;
   hasProject: boolean;
@@ -262,43 +262,39 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
   const hasProject = !isPersonalOnly;
   const canImportSpreadsheet = !isPersonalOnly;
 
-  // Baseline primary presets present across profiles (including Trips & Travel)
-  const primary: PromptPreset[] = [
+  // Core Presets tab: personal/life events, present across all profiles.
+  const core: PromptPreset[] = [
     PRESET_PARTY,
     PRESET_FRIENDS_FAMILY,
     PRESET_HOBBIES,
     PRESET_TRIP,
   ];
 
-  // Rule A: Kids Profiling (Inject into primary when family with kids) -
-  // added right after the even-numbered baseline (and before Work /
-  // Projects) so the two Kids presets always land on the same row in the
-  // 2-column grid, instead of Kids: Hobbies dangling alone on its own row
-  // when Work / Projects sat between them.
+  // Rule A: Kids Profiling (only for family-with-kids profiles) - kept as
+  // a contiguous pair so the two Kids presets always land on the same row
+  // of the 2-column grid.
   if (hasKids) {
-    primary.push(PRESET_KIDS_SCHOOL);
-    primary.push(PRESET_KIDS_HOBBIES);
+    core.push(PRESET_KIDS_SCHOOL);
+    core.push(PRESET_KIDS_HOBBIES);
   }
 
-  // Rule B: Retain Work / Projects for Mixed or Business
+  // Work Presets tab: business/admin-oriented, split out from Core into
+  // its own toggle rather than mixed into (or appended below) the
+  // personal grid. Subscriptions & Maintenance apply to any profile, so
+  // they're always present here; Work / Projects is gated to Mixed/
+  // Business calendars, matching the existing hasProject rule.
+  const work: PromptPreset[] = [];
   if (hasProject) {
-    primary.push(PRESET_WORK_PROJECTS);
+    work.push(PRESET_WORK_PROJECTS);
   }
+  work.push(PRESET_SUBSCRIPTION);
+  work.push(PRESET_MAINTENANCE);
 
-  let secondary: PromptPreset[] = [];
-
-  if (isPersonalOnly) {
-    primary.push(PRESET_SUBSCRIPTION);
-    primary.push(PRESET_MAINTENANCE);
-  } else {
-    secondary = [PRESET_SUBSCRIPTION, PRESET_MAINTENANCE];
-  }
-
-  const all = [...primary, ...secondary];
+  const all = [...core, ...work];
 
   return {
-    primary,
-    secondary,
+    core,
+    work,
     all,
     hasKids,
     hasProject,
@@ -314,8 +310,8 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
  * Pure selector function returning the adaptive list of presets based on profile
  */
 export function getAdaptivePresets(profile?: Partial<OnboardingProfile> | null): PromptPreset[] {
-  const { primary, secondary } = getCategorizedPresets(profile);
-  return [...primary, ...secondary];
+  const { all } = getCategorizedPresets(profile);
+  return all;
 }
 
 /**

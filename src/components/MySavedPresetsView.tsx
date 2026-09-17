@@ -76,6 +76,30 @@ export const MySavedPresetsView: React.FC<MySavedPresetsViewProps> = ({
     document.body.removeChild(link);
   };
 
+  if (presets.length === 0) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-slate-200 space-y-3">
+        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+          <Layers className="w-5 h-5" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-slate-900">No imported presets yet</p>
+          <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+            Import a spreadsheet, Word doc, or PDF and it'll show up here as a reusable preset.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenImporter}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 transition-all cursor-pointer active:scale-95"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5 text-purple-700" />
+          <span>Import Template</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Presets Grid */}
