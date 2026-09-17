@@ -707,16 +707,17 @@ export function generateConcreteEventMilestones(
       }
 
       // STANDARD CELEBRATIONS & PARTIES
-      // T-21d: Invites & Headcount
+      // T-21d: Invites & Headcount - three genuinely distinct steps (WHO,
+      // SEND, TRACK) instead of one deliverable that just restated the
+      // milestone's own title/description with a label tacked on.
       const rsvpItems = extractAnswerList(answers.rsvps);
       const inviteDelivs: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [
+        { title: 'Finalize guest list', type: 'coordination' },
         {
-          title: rsvpItems.length > 0
-            ? `Sent invitations: ${rsvpItems.join(', ')}`
-            : 'Send digital invitations and track group RSVPs',
+          title: rsvpItems.length > 0 ? `Send invitations: ${rsvpItems.join(', ')}` : 'Send digital invitations to guests',
           type: 'coordination',
         },
-        { title: 'Track dietary requirements and headcount', type: 'document' },
+        { title: 'Track RSVPs and confirm dietary requirements', type: 'document' },
       ];
       milestones.push(
         createMilestone(
@@ -729,50 +730,53 @@ export function generateConcreteEventMilestones(
         )
       );
 
-      // T-10d: Gift & Card
+      // T-10d: Gift & Card - skip entirely on "No gifts requested" (a real
+      // reported bug: the milestone used to be created unconditionally
+      // regardless of answer, with the "no gift" answer only visible
+      // buried inside a deliverable's text - so the app still told an
+      // organiser hosting their own party to go buy themselves a gift).
+      // When a gift IS wanted, three distinct steps (DECIDE, BUY, FINISH)
+      // instead of one deliverable that just echoed the answer back.
       const giftItems = extractAnswerList(answers.gifts_details);
-      const giftDelivs: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [];
-      if (giftItems.length > 0) {
-        giftItems.forEach((item) => {
-          giftDelivs.push({
-            title: /^(buy|order|organize|prepare)/i.test(item) ? item : `Gift details: ${item}`,
+      const noGiftRequested = giftItems.some((item) => /no gifts? requested|no gift/i.test(item));
+      if (!noGiftRequested) {
+        const giftDecisionItems = giftItems.filter((item) => !/^(buy|order|organize|prepare)/i.test(item));
+        const giftDelivs: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [
+          {
+            title: giftDecisionItems.length > 0 ? `Decide on gift: ${giftDecisionItems.join(', ')}` : 'Decide on a gift idea',
+            type: 'coordination',
+          },
+          {
+            title: giftItems.find((item) => /^(buy|order|organize|prepare)/i.test(item)) || 'Purchase or finalize the gift',
             type: 'purchase',
-          });
-        });
-        giftDelivs.push({ title: 'Write celebratory card & wrap gift', type: 'document' });
-      } else {
-        giftDelivs.push(
-          { title: 'Order celebration gift online with tracking', type: 'purchase' },
-          { title: 'Write celebratory card & wrap gift', type: 'document' }
+          },
+          { title: 'Write celebratory card & wrap gift', type: 'document' },
+        ];
+        milestones.push(
+          createMilestone(
+            'T-10d',
+            -10 * 24 * 60,
+            'Celebratory Gift & Card Purchased',
+            'shopping',
+            'Order celebratory gift online and write card.',
+            giftDelivs
+          )
         );
       }
-      milestones.push(
-        createMilestone(
-          'T-10d',
-          -10 * 24 * 60,
-          'Celebratory Gift & Card Purchased',
-          'shopping',
-          'Order celebratory gift online and write card.',
-          giftDelivs
-        )
-      );
 
-      // T-4d: Cake & Beverages
+      // T-4d: Cake & Beverages - cake and drinks kept as separate line
+      // items (they're bought from different places, on different
+      // timelines) instead of folded into one vague "Food/Drinks: X".
       const foodItems = extractAnswerList(answers.food_drinks);
-      const cakeDelivs: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [];
-      if (foodItems.length > 0) {
-        foodItems.forEach((item) => {
-          cakeDelivs.push({
-            title: /^(order|buy|pick up|reserve)/i.test(item) ? item : `Food/Drinks: ${item}`,
-            type: 'purchase',
-          });
-        });
-      } else {
-        cakeDelivs.push(
-          { title: 'Order bakery cake and schedule pickup window', type: 'purchase' },
-          { title: 'Pick up party drinks, mixers, and fresh ice bags', type: 'purchase' }
-        );
-      }
+      const cakeItem = foodItems.find((item) => /cake/i.test(item));
+      const drinkItems = foodItems.filter((item) => !/cake/i.test(item));
+      const cakeDelivs: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [
+        { title: cakeItem || 'Order bakery cake and schedule pickup window', type: 'purchase' },
+        {
+          title: drinkItems.length > 0 ? `Drinks: ${drinkItems.join(', ')}` : 'Pick up party drinks, mixers, and fresh ice bags',
+          type: 'purchase',
+        },
+      ];
       milestones.push(
         createMilestone(
           'T-4d',
@@ -784,7 +788,8 @@ export function generateConcreteEventMilestones(
         )
       );
 
-      // T-2h: Setup & Chill
+      // T-2h: Setup & Chill - drinks/glassware and the space itself are
+      // separate jobs, not one line item.
       milestones.push(
         createMilestone(
           'T-2h',
@@ -793,7 +798,8 @@ export function generateConcreteEventMilestones(
           'prep',
           'Chill drinks on ice, set out glasses, and prepare music playlist.',
           [
-            { title: 'Chill beverages on ice and set up glassware', type: 'purchase' },
+            { title: 'Chill beverages on ice and set out glassware', type: 'purchase' },
+            { title: 'Set up seating/decor and start music playlist', type: 'coordination' },
           ]
         )
       );

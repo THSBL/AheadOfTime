@@ -249,7 +249,17 @@ function App() {
     }
   }, [params.id]);
 
-  const [currentReferenceDate, setCurrentReferenceDate] = useState<string>('2026-09-01T03:20:00.000Z');
+  // The app's notion of "today" - every countdown, overdue/this-week/
+  // looking-ahead bucket, and "in X days" label is computed relative to
+  // this. Was hardcoded to a fixed demo date ('2026-09-01') and never
+  // updated, so the whole date system silently drifted further from real
+  // "today" every day the app existed - e.g. a milestone due Sep 11 showed
+  // "In 10 days" (correct only relative to a frozen Sep 1 "today") instead
+  // of "Overdue by 6 days" relative to the real Sep 17. Initialize to the
+  // real current time instead; there is no remaining UI to override this
+  // (the manual "Simulate reference date" control was intentionally
+  // removed), so this is the only value it should ever take on load.
+  const [currentReferenceDate, setCurrentReferenceDate] = useState<string>(() => new Date().toISOString());
 
   // Chronologically sort active events from shortly upcoming to further in the future
   const sortedEvents = useMemo(() => {

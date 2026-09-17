@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
-import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle } from '../utils/tminusRules';
+import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle, calculateOffsetDate } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
@@ -295,12 +295,32 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     e.preventDefault();
     if (!activeEvent || !onUpdateEvent) return;
 
-    const newMilestones = generateHeuristicMilestones(
-      { category: clarifyCategory, title: clarifyTitle },
-      activeEvent.id,
-      clarifyDate,
-      clarifyTime || '19:00'
-    );
+    const hasExistingMilestones = (activeEvent.milestones || []).length > 0;
+    const categoryChanged = clarifyCategory !== activeEvent.category;
+
+    // Editing event details (date/title/location via the "..." menu) used
+    // to ALWAYS regenerate the full milestone list from
+    // generateHeuristicMilestones with no context passed at all - silently
+    // discarding every custom deliverable, completed checkbox, and
+    // previously-given answer (e.g. "no gift needed"), replacing them with
+    // a generic template that had no way to know about any of that. A
+    // simple date/title/location correction must never do that: recompute
+    // each existing milestone's date off its own stored
+    // tMinusOffsetMinutes instead, and only fall back to a fresh
+    // heuristic build (this time with the event's real context) when
+    // there's genuinely nothing to preserve or the category itself changed
+    // (a different category's checklist doesn't map onto the old one).
+    const milestones = hasExistingMilestones && !categoryChanged
+      ? activeEvent.milestones.map((ms) => ({
+          ...ms,
+          calculatedDate: calculateOffsetDate(clarifyDate, clarifyTime || '19:00', ms.tMinusOffsetMinutes),
+        }))
+      : generateHeuristicMilestones(
+          { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
+          activeEvent.id,
+          clarifyDate,
+          clarifyTime || '19:00'
+        );
 
     const updated: CalendarEvent = {
       ...activeEvent,
@@ -310,7 +330,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       eventTime: clarifyTime,
       location: clarifyLocation,
       status: 'milestones_active',
-      milestones: (activeEvent.milestones || []).length > 0 && !isEditingEvent ? activeEvent.milestones : newMilestones,
+      milestones,
       updatedAt: new Date().toISOString(),
     };
 
