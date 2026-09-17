@@ -408,10 +408,20 @@ export const THEME_LABELS: Record<ActionTheme, string> = {
 // lands in logistics rather than the broader outreach "book" keyword;
 // purchases is checked before packing so e.g. "Buy hiking boots" lands in
 // purchases rather than packing's bare "boots" keyword.
+// A few keywords below are written to tolerate the past-participle titles
+// this app's own milestone-naming convention favors (see
+// SHARED_PLANNING_RULES's "MUST be named as past-participle or
+// state-change achievements" rule, e.g. "Flights & Accommodations
+// Locked", "Headcount & Group Costs Settled") - a bare stem like "settle"
+// or "deposit" does NOT match its own "-ed" form under a trailing \b
+// (the boundary fails between two word characters), so real titles using
+// the completed/past form were silently falling through to no match at
+// all and landing in the catch-all "Other" bucket instead of a real
+// theme, even though the word is right there in the title.
 const THEME_PATTERNS: Array<[ActionTheme, RegExp]> = [
   [
     'administration',
-    /\b(cutoff|cancel(?:led|lation)?|membership|trial|budget|expense|settle|invoice|payment|deposit|passport|visa|esta|eta|permit|licen[cs]e|insurance|waiver|authorization|documents?|renewal)\b/i,
+    /\b(cutoff|cancel(?:led|lation)?|membership|trial|budget|expense|settl(?:e[ds]?|ing)|invoic(?:e|ed|ing)|payment|deposit(?:ed|ing)?|passport|visa|esta|eta|permit|licen[cs]e|insurance|waiver|authorization|documents?|renew(?:ed|al)?)\b/i,
   ],
   [
     'deliverables_preparation',
@@ -419,11 +429,11 @@ const THEME_PATTERNS: Array<[ActionTheme, RegExp]> = [
   ],
   [
     'bookings_logistics',
-    /\b(flights?|hotels?|trains?|tours?|rental\s*(?:car|vehicle)|vehicle\s*rental|transit|transport|airport|departure|carpool|parking|directions?|\baddress\b)\b/i,
+    /\b(flights?|hotels?|trains?|tours?|rental\s*(?:car|vehicle)|vehicle\s*rental|transit|transport|airport|departure|carpool|parking|directions?|\baddress\b|logistics|bookings?|venue|itinerary)\b/i,
   ],
   [
     'outreach_communication',
-    /\b(rsvps?|invit(?:e|ation)s?|confirm(?:ed|ation)?|reservation|reserve[d]?|book(?:ing|ed)?|call|phone|appointment|stakeholders?|alignment|coordinate)\b/i,
+    /\b(rsvps?|invit(?:e|ation)s?|confirm(?:ed|ation)?|reservation|reserve[d]?|book(?:ing|ed)?|call|phone|appointment|stakeholders?|alignment|coordinate|headcount|guests?|dining)\b/i,
   ],
   ['purchases_gifts_supplies', /\b(gift|present|buy|purchase|order|cake|drinks?|grocery|groceries|supplies|adapters?|sunscreen|flowers|\bcard\b)\b/i],
   ['packing_essentials', /\b(pack(?:ing|ed)?|luggage|suitcase|kit\s*bag|gear|uniform|boots|cleats|shin\s*guards?|backpack|outfit|wardrobe|clothes|costume)\b/i],

@@ -192,6 +192,20 @@ describe('inferActionTheme', () => {
   it('falls back to other for unmatched titles', () => {
     expect(inferActionTheme(makeMilestone({ title: 'Water the office plants' }))).toBe('other');
   });
+
+  // Regression: this app's own milestone-naming convention favors
+  // past-participle titles ("X Locked", "X Settled", "X Confirmed"), but a
+  // bare keyword stem like "settle" never matches its own "-ed" form (the
+  // \b boundary fails between two word characters) - real titles using
+  // that completed form fell all the way through to "other" instead of a
+  // real theme, which is why several genuinely logistics/admin items were
+  // showing up ungrouped under a generic "Other" tag in the dashboard.
+  it('classifies past-participle titles this codebase\'s own naming convention produces, not just their bare-verb stems', () => {
+    expect(inferActionTheme(makeMilestone({ title: 'Headcount & Group Costs Settled' }))).toBe('administration');
+    expect(inferActionTheme(makeMilestone({ title: 'Logistics & Bookings' }))).toBe('bookings_logistics');
+    expect(inferActionTheme(makeMilestone({ title: 'Venue & Guest List' }))).toBe('bookings_logistics');
+    expect(inferActionTheme(makeMilestone({ title: 'Itinerary & Dining' }))).toBe('bookings_logistics');
+  });
 });
 
 describe('computeOverdueMilestones', () => {
