@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
+import { useNavigate } from 'react-router-dom';
+import {
   Calendar,
   Clock,
   Plus,
@@ -39,8 +40,6 @@ interface HeaderProps {
   activeEventsCount: number;
   pendingMilestonesCount: number;
   watchpointsCount: number;
-  focusMode: 'welcome' | 'new-event' | 'adjust-event';
-  onSetFocusMode: (mode: 'welcome' | 'new-event' | 'adjust-event') => void;
   events?: CalendarEvent[];
   agendaHorizonMonths?: number;
   onAgendaHorizonChange?: (months: number) => void;
@@ -64,8 +63,6 @@ export const Header: React.FC<HeaderProps> = ({
   onTriggerGoogleSync,
   lastSyncTime,
   activeEventsCount,
-  focusMode,
-  onSetFocusMode,
   events = [],
   agendaHorizonMonths = 6,
   onAgendaHorizonChange,
@@ -74,6 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
   onSignIn,
 }) => {
+  const navigate = useNavigate();
   const [isHorizonOpen, setIsHorizonOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -171,10 +169,10 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Logo & Navigation */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            <div 
-              className="cursor-pointer flex items-center" 
-              onClick={() => onSetFocusMode('welcome')} 
-              title="Ahead Of Time Home"
+            <div
+              className="cursor-pointer flex items-center"
+              onClick={() => navigate('/summary')}
+              title="Your road ahead overview"
             >
               <Logo variant="small" />
             </div>

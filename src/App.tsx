@@ -280,9 +280,12 @@ function App() {
     // synchronously here (not in an effect) so the very first paint already
     // lands on the right tab instead of flashing 'feed' then swapping.
     try {
+      // Read-only here - mobileDashboardView's own initializer (below)
+      // needs to see this same flag too, and a real removal happens once,
+      // after both have had a chance to read it (see the cleanup effect
+      // right after mobileDashboardView's declaration).
       const requested = sessionStorage.getItem('aot_open_tab');
       if (requested === 'tasks' || requested === 'chat') {
-        sessionStorage.removeItem('aot_open_tab');
         return requested;
       }
     } catch {
@@ -831,8 +834,38 @@ function App() {
   // workspace (My Week Ahead, since activeTab also defaults to 'feed')
   // rather than the raw Active Events list - that list is a picker you
   // drill into a specific event's timeline from, not the landing screen.
-  const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>('detail');
+  // Exception: RecurringUserLanding's "NEXT 30 DAYS" stripe explicitly
+  // means "show me what's coming up in general", not "jump into whichever
+  // event happens to sort first" - EventTimelineRadar's own activeEvent
+  // falls back to events[0] whenever selectedEventId is null (needed for
+  // its desktop two-pane layout, which always shows some event), so
+  // without this, arriving from that stripe looked exactly like clicking
+  // into one specific task instead of landing on a general view. Reads the
+  // same aot_open_tab flag activeTab's initializer above reads (both peek
+  // it read-only; the cleanup effect right below removes it once).
+  const [mobileDashboardView, setMobileDashboardView] = useState<'list' | 'detail'>(() => {
+    try {
+      if (sessionStorage.getItem('aot_open_tab') === 'tasks') {
+        return 'list';
+      }
+    } catch {
+      // Fall through to the default view.
+    }
+    return 'detail';
+  });
   const [isEventSidebarCollapsed, setIsEventSidebarCollapsed] = useState(false);
+
+  // Both activeTab's and mobileDashboardView's initializers above peek at
+  // this flag read-only (a real removal in either one would hide it from
+  // whichever hook's initializer runs second, since both fire during the
+  // same initial render) - this runs once, after both have had their turn.
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('aot_open_tab');
+    } catch {
+      // Non-fatal - worst case the flag is stale and gets overwritten next use.
+    }
+  }, []);
 
   // Custom Presets & Spreadsheet Importer State
   const [isImportTemplateModalOpen, setIsImportTemplateModalOpen] = useState(false);
@@ -1728,15 +1761,6 @@ function App() {
               activeEventsCount={events.length}
               pendingMilestonesCount={pendingMilestonesCount}
               watchpointsCount={watchpointsCount}
-              focusMode={focusMode}
-              onSetFocusMode={(mode) => {
-                setFocusMode(mode);
-                if (mode === 'welcome') {
-                  setSelectedEventId(null);
-                  setActiveTab('chat');
-                  setMobileDashboardView('detail');
-                }
-              }}
               events={sortedEvents}
               agendaHorizonMonths={agendaHorizonMonths}
               onAgendaHorizonChange={setAgendaHorizonMonths}
@@ -2325,6 +2349,12 @@ export default function AppWithRouter() {
 
           {/* Protected Application Routes */}
           <Route element={<ProtectedRoute />}>
+            {/* The "Road Ahead" recurring-user overview - normally reached
+                automatically at "/" once onboarded/connected (see
+                LandingRoute below), but also reachable directly here so the
+                header's own logo/wordmark has somewhere real to link back
+                to instead of just toggling app state in place. */}
+            <Route path="/summary" element={<RecurringUserLanding />} />
             <Route path="/dashboard" element={<App />} />
             <Route path="/events" element={<App />} />
             <Route path="/events/new" element={<App />} />

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, ListChecks, MapPin, ChevronRight, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import { Logo } from './Logo';
@@ -12,7 +12,8 @@ import {
 } from '../services/googleAuth';
 import { fetchPrimaryCalendarProfile, GoogleCalendarProfile } from '../services/googleCalendar';
 import { computeStripeOneStatus, computeStripeTwoCopy, StripeOneLevel } from '../utils/recurringLandingCopy';
-import { buildRoadStripeClipPath, ROAD_STRIPE_SHAPES } from '../utils/roadStripeShape';
+import { ROAD_STRIPE_SHAPES } from '../utils/roadStripeShape';
+import { useRoad3DClipPath, ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
 
 // ---------------------------------------------------------------------------
@@ -529,26 +530,13 @@ const StripeButton: React.FC<StripeButtonProps> = ({
   contentClassName,
   ariaLabel,
 }) => {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [clipPath, setClipPath] = useState<string>('none');
-
   // Measured in real px (not a percentage-based CSS clip-path) so the
   // trapezoid can have rounded, gently-bowed edges that stay correct at any
   // button width instead of a fixed set of breakpoint values - see
-  // roadStripeShape.ts for why a static polygon() couldn't do this.
-  useEffect(() => {
-    const el = buttonRef.current;
-    if (!el) return;
-    const shape = ROAD_STRIPE_SHAPES[shapeIndex];
-    const apply = () => {
-      const { width, height } = el.getBoundingClientRect();
-      setClipPath(buildRoadStripeClipPath(width, height, shape));
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [shapeIndex]);
+  // roadStripeShape.ts for why a static polygon() couldn't do this. Shared
+  // with MyWeekAhead's status banner via useRoad3DClipPath, rather than
+  // each place re-implementing its own ResizeObserver wiring.
+  const { ref: buttonRef, clipPath } = useRoad3DClipPath<HTMLButtonElement>(ROAD_STRIPE_SHAPES[shapeIndex]);
 
   return (
     <div
@@ -575,26 +563,7 @@ const StripeButton: React.FC<StripeButtonProps> = ({
         aria-disabled={!isInteractive}
         tabIndex={isInteractive ? 0 : -1}
         aria-label={ariaLabel}
-        style={{
-          clipPath,
-          // Fakes a 3D/embossed edge: border color set per-side (inline,
-          // since colorClassName's single border-{color} utility can't
-          // express this) with a light "highlight" top-left and a dark
-          // "shadow" bottom-right, as if lit from above, plus inset
-          // highlight/shadow bands along the top and bottom for a rounder,
-          // more embossed (not just outlined) look. Border and inset
-          // box-shadow both still render within the button's own painted
-          // box, so - unlike an outer box-shadow, which clip-path would
-          // otherwise swallow - they still hug the trapezoid's actual cut
-          // corners instead of a plain rectangle.
-          borderWidth: '3px',
-          borderTopColor: 'rgba(255,255,255,0.85)',
-          borderLeftColor: 'rgba(255,255,255,0.55)',
-          borderRightColor: 'rgba(15,23,42,0.32)',
-          borderBottomColor: 'rgba(15,23,42,0.45)',
-          boxShadow:
-            'inset 0 2px 3px rgba(255,255,255,0.5), inset 0 -3px 5px rgba(15,23,42,0.18)',
-        }}
+        style={{ clipPath, ...ROAD_3D_BEVEL_STYLE }}
         className={[
           'relative w-full border text-left overflow-hidden',
           'transition-[colors,transform,opacity] duration-300 ease-out',

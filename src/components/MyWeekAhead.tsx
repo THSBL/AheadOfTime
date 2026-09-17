@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, Plane, ClipboardList, PhoneCall, Layers, ChevronDown, Search, CalendarClock } from 'lucide-react';
+import { Sparkles, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, Plane, ClipboardList, PhoneCall, Layers, ChevronDown, Search, CalendarClock, Clock } from 'lucide-react';
 import { CalendarEvent, TMinusMilestone } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import {
@@ -15,6 +15,14 @@ import {
   WeeklyMilestoneBucket,
   THEME_LABELS,
 } from '../utils/readiness';
+import { useRoad3DClipPath, ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
+
+// Gentler taper than the (much narrower, taller) stripe-nav buttons on
+// RecurringUserLanding - this bar is wide and short, so the same
+// proportions there would look like an exaggerated wedge instead of a
+// subtle flow. Corner radius/bow scaled up to match the bar's own larger
+// size instead of reusing the stripes' own tuned-for-a-different-shape values.
+const AHEAD_BAR_SHAPE = { topInsetRatio: 0.022, cornerRadius: 22, bow: 10 };
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
   bookings_logistics: Plane,
@@ -72,9 +80,14 @@ const RUNWAY_STRIPE_POINTS = [
 const RUNWAY_FILLED_COUNT: Record<SimpleAheadLevel, number> = { ahead: 3, almost_ahead: 2, behind: 1 };
 
 const SIMPLE_STATUS_STYLES: Record<SimpleAheadLevel, { fill: string; iconBg: string; cardBg: string; cardBorder: string }> = {
-  ahead: { fill: '#059669', iconBg: 'bg-emerald-100', cardBg: 'bg-emerald-50/70', cardBorder: 'border-emerald-200' },
-  almost_ahead: { fill: '#d97706', iconBg: 'bg-amber-100', cardBg: 'bg-amber-50/70', cardBorder: 'border-amber-200' },
-  behind: { fill: '#e11d48', iconBg: 'bg-rose-100', cardBg: 'bg-rose-50/70', cardBorder: 'border-rose-200' },
+  // Solid, not translucent (no /70 alpha) - these used to sit on top of the
+  // page's own "milky-glass" panel, where a translucent pastel blended
+  // invisibly into that panel's near-white backdrop. Now that each section
+  // floats directly on the navy page background instead, that same
+  // translucency blended into a muddy grey-navy instead of a clean pastel.
+  ahead: { fill: '#059669', iconBg: 'bg-emerald-100', cardBg: 'bg-emerald-50', cardBorder: 'border-emerald-200' },
+  almost_ahead: { fill: '#d97706', iconBg: 'bg-amber-100', cardBg: 'bg-amber-50', cardBorder: 'border-amber-200' },
+  behind: { fill: '#e11d48', iconBg: 'bg-rose-100', cardBg: 'bg-rose-50', cardBorder: 'border-rose-200' },
 };
 
 const RunwayStripes: React.FC<{ level: SimpleAheadLevel; className?: string }> = ({ level, className }) => {
@@ -417,34 +430,68 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
     status: computeAheadStatus(event, currentReferenceDate),
   }));
 
-  const alreadyAhead = perEvent.filter((e) => e.status.level === 'ahead' || e.status.level === 'ready');
+  // computeAheadStatus deliberately gives a 0-milestone event the same
+  // 'ready' level as a genuinely fully-completed one ("nothing left to
+  // prepare" reads the same either way to that function) - but on THIS
+  // page, "Already ahead" specifically means "you did the prep", and an
+  // event that never got any milestones hasn't earned that, it just has
+  // nothing to show here at all. Excluding totalCount === 0 here (rather
+  // than changing computeAheadStatus's own shared classification, which
+  // other callers/tests rely on) keeps this a display-only fix.
+  const alreadyAhead = perEvent.filter(
+    (e) => e.status.level === 'ahead' || (e.status.level === 'ready' && e.status.totalCount > 0)
+  );
 
   const simpleStyle = SIMPLE_STATUS_STYLES[simpleStatus.level];
+  const { ref: aheadBarRef, clipPath: aheadBarClipPath } = useRoad3DClipPath<HTMLDivElement>(AHEAD_BAR_SHAPE);
 
   return (
     <div className="flex-1 flex flex-col h-full milky-glass rounded-3xl overflow-hidden shadow-xs w-full">
+      {/* Tried dropping this shared "milky-glass" backdrop in favor of
+          letting the navy page show through the gaps between sections -
+          it backfired: several sections (Overdue in particular) style
+          their own border/text for contrast against a light backdrop, so
+          against navy directly they nearly disappeared instead of standing
+          out more. Restored the light backdrop; each section still keeps
+          its own card/border so they read as distinct pieces within it. */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 sm:space-y-5">
         {/* Confirmation - one clean, non-contradictory read of "am I ahead?",
             with the logo's own runway-stripe motif as the "how far ahead"
             gauge: more stripes filled (in the status color) means more
-            clear. */}
-        <div className={`p-4 sm:p-5 rounded-2xl border shadow-xs flex items-center gap-4 ${simpleStyle.cardBg} ${simpleStyle.cardBorder}`}>
-          <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shrink-0 p-3 ${simpleStyle.iconBg}`}>
-            <RunwayStripes level={simpleStatus.level} className="w-full h-full" />
-          </div>
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
-              {/* Pairs the problem count with a progress count, so the card
-                  never reads as only bad news - per feedback, this
-                  shouldn't stress people out more than necessary. */}
-              {simpleStatus.completedCount > 0 && (
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-emerald-800 bg-emerald-100 shrink-0">
-                  {simpleStatus.completedCount} done
-                </span>
-              )}
+            clear. Shares the same fake-3D "road" treatment (clip-path +
+            embossed border, see useRoad3DClipPath) as RecurringUserLanding's
+            stripe-nav buttons - the shape is measured from this bar's own
+            (much wider) rendered size, so the same trick just stretches to
+            fit instead of needing its own bespoke geometry. */}
+        <div
+          style={{
+            // drop-shadow (not box-shadow) so it follows the bar's actual
+            // clipped silhouette instead of its rectangular border-box -
+            // same reasoning as the stripe buttons' own wrapper.
+            filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.18))',
+          }}
+        >
+          <div
+            ref={aheadBarRef}
+            style={{ clipPath: aheadBarClipPath, ...ROAD_3D_BEVEL_STYLE }}
+            className={`p-4 sm:p-5 border text-left flex items-center gap-4 ${simpleStyle.cardBg} ${simpleStyle.cardBorder}`}>
+            <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shrink-0 p-3 ${simpleStyle.iconBg}`}>
+              <RunwayStripes level={simpleStatus.level} className="w-full h-full" />
             </div>
-            <p className="text-xs sm:text-sm text-slate-600">{simpleStatus.sub}</p>
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
+                {/* Pairs the problem count with a progress count, so the card
+                    never reads as only bad news - per feedback, this
+                    shouldn't stress people out more than necessary. */}
+                {simpleStatus.completedCount > 0 && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-emerald-800 bg-emerald-100 shrink-0">
+                    {simpleStatus.completedCount} done
+                  </span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-600">{simpleStatus.sub}</p>
+            </div>
           </div>
         </div>
 
@@ -454,8 +501,15 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             right now. */}
         {overdueItems.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-rose-700 px-1">Overdue ({overdueItems.length})</h3>
-            <div className="rounded-xl bg-white border border-rose-200/70 shadow-2xs divide-y divide-slate-100">
+            {/* A solid pill, not plain colored text like the other section
+                headers - overdue is the one status urgent enough to
+                justify breaking that pattern for real contrast (white text
+                needs a solid fill behind it to stay legible). */}
+            <span className="inline-flex items-center gap-1.5 bg-rose-600 text-white text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
+              <Clock className="w-3.5 h-3.5" />
+              Overdue ({overdueItems.length})
+            </span>
+            <div className="rounded-xl bg-white border-2 border-rose-300 shadow-2xs divide-y divide-slate-100 transition-all hover:border-rose-400 hover:ring-4 hover:ring-rose-100">
               {overdueItems.map((item) => (
                 <FlatMilestoneRow
                   key={item.milestoneId}
@@ -561,8 +615,13 @@ const EventRow: React.FC<{
     <button
       type="button"
       onClick={() => onSelectEvent(event.id)}
-      className={`w-full text-left p-3 rounded-xl bg-white border border-slate-200/90 border-l-4 ${style.border} hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer ${
-        compact ? 'opacity-80' : ''
+      className={`w-full text-left p-3 rounded-xl border border-slate-200/90 border-l-4 ${style.border} hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer ${
+        // Solid bg-slate-50, not bg-white + opacity-80: whole-element
+        // opacity blends with whatever sits behind it, which used to be
+        // this page's own near-white "milky-glass" panel (invisible
+        // effect) and is now the navy page background directly (a muddy
+        // grey-navy card instead of a subtly muted white one).
+        compact ? 'bg-slate-50' : 'bg-white'
       }`}
     >
       <div className="min-w-0 flex-1">
