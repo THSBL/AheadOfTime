@@ -13,7 +13,7 @@ import {
 import { fetchPrimaryCalendarProfile, GoogleCalendarProfile } from '../services/googleCalendar';
 import { computeStripeOneStatus, computeStripeTwoCopy, StripeOneLevel } from '../utils/recurringLandingCopy';
 import { ROAD_STRIPE_SHAPES } from '../utils/roadStripeShape';
-import { useRoad3DClipPath, ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
+import { useRoad3DClipPath } from '../utils/useRoad3DClipPath';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,50 @@ const STRIPE_ONE_STYLES: Record<StripeOneLevel, { bg: string; border: string; te
   due_soon: { bg: 'bg-amber-100', border: 'border-amber-300', text: 'text-amber-900', dot: 'bg-amber-500' },
   clear: { bg: 'bg-emerald-100', border: 'border-emerald-300', text: 'text-emerald-900', dot: 'bg-emerald-500' },
 };
+
+// A neutral dark (navy/black) shadow-side border read as a grey smudge
+// against these light stripe backgrounds - a darker shade of the stripe's
+// OWN accent color instead is what makes the bevel look like a genuinely
+// lit-from-above 3D block (see the app-icon reference this was modeled on)
+// rather than a flat card with a border. Tailwind's own 800-weight for the
+// two status palettes already shared with STRIPE_ONE_STYLES; the mint/orange
+// pair are hand-darkened (~60-65% of the original channel values) since
+// they're this app's own brand colors, not from a Tailwind scale.
+const STRIPE_ONE_DARK_ACCENT: Record<StripeOneLevel, string> = {
+  overdue: '#9f1239', // rose-800
+  due_soon: '#92400e', // amber-800
+  clear: '#065f46', // emerald-800
+};
+const STRIPE_TWO_DARK_ACCENT = '#2a483d'; // darker #447463 (mint)
+const STRIPE_THREE_DARK_ACCENT = '#9b671b'; // darker #EE9F2A (orange)
+
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * The stripe buttons' own embossed bevel, exaggerated further than the
+ * shared ROAD_3D_BEVEL_STYLE: only the top edge stays a bright white
+ * highlight (the "light source"), while left, right, AND bottom all take
+ * the stripe's own darkened accent color - a real shadow-toned wall on
+ * three sides, not just a dim/near-invisible white, is what actually reads
+ * as a chunky 3D block instead of a flat card with a thin border.
+ */
+function stripeBevelStyle(darkAccent: string): React.CSSProperties {
+  return {
+    borderWidth: '3px',
+    borderStyle: 'solid',
+    borderTopColor: 'rgba(255,255,255,0.95)',
+    borderLeftColor: darkAccent,
+    borderRightColor: darkAccent,
+    borderBottomColor: darkAccent,
+    boxShadow: `inset 0 2px 3px rgba(255,255,255,0.6), inset 0 -4px 6px ${hexToRgba(darkAccent, 0.4)}`,
+  };
+}
 
 // sessionStorage flag for "open on Timeline & Tasks" - App.tsx's activeTab
 // has no URL representation of its own, so this follows the exact same
@@ -298,6 +342,7 @@ export const RecurringUserLanding: React.FC = () => {
             shapeIndex={0}
             colorClassName={`${stripeOneStyle.bg} ${stripeOneStyle.border}`}
             barColorClassName={stripeOneStyle.dot}
+            darkAccent={STRIPE_ONE_DARK_ACCENT[stripeOne.level]}
             mounted={mounted}
             isSettled={isSettled}
             isInteractive={isInteractive}
@@ -321,6 +366,7 @@ export const RecurringUserLanding: React.FC = () => {
             shapeIndex={1}
             colorClassName="bg-white border-slate-200"
             barColorClassName="bg-[#447463]"
+            darkAccent={STRIPE_TWO_DARK_ACCENT}
             mounted={mounted}
             isSettled={isSettled}
             isInteractive={isInteractive}
@@ -344,6 +390,7 @@ export const RecurringUserLanding: React.FC = () => {
             shapeIndex={2}
             colorClassName="bg-white border-[#EE9F2A]/40"
             barColorClassName="bg-[#EE9F2A]"
+            darkAccent={STRIPE_THREE_DARK_ACCENT}
             mounted={mounted}
             isSettled={isSettled}
             isInteractive={isInteractive}
@@ -496,6 +543,7 @@ interface StripeButtonProps {
   shapeIndex: number;
   colorClassName: string;
   barColorClassName: string;
+  darkAccent: string;
   mounted: boolean;
   isSettled: boolean;
   isInteractive: boolean;
@@ -518,6 +566,7 @@ const StripeButton: React.FC<StripeButtonProps> = ({
   shapeIndex,
   colorClassName,
   barColorClassName,
+  darkAccent,
   mounted,
   isSettled,
   isInteractive,
@@ -567,7 +616,7 @@ const StripeButton: React.FC<StripeButtonProps> = ({
         aria-disabled={!isInteractive}
         tabIndex={isInteractive ? 0 : -1}
         aria-label={ariaLabel}
-        style={{ clipPath, ...ROAD_3D_BEVEL_STYLE }}
+        style={{ clipPath, ...stripeBevelStyle(darkAccent) }}
         className={[
           'relative w-full border text-left overflow-hidden',
           'transition-[colors,transform,opacity] duration-300 ease-out',
