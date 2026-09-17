@@ -255,7 +255,7 @@ export const RecurringUserLanding: React.FC = () => {
             <img
               src="/assets/road-ahead-hero.png"
               alt="Ahead Of Time"
-              className={`w-32 h-32 sm:w-44 sm:h-44 object-contain transition-[opacity,transform] duration-500 ease-out ${
+              className={`w-32 h-32 sm:w-44 sm:h-44 object-contain transition-[opacity,transform] duration-500 ease-out hover:scale-110 ${
                 mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
               }`}
               style={{ filter: 'drop-shadow(0 14px 24px rgba(0,0,0,0.45)) drop-shadow(0 2px 10px rgba(161,200,186,0.25))' }}
@@ -558,7 +558,21 @@ const StripeButton: React.FC<StripeButtonProps> = ({
         aria-disabled={!isInteractive}
         tabIndex={isInteractive ? 0 : -1}
         aria-label={ariaLabel}
-        style={{ clipPath }}
+        style={{
+          clipPath,
+          // Fakes a 3D/embossed edge: border color set per-side (inline,
+          // since colorClassName's single border-{color} utility can't
+          // express this) with a light "highlight" top-left and a dark
+          // "shadow" bottom-right, as if lit from above. Border - not
+          // box-shadow - is what can do this here, because clip-path clips
+          // the whole painted box including its border, so it still hugs
+          // the trapezoid's actual cut corners instead of a plain rectangle.
+          borderWidth: '2px',
+          borderTopColor: 'rgba(255,255,255,0.75)',
+          borderLeftColor: 'rgba(255,255,255,0.45)',
+          borderRightColor: 'rgba(15,23,42,0.22)',
+          borderBottomColor: 'rgba(15,23,42,0.32)',
+        }}
         className={[
           'relative w-full border text-left overflow-hidden',
           'transition-[colors,transform,opacity] duration-300 ease-out',
