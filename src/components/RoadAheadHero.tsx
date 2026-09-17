@@ -35,6 +35,7 @@ interface RoadAheadHeroProps {
    */
   reducedMotion?: boolean;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 // Calendar card geometry - kept as named constants (not magic numbers
@@ -43,11 +44,13 @@ interface RoadAheadHeroProps {
 // that alignment twice (grid squares poking out past the white outline's
 // own inner edge; the pin overlapping grid squares) by tweaking one part's
 // numbers without re-checking the others against it.
-const CAL_X = 40;
-const CAL_Y = 46;
-const CAL_W = 120;
-const CAL_H = 92;
-const CAL_RX = 16;
+// A square card, not a rectangle - width and height MUST stay equal here,
+// this was a real regression once already (a wider-than-tall calendar).
+const CAL_X = 46;
+const CAL_Y = 42;
+const CAL_W = 108;
+const CAL_H = 108;
+const CAL_RX = 18;
 const CAL_STROKE = 9;
 
 // Full 3x3 grid, sized and positioned to stay strictly inside the calendar
@@ -55,12 +58,12 @@ const CAL_STROKE = 9;
 // rect boundary, so "inside the rect" isn't the same as "inside the visible
 // white line". A previous revision's bottom row extended past the stroke's
 // inner edge and rendered as green poking out from under the white border;
-// this grid leaves a >=2.5px margin on every side of the interior instead.
+// this grid leaves a >=11px margin on every side of the (now square) interior.
 const GRID_SQUARE = 20;
 const GRID_SQUARES: Array<{ x: number; y: number }> = [
-  { x: 61, y: 53 }, { x: 90, y: 53 }, { x: 119, y: 53 },
-  { x: 61, y: 82 }, { x: 90, y: 82 }, { x: 119, y: 82 },
-  { x: 61, y: 111 }, { x: 90, y: 111 }, { x: 119, y: 111 },
+  { x: 62, y: 58 }, { x: 90, y: 58 }, { x: 118, y: 58 },
+  { x: 62, y: 86 }, { x: 90, y: 86 }, { x: 118, y: 86 },
+  { x: 62, y: 114 }, { x: 90, y: 114 }, { x: 118, y: 114 },
 ];
 
 // Pin center/scale - placed BELOW the calendar card entirely (not
@@ -69,8 +72,8 @@ const GRID_SQUARES: Array<{ x: number; y: number }> = [
 // the grid. That overlap reads fine at app-icon size; recreated bigger here
 // it read as visual noise, so the pin gets its own clear space instead.
 const PIN_CENTER_X = 100;
-const PIN_CENTER_Y = 163;
-const PIN_SCALE = 0.62;
+const PIN_CENTER_Y = 172;
+const PIN_SCALE = 0.55;
 
 /**
  * Recreation of the navy-badge calendar+pin mark from
@@ -87,13 +90,14 @@ const PIN_SCALE = 0.62;
  * as the real stripe-nav buttons, so RecurringUserLanding renders those
  * separately rather than nesting them in this SVG.
  */
-export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMotion = false, className = '' }) => {
+export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMotion = false, className = '', style }) => {
   const reached = (target: IntroPhase) => reducedMotion || phaseAtLeast(phase, target);
 
   return (
     <svg
       viewBox="0 0 200 200"
       className={className}
+      style={style}
       role="img"
       aria-label="Ahead Of Time"
     >

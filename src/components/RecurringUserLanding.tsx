@@ -209,34 +209,65 @@ export const RecurringUserLanding: React.FC = () => {
       </div>
 
       <div className="w-full flex-1 flex flex-col items-center justify-center px-4 py-10 sm:py-14">
-        {/* The hero badge - the same calendar+pin mark from the app icon,
-            drawn live. It stays on screen after the intro finishes (it
-            never needs to disappear - "the animation IS the loading of the
-            nav", not a splash bolted in front of it). Builds up smoothly on
-            mount via its own phase-driven Motion timeline (draw-in outline,
-            sequential square pop, spring pin drop). */}
-        <RoadAheadHero
-          phase={phase}
-          reducedMotion={reducedMotion || skipIntro}
-          className="w-28 h-28 sm:w-36 sm:h-36 drop-shadow-lg"
-        />
-
-        <h1 className="mt-5 text-center text-white/90 text-sm sm:text-base font-semibold tracking-wide px-4">
+        <h1 className="text-center text-white/90 text-sm sm:text-base font-semibold tracking-wide px-4">
           Welcome back. Here's the road ahead.
         </h1>
 
-        {/* The three road stripes - decorative during the intro, real
-            clickable navigation once settled. Increasing horizontal margin
-            per stripe (widest/closest last) plus a rounded, gently-bowed
-            trapezoid clip-path (see roadStripeShape.ts - measured from each
-            button's real size via ResizeObserver so the curve/corners stay
-            correct at any width) recreate the logo's receding-road
-            perspective as one flowing shape instead of a plain rectangle. */}
-        <nav
-          aria-label="Quick navigation"
-          className="mt-8 sm:mt-10 w-full max-w-xl flex flex-col gap-2 sm:gap-3"
-        >
-          <StripeButton
+        {/* One continuous "shield" - the badge and the three stripes used to
+            be a small icon floating above a separate stack of cards; a
+            single glass panel now holds both, narrow at the top (matching
+            the badge) and flaring out to the stripes' own full width below,
+            so the whole thing reads as one flowing shape instead of
+            disconnected pieces. The panel is an SVG path in a 0-100 x 0-100
+            viewBox with preserveAspectRatio="none": it always stretches to
+            fill whatever height the real content needs (the stripe copy can
+            wrap to 2 lines at some widths), so the flare's proportions stay
+            correct without needing to know that height up front. */}
+        <div className="relative mt-6 w-full max-w-xl">
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            style={{ filter: 'drop-shadow(0 22px 40px rgba(0,0,0,0.45)) drop-shadow(0 2px 14px rgba(161,200,186,0.18))' }}
+          >
+            <path
+              d="M 33,0 L 67,0 Q 75,0 75,6 L 75,22 C 75,29 92,38 98,52 L 98,92 Q 98,100 89,100 L 11,100 Q 2,100 2,92 L 2,52 C 8,38 25,29 25,22 L 25,6 Q 25,0 33,0 Z"
+              fill="rgba(255,255,255,0.035)"
+              stroke="rgba(255,255,255,0.1)"
+              strokeWidth="0.4"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+
+          <div className="relative flex flex-col items-center pt-6 pb-7 px-4 sm:px-6">
+            {/* The hero badge - the same calendar+pin mark from the app
+                icon, drawn live. It stays on screen after the intro
+                finishes (it never needs to disappear - "the animation IS
+                the loading of the nav", not a splash bolted in front of
+                it). Builds up smoothly on mount via its own phase-driven
+                Motion timeline (draw-in outline, sequential square pop,
+                spring pin drop). */}
+            <RoadAheadHero
+              phase={phase}
+              reducedMotion={reducedMotion || skipIntro}
+              className="w-28 h-28 sm:w-36 sm:h-36"
+              style={{ filter: 'drop-shadow(0 14px 22px rgba(0,0,0,0.4)) drop-shadow(0 2px 10px rgba(161,200,186,0.3))' }}
+            />
+
+            {/* The three road stripes - decorative during the intro, real
+                clickable navigation once settled. Increasing horizontal
+                margin per stripe (widest/closest last) plus a rounded,
+                gently-bowed trapezoid clip-path (see roadStripeShape.ts -
+                measured from each button's real size via ResizeObserver so
+                the curve/corners stay correct at any width) recreate the
+                logo's receding-road perspective as one flowing shape
+                instead of a plain rectangle. */}
+            <nav
+              aria-label="Quick navigation"
+              className="mt-8 sm:mt-10 w-full flex flex-col gap-2 sm:gap-3"
+            >
+              <StripeButton
             index={0}
             marginClassName="mx-10 sm:mx-16"
             shapeIndex={0}
@@ -304,7 +335,9 @@ export const RecurringUserLanding: React.FC = () => {
             contentClassName="text-slate-800"
             ariaLabel="Plan something new. Tell us what's coming up."
           />
-        </nav>
+            </nav>
+          </div>
+        </div>
 
         <CalendarConnectionFooter />
       </div>
@@ -502,7 +535,15 @@ const StripeButton: React.FC<StripeButtonProps> = ({
       className={`${marginClassName} transition-[opacity,transform] duration-300 ease-out ${
         mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       }`}
-      style={{ transitionDelay: `${buildDelay}ms` }}
+      style={{
+        transitionDelay: `${buildDelay}ms`,
+        // filter lives on this wrapper, not the clipped button itself, so
+        // overflow-hidden on the button can never interfere with the shadow
+        // rendering outside its box. drop-shadow (not box-shadow) is
+        // required here because it follows the button's actual clipped
+        // silhouette instead of its rectangular border-box.
+        filter: 'drop-shadow(0 10px 18px rgba(0,0,0,0.35)) drop-shadow(0 1px 5px rgba(255,255,255,0.16))',
+      }}
     >
       <button
         ref={buttonRef}
