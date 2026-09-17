@@ -35,6 +35,13 @@ import { verifyEventDeepLink } from "./server/deepLinkToken";
 import { TelegramService } from "./server/telegramService";
 import { logQualityEvent, QualitySignalType } from "./server/qualityStore";
 import { getFeedbackEligibility, submitFeedback } from "./server/feedbackStore";
+import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
+import {
+  exchangeAuthorizationCode,
+  storeRefreshToken,
+  hasBackgroundSyncLinked,
+  unlinkBackgroundSync,
+} from "./server/googleOAuthTokenStore";
 
 dotenv.config();
 
@@ -1232,6 +1239,111 @@ app.post("/api/feedback/submit", async (req: Request, res: Response) => {
     console.error("feedback submit error:", err);
     res.status(400).json({ ok: false, error: err?.message || "Failed to submit feedback" });
   }
+});
+
+// -----------------------------------------------------------------------------
+// Auto Sync & Notify - server-side Google OAuth (authorization-code flow,
+// distinct from the implicit token-client flow src/services/googleAuth.ts
+// uses everywhere else) for background sync with no browser open.
+// -----------------------------------------------------------------------------
+
+const BACKGROUND_SYNC_SCOPES = [
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/tasks",
+].join(" ");
+
+function getOAuthRedirectUri(req: Request): string {
+  const configured = process.env.APP_URL?.trim();
+  const origin = configured || `${req.protocol}://${req.get("host")}`;
+  return `${origin.replace(/\/$/, "")}/api/auth/google/callback`;
+}
+
+function getAppOrigin(req: Request): string {
+  const configured = process.env.APP_URL?.trim();
+  return (configured || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+}
+
+app.get("/api/auth/google/authorize", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    res.status(500).json({ ok: false, error: "Google client id is not configured." });
+    return;
+  }
+  const signed = signOAuthState(verified.email);
+  if (!signed) {
+    res.status(500).json({ ok: false, error: "NOTIFY_LINK_SECRET is not configured." });
+    return;
+  }
+  await findOrCreateUserByEmail(verified.email);
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: getOAuthRedirectUri(req),
+    response_type: "code",
+    access_type: "offline",
+    prompt: "consent",
+    scope: BACKGROUND_SYNC_SCOPES,
+    state: signed.state,
+  });
+  res.json({ ok: true, authorizeUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+});
+
+app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
+  const { code, state, error: oauthError } = req.query;
+  const appOrigin = getAppOrigin(req);
+
+  if (oauthError) {
+    res.redirect(302, `${appOrigin}/settings/credentials?background_sync=declined`);
+    return;
+  }
+
+  const verifiedState = verifyOAuthState(typeof state === "string" ? state : undefined);
+  if (!verifiedState || typeof code !== "string") {
+    res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
+    return;
+  }
+
+  try {
+    const userId = await findOrCreateUserByEmail(verifiedState.email);
+    const exchanged = await exchangeAuthorizationCode(code, getOAuthRedirectUri(req));
+    if (!exchanged) {
+      res.redirect(302, `${appOrigin}/settings/credentials?background_sync=no_refresh_token`);
+      return;
+    }
+    await storeRefreshToken(userId, exchanged.refreshToken, exchanged.scope);
+    res.redirect(302, `${appOrigin}/settings/credentials?background_sync=connected`);
+  } catch (err: any) {
+    console.error("Google OAuth callback error:", err);
+    res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
+  }
+});
+
+app.get("/api/auth/google/status", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  const linked = await hasBackgroundSyncLinked(userId);
+  res.json({ ok: true, linked });
+});
+
+app.delete("/api/auth/google/status", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  await unlinkBackgroundSync(userId);
+  res.json({ ok: true, linked: false });
 });
 
 // Setup Vite middleware for development or static serving for production

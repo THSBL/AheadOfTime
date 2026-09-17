@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Calendar, 
-  Check, 
-  RefreshCw, 
-  LogOut, 
-  AlertCircle, 
-  Loader2, 
+import {
+  Calendar,
+  Check,
+  RefreshCw,
+  LogOut,
+  AlertCircle,
+  Loader2,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Zap,
+  X
 } from 'lucide-react';
 import { 
   getStoredAccessToken, 
@@ -48,7 +50,87 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Auto Sync & Notify: server-side background sync, distinct from the
+  // implicit-flow token above (that one lives in sessionStorage and can
+  // never survive to be used by a cron - see server/googleOAuthTokenStore.ts's
+  // own doc comment for why this needs its own separate OAuth grant).
+  const [isBackgroundSyncLinked, setIsBackgroundSyncLinked] = useState<boolean | null>(null);
+  const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
+  const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
+
   const isConnected = Boolean(accessToken && !isTokenExpired());
+
+  useEffect(() => {
+    if (!isConnected) return;
+    const checkBackgroundSyncStatus = async () => {
+      try {
+        const res = await fetch('/api/auth/google/status', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const data = await res.json();
+        if (data.ok) setIsBackgroundSyncLinked(data.linked);
+      } catch (err) {
+        console.warn('Background sync status check notice:', err);
+      }
+    };
+    checkBackgroundSyncStatus();
+  }, [isConnected, accessToken]);
+
+  // Reflects the redirect back from /api/auth/google/callback after the
+  // consent screen round trip.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('background_sync');
+    if (!result) return;
+
+    const messages: Record<string, string> = {
+      connected: 'Background sync connected! We\'ll now check your calendar and notify you when a new plan is ready, even when the app is closed.',
+      declined: 'Background sync setup was cancelled.',
+      no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
+      error: 'Something went wrong connecting background sync - please try again.',
+    };
+    setBackgroundSyncNotice(messages[result] || null);
+    if (result === 'connected') setIsBackgroundSyncLinked(true);
+
+    // Clean the query param off the URL so a refresh doesn't re-show the notice.
+    params.delete('background_sync');
+    const newSearch = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${newSearch ? `?${newSearch}` : ''}`);
+  }, []);
+
+  const handleConnectBackgroundSync = async () => {
+    if (!accessToken) return;
+    setIsLinkingBackgroundSync(true);
+    try {
+      const res = await fetch('/api/auth/google/authorize', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json();
+      if (data.ok && data.authorizeUrl) {
+        window.location.href = data.authorizeUrl;
+      } else {
+        setBackgroundSyncNotice(data.error || 'Could not start background sync setup.');
+        setIsLinkingBackgroundSync(false);
+      }
+    } catch (err: any) {
+      setBackgroundSyncNotice(err?.message || 'Could not start background sync setup.');
+      setIsLinkingBackgroundSync(false);
+    }
+  };
+
+  const handleDisconnectBackgroundSync = async () => {
+    if (!accessToken) return;
+    try {
+      await fetch('/api/auth/google/status', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      setIsBackgroundSyncLinked(false);
+      setBackgroundSyncNotice('Background sync disconnected.');
+    } catch (err) {
+      console.warn('Failed to disconnect background sync:', err);
+    }
+  };
 
   // Load calendar profile on mount if token exists but profile missing
   useEffect(() => {
@@ -236,6 +318,71 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
               </button>
             </div>
           </div>
+
+          {/* Auto Sync & Notify: background sync needs a SEPARATE consent
+              grant (offline access) from the one above - this box is only
+              shown once the base connection exists, since it builds on it. */}
+          <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-900">Background Sync & Notify</span>
+                  {isBackgroundSyncLinked && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed max-w-sm">
+                  {isBackgroundSyncLinked
+                    ? 'We check your calendar for new events and notify you when a plan is ready - even while the app is closed.'
+                    : 'Get notified when a new plan is ready, without having to keep the app open. Requires one extra Google permission.'}
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0">
+              {isBackgroundSyncLinked ? (
+                <button
+                  type="button"
+                  onClick={handleDisconnectBackgroundSync}
+                  className="px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-semibold rounded-lg border border-slate-200 text-xs transition cursor-pointer"
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConnectBackgroundSync}
+                  disabled={isLinkingBackgroundSync}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  {isLinkingBackgroundSync ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isLinkingBackgroundSync ? 'Redirecting...' : 'Turn On'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {backgroundSyncNotice && (
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 flex items-start gap-2 animate-in fade-in duration-200">
+              <span className="flex-1">{backgroundSyncNotice}</span>
+              <button
+                type="button"
+                onClick={() => setBackgroundSyncNotice(null)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         /* STATE A: Not Connected */

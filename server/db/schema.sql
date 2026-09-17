@@ -153,3 +153,54 @@ CREATE TABLE IF NOT EXISTS csat_responses (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_csat_responses_user_recent ON csat_responses(user_id, created_at DESC);
+
+-- Server-side Google OAuth refresh token for background sync ("Auto Sync
+-- & Notify"). Distinct from the browser's short-lived implicit-flow
+-- access token (sessionStorage, src/services/googleAuth.ts) - this is
+-- the authorization-code flow's long-lived refresh token, needed so a
+-- cron job with no browser open can call Google Calendar/Tasks on a
+-- user's behalf. encrypted_refresh_token is AES-256-GCM ciphertext
+-- (server/cryptoUtil.ts), never plain text - this is meaningfully more
+-- sensitive than anything else stored in this schema (real, standing
+-- access to someone's Google account). revoked_at is set the first time
+-- a refresh attempt fails with invalid_grant (the user revoked access in
+-- their own Google account settings) so the background job stops
+-- retrying a dead token and can tell the user their sync broke.
+CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+  user_id                 UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  encrypted_refresh_token TEXT NOT NULL,
+  scope                   TEXT,
+  linked_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_refreshed_at       TIMESTAMPTZ,
+  revoked_at              TIMESTAMPTZ
+);
+
+-- Per-user notification preference for Auto Sync & Notify. Lives here
+-- (not localStorage, unlike every other preference in this codebase so
+-- far) because a background cron has no browser to read from - only
+-- Postgres. NULL columns fall back to the recommended defaults
+-- ('telegram' if linked else 'email', 'daily', '08:00') applied in code,
+-- not here, so the default can change without a migration.
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS notify_channel  TEXT,      -- 'telegram' | 'email' | 'none'
+  ADD COLUMN IF NOT EXISTS notify_cadence  TEXT,      -- 'immediate' | 'daily' | 'weekly'
+  ADD COLUMN IF NOT EXISTS notify_time     TEXT,      -- 'HH:MM' 24h, paired with notify_timezone
+  ADD COLUMN IF NOT EXISTS notify_timezone TEXT;      -- IANA tz name, e.g. 'Europe/Brussels'
+
+-- Queue of "a plan is ready" events awaiting delivery per the user's
+-- cadence preference. 'immediate' cadence rows are inserted already
+-- marked delivered (sent synchronously by the route that created them),
+-- purely for a consistent audit trail matching ai_quality_events'
+-- notified_at pattern; 'daily'/'weekly' rows sit here until the fan-out
+-- cron (api/cron/notify-digest.ts) picks them up.
+CREATE TABLE IF NOT EXISTS pending_plan_notifications (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  event_id      UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  delivered_at  TIMESTAMPTZ,
+  channel_used  TEXT,
+  UNIQUE (user_id, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pending_plan_notifications_undelivered
+  ON pending_plan_notifications(user_id) WHERE delivered_at IS NULL;
