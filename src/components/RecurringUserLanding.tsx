@@ -232,7 +232,19 @@ export const RecurringUserLanding: React.FC = () => {
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
             aria-hidden="true"
-            style={{ filter: 'drop-shadow(0 28px 46px rgba(0,0,0,0.55)) drop-shadow(0 3px 16px rgba(161,200,186,0.22))' }}
+            style={{
+              // Three stacked drop-shadows, not one: a tight one for a
+              // crisp edge right at the panel's own silhouette, a big
+              // far-offset one that lets the flare's own diagonal
+              // shoulders cast a long trailing shadow continuing that same
+              // diagonal further down the page (this is what makes the
+              // shadow read as following the shape's flow instead of just
+              // sitting as a generic blurred halo around it), and a faint
+              // mint-tinted glow for warmth. All three follow the SVG's
+              // actual rendered alpha shape, not a bounding box.
+              filter:
+                'drop-shadow(0 10px 16px rgba(0,0,0,0.45)) drop-shadow(0 70px 60px rgba(0,0,0,0.4)) drop-shadow(0 3px 16px rgba(161,200,186,0.2))',
+            }}
           >
             <path
               d="M 33,0 L 67,0 Q 75,0 75,6 L 75,22 C 75,29 92,38 98,52 L 98,92 Q 98,100 89,100 L 11,100 Q 2,100 2,92 L 2,52 C 8,38 25,29 25,22 L 25,6 Q 25,0 33,0 Z"
