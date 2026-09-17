@@ -317,23 +317,42 @@ export function setMilestoneSyncFormat(format: MilestoneSyncFormat): void {
 }
 
 /**
+ * Extracts "DD/MM" directly from an ISO date string's digits (date-only
+ * "YYYY-MM-DD" or a full "YYYY-MM-DDTHH:mm:ss..." timestamp) rather than
+ * constructing a Date object and reading local getters - the latter is a
+ * classic source of off-by-one-day bugs here, since a date-only string
+ * parses as UTC midnight and a negative-UTC-offset timezone's local
+ * getters would then roll it back to the previous day.
+ */
+function formatShortDayMonth(dateInput: string): string {
+  const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return '';
+  const [, , month, day] = match;
+  return `${day}/${month}`;
+}
+
+/**
  * Single shared title formatter for anywhere a milestone's title reaches
- * Google Calendar or Google Tasks - replaces three previously-competing
+ * Google Calendar or Google Tasks - replaces four previously-competing
  * formats (a plain "AheadOfTime: <title>" summary with no event context at
- * all, an identically-prefixed Google Tasks title, and a third format used
- * only when toggling completion that dropped the prefix for an emoji +
- * "[TASK] [T-7d]" bracket instead) so a milestone's title is stable across
- * its lifecycle instead of changing format the first time it's marked done.
+ * all - still live on the Google Tasks push path until this change, an
+ * identically-prefixed Calendar-event title, a third format used only when
+ * toggling completion that dropped the prefix for an emoji + "[TASK]
+ * [T-7d]" bracket instead, and this function's own previous em-dash-no-date
+ * format) so a milestone's title is stable across its lifecycle instead of
+ * changing format the first time it's marked done.
  *
- * Task leads (it's the actionable part); the event name trails as context
- * after an em-dash, which degrades gracefully under truncation on the most
- * space-constrained surface (Google Calendar's month-grid view, effectively
- * ~20-28 visible characters) - a truncated "Slide deck finalized —…" still
- * reads correctly, unlike a truncated bracket or colon-separated format.
- * The old "AheadOfTime:" prefix is dropped entirely - on that same
- * month-grid view it was consuming over half the visible budget for no
- * user-facing value (branding can live in the description, which already
- * carries a "Planned with AheadOfTime" footer).
+ * Task leads (it's the actionable part); the event name and due date trail
+ * as context after middle dots, which degrades gracefully under truncation
+ * on the most space-constrained surface (Google Calendar's month-grid
+ * view, effectively ~20-28 visible characters) - a truncated "Book dog
+ * sitter · Ibiza trip…" still reads correctly, unlike a truncated bracket
+ * or colon-separated format. The old "AheadOfTime:" prefix is dropped
+ * entirely - on that same month-grid view it was consuming over half the
+ * visible budget for no user-facing value (branding can live in the
+ * description, which already carries a "Planned with AheadOfTime" footer).
+ * The trailing due date (DD/MM) means the task is identifiable even in a
+ * list view or notification that doesn't otherwise show its date.
  *
  * A leading marker is reserved for exactly two things worth spending a
  * character on: ⚠ for a milestone that's overdue/at-risk (genuinely new
@@ -347,6 +366,7 @@ export function setMilestoneSyncFormat(format: MilestoneSyncFormat): void {
 export function formatMilestoneCalendarTitle(
   milestoneTitle: string,
   eventTitle: string,
+  dueDate: string,
   status?: { isOverdue?: boolean; isCompleted?: boolean }
 ): string {
   const cleanTitle = milestoneTitle
@@ -358,12 +378,13 @@ export function formatMilestoneCalendarTitle(
     .replace(/^AheadOfTime:\s*/i, '')
     .trim();
   const marker = status?.isCompleted ? '✅ ' : status?.isOverdue ? '⚠ ' : '';
-  return `${marker}${cleanTitle} — ${eventTitle}`;
+  const dateLabel = formatShortDayMonth(dueDate);
+  return `${marker}${cleanTitle} · ${eventTitle}${dateLabel ? ` · ${dateLabel}` : ''}`;
 }
 
 /**
  * Builds Google Calendar event payload for milestone synchronization
- * Summary: Concrete Milestone title (e.g. Slide deck finalized — NY Client Trip)
+ * Summary: Concrete Milestone title (e.g. Slide deck finalized · NY Client Trip · 12/10)
  * Description: Actionable Markdown/plaintext checklist of all deliverables
  */
 export function buildMilestoneCalendarPayload(
@@ -375,7 +396,7 @@ export function buildMilestoneCalendarPayload(
 ) {
   const cleanTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
   const isOverdue = milestone.status === 'pending' && new Date(`${dateOnly}T23:59:59`) < new Date();
-  const summary = formatMilestoneCalendarTitle(milestone.title, eventTitle, {
+  const summary = formatMilestoneCalendarTitle(milestone.title, eventTitle, dateOnly, {
     isOverdue,
     isCompleted: milestone.status === 'completed',
   });
@@ -453,7 +474,7 @@ export async function pushSingleMilestoneToGoogleCalendar(
   const isOverdue = milestone.status === 'pending' && new Date(`${dateOnly}T23:59:59`) < new Date();
   try {
     const taskRes = await createGoogleTask(accessToken, {
-      title: formatMilestoneCalendarTitle(milestone.title, eventTitle, {
+      title: formatMilestoneCalendarTitle(milestone.title, eventTitle, dateOnly, {
         isOverdue,
         isCompleted: milestone.status === 'completed',
       }),
@@ -610,10 +631,14 @@ export async function syncEventToGoogleCalendar(
       }
 
       const taskNotes = `Checklist for ${event.title}:\n${taskChecklist}\n\n--\nPlanned with AheadOfTime`;
+      const msIsOverdue = milestone.status === 'pending' && new Date(`${msDateOnly}T23:59:59`) < new Date();
 
       try {
         const taskItem = await createGoogleTask(accessToken, {
-          title: `AheadOfTime: ${cleanMsTitle}`,
+          title: formatMilestoneCalendarTitle(milestone.title, event.title, msDateOnly, {
+            isOverdue: msIsOverdue,
+            isCompleted: milestone.status === 'completed',
+          }),
           notes: taskNotes,
           due: `${msDateOnly}T00:00:00.000Z`,
           taskListId: options?.taskListId || '@default',
@@ -918,7 +943,7 @@ export async function updateMilestoneCompletionOnGoogle(
   if (milestone.googleCalendarEventId) {
     try {
       await patchGoogleCalendarEvent(accessToken, milestone.googleCalendarEventId, {
-        summary: formatMilestoneCalendarTitle(milestone.title, eventTitle, {
+        summary: formatMilestoneCalendarTitle(milestone.title, eventTitle, milestone.calculatedDate, {
           isCompleted: newStatus === 'completed',
         }),
       });
