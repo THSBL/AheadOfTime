@@ -193,26 +193,10 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           />
         </div>
 
-        {/* Newly-added filter - only worth showing at all when there's
-            something to filter for, otherwise it's a chip that never does
-            anything. */}
-        {newlyAddedCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowOnlyNew((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border cursor-pointer transition-all ${
-              showOnlyNew
-                ? 'bg-amber-400 border-amber-500 text-amber-950'
-                : 'bg-amber-100/80 border-amber-200 text-amber-800 hover:bg-amber-100'
-            }`}
-            title={showOnlyNew ? 'Showing only newly added events' : 'Show only newly added events'}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Newly added ({newlyAddedCount})</span>
-          </button>
-        )}
-
-        {/* Bulk Selection & Deletion Actions Bar */}
+        {/* Bulk Selection & Deletion Actions Bar - "Newly added" lives on
+            this same row now, styled as the same kind of checkbox toggle as
+            Select All (no icon of its own) rather than a separate chip on
+            its own line above. */}
         {events.length > 0 && (
           <div className="flex items-center justify-between pt-1 text-xs">
             <div className="flex items-center gap-2">
@@ -223,6 +207,21 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 {allFilteredSelected ? <CheckSquare className="w-3.5 h-3.5 text-sky-700" /> : <Square className="w-3.5 h-3.5 text-sky-500" />}
                 <span>{allFilteredSelected ? 'Deselect All' : 'Select All'}</span>
               </button>
+              {newlyAddedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowOnlyNew((v) => !v)}
+                  className={`font-bold flex items-center gap-1 cursor-pointer px-2.5 py-1 rounded-lg border transition-all ${
+                    showOnlyNew
+                      ? 'bg-amber-400 border-amber-500 text-amber-950'
+                      : 'bg-amber-100/80 border-amber-200 text-amber-800 hover:bg-amber-100'
+                  }`}
+                  title={showOnlyNew ? 'Showing only newly added events' : 'Show only newly added events'}
+                >
+                  {showOnlyNew ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                  <span>Newly added ({newlyAddedCount})</span>
+                </button>
+              )}
               {selectedEventIds.length > 0 && (
                 <span className="font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-lg">
                   {selectedEventIds.length} selected

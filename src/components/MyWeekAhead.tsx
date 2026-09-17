@@ -15,22 +15,7 @@ import {
   WeeklyMilestoneBucket,
   THEME_LABELS,
 } from '../utils/readiness';
-import { useRoad3DClipPath, ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
-
-// Gentler taper than the (much narrower, taller) stripe-nav buttons on
-// RecurringUserLanding - this bar is wide and short, so the same
-// proportions there would look like an exaggerated wedge instead of a
-// subtle flow. Corner radius/bow scaled up to match the bar's own larger
-// size instead of reusing the stripes' own tuned-for-a-different-shape values.
-// topInsetRatio has to be big enough that buildRoadStripeClipPath's own
-// corner-radius clamp (radius <= topInset * 0.85, so two adjacent rounded
-// corners can never overlap) doesn't silently cap cornerRadius far below
-// what's requested here - 0.022 was so small the effective radius came out
-// under 14px regardless of cornerRadius, which read as barely-rounded and
-// out of step with the front page's own stripes (topInsetRatio 0.06-0.1).
-// Bumped both together for real, visible rounding that's actually in line
-// with them.
-const AHEAD_BAR_SHAPE = { topInsetRatio: 0.05, cornerRadius: 30, bow: 14 };
+import { ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
   bookings_logistics: Plane,
@@ -341,30 +326,69 @@ const MilestoneClusterCard: React.FC<{
       {isOpen && (
         <div className="border-t border-slate-100 divide-y divide-slate-100">
           {cluster.items.map((item) => (
-            <div key={item.milestoneId} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50/60">
-              <button
-                type="button"
-                onClick={() => onToggleMilestoneStatus(item.eventId, item.milestoneId)}
-                className="w-4 h-4 rounded border border-slate-300 hover:border-[#182A42] flex items-center justify-center shrink-0 cursor-pointer text-transparent hover:text-slate-400 transition-colors"
-                title="Mark as complete"
-              >
-                <Check className="w-2.5 h-2.5 stroke-[3]" />
-              </button>
-              <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
-                <p className="text-xs font-semibold text-slate-800 truncate">{item.title}</p>
-                <p className="text-[10px] text-slate-400 truncate">{item.eventTitle}</p>
-              </button>
-              <span
-                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                  overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
-                }`}
-              >
-                {item.dueLabel}
-              </span>
-            </div>
+            <ClusterMilestoneRow
+              key={item.milestoneId}
+              item={item}
+              onSelectEvent={onSelectEvent}
+              onToggleMilestoneStatus={onToggleMilestoneStatus}
+              overdue={overdue}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * One task inside an expanded topic cluster - split out from
+ * MilestoneClusterCard so it can hold its own "just checked" animation
+ * state per item (a fill-then-remove beat, same as FlatMilestoneRow's),
+ * instead of the checkbox instantly vanishing the row the moment it's
+ * clicked with no visible confirmation.
+ */
+const ClusterMilestoneRow: React.FC<{
+  item: UpcomingMilestoneItem;
+  onSelectEvent: (eventId: string) => void;
+  onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
+  overdue?: boolean;
+}> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue }) => {
+  const [isChecking, setIsChecking] = useState(false);
+
+  const handleCheck = () => {
+    if (isChecking) return;
+    setIsChecking(true);
+    window.setTimeout(() => {
+      onToggleMilestoneStatus(item.eventId, item.milestoneId);
+    }, 500);
+  };
+
+  return (
+    <div className={`flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50/60 transition-opacity duration-300 ${isChecking ? 'opacity-50' : ''}`}>
+      <button
+        type="button"
+        onClick={handleCheck}
+        disabled={isChecking}
+        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all duration-200 ${
+          isChecking
+            ? 'bg-emerald-500 border-emerald-500 text-white scale-125 cursor-default'
+            : 'border-slate-300 hover:border-[#182A42] text-transparent hover:text-slate-400 cursor-pointer'
+        }`}
+        title="Mark as complete"
+      >
+        <Check className="w-2.5 h-2.5 stroke-[3]" />
+      </button>
+      <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
+        <p className="text-xs font-semibold text-slate-800 truncate">{item.title}</p>
+        <p className="text-[10px] text-slate-400 truncate">{item.eventTitle}</p>
+      </button>
+      <span
+        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+          overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
+        }`}
+      >
+        {overdue ? formatCompactOverdueLabel(item.dueLabel) : item.dueLabel}
+      </span>
     </div>
   );
 };
@@ -403,7 +427,18 @@ const WeekBucketCard: React.FC<{
       <div className="border-t border-slate-100 p-2 space-y-2 bg-slate-50/50">
         {bucket.clusters.map((cluster) => (
           <MilestoneClusterCard
-            key={cluster.theme + cluster.items[0].milestoneId}
+            // A real (2+ item) cluster's identity is its theme, full stop -
+            // keying on cluster.items[0].milestoneId as well (the previous
+            // key) meant completing whichever task happened to be first in
+            // the array changed the key on every render, which made React
+            // unmount and remount the entire cluster card instead of just
+            // re-rendering it with one fewer item - from the user's side,
+            // checking off one task inside an open topic made the WHOLE
+            // topic flicker away and rebuild itself collapsed. A solo
+            // (1-item) entry has no such "membership" to destabilize the
+            // key, but multiple 'other'-theme solo entries can coexist, so
+            // it still needs the item's own id to stay unique among them.
+            key={cluster.items.length > 1 ? `theme-${cluster.theme}` : `solo-${cluster.items[0].milestoneId}`}
             cluster={cluster}
             isOpen={expandedClusterKey === `${bucket.key}-${cluster.theme}`}
             onToggleOpen={() => onToggleCluster(`${bucket.key}-${cluster.theme}`)}
@@ -501,7 +536,6 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   );
 
   const simpleStyle = SIMPLE_STATUS_STYLES[simpleStatus.level];
-  const { ref: aheadBarRef, clipPath: aheadBarClipPath } = useRoad3DClipPath<HTMLDivElement>(AHEAD_BAR_SHAPE);
 
   return (
     <div className="flex-1 flex flex-col h-full milky-glass rounded-3xl overflow-hidden shadow-xs w-full">
@@ -516,23 +550,18 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
         {/* Confirmation - one clean, non-contradictory read of "am I ahead?",
             with the logo's own runway-stripe motif as the "how far ahead"
             gauge: more stripes filled (in the status color) means more
-            clear. Shares the same fake-3D "road" treatment (clip-path +
-            embossed border, see useRoad3DClipPath) as RecurringUserLanding's
-            stripe-nav buttons - the shape is measured from this bar's own
-            (much wider) rendered size, so the same trick just stretches to
-            fit instead of needing its own bespoke geometry. */}
-        <div
-          style={{
-            // drop-shadow (not box-shadow) so it follows the bar's actual
-            // clipped silhouette instead of its rectangular border-box -
-            // same reasoning as the stripe buttons' own wrapper.
-            filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.18))',
-          }}
-        >
+            clear. Used to borrow the stripe-nav buttons' bowed-trapezoid
+            clip-path for "cohesion" with the front page - on an element
+            this wide and short, that same curve read as wobbly/hand-cut
+            rather than deliberate (the bow was tuned for the stripes' own
+            tall, narrow proportions). A plain, precisely rounded rectangle
+            reads as considered instead; the embossed border
+            (ROAD_3D_BEVEL_STYLE) still ties it to the same 3D language
+            without needing the custom shape underneath it. */}
+        <div className="shadow-md rounded-[28px]">
           <div
-            ref={aheadBarRef}
-            style={{ clipPath: aheadBarClipPath, ...ROAD_3D_BEVEL_STYLE }}
-            className={`p-4 sm:p-5 border text-left flex items-center gap-4 ${simpleStyle.cardBg} ${simpleStyle.cardBorder}`}>
+            style={ROAD_3D_BEVEL_STYLE}
+            className={`p-4 sm:p-5 rounded-[28px] border text-left flex items-center gap-4 ${simpleStyle.cardBg} ${simpleStyle.cardBorder}`}>
             <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shrink-0 p-3 ${simpleStyle.iconBg}`}>
               <RunwayStripes level={simpleStatus.level} className="w-full h-full" />
             </div>
