@@ -733,6 +733,50 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     // an unrelated fresh template that only coincidentally looked similar.
     // No milestones array means "I didn't change the plan", not "start over".
     milestones = existingEvent.milestones;
+
+    // Deterministic safety net for a real, separately-confirmed bug: the
+    // model sometimes leaves runway/milestones empty on a plain-text
+    // addition ("also need to book a rental car") instead of following the
+    // REFINEMENT MEANS MERGE rule above, silently dropping the request
+    // with no visible new milestone. Mirrors processWithDeterministicRules'
+    // own noteRelevantFreshMilestones logic below: generate the category's
+    // heuristic checklist, then keep only whichever of those milestones
+    // shares a distinctive word with the user's actual message - so a
+    // generic "thanks!" or an answered intake question (which already goes
+    // through intakeAnswer/batchAnswers, not plain text) can't spuriously
+    // inject unrelated category-default tasks, only a message that
+    // plausibly asked for something concrete does.
+    if (!params.intakeAnswer && !params.batchAnswers && params.message?.trim()) {
+      const NOISE_WORDS = new Set([
+        'also', 'need', 'needs', 'while', 'away', 'book', 'booked', 'booking',
+        'confirm', 'confirmed', 'and', 'the', 'for', 'with', 'this', 'that',
+      ]);
+      const messageWords = Array.from(new Set(
+        params.message
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .split(/\s+/)
+          .filter((w) => w.length > 2 && !NOISE_WORDS.has(w))
+      ));
+      if (messageWords.length > 0) {
+        const freshMilestones = generateHeuristicMilestones(
+          { category: finalCategory, context: mergedContext, title },
+          eventId,
+          eventDate,
+          eventTime
+        );
+        const noteRelevantFreshMilestones = freshMilestones.filter((m) => {
+          const text = `${m.title} ${m.description || ''}`.toLowerCase();
+          return messageWords.some((w) => new RegExp(`\\b${w}\\b`).test(text));
+        });
+        if (noteRelevantFreshMilestones.length > 0) {
+          milestones = finalizeMilestonePlan(
+            [...existingEvent.milestones, ...noteRelevantFreshMilestones],
+            { title, context: mergedContext, rawText: params.message }
+          );
+        }
+      }
+    }
   } else {
     milestones = generateHeuristicMilestones(
       {

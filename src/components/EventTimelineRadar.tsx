@@ -493,7 +493,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     return (
       <div
         key={ms.id}
-        className={`group p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 w-full ${
+        className={`group p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all w-full ${
           isSkipped
             ? 'bg-slate-50/60 border-slate-200 text-slate-400 opacity-70'
             : isCompleted
@@ -512,6 +512,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             : 'bg-white/80 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-2xs'
         }`}
       >
+        {/* Actions sit inline with the checkbox/date row at the top of the
+            card on every breakpoint now - previously a separate full-width
+            row below all content on mobile (flex-col), which wasted a lot
+            of vertical space just to right-align two icons. */}
+        <div className="flex items-start justify-between gap-2 sm:gap-3 w-full">
         {/* Checkbox & Task Information */}
         <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0 w-full">
           <button
@@ -534,8 +539,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </button>
 
           <div className="space-y-1 min-w-0 flex-1 w-full">
-            {/* Line 1: the actual calendar date */}
-            <div className="text-xs sm:text-sm font-bold text-slate-700">
+            {/* Line 1: the actual calendar date - desktop only. Mobile
+                relies on the due-in countdown pill in the row below
+                instead ("Overdue by 8 days" / "In 7 days") so the card
+                doesn't carry two overlapping ways to say when this is due
+                on a narrow screen. */}
+            <div className="hidden sm:block text-sm font-bold text-slate-700">
               {formatDisplayDate(ms.calculatedDate)}
             </div>
 
@@ -685,8 +694,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </div>
         </div>
 
-        {/* Actions (Edit & Delete) - quiet by default, not competing with content */}
-        <div className="flex items-center gap-1 self-end sm:self-start opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+        {/* Actions (Edit & Delete) - always inline with the date/checkbox
+            row at the top now, quiet by default on desktop (hover to
+            reveal) but always visible on mobile since hover doesn't apply
+            on touch. */}
+        <div className="flex items-center gap-1 opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
           <button
             onClick={() => setEditingMilestone(ms)}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
@@ -702,25 +714,30 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
+        </div>
       </div>
     );
   };
 
-  // Deliberately lighter-weight than renderMilestoneCard: Looking ahead is a
-  // flat, always-open list meant to read as "smaller & further away" (no
-  // left-border accent, no category/deliverable badges, no sub-task
-  // expansion) so it doesn't visually compete with Overdue/This week, while
-  // still surfacing enough (date, title, due-in, edit/delete) to catch a
-  // missing prep milestone at a glance.
+  // Lighter-weight than renderMilestoneCard (no left-border accent, no
+  // category badges) so Looking ahead still reads as "smaller & further
+  // away" next to Overdue/This week - but clickable to unfold sub-tasks or
+  // a description when there's more to a title than fits on one line (e.g.
+  // "Budget & expenses" alone doesn't say what that actually covers).
   const renderCompactFutureRow = (ms: TMinusMilestone) => {
     const isCompleted = ms.status === 'completed';
     const isSkipped = ms.status === 'skipped';
     const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
+    const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
+    const hasDescription = Boolean(ms.description && ms.description.trim());
+    const isExpandable = hasDeliverables || hasDescription;
+    const isExpanded = expandedMilestoneIds.has(ms.id);
+    const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
 
     return (
       <div
         key={ms.id}
-        className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all ${
+        className={`group rounded-lg border transition-all ${
           isSkipped
             ? 'bg-slate-50/50 border-slate-200 text-slate-400 opacity-70'
             : isCompleted
@@ -728,49 +745,113 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             : 'bg-white/80 border-slate-200/70 hover:border-slate-300 text-slate-700'
         }`}
       >
-        <button
-          onClick={() => !isSkipped && handleMilestoneClick(activeEvent.id, ms)}
-          disabled={isSkipped}
-          className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition-all ${
-            isSkipped
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              : isCompleted
-              ? 'bg-emerald-600 text-white cursor-pointer'
-              : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
-          }`}
-          title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
+        <div
+          className={`flex items-center gap-2 px-2.5 py-1.5 ${isExpandable ? 'cursor-pointer' : ''}`}
+          onClick={() => isExpandable && toggleMilestoneExpanded(ms.id)}
         >
-          {isSkipped ? <X className="w-2.5 h-2.5 stroke-[3]" /> : <Check className="w-2.5 h-2.5 stroke-[3]" />}
-        </button>
-
-        <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
-          {formatDisplayDate(ms.calculatedDate)}
-        </span>
-
-        <span className={`text-xs font-semibold truncate flex-1 min-w-0 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-          {ms.title}
-        </span>
-
-        {!isCompleted && !isSkipped && (
-          <span className="text-[10px] font-bold text-slate-400 shrink-0">{msCountdown.label}</span>
-        )}
-
-        <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
           <button
-            onClick={() => setEditingMilestone(ms)}
-            className="p-1 rounded text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
-            title="Edit task date, topic, or description"
+            onClick={(e) => {
+              e.stopPropagation();
+              !isSkipped && handleMilestoneClick(activeEvent.id, ms);
+            }}
+            disabled={isSkipped}
+            className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition-all ${
+              isSkipped
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : isCompleted
+                ? 'bg-emerald-600 text-white cursor-pointer'
+                : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
+            }`}
+            title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
           >
-            <Edit3 className="w-3 h-3" />
+            {isSkipped ? <X className="w-2.5 h-2.5 stroke-[3]" /> : <Check className="w-2.5 h-2.5 stroke-[3]" />}
           </button>
-          <button
-            onClick={() => handleDeleteTask(ms.id)}
-            className="p-1 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-            title="Delete this task"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
+
+          <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
+            {formatDisplayDate(ms.calculatedDate)}
+          </span>
+
+          <span className={`text-xs font-semibold truncate flex-1 min-w-0 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+            {ms.title}
+          </span>
+
+          {!isCompleted && !isSkipped && (
+            <span className="text-[10px] font-bold text-slate-400 shrink-0">{msCountdown.label}</span>
+          )}
+
+          {isExpandable && (
+            <ChevronRight className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          )}
+
+          {/* Edit/delete stay inline with the date/title row, at every
+              breakpoint, so unfolding sub-tasks below never pushes them
+              anywhere else or adds a second row just for them. */}
+          <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingMilestone(ms);
+              }}
+              className="p-1 rounded text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
+              title="Edit task date, topic, or description"
+            >
+              <Edit3 className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteTask(ms.id);
+              }}
+              className="p-1 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+              title="Delete this task"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
         </div>
+
+        {isExpanded && (
+          <div className="px-2.5 pb-2 pl-9 space-y-1.5 -mt-0.5">
+            {hasDescription && (
+              <p className="text-[11px] text-slate-500 leading-relaxed">{ms.description}</p>
+            )}
+            {hasDeliverables && (
+              <div className="space-y-1">
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {completedDelivCount}/{ms.deliverables!.length} sub-tasks
+                </span>
+                {ms.deliverables!.map((deliv) => {
+                  const isDelivDone = deliv.is_completed;
+                  return (
+                    <div
+                      key={deliv.deliverable_id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleDeliverable(ms, deliv.deliverable_id);
+                      }}
+                      className="flex items-center gap-2 py-0.5 cursor-pointer group/deliv"
+                    >
+                      <button
+                        type="button"
+                        className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                          isDelivDone
+                            ? 'bg-[#182A42] text-white'
+                            : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
+                        }`}
+                        title={isDelivDone ? 'Mark sub-task as pending' : 'Mark sub-task as complete'}
+                      >
+                        <Check className="w-2 h-2 stroke-[3]" />
+                      </button>
+                      <span className={`text-[11px] truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
+                        {deliv.title}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -994,7 +1075,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3 shadow-2xs space-y-2">
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-              <span>Want to add or change something? Tell us in your own words</span>
+              <span>Want to add or change something?</span>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1283,14 +1364,17 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </>
         )}
 
-        {/* Event Date Summary Box */}
-        <div className={`mt-4 p-4 rounded-2xl border flex items-center justify-between text-xs sm:text-sm shadow-xs ${
+        {/* Event Date Summary Box - stacked and left-aligned on mobile
+            (a long title plus two right-aligned date lines had nowhere to
+            go on a narrow screen and ended up misaligned/wrapping badly);
+            side-by-side with right-aligned dates from sm: up. */}
+        <div className={`mt-4 p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 text-xs sm:text-sm shadow-xs ${
           countdown.isOverdue
             ? 'bg-rose-50/70 border-rose-300 text-rose-950'
             : 'bg-white border-sky-200/80 text-slate-700'
         }`}>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div className={`w-3 h-3 rounded-full shadow-2xs ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#182A42]'}`} />
+            <div className={`w-3 h-3 rounded-full shadow-2xs shrink-0 ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#182A42]'}`} />
             <div>
               <span className="font-bold text-slate-900">{getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}</span>
               {activeEvent.eventTime && <span className="text-slate-500 text-xs ml-2">({activeEvent.eventTime})</span>}
@@ -1302,7 +1386,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               )}
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-left sm:text-right pl-5 sm:pl-0">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mr-1.5">Event start date</span>
               <span className={`font-mono font-bold ${countdown.isOverdue ? 'text-rose-700' : 'text-slate-900'}`}>
