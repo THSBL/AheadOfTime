@@ -177,7 +177,20 @@ export const RecurringUserLanding: React.FC = () => {
       navigate('/dashboard');
     });
 
-  const goToNewEvent = () => navigateAfterSelect(2, () => navigate('/events/new'));
+  const goToNewEvent = () =>
+    navigateAfterSelect(2, () => {
+      // Lands on the Create New Event tab (freeform input + presets), not
+      // /events/new's ManualEventModal wizard - that modal is what the
+      // header's own "+" button opens for a quick guided add, but "Plan
+      // Something New" here is meant to match MyWeekAhead's own "Plan
+      // something new" ghost button, which already opens this same tab.
+      try {
+        sessionStorage.setItem(OPEN_TAB_KEY, 'chat');
+      } catch {
+        // Falls back to the default tab (My Week Ahead) - still lands in the app.
+      }
+      navigate('/dashboard');
+    });
 
   const stripeOneStyle = STRIPE_ONE_STYLES[stripeOne.level];
 

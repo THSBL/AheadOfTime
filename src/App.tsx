@@ -270,7 +270,9 @@ function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'feed' | 'chat' | 'tasks'>(() => {
     // RecurringUserLanding's "NEXT 30 DAYS" stripe wants to land on the
-    // Timeline & Tasks tab specifically, but activeTab has no URL
+    // Timeline & Tasks tab, and "Plan Something New" wants the Create New
+    // Event tab (the freeform input + presets, not the ManualEventModal
+    // wizard the header's own "+" button opens) - but activeTab has no URL
     // representation of its own. Follows the exact same "set a flag before
     // navigating, consume it once on mount" convention already used for
     // aot_open_scan_modal (see OnboardingPage.tsx / the scan-trigger effect
@@ -278,9 +280,10 @@ function App() {
     // synchronously here (not in an effect) so the very first paint already
     // lands on the right tab instead of flashing 'feed' then swapping.
     try {
-      if (sessionStorage.getItem('aot_open_tab') === 'tasks') {
+      const requested = sessionStorage.getItem('aot_open_tab');
+      if (requested === 'tasks' || requested === 'chat') {
         sessionStorage.removeItem('aot_open_tab');
-        return 'tasks';
+        return requested;
       }
     } catch {
       // Fall through to the default tab.
