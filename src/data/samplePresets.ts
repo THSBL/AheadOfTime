@@ -270,15 +270,19 @@ export function getCategorizedPresets(profile?: Partial<OnboardingProfile> | nul
     PRESET_TRIP,
   ];
 
-  // Rule B: Retain Work / Projects for Mixed or Business
-  if (hasProject) {
-    primary.push(PRESET_WORK_PROJECTS);
-  }
-
-  // Rule A: Kids Profiling (Inject into primary when family with kids)
+  // Rule A: Kids Profiling (Inject into primary when family with kids) -
+  // added right after the even-numbered baseline (and before Work /
+  // Projects) so the two Kids presets always land on the same row in the
+  // 2-column grid, instead of Kids: Hobbies dangling alone on its own row
+  // when Work / Projects sat between them.
   if (hasKids) {
     primary.push(PRESET_KIDS_SCHOOL);
     primary.push(PRESET_KIDS_HOBBIES);
+  }
+
+  // Rule B: Retain Work / Projects for Mixed or Business
+  if (hasProject) {
+    primary.push(PRESET_WORK_PROJECTS);
   }
 
   let secondary: PromptPreset[] = [];

@@ -663,6 +663,84 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
 }) => {
   return (
     <div className="space-y-6">
+      {/* Freeform input - moved above the preset catalogue: it's the
+          fastest path for anyone who already knows what they want to
+          type, so it shouldn't be buried below a full grid of presets. */}
+      <div className="relative z-30 space-y-2">
+        <form
+          onSubmit={handleFreeformSubmit}
+          className={`relative isolate z-30 flex items-end gap-2 p-3 sm:p-4 transition-all duration-300 ${
+            isInputFocused
+              ? 'bg-white rounded-[28px] border-2 border-slate-900 ring-4 ring-sky-100 shadow-md'
+              : 'bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm'
+          }`}
+        >
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onFocus={() => {
+                setIsInputFocused(true);
+                onFocusChange?.(true);
+              }}
+              onBlur={() => {
+                setIsInputFocused(false);
+                onFocusChange?.(false);
+              }}
+              placeholder="e.g. Dinner party with 8 friends next Saturday at 7 PM in Brooklyn..."
+              className="w-full bg-transparent border-none outline-none focus:outline-none text-sm sm:text-base py-1 px-1 min-h-[50px] max-h-36 resize-none placeholder:text-slate-400 font-sans"
+              rows={2}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleFreeformSubmit(e);
+                }
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 pb-0.5">
+            {!inputText && (
+              <button
+                type="button"
+                onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
+                  isRecording ? 'bg-[#182A42] text-white animate-pulse' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-900 bg-slate-50'
+                }`}
+                title="Voice Memo Recording"
+              >
+                {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            )}
+
+            <button
+              type="submit"
+              disabled={!inputText.trim() || isLoading}
+              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
+                inputText.trim()
+                  ? 'bg-[#182A42] text-white shadow-md shadow-slate-900/20 active:scale-95 hover:bg-slate-800'
+                  : 'bg-slate-100 text-slate-400 opacity-50 cursor-not-allowed'
+              }`}
+              title="Send Event"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Divider - sits between the freeform input above and the preset
+          catalogue below. */}
+      <div className="relative flex items-center justify-center py-1">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-slate-200/80" />
+        </div>
+        <div className="relative bg-white border border-slate-200/90 px-4 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider rounded-full shadow-2xs flex items-center gap-1.5">
+          <span>Or use a template</span>
+        </div>
+      </div>
+
       {/* Dual Track Navigation Bar: Core Presets vs. My Saved Presets + Import Button */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pb-1">
         <div className="flex items-center gap-1.5 p-1 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-2xs">
@@ -763,36 +841,33 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             })}
           </div>
 
-          {/* Secondary Presets Row (e.g. Subscription, Maintenance in Mixed/Business) */}
+          {/* Secondary Presets Row (e.g. Subscription, Maintenance in
+              Mixed/Business) - deliberately smaller/lighter than the
+              primary grid above: no description, smaller icon and text,
+              since these are lower-priority utility presets rather than
+              the main event types. */}
           {secondaryPresets && secondaryPresets.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 pt-1">
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 pt-1">
               {secondaryPresets.map((preset: PromptPreset) => {
                 const isSelected = preset.id === selectedPresetId;
                 return (
                 <button
                   key={preset.id}
                   onClick={() => handleSelectPreset(preset)}
-                  className={`group relative text-left p-2.5 sm:p-3.5 rounded-2xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2 sm:gap-3 ${
+                  className={`group relative text-left p-2 rounded-xl bg-white/95 border shadow-2xs hover:border-slate-800 hover:shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center gap-2 ${
                     isSelected ? 'border-[#182A42] ring-2 ring-[#182A42]/20' : 'border-slate-200/80'
                   }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-slate-100 text-base sm:text-xl flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
-                      {preset.emoji}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate">
-                        {preset.title}
-                      </h4>
-                      <p className="hidden sm:block text-[11px] text-slate-500 font-normal truncate mt-0.5">
-                        {preset.description}
-                      </p>
-                    </div>
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 rounded-lg bg-slate-100 text-sm sm:text-base flex items-center justify-center group-hover:scale-105 group-hover:bg-slate-200 transition-all">
+                    {preset.emoji}
                   </div>
-                  <div className={`w-5 h-5 sm:w-6 sm:h-6 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                  <h4 className="text-[11px] sm:text-xs font-black text-slate-900 group-hover:text-slate-900 transition-colors truncate flex-1 min-w-0">
+                    {preset.title}
+                  </h4>
+                  <div className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 rounded-full flex items-center justify-center transition-colors ${
                     isSelected ? 'bg-[#182A42] text-white' : 'bg-slate-50 group-hover:bg-[#182A42] group-hover:text-white text-slate-400'
                   }`}>
-                    {isSelected ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                    {isSelected ? <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <ChevronRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
                   </div>
                 </button>
                 );
@@ -801,79 +876,6 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
           )}
         </div>
       )}
-
-      <div className="relative flex items-center justify-center py-1">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-slate-200/80" />
-        </div>
-        <div className="relative bg-white border border-slate-200/90 px-4 py-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider rounded-full shadow-2xs flex items-center gap-1.5">
-          <span>Or describe your event below</span>
-        </div>
-      </div>
-
-      <div className="relative z-30 space-y-2">
-        <form
-          onSubmit={handleFreeformSubmit}
-          className={`relative isolate z-30 flex items-end gap-2 p-3 sm:p-4 transition-all duration-300 ${
-            isInputFocused 
-              ? 'bg-white rounded-[28px] border-2 border-slate-900 ring-4 ring-sky-100 shadow-md' 
-              : 'bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm'
-          }`}
-        >
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onFocus={() => {
-                setIsInputFocused(true);
-                onFocusChange?.(true);
-              }}
-              onBlur={() => {
-                setIsInputFocused(false);
-                onFocusChange?.(false);
-              }}
-              placeholder="e.g. Dinner party with 8 friends next Saturday at 7 PM in Brooklyn..."
-              className="w-full bg-transparent border-none outline-none focus:outline-none text-sm sm:text-base py-1 px-1 min-h-[50px] max-h-36 resize-none placeholder:text-slate-400 font-sans"
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleFreeformSubmit(e);
-                }
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 pb-0.5">
-            {!inputText && (
-              <button
-                type="button"
-                onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
-                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
-                  isRecording ? 'bg-[#182A42] text-white animate-pulse' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-900 bg-slate-50'
-                }`}
-                title="Voice Memo Recording"
-              >
-                {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </button>
-            )}
-
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isLoading}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
-                inputText.trim() 
-                  ? 'bg-[#182A42] text-white shadow-md shadow-slate-900/20 active:scale-95 hover:bg-slate-800' 
-                  : 'bg-slate-100 text-slate-400 opacity-50 cursor-not-allowed'
-              }`}
-              title="Send Event"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 };

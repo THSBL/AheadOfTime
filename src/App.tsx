@@ -1794,7 +1794,7 @@ function App() {
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5 text-sky-700" />
-                  <span>Presets &amp; New Event</span>
+                  <span>Create New Event</span>
                 </button>
               </div>
 
