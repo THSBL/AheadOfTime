@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, ListChecks, MapPin, ChevronRight, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import { Logo } from './Logo';
@@ -13,6 +13,7 @@ import {
 } from '../services/googleAuth';
 import { fetchPrimaryCalendarProfile, GoogleCalendarProfile } from '../services/googleCalendar';
 import { computeStripeOneStatus, computeStripeTwoCopy, StripeOneLevel } from '../utils/recurringLandingCopy';
+import { buildRoadStripeClipPath, ROAD_STRIPE_SHAPES } from '../utils/roadStripeShape';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
 
 // ---------------------------------------------------------------------------
@@ -213,9 +214,11 @@ export const RecurringUserLanding: React.FC = () => {
 
         {/* The three road stripes - decorative during the intro, real
             clickable navigation once settled. Increasing horizontal margin
-            per stripe (widest/closest last) plus a trapezoid clip-path (see
-            .aot-road-stripe-* in index.css, applied at every width now, not
-            just sm+) recreate the logo's receding-road perspective. */}
+            per stripe (widest/closest last) plus a rounded, gently-bowed
+            trapezoid clip-path (see roadStripeShape.ts - measured from each
+            button's real size via ResizeObserver so the curve/corners stay
+            correct at any width) recreate the logo's receding-road
+            perspective as one flowing shape instead of a plain rectangle. */}
         <nav
           aria-label="Quick navigation"
           className="mt-8 sm:mt-10 w-full max-w-xl flex flex-col gap-2 sm:gap-3"
@@ -223,7 +226,7 @@ export const RecurringUserLanding: React.FC = () => {
           <StripeButton
             index={0}
             marginClassName="mx-10 sm:mx-16"
-            clipClassName="aot-road-stripe-1"
+            shapeIndex={0}
             colorClassName={`${stripeOneStyle.bg} ${stripeOneStyle.border}`}
             barColorClassName={stripeOneStyle.dot}
             mounted={mounted}
@@ -246,7 +249,7 @@ export const RecurringUserLanding: React.FC = () => {
           <StripeButton
             index={1}
             marginClassName="mx-5 sm:mx-8"
-            clipClassName="aot-road-stripe-2"
+            shapeIndex={1}
             colorClassName="bg-white border-slate-200"
             barColorClassName="bg-[#447463]"
             mounted={mounted}
@@ -269,7 +272,7 @@ export const RecurringUserLanding: React.FC = () => {
           <StripeButton
             index={2}
             marginClassName="mx-0"
-            clipClassName="aot-road-stripe-3"
+            shapeIndex={2}
             colorClassName="bg-white border-[#EE9F2A]/40"
             barColorClassName="bg-[#EE9F2A]"
             mounted={mounted}
@@ -419,7 +422,7 @@ const CalendarConnectionFooter: React.FC = () => {
 interface StripeButtonProps {
   index: number;
   marginClassName: string;
-  clipClassName: string;
+  shapeIndex: number;
   colorClassName: string;
   barColorClassName: string;
   mounted: boolean;
@@ -441,7 +444,7 @@ interface StripeButtonProps {
 
 const StripeButton: React.FC<StripeButtonProps> = ({
   marginClassName,
-  clipClassName,
+  shapeIndex,
   colorClassName,
   barColorClassName,
   mounted,
@@ -460,6 +463,27 @@ const StripeButton: React.FC<StripeButtonProps> = ({
   contentClassName,
   ariaLabel,
 }) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [clipPath, setClipPath] = useState<string>('none');
+
+  // Measured in real px (not a percentage-based CSS clip-path) so the
+  // trapezoid can have rounded, gently-bowed edges that stay correct at any
+  // button width instead of a fixed set of breakpoint values - see
+  // roadStripeShape.ts for why a static polygon() couldn't do this.
+  useEffect(() => {
+    const el = buttonRef.current;
+    if (!el) return;
+    const shape = ROAD_STRIPE_SHAPES[shapeIndex];
+    const apply = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setClipPath(buildRoadStripeClipPath(width, height, shape));
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [shapeIndex]);
+
   return (
     <div
       className={`${marginClassName} transition-[opacity,transform] duration-300 ease-out ${
@@ -468,19 +492,20 @@ const StripeButton: React.FC<StripeButtonProps> = ({
       style={{ transitionDelay: `${buildDelay}ms` }}
     >
       <button
+        ref={buttonRef}
         type="button"
         onClick={isInteractive ? onClick : undefined}
         aria-disabled={!isInteractive}
         tabIndex={isInteractive ? 0 : -1}
         aria-label={ariaLabel}
+        style={{ clipPath }}
         className={[
-          'relative w-full rounded-2xl border text-left overflow-hidden',
+          'relative w-full border text-left overflow-hidden',
           'transition-[colors,transform,opacity] duration-300 ease-out',
           isInteractive ? 'cursor-pointer hover:scale-[1.015] hover:brightness-[0.97] active:scale-[0.99]' : 'cursor-default',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70',
           isSelected ? 'scale-[1.02] shadow-lg' : '',
           isDimmed ? 'opacity-40 scale-[0.98]' : '',
-          clipClassName,
           colorClassName,
         ].join(' ')}
       >

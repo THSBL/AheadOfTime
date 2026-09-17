@@ -164,34 +164,9 @@
   @apply bg-slate-50/70 text-slate-800 border border-slate-100;
 }
 
-/* "The Road Ahead" recurring-user landing (RecurringUserLanding.tsx) - a
-   trapezoid clip on each of the 3 stripe-nav buttons, recreating the
-   receding-road perspective from the app's own logo (narrower/farther at
-   top, wider/closer at bottom). Applied at every width, not just sm+ -
-   without it every stripe reads as a plain rounded rectangle and the "road"
-   idea disappears entirely on mobile. The base (mobile) insets are much
-   smaller than the sm+ ones purely for text/icon safety: at ~375px width a
-   button has far less absolute pixel margin before the diagonal cuts into
-   the icon circle's left padding, so mobile gets a subtle taper and sm+
-   gets the fuller perspective. */
-.aot-road-stripe-1 {
-  clip-path: polygon(4% 0%, 96% 0%, 100% 100%, 0% 100%);
-}
-.aot-road-stripe-2 {
-  clip-path: polygon(2.5% 0%, 97.5% 0%, 100% 100%, 0% 100%);
-}
-.aot-road-stripe-3 {
-  clip-path: polygon(1% 0%, 99% 0%, 100% 100%, 0% 100%);
-}
-@media (min-width: 640px) {
-  .aot-road-stripe-1 {
-    clip-path: polygon(11% 0%, 89% 0%, 100% 100%, 0% 100%);
-  }
-  .aot-road-stripe-2 {
-    clip-path: polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%);
-  }
-  .aot-road-stripe-3 {
-    clip-path: polygon(2% 0%, 98% 0%, 100% 100%, 0% 100%);
-  }
-}
+/* "The Road Ahead" recurring-user landing (RecurringUserLanding.tsx) - the
+   3 stripe-nav buttons' trapezoid shape is computed at runtime from each
+   button's measured size (see src/utils/roadStripeShape.ts), not a static
+   clip-path here, so their edges can be rounded and gently bowed instead of
+   a plain rectangle or a hard diagonal cut. */
 

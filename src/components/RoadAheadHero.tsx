@@ -37,17 +37,40 @@ interface RoadAheadHeroProps {
   className?: string;
 }
 
-// 8 grid squares (not 9) in a 3-3-2 layout - the bottom-right slot is left
-// empty on purpose so the pin below can occupy it without overlapping a
-// square's corner. The source app-icon PNG does overlap the pin over the
-// grid, but recreated at this size that overlap reads as visual noise/an
-// unclear edge rather than an intentional marker - leaving the slot empty
-// keeps the "pin marks a date on the calendar" idea without the mud.
+// Calendar card geometry - kept as named constants (not magic numbers
+// scattered through the JSX) because the grid, tabs and pin all have to
+// line up against the SAME rect, and previous revisions of this file broke
+// that alignment twice (grid squares poking out past the white outline's
+// own inner edge; the pin overlapping grid squares) by tweaking one part's
+// numbers without re-checking the others against it.
+const CAL_X = 40;
+const CAL_Y = 46;
+const CAL_W = 120;
+const CAL_H = 92;
+const CAL_RX = 16;
+const CAL_STROKE = 9;
+
+// Full 3x3 grid, sized and positioned to stay strictly inside the calendar
+// outline's own INNER edge - the outline is a 9px stroke centered on the
+// rect boundary, so "inside the rect" isn't the same as "inside the visible
+// white line". A previous revision's bottom row extended past the stroke's
+// inner edge and rendered as green poking out from under the white border;
+// this grid leaves a >=2.5px margin on every side of the interior instead.
+const GRID_SQUARE = 20;
 const GRID_SQUARES: Array<{ x: number; y: number }> = [
-  { x: 60, y: 68 }, { x: 92, y: 68 }, { x: 124, y: 68 },
-  { x: 60, y: 100 }, { x: 92, y: 100 }, { x: 124, y: 100 },
-  { x: 60, y: 132 }, { x: 92, y: 132 },
+  { x: 61, y: 53 }, { x: 90, y: 53 }, { x: 119, y: 53 },
+  { x: 61, y: 82 }, { x: 90, y: 82 }, { x: 119, y: 82 },
+  { x: 61, y: 111 }, { x: 90, y: 111 }, { x: 119, y: 111 },
 ];
+
+// Pin center/scale - placed BELOW the calendar card entirely (not
+// overlapping its border or any grid square) with a clear gap on both
+// sides, unlike the source PNG where the pin overlaps the bottom-right of
+// the grid. That overlap reads fine at app-icon size; recreated bigger here
+// it read as visual noise, so the pin gets its own clear space instead.
+const PIN_CENTER_X = 100;
+const PIN_CENTER_Y = 163;
+const PIN_SCALE = 0.62;
 
 /**
  * Recreation of the navy-badge calendar+pin mark from
@@ -62,7 +85,7 @@ const GRID_SQUARES: Array<{ x: number; y: number }> = [
  * The three road stripes themselves are NOT part of this badge - in the
  * source logo they sit below/outside the navy square, and here they double
  * as the real stripe-nav buttons, so RecurringUserLanding renders those
- * separately (see ROAD_STRIPES) rather than nesting them in this SVG.
+ * separately rather than nesting them in this SVG.
  */
 export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMotion = false, className = '' }) => {
   const reached = (target: IntroPhase) => reducedMotion || phaseAtLeast(phase, target);
@@ -79,15 +102,18 @@ export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMoti
           (drop-shadow alone barely shows up on a same-color background). */}
       <rect x={0} y={0} width={200} height={200} rx={40} fill={NAVY} stroke="rgba(255,255,255,0.12)" strokeWidth={1.5} />
 
-      {/* Binding-ring tabs - pop in right as the calendar outline finishes drawing */}
-      {[72, 114].map((tabX, i) => (
+      {/* Binding-ring tabs - stop right at the calendar's own top edge so
+          they read as rings piercing the binding, not as shapes floating
+          into the grid below. Pop in as the calendar outline finishes
+          drawing. */}
+      {[CAL_X + CAL_W * 0.25 - 7, CAL_X + CAL_W * 0.75 - 7].map((tabX, i) => (
         <motion.rect
           key={`tab-${i}`}
           x={tabX}
-          y={34}
+          y={32}
           width={14}
-          height={28}
-          rx={7}
+          height={16}
+          rx={6}
           fill="#FFFFFF"
           style={{ originX: 0.5, originY: 1 }}
           initial={{ scaleY: 0, opacity: 0 }}
@@ -98,14 +124,14 @@ export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMoti
 
       {/* Calendar outline - stroke path-draw via pathLength, not a fade */}
       <motion.rect
-        x={44}
-        y={52}
-        width={112}
-        height={104}
-        rx={16}
+        x={CAL_X}
+        y={CAL_Y}
+        width={CAL_W}
+        height={CAL_H}
+        rx={CAL_RX}
         fill="none"
         stroke="#FFFFFF"
-        strokeWidth={9}
+        strokeWidth={CAL_STROKE}
         strokeLinecap="round"
         strokeLinejoin="round"
         initial={{ pathLength: 0 }}
@@ -113,9 +139,7 @@ export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMoti
         transition={reducedMotion ? { duration: 0 } : { duration: 0.4, ease: 'easeInOut' }}
       />
 
-      {/* Mint grid - 8 squares, 3/3/2 - see GRID_SQUARES for why the 9th
-          (bottom-right) slot is left open for the pin. Each square pops
-          0 -> ~115% -> 100% in sequence. */}
+      {/* Mint grid - each square pops 0 -> ~115% -> 100% in sequence. */}
       {GRID_SQUARES.map(({ x, y }, i) => {
         const delay = reducedMotion ? 0 : i * (0.35 / GRID_SQUARES.length);
         return (
@@ -123,8 +147,8 @@ export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMoti
             key={`sq-${i}`}
             x={x}
             y={y}
-            width={22}
-            height={22}
+            width={GRID_SQUARE}
+            height={GRID_SQUARE}
             rx={5}
             fill={MINT}
             style={{ originX: 0.5, originY: 0.5 }}
@@ -140,11 +164,10 @@ export const RoadAheadHero: React.FC<RoadAheadHeroProps> = ({ phase, reducedMoti
       })}
 
       {/* Orange pin - "the hero moment": drops from above, overshoots,
-          bounces back, and settles into the empty bottom-right grid slot,
-          hanging slightly below the calendar's own bottom edge (matching
-          the source logo) without covering any square. A drop-shadow keeps
-          it visually "lifted" above the grid instead of looking pasted on. */}
-      <g transform="translate(148,146)">
+          bounces back, and settles just below the calendar card, clear of
+          its border and every grid square. A drop-shadow keeps it visually
+          "lifted" rather than pasted flat onto the badge. */}
+      <g transform={`translate(${PIN_CENTER_X},${PIN_CENTER_Y}) scale(${PIN_SCALE})`}>
         <motion.g
           style={{ filter: 'drop-shadow(0px 3px 3px rgba(0,0,0,0.35))' }}
           initial={{ y: -90, opacity: 0 }}
