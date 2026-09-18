@@ -46,7 +46,7 @@ import {
   generateConcreteEventMilestones,
 } from '../utils/creationStateMachine';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
-import { finalizeMilestonePlan } from '../utils/tminusRules';
+import { finalizeMilestonePlan, preserveCompletedMilestones } from '../utils/tminusRules';
 
 // Looked up by each RefinementQuestion's iconKey (creationStateMachine.ts) -
 // gives every question card a distinct visual anchor instead of an
@@ -208,10 +208,10 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
   // the preview screen added a click with no real decision to make, since
   // there was nothing to edit there that wasn't already set in Step 2.
   // -------------------------------------------------------------
-  const handleGenerateMilestones = () => {
+  const handleGenerateMilestones = async () => {
     setIsSaving(true);
     try {
-      handleBuildAndSave();
+      await handleBuildAndSave();
     } catch (err) {
       // A throw anywhere in this chain (e.g. an unexpected data shape from
       // a merged AI-refined event) used to leave the button stuck on
@@ -222,31 +222,124 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
     }
   };
 
-  const handleBuildAndSave = () => {
+  // Human-readable summary of whichever chip answers are actually set, for
+  // the smart refine path below (e.g. "Lodging & Stay = Hotel booked &
+  // confirmed; Transport Mode = Train / Rail tickets"). Empty when nothing
+  // has been answered yet, in which case there's nothing new to reconsider.
+  const buildAnswersSummary = (): string => {
+    const qs = CATEGORY_REFINEMENT_QUESTIONS[selectedCategory] || [];
+    const parts = qs
+      .map((q) => {
+        const answers = refinementAnswers[q.id];
+        if (!answers || answers.length === 0) return null;
+        return `${q.label} = ${answers.join(', ')}`;
+      })
+      .filter((s): s is string => Boolean(s));
+    return parts.length > 0 ? `Updated event details via the manual editor: ${parts.join('; ')}.` : '';
+  };
+
+  const handleBuildAndSave = async () => {
     const eventId = initialEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const freshMilestones = generateConcreteEventMilestones(
-      title,
-      targetDate,
-      targetTime,
-      selectedCategory,
-      refinementAnswers,
-      eventId
-    );
-
-    // Refining an existing event (opened via "Refine") regenerates from the
-    // category-question template alone, which has no representation for
-    // milestones the AI derived from free text (an approval gate, a
-    // specific narrative detail) - blindly replacing wiped those out
-    // entirely. Merge fresh + existing and let the quality guardrail
-    // collapse anything that just restates the same task.
-    const mergedMilestones = initialEvent?.milestones?.length
-      ? finalizeMilestonePlan(
-          [...initialEvent.milestones, ...freshMilestones],
-          { title, location, context: { ...(initialEvent.context || {}), canonicalCategory: selectedCategory } }
-        )
-      : freshMilestones;
-
     const catDef = CANONICAL_CATEGORIES.find((c) => c.id === selectedCategory);
+    const internalCategory = catDef ? catDef.internalCategory : 'birthday_party';
+
+    const buildFallbackFreshMilestones = (): TMinusMilestone[] =>
+      generateConcreteEventMilestones(title, targetDate, targetTime, selectedCategory, refinementAnswers, eventId);
+
+    // Refining an existing event (opened via "Refine") used to always
+    // regenerate from the category-question template alone, which has no
+    // representation for milestones the AI derived from free text (an
+    // approval gate, a specific narrative detail) - blindly replacing wiped
+    // those out entirely. Merge fresh + existing and let the quality
+    // guardrail collapse anything that just restates the same task. This is
+    // also the fallback used below when the smart path fails or there's no
+    // GEMINI_API_KEY - never worse than before this change.
+    const buildFallbackMergedMilestones = (freshMilestones: TMinusMilestone[]): TMinusMilestone[] =>
+      initialEvent?.milestones?.length
+        ? finalizeMilestonePlan(
+            [...initialEvent.milestones, ...freshMilestones],
+            { title, location, context: { ...(initialEvent.context || {}), canonicalCategory: selectedCategory } }
+          )
+        : freshMilestones;
+
+    let mergedMilestones: TMinusMilestone[];
+
+    if (!initialEvent) {
+      // Brand-new event, no existing state to lose - a fresh-generate
+      // Gemini call is the right shape here, the same endpoint the
+      // "Deep Refine" feature already uses successfully elsewhere.
+      const draftEvent: CalendarEvent = {
+        id: eventId,
+        title: title.trim(),
+        eventDate: targetDate,
+        eventTime: targetTime,
+        category: internalCategory,
+        location: location.trim() || undefined,
+        status: 'milestones_active',
+        context: { canonicalCategory: selectedCategory, refinementAnswers },
+        milestones: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        const res = await fetch('/api/event/deep-refine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: draftEvent }),
+        });
+        if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+        const data = await res.json();
+        if (!data?.event?.milestones?.length) throw new Error('Empty milestone plan returned');
+        // deep-refine's own local fallback (no GEMINI_API_KEY, or a failed
+        // call) still returns 200 OK with a non-empty plan - but it has no
+        // idea about this wizard's chip answers, so its generic checklist
+        // is actually worse than this file's own answer-aware generator for
+        // this specific call site. Only trust it when Gemini genuinely ran.
+        if (data.usedAi === false) throw new Error('Deep-refine used its generic local fallback, not Gemini');
+        mergedMilestones = finalizeMilestonePlan(data.event.milestones, { title, location, context: draftEvent.context });
+      } catch (err) {
+        console.warn('Smart milestone build notice, using local template:', err);
+        mergedMilestones = buildFallbackFreshMilestones();
+      }
+    } else {
+      const answersSummary = buildAnswersSummary();
+      if (!answersSummary) {
+        mergedMilestones = buildFallbackMergedMilestones(buildFallbackFreshMilestones());
+      } else {
+        // Pre-apply the new category/title/date/etc to the event sent up,
+        // same reasoning as the Edit Event Details fix: confirmed live that
+        // the deterministic fallback's category detection anchors to the
+        // SENT event's existing category first, so a message merely
+        // describing a category change never actually flips it there.
+        const draftExistingEvent: CalendarEvent = {
+          ...initialEvent,
+          title: title.trim(),
+          category: internalCategory,
+          eventDate: targetDate,
+          eventTime: targetTime,
+          location: location.trim() || undefined,
+        };
+        try {
+          const res = await fetch('/api/agent/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: answersSummary,
+              currentReferenceDate: new Date().toISOString(),
+              activeEvents: [draftExistingEvent],
+              targetEventId: initialEvent.id,
+            }),
+          });
+          if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+          const data = await res.json();
+          if (!data?.event?.milestones?.length) throw new Error('Empty milestone plan returned');
+          mergedMilestones = preserveCompletedMilestones(initialEvent.milestones || [], data.event.milestones, initialEvent.title);
+        } catch (err) {
+          console.warn('Smart refine notice, using local template merge:', err);
+          mergedMilestones = buildFallbackMergedMilestones(buildFallbackFreshMilestones());
+        }
+      }
+    }
 
     // Re-bind milestones with the final eventId
     const finalizedMilestones: TMinusMilestone[] = mergedMilestones.map((m, idx) => ({
@@ -276,8 +369,12 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
       // This wizard has no UI to set/edit a trip's end date, so silently
       // dropped it on every save when refining a multi-day event (a
       // Telegram-created trip, for example) - preserve whatever was
-      // already there instead of discarding it.
-      endDate: initialEvent?.endDate,
+      // already there instead of discarding it. Only keep it if it's still
+      // a real range against whatever the date field was just changed to -
+      // same fix as Edit Event Details, for the same reason (confirmed live
+      // there: moving the date forward otherwise left a stale end-before-
+      // start range).
+      endDate: initialEvent?.endDate && initialEvent.endDate > targetDate ? initialEvent.endDate : undefined,
       eventTime: targetTime,
       category: catDef ? catDef.internalCategory : 'birthday_party',
       location: location.trim() || undefined,

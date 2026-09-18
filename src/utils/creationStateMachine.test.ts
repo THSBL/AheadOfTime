@@ -54,3 +54,68 @@ describe('generateConcreteEventMilestones - post-event follow-ups', () => {
     expect(postLaunch).toBeDefined();
   });
 });
+
+// Regression coverage for a real, confirmed bug: the 'trip' category's 3
+// chip questions (Lodging, Transport Mode, Activities & Gear) used to have
+// zero effect on the generated milestones - picking "Train" vs "Flight", or
+// flagging a passport check, changed nothing about the output.
+describe('generateConcreteEventMilestones - trip category actually reads its chip answers', () => {
+  const allDeliverableTitles = (milestones: ReturnType<typeof generateConcreteEventMilestones>) =>
+    milestones.flatMap((m) => (m.deliverables || []).map((d) => d.title));
+
+  it('defaults to a flight-oriented booking task and no passport check when nothing has been answered', () => {
+    const milestones = generateConcreteEventMilestones('Trip to Rome', '2026-10-15', '19:00', 'trip', {}, 'evt-default');
+    const titles = allDeliverableTitles(milestones);
+    expect(titles.some((t) => /flight/i.test(t))).toBe(true);
+    expect(titles.some((t) => /passport/i.test(t))).toBe(false);
+  });
+
+  it('books train tickets instead of flights when Train / Rail is selected', () => {
+    const milestones = generateConcreteEventMilestones(
+      'Trip to Rome', '2026-10-15', '19:00', 'trip',
+      { transport: ['Train / Rail tickets'] }, 'evt-train'
+    );
+    const titles = allDeliverableTitles(milestones);
+    expect(titles.some((t) => /train/i.test(t))).toBe(true);
+    expect(titles.some((t) => /flight/i.test(t))).toBe(false);
+  });
+
+  it('plans a driving route instead of flights when Road trip / Personal car is selected', () => {
+    const milestones = generateConcreteEventMilestones(
+      'Trip to Rome', '2026-10-15', '19:00', 'trip',
+      { transport: ['Road trip / Personal car'] }, 'evt-roadtrip'
+    );
+    const titles = allDeliverableTitles(milestones);
+    expect(titles.some((t) => /driving route/i.test(t))).toBe(true);
+    expect(titles.some((t) => /flight/i.test(t))).toBe(false);
+  });
+
+  it('adds a rental car deliverable alongside flights when both are selected (multi-select)', () => {
+    const milestones = generateConcreteEventMilestones(
+      'Trip to Rome', '2026-10-15', '19:00', 'trip',
+      { transport: ['Flight & boarding passes', 'Rental car needed'] }, 'evt-flight-rental'
+    );
+    const titles = allDeliverableTitles(milestones);
+    expect(titles.some((t) => /flight/i.test(t))).toBe(true);
+    expect(titles.some((t) => /rental car/i.test(t))).toBe(true);
+  });
+
+  it('drops the hotel/Airbnb booking deliverable when staying with friends or family', () => {
+    const milestones = generateConcreteEventMilestones(
+      'Trip to Rome', '2026-10-15', '19:00', 'trip',
+      { lodging: ['Staying with friends / family'] }, 'evt-staying-with-friends'
+    );
+    const titles = allDeliverableTitles(milestones);
+    expect(titles.some((t) => /hotel or airbnb/i.test(t))).toBe(false);
+    expect(milestones.some((m) => m.title === 'Travel Booked')).toBe(true);
+  });
+
+  it('includes the passport/visa check only when that chip is actually selected', () => {
+    const milestones = generateConcreteEventMilestones(
+      'Trip to Rome', '2026-10-15', '19:00', 'trip',
+      { activities: ['Passport validity & visa check'] }, 'evt-passport'
+    );
+    const titles = allDeliverableTitles(milestones);
+    expect(titles.some((t) => /passport/i.test(t))).toBe(true);
+  });
+});

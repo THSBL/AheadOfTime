@@ -1406,33 +1406,81 @@ export function generateConcreteEventMilestones(
 
     // TRIP & TRAVEL (Auxiliary)
     case 'trip': {
-      milestones.push(
-        createMilestone(
-          'T-30d',
-          -30 * 24 * 60,
-          'Flights & Accommodations Locked',
-          'booking',
-          'Secure primary accommodations and transit tickets.',
-          [
-            { title: 'Confirm hotel or Airbnb booking & archive voucher', type: 'booking' },
-            { title: 'Book flight / train tickets and select seats', type: 'booking' },
-          ]
-        )
-      );
+      // This category's 3 chip questions (Lodging, Transport Mode,
+      // Activities & Gear) used to have zero effect on the generated
+      // milestones - every trip got the identical fixed checklist
+      // regardless of picking "Flight" vs "Train" or flagging a passport
+      // check. Read the actual answers, same as every other category here.
+      const lodgingAnswers = extractAnswerList(answers.lodging);
+      const transportAnswers = extractAnswerList(answers.transport);
+      const activityAnswers = extractAnswerList(answers.activities);
 
-      milestones.push(
-        createMilestone(
-          'T-14d',
-          -14 * 24 * 60,
-          'Passports & Key Activities Confirmed',
-          'booking',
-          'Verify official travel credentials and book limited excursion slots.',
-          [
-            { title: 'Check passport 6-month validity & travel insurance', type: 'document' },
-            { title: 'Book high-demand museum, tour, or dinner reservations', type: 'booking' },
-          ]
-        )
-      );
+      const stayingWithFriends = lodgingAnswers.some((a) => /friends|family/i.test(a));
+      const wantsTrain = transportAnswers.some((a) => /train|rail/i.test(a));
+      const wantsRoadTrip = transportAnswers.some((a) => /road trip|personal car/i.test(a));
+      const wantsRentalCar = transportAnswers.some((a) => /rental car/i.test(a));
+      // Flight is the sensible default when the question hasn't been
+      // answered yet at all (matches the original always-on behavior);
+      // once ANY transport mode is explicitly chosen, only build what was
+      // actually asked for instead of assuming flight on top of it.
+      const wantsFlight = transportAnswers.length === 0 || transportAnswers.some((a) => /flight/i.test(a));
+      // Unlike transport, there's no sensible default here - a passport/
+      // visa reminder is destination-dependent, so only include it when the
+      // user actually flagged it, exactly like every opt-in chip elsewhere
+      // in this file (a gift chip, a gear chip, etc. never default to "on").
+      const wantsPassportCheck = activityAnswers.some((a) => /passport|visa/i.test(a));
+      const wantsExcursions = activityAnswers.length === 0 || activityAnswers.some((a) => /excursion|tour/i.test(a));
+
+      const bookingDeliverables: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [];
+      if (!stayingWithFriends) {
+        bookingDeliverables.push({ title: 'Confirm hotel or Airbnb booking & archive voucher', type: 'booking' });
+      }
+      if (wantsTrain) {
+        bookingDeliverables.push({ title: 'Book train / rail tickets and reserve seats', type: 'booking' });
+      } else if (wantsRoadTrip) {
+        bookingDeliverables.push({ title: 'Plan driving route & book overnight stops', type: 'coordination' });
+      } else if (wantsFlight) {
+        bookingDeliverables.push({ title: 'Book flight tickets and select seats', type: 'booking' });
+      }
+      if (wantsRentalCar) {
+        bookingDeliverables.push({ title: 'Reserve rental car & confirm pickup location', type: 'booking' });
+      }
+      if (bookingDeliverables.length > 0) {
+        milestones.push(
+          createMilestone(
+            'T-30d',
+            -30 * 24 * 60,
+            stayingWithFriends ? 'Travel Booked' : 'Flights & Accommodations Locked',
+            'booking',
+            stayingWithFriends
+              ? 'Secure transit tickets - lodging is already sorted with friends/family.'
+              : 'Secure primary accommodations and transit tickets.',
+            bookingDeliverables
+          )
+        );
+      }
+
+      const activityDeliverables: { title: string; type: 'booking' | 'purchase' | 'document' | 'coordination' }[] = [];
+      if (wantsPassportCheck) {
+        activityDeliverables.push({ title: 'Check passport 6-month validity & travel insurance', type: 'document' });
+      }
+      if (wantsExcursions) {
+        activityDeliverables.push({ title: 'Book high-demand museum, tour, or dinner reservations', type: 'booking' });
+      }
+      if (activityDeliverables.length > 0) {
+        milestones.push(
+          createMilestone(
+            'T-14d',
+            -14 * 24 * 60,
+            wantsPassportCheck ? 'Passports & Key Activities Confirmed' : 'Key Activities Confirmed',
+            'booking',
+            wantsPassportCheck
+              ? 'Verify official travel credentials and book limited excursion slots.'
+              : 'Book limited excursion slots before they sell out.',
+            activityDeliverables
+          )
+        );
+      }
 
       milestones.push(
         createMilestone(

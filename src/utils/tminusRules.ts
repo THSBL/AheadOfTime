@@ -1266,102 +1266,160 @@ const DEDUPE_STOPWORDS = new Set([
   'ordered', 'tracked', 'booked', 'locked', 'secured', 'purchased', 'sent', 'packed', 'finalized', 'reserved', 'ready', 'observed', 'settled',
 ]);
 
-export function applyMilestoneQualityGuardrails(
-  milestones: TMinusMilestone[],
-  signal: { title?: string; location?: string; context?: any; rawText?: string } = {}
-): TMinusMilestone[] {
-  // Crude suffix stemming so "passport"/"passports" and "confirm"/
-  // "confirmed" count as the same word - without it, two milestones about
-  // the exact same thing but in different tense/number ("Confirm passport
-  // is valid" vs "Passports ... Confirmed") shared zero exact words and had
-  // to fall through to the much looser category+timing check below, which
-  // is also easy to false-positive on two genuinely different milestones
-  // that just happen to land a day or two apart in the same category.
-  const stem = (w: string): string => {
-    if (w.length > 6 && w.endsWith('ing')) return w.slice(0, -3);
-    if (w.length > 5 && w.endsWith('ed')) return w.slice(0, -2);
-    if (w.length > 4 && w.endsWith('es')) return w.slice(0, -2);
-    if (w.length > 4 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
-    return w;
-  };
+// Crude suffix stemming so "passport"/"passports" and "confirm"/"confirmed"
+// count as the same word - without it, two milestones about the exact same
+// thing but in different tense/number ("Confirm passport is valid" vs
+// "Passports ... Confirmed") shared zero exact words.
+function stemMilestoneWord(w: string): string {
+  if (w.length > 6 && w.endsWith('ing')) return w.slice(0, -3);
+  if (w.length > 5 && w.endsWith('ed')) return w.slice(0, -2);
+  if (w.length > 4 && w.endsWith('es')) return w.slice(0, -2);
+  if (w.length > 4 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
 
-  // A word from the event's OWN title is scaffolding, not a distinguishing
-  // signal, for milestones that belong to it - e.g. every default milestone
-  // in a "Birthday Celebration" event mentions "birthday", which otherwise
-  // let two genuinely sequential, different milestones ("Order the gift"
-  // and "Wrap the gift") false-positive as duplicates purely for sharing
-  // "birthday" + "gift" - two words that are individually generic to this
-  // one event, not evidence they're the same task.
-  const titleWords = new Set(
-    (signal.title || '')
+// A word from the event's OWN title is scaffolding, not a distinguishing
+// signal, for milestones that belong to it - e.g. every default milestone in
+// a "Birthday Celebration" event mentions "birthday", which otherwise let two
+// genuinely sequential, different milestones ("Order the gift" and "Wrap the
+// gift") false-positive as duplicates purely for sharing "birthday" + "gift"
+// - two words that are individually generic to this one event, not evidence
+// they're the same task.
+function buildEventTitleWords(eventTitle: string): Set<string> {
+  return new Set(
+    (eventTitle || '')
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, '')
       .split(/\s+/)
       .filter((w) => w.length > 0)
-      .map(stem)
+      .map(stemMilestoneWord)
   );
+}
 
-  const significantWords = (s: string): Set<string> =>
-    new Set(
-      s.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .split(/\s+/)
-        .filter((w) => w.length > 0 && !DEDUPE_STOPWORDS.has(w))
-        .map(stem)
-        .filter((w) => !titleWords.has(w))
-    );
+function significantMilestoneWords(text: string, eventTitleWords: Set<string>): Set<string> {
+  return new Set(
+    (text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 0 && !DEDUPE_STOPWORDS.has(w))
+      .map(stemMilestoneWord)
+      .filter((w) => !eventTitleWords.has(w))
+  );
+}
 
-  type SeenEntry = { words: Set<string>; slotKey?: string; index: number };
+type MilestoneMatchSignature = { words: Set<string>; slotKey?: string };
+
+function toMilestoneMatchSignature(
+  ms: Pick<TMinusMilestone, 'title' | 'slotKey'>,
+  eventTitleWords: Set<string>
+): MilestoneMatchSignature {
+  return {
+    words: significantMilestoneWords(ms.title || '', eventTitleWords),
+    slotKey: sanitizeSlotKey(ms.slotKey),
+  };
+}
+
+// Only two signals are trusted to treat two milestones as the same task: an
+// explicit shared slot_key (the model's own "this is the same task" signal,
+// reused deliberately on refinement), or substantial title-word overlap
+// after stemming (>= 2 shared significant words, deliberately a shared-word
+// COUNT rather than strict subset containment - "Book flights and
+// accommodation" and "Flights & Accommodations Locked" each carry one word
+// the other doesn't ("book"/"locked"), but sharing "flight[s]"+
+// "accommodation[s]" is still a strong signal they're the same checkpoint).
+// A third signal - same category landing within a window of each other -
+// USED to also count, but caused a real production data-loss bug: a trip
+// legitimately booking flights, a hotel, AND a rental car all early in the
+// prep window put three distinct 'booking' milestones on/near the same day,
+// and the category+timing check silently merged a brand new "rental car"
+// milestone into the existing flights/hotel one - the AI's reply truthfully
+// said it added the milestone, but the guardrail then discarded it before it
+// was ever saved. "Same category, same day" is not evidence of being the
+// same task - trips/projects routinely have several same-category things due
+// on the same day - so that signal is gone.
+function matchesMilestoneSignature(a: MilestoneMatchSignature, b: MilestoneMatchSignature): boolean {
+  if (a.slotKey && b.slotKey) {
+    return a.slotKey === b.slotKey;
+  }
+  if (a.words.size > 0 && b.words.size > 0) {
+    let sharedCount = 0;
+    for (const w of a.words) {
+      if (b.words.has(w)) sharedCount++;
+    }
+    return sharedCount >= 2;
+  }
+  return false;
+}
+
+/**
+ * Whether two milestones represent the same underlying task, using the same
+ * slot_key-or-shared-vocabulary signal applyMilestoneQualityGuardrails uses
+ * to dedupe a single list - exposed standalone so callers reconciling two
+ * SEPARATE milestone lists (e.g. an AI-regenerated plan vs. the existing one)
+ * can ask the identical question. `eventTitle` should be the event's own
+ * title, so its scaffolding words don't count as a match signal.
+ */
+export function isSameMilestoneTask(
+  a: Pick<TMinusMilestone, 'title' | 'slotKey'>,
+  b: Pick<TMinusMilestone, 'title' | 'slotKey'>,
+  eventTitle: string = ''
+): boolean {
+  const eventTitleWords = buildEventTitleWords(eventTitle);
+  return matchesMilestoneSignature(
+    toMilestoneMatchSignature(a, eventTitleWords),
+    toMilestoneMatchSignature(b, eventTitleWords)
+  );
+}
+
+/**
+ * Carries over `status: 'completed'` (and its `completedAt`) from an old
+ * milestone list onto whichever new milestone represents the same task, so
+ * an AI-driven replan can never silently un-complete something the user has
+ * already checked off - it was never told a task was done, so left to its
+ * own devices it just proposes a fresh 'pending' plan. Mirrors the same
+ * one-directional "sticky completion" rule App.tsx's mergeEvents already
+ * applies to background sync merges, now reused for AI replans too.
+ */
+export function preserveCompletedMilestones(
+  oldMilestones: TMinusMilestone[],
+  newMilestones: TMinusMilestone[],
+  eventTitle: string = ''
+): TMinusMilestone[] {
+  if (!oldMilestones || oldMilestones.length === 0) return newMilestones;
+  const eventTitleWords = buildEventTitleWords(eventTitle);
+  const completedOld = oldMilestones
+    .filter((m) => m.status === 'completed')
+    .map((m) => ({ ms: m, sig: toMilestoneMatchSignature(m, eventTitleWords) }));
+  if (completedOld.length === 0) return newMilestones;
+
+  return newMilestones.map((ms) => {
+    if (ms.status === 'completed') return ms;
+    const sig = toMilestoneMatchSignature(ms, eventTitleWords);
+    const match = completedOld.find((entry) => matchesMilestoneSignature(sig, entry.sig));
+    if (!match) return ms;
+    return { ...ms, status: 'completed', completedAt: match.ms.completedAt || new Date().toISOString() };
+  });
+}
+
+export function applyMilestoneQualityGuardrails(
+  milestones: TMinusMilestone[],
+  signal: { title?: string; location?: string; context?: any; rawText?: string } = {}
+): TMinusMilestone[] {
+  const eventTitleWords = buildEventTitleWords(signal.title || '');
+
+  type SeenEntry = { sig: MilestoneMatchSignature; index: number };
   const seen: SeenEntry[] = [];
   const deduped: TMinusMilestone[] = [];
 
   for (const ms of milestones) {
-    const words = significantWords(ms.title || '');
-    const slotKey = sanitizeSlotKey(ms.slotKey);
+    const sig = toMilestoneMatchSignature(ms, eventTitleWords);
 
-    // Only two signals are trusted to merge milestones now: an explicit
-    // shared slot_key (the model's own "this is the same task" signal,
-    // reused deliberately on refinement), or substantial title-word overlap
-    // after stemming. A third signal - same category landing within a
-    // window of each other - USED to also count, but caused a real
-    // production data-loss bug: a trip legitimately booking flights, a
-    // hotel, AND a rental car all early in the prep window put three
-    // distinct 'booking' milestones on/near the same day, and the
-    // category+timing check silently merged a brand new "rental car"
-    // milestone into the existing flights/hotel one - the AI's reply
-    // truthfully said it added the milestone, but the guardrail then
-    // discarded it before it was ever saved. "Same category, same day" is
-    // not evidence of being the same task - trips/projects routinely have
-    // several same-category things due on the same day - so that signal is
-    // gone; only an explicit slot_key or real shared vocabulary merges now.
     let matchIdx = -1;
-
     for (let i = 0; i < seen.length; i++) {
-      const prior = seen[i];
-      if (slotKey && prior.slotKey) {
-        if (slotKey === prior.slotKey) {
-          matchIdx = i;
-          break;
-        }
-        continue;
-      }
-      // Require at least 2 shared significant words, so two milestones that
-      // merely share one common word (e.g. both mention "buy") don't get
-      // collapsed into each other. Deliberately a shared-word COUNT, not
-      // strict subset containment - "Book flights and accommodation" and
-      // "Flights & Accommodations Locked" each carry one word the other
-      // doesn't ("book"/"locked"), so neither is a subset of the other, but
-      // sharing "flight[s]"+"accommodation[s]" is still a strong signal
-      // they're the same checkpoint.
-      if (words.size > 0 && prior.words.size > 0) {
-        let sharedCount = 0;
-        for (const w of words) {
-          if (prior.words.has(w)) sharedCount++;
-        }
-        if (sharedCount >= 2) {
-          matchIdx = i;
-          break;
-        }
+      if (matchesMilestoneSignature(sig, seen[i].sig)) {
+        matchIdx = i;
+        break;
       }
     }
 
@@ -1383,7 +1441,7 @@ export function applyMilestoneQualityGuardrails(
       continue;
     }
 
-    seen.push({ words, slotKey, index: deduped.length });
+    seen.push({ sig, index: deduped.length });
     deduped.push(ms);
   }
 

@@ -225,7 +225,14 @@ app.post("/api/event/deep-refine", async (req: Request, res: Response): Promise<
     };
 
     if (!process.env.GEMINI_API_KEY) {
-      res.json({ event: localRefinedEvent });
+      // usedAi lets a caller that has its OWN, more context-aware local
+      // generator (e.g. the event wizard, which knows the user's actual
+      // chip answers) tell this generic local fallback apart from a real
+      // Gemini plan and prefer its own generator instead - without this,
+      // every caller silently got this endpoint's generic checklist any
+      // time no API key was configured, even when they had something
+      // better available locally.
+      res.json({ event: localRefinedEvent, usedAi: false });
       return;
     }
 
@@ -311,11 +318,12 @@ Output ONLY the raw JSON object.`;
           updatedAt: new Date().toISOString(),
           milestones: refinedMilestones,
         },
+        usedAi: true,
       });
       return;
     }
 
-    res.json({ event: localRefinedEvent });
+    res.json({ event: localRefinedEvent, usedAi: false });
   } catch (err: any) {
     console.warn("AI deep refinement notice, using local engine:", err?.message);
     const { event }: { event: CalendarEvent } = req.body;
@@ -329,6 +337,7 @@ Output ONLY the raw JSON object.`;
           updatedAt: new Date().toISOString(),
           milestones: localMilestones,
         },
+        usedAi: false,
       });
     } else {
       res.status(500).json({ error: "Failed to refine event" });
@@ -644,22 +653,15 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
     // Existing event lookup if targeted
     const existingEvent = targetEventId ? activeEvents.find(e => e.id === targetEventId) : undefined;
 
-    // ARCHITECTURAL SPEED BOOST: If user is answering intake questions or tuning variables for an existing event,
-    // we already have the structured parameters! Resolve instantly (0ms) using deterministic engine.
-    if ((intakeAnswer || batchAnswers) && existingEvent) {
-      const instantResult = processWithDeterministicRules({
-        message,
-        refDateStr,
-        refDateISO,
-        existingEvent,
-        intakeAnswer,
-        batchAnswers,
-        transcribedVoiceText,
-        userProfile
-      });
-      res.json(instantResult);
-      return;
-    }
+    // An answered intake question or a structured variable retune on an
+    // existing event used to always skip Gemini entirely ("ARCHITECTURAL
+    // SPEED BOOST" - resolve instantly via the deterministic engine alone),
+    // even when GEMINI_API_KEY is configured. That meant a genuinely
+    // consequential answer (e.g. switching a trip's transport mode from
+    // flight to train) never got the same context-aware reconsideration a
+    // plain-text correction already gets - it just reran the category's
+    // fixed template. Now it takes the exact same Gemini-first,
+    // deterministic-fallback path as every other message below.
 
     let result: ProcessAgentResponsePayload;
 

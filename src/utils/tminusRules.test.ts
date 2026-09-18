@@ -10,6 +10,8 @@ import {
   finalizeMilestonePlan,
   sanitizeMilestoneTitle,
   sanitizeSlotKey,
+  isSameMilestoneTask,
+  preserveCompletedMilestones,
 } from './tminusRules';
 import type { TMinusMilestone } from '../types';
 
@@ -564,6 +566,105 @@ describe('applyMilestoneQualityGuardrails', () => {
     expect(result[0].deliverables?.map((d) => d.title)).toEqual(
       expect.arrayContaining(['Kennel booked', 'Vaccination records shared'])
     );
+  });
+});
+
+describe('isSameMilestoneTask', () => {
+  const makeMilestone = (overrides: Partial<TMinusMilestone> = {}): TMinusMilestone => ({
+    id: overrides.id || 'ms-1',
+    eventId: 'evt-1',
+    tMinusLabel: 'T-7d',
+    tMinusOffsetMinutes: -10080,
+    calculatedDate: '2026-10-08',
+    title: 'Buy party supplies',
+    category: 'shopping',
+    status: 'pending',
+    ...overrides,
+  });
+
+  it('matches two milestones sharing an explicit slot_key, regardless of title', () => {
+    const a = makeMilestone({ title: 'Kennel booked', slotKey: 'dog_sitter' } as Partial<TMinusMilestone>);
+    const b = makeMilestone({ title: 'Confirm kennel booking', slotKey: 'dog_sitter' } as Partial<TMinusMilestone>);
+    expect(isSameMilestoneTask(a, b)).toBe(true);
+  });
+
+  it('does not match two milestones with different explicit slot_keys even if titles overlap', () => {
+    const a = makeMilestone({ title: 'Book flights', slotKey: 'flights' } as Partial<TMinusMilestone>);
+    const b = makeMilestone({ title: 'Book flights again', slotKey: 'flights_return' } as Partial<TMinusMilestone>);
+    expect(isSameMilestoneTask(a, b)).toBe(false);
+  });
+
+  it('matches on shared significant title words when neither has a slot_key', () => {
+    const a = makeMilestone({ title: 'Flights & Accommodations Locked' });
+    const b = makeMilestone({ title: 'Book flights and accommodation' });
+    expect(isSameMilestoneTask(a, b)).toBe(true);
+  });
+
+  it('does not match on a single shared generic word', () => {
+    const a = makeMilestone({ title: 'Buy the gift' });
+    const b = makeMilestone({ title: 'Buy the cake' });
+    expect(isSameMilestoneTask(a, b)).toBe(false);
+  });
+
+  it('ignores words shared with the event title itself', () => {
+    const a = makeMilestone({ title: 'Order birthday gift' });
+    const b = makeMilestone({ title: 'Wrap birthday gift' });
+    // Both share "birthday" (scaffolding from the event title) but only one
+    // other significant word each ("order" / "wrap") - not the same task.
+    expect(isSameMilestoneTask(a, b, "Maya's Birthday Party")).toBe(false);
+  });
+});
+
+describe('preserveCompletedMilestones', () => {
+  const makeMilestone = (overrides: Partial<TMinusMilestone> = {}): TMinusMilestone => ({
+    id: overrides.id || 'ms-1',
+    eventId: 'evt-1',
+    tMinusLabel: 'T-7d',
+    tMinusOffsetMinutes: -10080,
+    calculatedDate: '2026-10-08',
+    title: 'Buy party supplies',
+    category: 'shopping',
+    status: 'pending',
+    ...overrides,
+  });
+
+  it('carries completed status onto the matching new milestone', () => {
+    const oldMilestones = [
+      makeMilestone({ id: 'old-1', title: 'Flights & Accommodations Locked', status: 'completed', completedAt: '2026-09-01T00:00:00.000Z' }),
+    ];
+    const newMilestones = [
+      makeMilestone({ id: 'new-1', title: 'Book flights and accommodation', status: 'pending' }),
+    ];
+    const result = preserveCompletedMilestones(oldMilestones, newMilestones);
+    expect(result[0].status).toBe('completed');
+    expect(result[0].completedAt).toBe('2026-09-01T00:00:00.000Z');
+    // The new milestone's own id/title are untouched - only status/completedAt carry over.
+    expect(result[0].id).toBe('new-1');
+  });
+
+  it('leaves a genuinely new milestone (no match in the old list) pending', () => {
+    const oldMilestones = [makeMilestone({ id: 'old-1', title: 'Flights booked', status: 'completed' })];
+    const newMilestones = [makeMilestone({ id: 'new-1', title: 'Rental car reserved', status: 'pending' })];
+    const result = preserveCompletedMilestones(oldMilestones, newMilestones);
+    expect(result[0].status).toBe('pending');
+  });
+
+  it('does not touch a milestone the new plan already marks completed', () => {
+    const oldMilestones = [makeMilestone({ id: 'old-1', title: 'Flights booked', status: 'completed', completedAt: '2026-09-01T00:00:00.000Z' })];
+    const newMilestones = [makeMilestone({ id: 'new-1', title: 'Flights booked', status: 'completed', completedAt: '2026-09-05T00:00:00.000Z' })];
+    const result = preserveCompletedMilestones(oldMilestones, newMilestones);
+    expect(result[0].completedAt).toBe('2026-09-05T00:00:00.000Z');
+  });
+
+  it('returns the new list unchanged when there are no old milestones', () => {
+    const newMilestones = [makeMilestone({ id: 'new-1', status: 'pending' })];
+    expect(preserveCompletedMilestones([], newMilestones)).toBe(newMilestones);
+  });
+
+  it('returns the new list unchanged when nothing in the old list was completed', () => {
+    const oldMilestones = [makeMilestone({ id: 'old-1', title: 'Flights booked', status: 'pending' })];
+    const newMilestones = [makeMilestone({ id: 'new-1', title: 'Flights booked', status: 'pending' })];
+    expect(preserveCompletedMilestones(oldMilestones, newMilestones)).toBe(newMilestones);
   });
 });
 

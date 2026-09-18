@@ -90,6 +90,37 @@ describe('processWithDeterministicRules', () => {
     expect(second.event.context.giftType).toBe('group');
   });
 
+  it('does not silently discard existing milestones (or their completed status) when an intake answer targets an existing event', () => {
+    // Regression test for a real bug: answering an intake question or
+    // retuning a structured variable on an existing event used to fall
+    // straight through to a freshly regenerated, all-pending milestone
+    // list, discarding whatever was already there - including anything the
+    // user had already checked off.
+    const first = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    expect(first.event.milestones.length).toBeGreaterThan(0);
+    const completedMilestone = { ...first.event.milestones[0], status: 'completed' as const, completedAt: '2026-09-05T00:00:00.000Z' };
+    const existingEventWithProgress = {
+      ...first.event,
+      milestones: [completedMilestone, ...first.event.milestones.slice(1)],
+    };
+
+    const second = processWithDeterministicRules({
+      message: '',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: existingEventWithProgress,
+      intakeAnswer: { questionId: 'q-1', parameterKey: 'giftType', answerValue: 'group' },
+    });
+
+    const survivingMilestone = second.event.milestones.find((m) => m.id === completedMilestone.id);
+    expect(survivingMilestone).toBeDefined();
+    expect(survivingMilestone?.status).toBe('completed');
+  });
+
   it('threads the userProfile home location into the event context (so tminusRules can consume it)', () => {
     const result = processWithDeterministicRules({
       message: "Maya's birthday party on 2026-11-20",

@@ -248,6 +248,12 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         // broad) title and can't judge whether a specific new request is
         // genuinely already covered by it.
         deliverables: (m.deliverables || []).map((d) => d.title),
+        // Without this, the model has no way to know the user already
+        // checked this off, and a plan touching one part of the event can
+        // come back proposing every milestone fresh/pending - the app's own
+        // merge step (preserveCompletedMilestones) is a last-resort safety
+        // net for that, but the model should already know not to suggest it.
+        status: m.status,
       })),
     } : null,
     referenceDate: params.refDateStr,
@@ -1154,7 +1160,8 @@ export function processWithDeterministicRules(params: {
   // complaint this session's guardrail work was built to fix. Words too
   // generic to discriminate (booking language, filler) are excluded so a
   // near-universal word like "book" doesn't match every travel milestone.
-  const isPlainTextCorrection = Boolean(params.existingEvent?.milestones?.length) && !params.intakeAnswer && !params.batchAnswers;
+  const hasExistingMilestones = Boolean(params.existingEvent?.milestones?.length);
+  const isPlainTextCorrection = hasExistingMilestones && !params.intakeAnswer && !params.batchAnswers;
   let milestones: TMinusMilestone[] = freshMilestones;
   if (isPlainTextCorrection) {
     const NOISE_WORDS = new Set([
@@ -1176,6 +1183,22 @@ export function processWithDeterministicRules(params: {
       : [];
     milestones = finalizeMilestonePlan(
       [...params.existingEvent!.milestones, ...noteRelevantFreshMilestones],
+      { title, context, rawText: params.message }
+    );
+  } else if (hasExistingMilestones) {
+    // An answered intake question or a structured variable retune on an
+    // existing event is a refinement too, not a fresh plan - it used to
+    // fall straight through to `milestones = freshMilestones` above,
+    // silently discarding every existing milestone (completed status,
+    // custom deliverables, anything the user already did) the moment they
+    // answered one clarifying question. Merge instead, same as the
+    // plain-text-correction branch above, just without that branch's
+    // word-overlap filter - that heuristic is calibrated for interpreting
+    // freeform prose, not a structured answer, so keep every freshly
+    // regenerated milestone and let finalizeMilestonePlan's own dedupe
+    // collapse whatever already existed under a different wording.
+    milestones = finalizeMilestonePlan(
+      [...params.existingEvent!.milestones, ...freshMilestones],
       { title, context, rawText: params.message }
     );
   }

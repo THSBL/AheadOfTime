@@ -62,7 +62,7 @@ import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clear
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { trackEventCreation, trackMilestoneToggle, trackAccountAction } from './services/analytics';
-import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst } from './utils/tminusRules';
+import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst, preserveCompletedMilestones } from './utils/tminusRules';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
 import { classifySubmittedTitle } from './utils/creationStateMachine';
 import {
@@ -1432,7 +1432,17 @@ function App() {
       const data = await response.json();
       const updatedEvent: CalendarEvent = data.event;
 
-      setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
+      setEvents((prev) => prev.map((e) => {
+        if (e.id !== updatedEvent.id) return e;
+        // Same reasoning as the correction console: a retuned variable can
+        // come back from Gemini with the whole plan freshly regenerated -
+        // never let that silently un-complete a task the user already
+        // checked off.
+        return {
+          ...updatedEvent,
+          milestones: preserveCompletedMilestones(e.milestones || [], updatedEvent.milestones || [], e.title),
+        };
+      }));
 
       const agentMsg: AgentMessage = {
         id: `agt-var-${Date.now()}`,

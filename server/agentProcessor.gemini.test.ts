@@ -5,11 +5,15 @@ import { describe, it, expect, vi } from 'vitest';
 // exact function had zero test coverage before a real production data-loss
 // bug slipped through it (see the test below).
 let mockResponseText = '{}';
+let lastGenerateContentCall: any = null;
 vi.mock('@google/genai', () => {
   function GoogleGenAI() {
     return {
       models: {
-        generateContent: vi.fn().mockImplementation(async () => ({ text: mockResponseText })),
+        generateContent: vi.fn().mockImplementation(async (args: any) => {
+          lastGenerateContentCall = args;
+          return { text: mockResponseText };
+        }),
       },
     };
   }
@@ -124,5 +128,36 @@ describe('processWithGemini - preserving existing milestones when the model omit
     });
 
     expect(result.event.milestones.length).toBeGreaterThan(0);
+  });
+
+  it('tells the model which existing milestones are already completed', async () => {
+    // The model was never told which milestones are already done, so a
+    // correction touching one part of the plan could come back proposing
+    // the whole thing fresh/pending - this asserts the actual payload sent
+    // to Gemini now carries each milestone's real status, which the "never
+    // revert a completed milestone" prompt rule (planningPipeline.ts)
+    // depends on being there.
+    mockResponseText = JSON.stringify({
+      mode: 'RESOLVE_MILESTONES',
+      target_event_id: 'evt-dinner-curacao',
+      focus: 'Noted.',
+      addition: '',
+    });
+    const existingEvent = makeExistingEvent();
+    existingEvent.milestones[0].status = 'completed';
+
+    await processWithGemini({
+      message: 'two guests are vegetarian',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      existingEvent,
+      activeEvents: [existingEvent],
+    });
+
+    expect(lastGenerateContentCall).toBeTruthy();
+    const sentPrompt = JSON.parse(lastGenerateContentCall.contents[0].text);
+    const sentMilestones = sentPrompt.existingTargetEvent.existingMilestones;
+    expect(sentMilestones[0].status).toBe('completed');
+    expect(sentMilestones[1].status).toBe('pending');
   });
 });

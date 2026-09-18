@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
-import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle, calculateOffsetDate } from '../utils/tminusRules';
+import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
@@ -53,6 +53,21 @@ const CORRECTION_PLACEHOLDER_BY_CATEGORY: Partial<Record<CalendarEvent['category
   kids_hobbies: "e.g. Need to arrange a carpool with another parent",
   maintenance: "e.g. It's a different car this time",
   subscription: "e.g. Actually keep this one, just downgrade the plan",
+};
+
+// Human-readable labels matching the "Edit Event Details" category <select>
+// options below, used to describe a category change in plain language when
+// that edit gets routed through the Gemini correction path.
+const EVENT_DETAIL_CATEGORY_LABELS: Partial<Record<CalendarEvent['category'], string>> = {
+  birthday_party: 'Wedding / Party / Celebration',
+  travel_trip: 'Trip / Travel',
+  hosting_visitors: 'Hosting / Visitors',
+  dinner_social: 'Dinner / Dining',
+  project_deadline: 'Project / Deadline',
+  festival_concert: 'Festival / Concert',
+  maintenance: 'Maintenance / Service',
+  subscription: 'Subscription / Renewal',
+  custom: 'General Event',
 };
 
 function getCorrectionPlaceholder(event: CalendarEvent | null | undefined, pendingSuggestion: IntakeQuestion | null): string {
@@ -117,6 +132,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [clarifyDate, setClarifyDate] = useState('');
   const [clarifyTime, setClarifyTime] = useState('');
   const [clarifyLocation, setClarifyLocation] = useState('');
+  const [isSavingClarification, setIsSavingClarification] = useState(false);
   const [isDeepRefining, setIsDeepRefining] = useState(false);
   const [correctionInput, setCorrectionInput] = useState('');
   const [isSendingCorrection, setIsSendingCorrection] = useState(false);
@@ -235,7 +251,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       const data = await res.json();
       if (data?.event) {
-        onUpdateEvent(data.event);
+        // The model was never told which milestones are already completed
+        // (see preserveCompletedMilestones's own doc comment), so a
+        // correction touching one part of the plan can otherwise come back
+        // with everything reset to pending - silently erasing checked-off
+        // progress the user never asked to redo.
+        onUpdateEvent({
+          ...data.event,
+          milestones: preserveCompletedMilestones(activeEvent.milestones || [], data.event.milestones || [], activeEvent.title),
+        });
       }
       const replyText = data.focusText || data.replyText || "Updated based on what you told me.";
       setCorrectionReply(replyText);
@@ -291,51 +315,116 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     }
   }, [activeEvent?.id, activeEvent?.status]);
 
-  const handleSaveClarification = (e: React.FormEvent) => {
+  const handleSaveClarification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeEvent || !onUpdateEvent) return;
 
     const hasExistingMilestones = (activeEvent.milestones || []).length > 0;
     const categoryChanged = clarifyCategory !== activeEvent.category;
+    const titleChanged = clarifyTitle.trim() !== activeEvent.title;
+    const dateChanged = clarifyDate !== activeEvent.eventDate;
+    const timeChanged = (clarifyTime || '') !== (activeEvent.eventTime || '');
+    const locationChanged = (clarifyLocation || '') !== (activeEvent.location || '');
+    const somethingChanged = categoryChanged || titleChanged || dateChanged || timeChanged || locationChanged;
 
-    // Editing event details (date/title/location via the "..." menu) used
-    // to ALWAYS regenerate the full milestone list from
-    // generateHeuristicMilestones with no context passed at all - silently
-    // discarding every custom deliverable, completed checkbox, and
-    // previously-given answer (e.g. "no gift needed"), replacing them with
-    // a generic template that had no way to know about any of that. A
-    // simple date/title/location correction must never do that: recompute
-    // each existing milestone's date off its own stored
-    // tMinusOffsetMinutes instead, and only fall back to a fresh
-    // heuristic build (this time with the event's real context) when
-    // there's genuinely nothing to preserve or the category itself changed
-    // (a different category's checklist doesn't map onto the old one).
-    const milestones = hasExistingMilestones && !categoryChanged
-      ? activeEvent.milestones.map((ms) => ({
-          ...ms,
-          calculatedDate: calculateOffsetDate(clarifyDate, clarifyTime || '19:00', ms.tMinusOffsetMinutes),
-        }))
-      : generateHeuristicMilestones(
-          { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
-          activeEvent.id,
-          clarifyDate,
-          clarifyTime || '19:00'
-        );
+    // Deterministic fallback: shift each existing milestone's date off its
+    // own stored tMinusOffsetMinutes (preserves every custom deliverable,
+    // completed checkbox, and previous answer) unless the category itself
+    // changed, in which case a different category's checklist doesn't map
+    // onto the old one and a fresh heuristic build is the only option. This
+    // is also exactly what runs if the smart path below fails or there's no
+    // GEMINI_API_KEY - never worse than before this change.
+    const buildFallbackMilestones = (): TMinusMilestone[] =>
+      hasExistingMilestones && !categoryChanged
+        ? activeEvent.milestones.map((ms) => ({
+            ...ms,
+            calculatedDate: calculateOffsetDate(clarifyDate, clarifyTime || '19:00', ms.tMinusOffsetMinutes),
+          }))
+        : generateHeuristicMilestones(
+            { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
+            activeEvent.id,
+            clarifyDate,
+            clarifyTime || '19:00'
+          );
 
-    const updated: CalendarEvent = {
+    const buildUpdated = (milestones: TMinusMilestone[]): CalendarEvent => ({
       ...activeEvent,
       title: clarifyTitle || activeEvent.title,
       category: clarifyCategory,
       eventDate: clarifyDate,
+      // This form has no end-date field of its own, so a multi-day trip's
+      // endDate otherwise survived untouched no matter what the start date
+      // changed to - confirmed live: moving a Paris trip from Oct to Nov
+      // left "Event end date" reading a date before the new start date.
+      // Only keep it if it's still a real range against the new start date.
+      endDate: activeEvent.endDate && activeEvent.endDate > clarifyDate ? activeEvent.endDate : undefined,
       eventTime: clarifyTime,
       location: clarifyLocation,
       status: 'milestones_active',
       milestones,
       updatedAt: new Date().toISOString(),
-    };
+    });
 
-    onUpdateEvent(updated);
-    setIsEditingEvent(false);
+    // Nothing worth reconsidering, or nothing to reconsider against - keep
+    // this an instant, local-only update exactly like before.
+    if (!somethingChanged || !hasExistingMilestones) {
+      onUpdateEvent(buildUpdated(buildFallbackMilestones()));
+      setIsEditingEvent(false);
+      return;
+    }
+
+    setIsSavingClarification(true);
+    try {
+      const changeParts: string[] = [];
+      if (titleChanged) changeParts.push(`Changed the event title to "${clarifyTitle}".`);
+      if (categoryChanged) changeParts.push(`Changed the category to ${EVENT_DETAIL_CATEGORY_LABELS[clarifyCategory] || clarifyCategory}.`);
+      if (dateChanged) changeParts.push(`Changed the event date to ${clarifyDate}.`);
+      if (timeChanged) changeParts.push(`Changed the event time to ${clarifyTime}.`);
+      if (locationChanged) changeParts.push(clarifyLocation ? `Changed the location to "${clarifyLocation}".` : 'Removed the location.');
+
+      // Send the event with the new fields already applied, not the
+      // untouched original - confirmed live that leaving this as
+      // `activeEvent` breaks a category change specifically: the
+      // deterministic fallback's category detection anchors to
+      // `existingEvent.category` first in its if/else-if cascade
+      // (`category === 'travel_trip' || message.includes('trip')...`), so a
+      // message merely describing a category change in prose never actually
+      // flips it - the fallback silently kept generating travel milestones
+      // under a "Project / Deadline" event. Pre-applying the new
+      // category/title/date/time/location makes both the fallback and
+      // Gemini start from the correct category, while `existingMilestones`
+      // (still the OLD milestones) is what actually needs reconsidering.
+      const draftExistingEvent: CalendarEvent = {
+        ...activeEvent,
+        title: clarifyTitle || activeEvent.title,
+        category: clarifyCategory,
+        eventDate: clarifyDate,
+        eventTime: clarifyTime,
+        location: clarifyLocation,
+      };
+
+      const res = await fetch('/api/agent/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: changeParts.join(' '),
+          currentReferenceDate,
+          activeEvents: [draftExistingEvent],
+          targetEventId: activeEvent.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      const data = await res.json();
+      if (!data?.event?.milestones?.length) throw new Error('Empty milestone plan returned');
+
+      onUpdateEvent(buildUpdated(preserveCompletedMilestones(activeEvent.milestones || [], data.event.milestones, activeEvent.title)));
+    } catch (err) {
+      console.warn('Smart event-detail update notice, using local recompute:', err);
+      onUpdateEvent(buildUpdated(buildFallbackMilestones()));
+    } finally {
+      setIsSavingClarification(false);
+      setIsEditingEvent(false);
+    }
   };
 
   const handleMilestoneClick = (eventId: string, milestone: TMinusMilestone) => {
@@ -1296,10 +1385,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  disabled={isSavingClarification}
+                  className="px-5 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-sky-300" />
-                  <span>Build Ahead Of Time Milestones</span>
+                  {isSavingClarification ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 text-sky-300 animate-spin" />
+                      <span>Reconsidering plan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+                      <span>Build Ahead Of Time Milestones</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

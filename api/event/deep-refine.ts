@@ -30,7 +30,11 @@ export default async function handler(req: any, res: any) {
     };
 
     if (!process.env.GEMINI_API_KEY) {
-      res.json({ event: localRefinedEvent });
+      // usedAi lets a caller that has its OWN, more context-aware local
+      // generator (e.g. the event wizard, which knows the user's actual
+      // chip answers) tell this generic local fallback apart from a real
+      // Gemini plan and prefer its own generator instead.
+      res.json({ event: localRefinedEvent, usedAi: false });
       return;
     }
 
@@ -116,11 +120,12 @@ Output ONLY the raw JSON object.`;
           updatedAt: new Date().toISOString(),
           milestones: refinedMilestones,
         },
+        usedAi: true,
       });
       return;
     }
 
-    res.json({ event: localRefinedEvent });
+    res.json({ event: localRefinedEvent, usedAi: false });
   } catch (err: any) {
     console.warn('AI deep refinement notice, using local engine:', err?.message);
     const { event }: { event: CalendarEvent } = req.body;
@@ -134,6 +139,7 @@ Output ONLY the raw JSON object.`;
           updatedAt: new Date().toISOString(),
           milestones: localMilestones,
         },
+        usedAi: false,
       });
     } else {
       res.status(500).json({ error: 'Failed to refine event' });

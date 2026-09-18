@@ -126,6 +126,8 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   initialScanMonths = 6,
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
   const [profile, setProfile] = useState<GoogleCalendarProfile | null>(null);
   const [scannedEvents, setScannedEvents] = useState<ScannedEventItem[]>([]);
@@ -362,14 +364,47 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
     });
   };
 
-  const handleImportSelected = () => {
+  // How many /api/event/deep-refine calls run at once during import - no
+  // existing precedent in this codebase for a single Gemini prompt covering
+  // multiple distinct calendar events, so this stays N parallel single-event
+  // calls (each with its own already-proven local fallback) rather than a
+  // novel batched prompt. Bounded so importing a large selection doesn't
+  // fire dozens of simultaneous requests.
+  const IMPORT_CONCURRENCY = 4;
+
+  // Per-event: try the Gemini-backed replan first (this is a brand-new,
+  // never-touched event, so there's no existing completion state to lose -
+  // a fresh-generate call is the right shape here, same as
+  // EventCreationWizard's new-event path), falling back to the local
+  // heuristic on any failure so one bad network call can't drop an event
+  // from the import.
+  const refineImportedEvent = async (draft: CalendarEvent): Promise<TMinusMilestone[]> => {
+    try {
+      const res = await fetch('/api/event/deep-refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: draft }),
+      });
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      const data = await res.json();
+      if (data?.event?.milestones?.length) {
+        return data.event.milestones;
+      }
+      throw new Error('Empty milestone plan returned');
+    } catch (e) {
+      console.warn('Deep-refine import notice, using local engine:', e);
+      return deepRefineEventLocally(draft);
+    }
+  };
+
+  const handleImportSelected = async () => {
     const selectedItems = scannedEvents.filter((item) => selectedEventIds[item.id] && !item.isAlreadyInDashboard);
-    const eventsToImport: CalendarEvent[] = selectedItems.map((item) => {
+    const draftEvents: CalendarEvent[] = selectedItems.map((item) => {
       const startDateStr = item.start?.dateTime || item.start?.date || '';
       const eventDateStr = startDateStr ? startDateStr.substring(0, 10) : '';
       const eventTimeStr = startDateStr.includes('T') ? startDateStr.substring(11, 16) : '10:00';
 
-      const newEvt: CalendarEvent = {
+      return {
         id: `gcal-${item.id}`,
         title: getCleanEventTitle(item.summary, item.detectedCategory),
         eventDate: eventDateStr,
@@ -383,12 +418,31 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         milestones: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      };
-
-      newEvt.milestones = deepRefineEventLocally(newEvt);
-      return newEvt;
+      } as CalendarEvent;
     });
 
+    setIsImporting(true);
+    setImportProgress({ done: 0, total: draftEvents.length });
+
+    const eventsToImport: CalendarEvent[] = new Array(draftEvents.length);
+    let completedCount = 0;
+    for (let i = 0; i < draftEvents.length; i += IMPORT_CONCURRENCY) {
+      const chunk = draftEvents.slice(i, i + IMPORT_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (draft) => {
+          const milestones = await refineImportedEvent(draft);
+          completedCount += 1;
+          setImportProgress({ done: completedCount, total: draftEvents.length });
+          return { ...draft, milestones };
+        })
+      );
+      chunkResults.forEach((evt, idx) => {
+        eventsToImport[i + idx] = evt;
+      });
+    }
+
+    setIsImporting(false);
+    setImportProgress(null);
     onImportTrackedEvents(eventsToImport);
     onClose();
   };
@@ -801,7 +855,8 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              disabled={isImporting}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 rounded-xl text-xs font-bold transition-all cursor-pointer"
             >
               Close
             </button>
@@ -809,12 +864,21 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
             {connected && totalScannedCount > 0 && (
               <button
                 onClick={handleImportSelected}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 || isImporting}
                 className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#182A42] hover:bg-[#162a3f] disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
               >
-                <span className="sm:hidden">Import ({selectedCount})</span>
-                <span className="hidden sm:inline">Import &amp; Generate Timelines ({selectedCount})</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                {isImporting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Importing{importProgress ? ` ${importProgress.done} of ${importProgress.total}` : '...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="sm:hidden">Import ({selectedCount})</span>
+                    <span className="hidden sm:inline">Import &amp; Generate Timelines ({selectedCount})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
               </button>
             )}
           </div>
