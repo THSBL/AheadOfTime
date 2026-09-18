@@ -563,7 +563,16 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || existingEvent?.endDate || undefined;
   const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
 
-  let title = structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || existingEvent?.title || 'Upcoming Event';
+  // A refinement turn's macro_event.title/event_title is often just the
+  // model's own paraphrase, not a deliberate rename - the schema requires
+  // macro_event to carry SOME title whenever it's present, even on a plain
+  // correction turn that never mentioned the event's name at all (confirmed
+  // live: "no flights, we're going by train" against an event titled "Trip
+  // to Amsterdam" came back retitled "Travel & Vacation Trip"). Once an
+  // event already has a real title, keep it - a deliberate rename now
+  // belongs to the explicit "Edit Event Details" flow, not to whatever
+  // title the model also happens to emit alongside an unrelated correction.
+  let title = existingEvent?.title || structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || 'Upcoming Event';
   let finalCategory = structuredPayload ? 'travel_trip' : (parsed.category || existingEvent?.category || detectEventCategory(title, params.message));
   title = getCleanEventTitle(title, finalCategory, existingEvent?.context);
 

@@ -569,6 +569,81 @@ describe('applyMilestoneQualityGuardrails', () => {
   });
 });
 
+// Regression coverage for a real, live-reported bug: telling the app "no
+// flights, we're going by train instead" produced a plan that still
+// mentioned flights - both an untouched old "Flights & lodging" milestone,
+// and a newly-added milestone whose own title still said "Flights, trains
+// & hotel reservation lock". This is the deterministic backstop that
+// applies regardless of how well the AI path itself honored the
+// correction.
+describe('applyMilestoneQualityGuardrails - explicit transport-mode negation', () => {
+  const makeMilestone = (overrides: Partial<TMinusMilestone> = {}): TMinusMilestone => ({
+    id: overrides.id || 'ms-1',
+    eventId: 'evt-1',
+    tMinusLabel: 'T-30d',
+    tMinusOffsetMinutes: -43200,
+    calculatedDate: '2026-10-01',
+    title: 'Flights & lodging Booked & Confirmed',
+    category: 'booking',
+    status: 'pending',
+    ...overrides,
+  });
+
+  it('scrubs a mixed title down to the surviving mode instead of leaving both', () => {
+    const milestones = [makeMilestone({ title: 'Flights, trains & hotel reservation lock' })];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'No flights, we are going by train' });
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toBe('Trains & hotel reservation lock');
+  });
+
+  it('scrubs a leading mode word followed by an ampersand', () => {
+    const milestones = [makeMilestone({ title: 'Flights & lodging Booked & Confirmed' })];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'No flights, we are going by train' });
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toBe('Lodging Booked & Confirmed');
+  });
+
+  it('drops a deliverable that is only about the negated mode', () => {
+    const milestones = [
+      makeMilestone({
+        title: 'Travel Booked & Confirmed',
+        deliverables: [
+          { deliverable_id: 'd1', title: 'Book flight tickets and select seats', type: 'booking', is_completed: false },
+          { deliverable_id: 'd2', title: 'Confirm hotel booking', type: 'booking', is_completed: false },
+        ],
+      } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'No flights, we are going by train' });
+    expect(result).toHaveLength(1);
+    expect(result[0].deliverables?.map((d) => d.title)).toEqual(['Confirm hotel booking']);
+  });
+
+  it('drops a milestone entirely once every deliverable it had was about the negated mode', () => {
+    const milestones = [
+      makeMilestone({
+        title: 'Flight Booked & Confirmed',
+        deliverables: [
+          { deliverable_id: 'd1', title: 'Book flight tickets and select seats', type: 'booking', is_completed: false },
+        ],
+      } as Partial<TMinusMilestone>),
+    ];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'No flights, we are going by train' });
+    expect(result).toHaveLength(0);
+  });
+
+  it('leaves milestones untouched when no negation phrase is present', () => {
+    const milestones = [makeMilestone({ title: 'Flights & lodging Booked & Confirmed' })];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'Also need a rental car' });
+    expect(result[0].title).toBe('Flights & lodging Booked & Confirmed');
+  });
+
+  it('does not touch an unrelated mode mentioned elsewhere', () => {
+    const milestones = [makeMilestone({ title: 'Train tickets Booked & Confirmed' })];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'No flights, we are going by train' });
+    expect(result[0].title).toBe('Train tickets Booked & Confirmed');
+  });
+});
+
 describe('isSameMilestoneTask', () => {
   const makeMilestone = (overrides: Partial<TMinusMilestone> = {}): TMinusMilestone => ({
     id: overrides.id || 'ms-1',

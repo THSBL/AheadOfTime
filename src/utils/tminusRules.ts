@@ -1224,6 +1224,79 @@ function detectsExternallySuppliedVenue(text: string): boolean {
 // about something venue-independent (e.g. a specific gift) is untouched.
 const VENUE_SUPPLIED_SUPPLY_PATTERN = /\b(ice|glassware|cups?|plates|napkins|tableware|table\s?cloths?|chairs|tables|linens?|decor|balloons?|party\s?supplies)\b/i;
 
+// A transport mode this milestone/deliverable text is actually ABOUT, and
+// the phrase that means the user has explicitly ruled that mode out. Kept
+// as separate maps (rather than one combined regex) so the negation check
+// and the "does this text mention the ruled-out mode" check can run
+// independently - a milestone can mention "flight" without the message
+// itself repeating the word.
+const TRANSPORT_MODE_WORDS: Record<string, RegExp> = {
+  flight: /\bflights?\b|\bflying\b|\bairfare\b|\bboarding\s*pass(es)?\b|\bairport\b|\bplane\b/i,
+  train: /\btrains?\b|\brail\b/i,
+  car: /\bdriving\b|\broad\s*trip\b|\bpersonal\s*car\b|\brental\s*car\b/i,
+};
+const TRANSPORT_NEGATION_PATTERNS: Record<string, RegExp> = {
+  flight: /\bno\s+(more\s+)?flights?\b|\bnot\s+(flying|taking\s+a\s+flight)\b|\bno\s+longer\s+flying\b|\bnot\s+going\s+by\s+(plane|air)\b/i,
+  train: /\bno\s+(more\s+)?trains?\b|\bnot\s+(taking|going\s+by)\s+(the\s+)?train\b/i,
+  car: /\bnot\s+driving\b|\bno\s+(more\s+)?road\s*trip\b|\bnot\s+doing\s+a\s+road\s*trip\b/i,
+};
+
+/**
+ * A user explicitly ruling out a transport mode ("no flights, we're going
+ * by train instead") should mean the corrected plan never mentions the
+ * ruled-out mode again - confirmed live that the AI doesn't reliably honor
+ * this on its own (a "REFINEMENT MEANS MERGE" turn added a train task
+ * alongside the existing flight one instead of replacing it, and even the
+ * new milestone's own title still said "Flights, trains & hotel
+ * reservation lock"). This is a deterministic backstop applied regardless
+ * of which path produced the milestones, same principle as the venue-
+ * supplied-task filter above: strip any deliverable that's ONLY about a
+ * negated mode, drop a milestone that becomes empty once stripped, and
+ * scrub the negated mode's own words out of any surviving mixed title
+ * (e.g. "Flights, trains & hotel reservation lock" -> "Trains & hotel
+ * reservation lock").
+ */
+function stripNegatedTransportMentions(milestones: TMinusMilestone[], combinedSignalText: string): TMinusMilestone[] {
+  const negatedModes = Object.keys(TRANSPORT_NEGATION_PATTERNS).filter((mode) =>
+    TRANSPORT_NEGATION_PATTERNS[mode].test(combinedSignalText)
+  );
+  if (negatedModes.length === 0) return milestones;
+
+  const scrubText = (text: string): string => {
+    let result = text;
+    for (const mode of negatedModes) {
+      // Wrapped in a non-capturing group - TRANSPORT_MODE_WORDS' own source
+      // already contains top-level `|` alternations, which would otherwise
+      // silently break out of the surrounding alternation below.
+      const word = `(?:${TRANSPORT_MODE_WORDS[mode].source})`;
+      // Removes the mode word together with one adjacent list separator on
+      // either side (", " / " & " / " / "), so stripping "Flights" from
+      // "Flights, trains & hotel..." or "Flights & lodging..." leaves a
+      // clean remainder rather than a dangling ", " or "& ".
+      result = result.replace(new RegExp(`\\s*[,/&]\\s*${word}|${word}\\s*[,/&]\\s*|${word}`, 'gi'), ' ');
+    }
+    return result.replace(/\s{2,}/g, ' ').trim();
+  };
+
+  return milestones
+    .map((ms): TMinusMilestone | null => {
+      const hadDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
+      const newDeliverables = (ms.deliverables || []).filter(
+        (d) => !negatedModes.some((mode) => TRANSPORT_MODE_WORDS[mode].test(d.title))
+      );
+      const scrubbedTitle = scrubText(ms.title || '');
+      // Nothing left of the title, or every deliverable this milestone had
+      // was about the now-negated mode - it was ENTIRELY about the ruled-
+      // out mode, so drop it rather than keep an empty task around.
+      if (!scrubbedTitle || (hadDeliverables && newDeliverables.length === 0)) {
+        return null;
+      }
+      const finalTitle = scrubbedTitle.charAt(0).toUpperCase() + scrubbedTitle.slice(1);
+      return { ...ms, title: finalTitle, deliverables: newDeliverables };
+    })
+    .filter((ms): ms is TMinusMilestone => ms !== null);
+}
+
 /**
  * Shared last-mile pass applied to every milestone list regardless of which
  * of the three input paths produced it (Telegram, ChatConsole/web via
@@ -1232,10 +1305,10 @@ const VENUE_SUPPLIED_SUPPLY_PATTERN = /\b(ice|glassware|cups?|plates|napkins|tab
  * processWithGemini/processWithDeterministicRules in agentProcessor.ts for
  * the other two call sites.
  *
- * Two rules with deliberately opposite bias, per explicit product direction
- * ("be very strict on how many times a task can exist... we don't need
- * duplicates" vs. never silently deleting something the user actually
- * asked for):
+ * Three rules, the first two with deliberately opposite bias per explicit
+ * product direction ("be very strict on how many times a task can exist...
+ * we don't need duplicates" vs. never silently deleting something the user
+ * actually asked for):
  *
  * 1. Dedupe - biased toward collapsing. One real-world task should exist
  *    once, not as a category-default AND a narrative-inferred copy of the
@@ -1252,6 +1325,10 @@ const VENUE_SUPPLIED_SUPPLY_PATTERN = /\b(ice|glassware|cups?|plates|napkins|tab
  *    Gemini-prompt responsibility, not something this deterministic pass
  *    can synthesize - this function only ever removes, never invents a
  *    replacement.
+ * 3. Explicit negation override - a user ruling out a transport mode gets
+ *    every trace of it scrubbed from the surviving plan (see
+ *    stripNegatedTransportMentions above), regardless of how well the AI
+ *    path itself honored the correction.
  */
 const DEDUPE_STOPWORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'to', 'for', 'of', 'on', 'in', 'at', 'with', 'your', 'is', 'are',
@@ -1447,23 +1524,24 @@ export function applyMilestoneQualityGuardrails(
 
   const contextNote = typeof signal.context?.customNote === 'string' ? signal.context.customNote : '';
   const combinedSignalText = [signal.title, signal.location, signal.rawText, contextNote].filter(Boolean).join(' ');
-  if (!detectsExternallySuppliedVenue(combinedSignalText)) {
-    return deduped;
-  }
 
-  return deduped.filter((ms) => {
-    // Checks title + description + any attached deliverables' own titles -
-    // a "Party setup & beverage chill" milestone (category 'prep', not
-    // 'shopping') can still carry a "Drinks, ice, and glassware ready"
-    // deliverable that's exactly the venue-supplied content this is meant
-    // to catch, even though the parent milestone's own title doesn't
-    // mention it.
-    const searchText = [ms.title, ms.description, ...(ms.deliverables || []).map((d) => d.title)]
-      .filter(Boolean)
-      .join(' ');
-    const isVenueSuppliedTask = (ms.category === 'shopping' || ms.category === 'prep') && VENUE_SUPPLIED_SUPPLY_PATTERN.test(searchText);
-    return !isVenueSuppliedTask;
-  });
+  const venueFiltered = detectsExternallySuppliedVenue(combinedSignalText)
+    ? deduped.filter((ms) => {
+        // Checks title + description + any attached deliverables' own
+        // titles - a "Party setup & beverage chill" milestone (category
+        // 'prep', not 'shopping') can still carry a "Drinks, ice, and
+        // glassware ready" deliverable that's exactly the venue-supplied
+        // content this is meant to catch, even though the parent
+        // milestone's own title doesn't mention it.
+        const searchText = [ms.title, ms.description, ...(ms.deliverables || []).map((d) => d.title)]
+          .filter(Boolean)
+          .join(' ');
+        const isVenueSuppliedTask = (ms.category === 'shopping' || ms.category === 'prep') && VENUE_SUPPLIED_SUPPLY_PATTERN.test(searchText);
+        return !isVenueSuppliedTask;
+      })
+    : deduped;
+
+  return stripNegatedTransportMentions(venueFiltered, combinedSignalText);
 }
 
 /**

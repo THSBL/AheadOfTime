@@ -130,6 +130,35 @@ describe('processWithGemini - preserving existing milestones when the model omit
     expect(result.event.milestones.length).toBeGreaterThan(0);
   });
 
+  it('keeps the existing event title even when the model returns its own paraphrase alongside a refinement', async () => {
+    // Regression test for a real, live-reported bug: correcting an existing
+    // "Trip to Amsterdam" event with "no flights, we're going by train"
+    // came back retitled "Travel & Vacation Trip" - the model's JSON schema
+    // requires SOME title whenever it includes a macro_event/event_title,
+    // even on a turn that never asked about the event's name at all. Once
+    // an event already has a real title, the model's freshly-generated one
+    // must never override it.
+    mockResponseText = JSON.stringify({
+      mode: 'RESOLVE_MILESTONES',
+      target_event_id: 'evt-dinner-curacao',
+      event_title: 'A Lovely Evening Out',
+      focus: 'Noted.',
+      addition: '',
+      milestones: [
+        { tMinusLabel: 'T-14d', tMinusOffsetMinutes: -20160, title: 'Invites & confirm dietary requirements Sent', category: 'booking' },
+      ],
+    });
+    const existingEvent = makeExistingEvent();
+    const result = await processWithGemini({
+      message: 'two guests are vegetarian',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      existingEvent,
+      activeEvents: [existingEvent],
+    });
+    expect(result.event.title).toBe('Dinner in Curacao');
+  });
+
   it('tells the model which existing milestones are already completed', async () => {
     // The model was never told which milestones are already done, so a
     // correction touching one part of the plan could come back proposing
