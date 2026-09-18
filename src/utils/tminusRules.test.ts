@@ -59,6 +59,22 @@ describe('getCleanEventTitle', () => {
     expect(getCleanEventTitle('Group Trip Horizon (New York)', 'travel_trip')).toBe('Group Trip Horizon (New York)');
   });
 
+  it('treats a bare category-label title like "Travel & Vacation Trip" as generic, not already-specific', () => {
+    // Regression test for a real, live-reported bug: Gemini's own
+    // macro_event.title defaulted to exactly this plausible-but-generic
+    // phrase for a fresh trip creation, and this function's narrow
+    // sentinel list ("Upcoming Event"/"New Event"/"Event"/"Group Trip
+    // Horizon") let it straight through as if it were already specific.
+    const result = getCleanEventTitle('Travel & Vacation Trip', 'travel_trip', { destination: 'Egypt' });
+    expect(result).toBe('Trip to Egypt');
+  });
+
+  it('also catches "Vacation Trip", "Travel Trip", and bare "Business Trip" as generic', () => {
+    expect(getCleanEventTitle('Vacation Trip', 'travel_trip', { destination: 'Egypt' })).toBe('Trip to Egypt');
+    expect(getCleanEventTitle('Travel Trip', 'travel_trip', { destination: 'Egypt' })).toBe('Trip to Egypt');
+    expect(getCleanEventTitle('Business Trip', 'travel_trip', { destination: 'Egypt', isBusinessTrip: true })).toBe('Business Trip to Egypt');
+  });
+
   it('replaces "Upcoming Event" with a category-based fallback', () => {
     const result = getCleanEventTitle('Upcoming Event', 'birthday_party');
     expect(result).not.toBe('Upcoming Event');

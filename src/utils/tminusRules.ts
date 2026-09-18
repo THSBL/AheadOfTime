@@ -371,13 +371,20 @@ export function getCleanEventTitle(title?: string, category?: string, context?: 
   }
 
   const isGeneric = !cleaned ||
-    /^upcoming(\s+event)?$/i.test(cleaned) ||
+    /^upcoming\b/i.test(cleaned) ||
     /^new(\s+event)?$/i.test(cleaned) ||
     cleaned.toLowerCase() === 'event' ||
     // Only the bare sentinel is generic - once a destination has been
     // appended (e.g. "Group Trip Horizon (New York)"), it's specific
     // enough to keep and shouldn't be discarded for a vaguer fallback.
-    cleaned.toLowerCase() === 'group trip horizon';
+    cleaned.toLowerCase() === 'group trip horizon' ||
+    // Other bare category-label phrases with no specific place/name/
+    // occasion attached - confirmed live that Gemini defaults to exactly
+    // this kind of plausible-but-non-specific title ("Travel & Vacation
+    // Trip") for a fresh trip creation, and this narrow sentinel list let
+    // it straight through instead of falling through to the destination-
+    // based reconstruction below.
+    /^(travel\s*(&|and)\s*vacation\s*trip|vacation\s*trip|travel\s*trip|business\s*trip|trip)$/i.test(cleaned);
 
   if (!isGeneric) {
     return cleaned;

@@ -276,7 +276,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         type: Type.OBJECT,
         description: "Parent macro event / trip horizon",
         properties: {
-          title: { type: Type.STRING },
+          title: { type: Type.STRING, description: "MUST name the actual destination/occasion (e.g. 'Egypt Diving Trip', 'Trip to Amsterdam') - never a bare category label like 'Travel & Vacation Trip', 'Business Trip', or 'Vacation Trip' with nothing specific attached." },
           start_date: { type: Type.STRING, description: "YYYY-MM-DD" },
           end_date: { type: Type.STRING, description: "YYYY-MM-DD" },
           type: { type: Type.STRING, description: "e.g. Trip, Stag Party, Conference, Weekend Getaway" },
@@ -300,7 +300,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
       event_title: {
         type: Type.STRING,
-        description: "Event title",
+        description: "MUST name the actual destination/occasion (e.g. 'Maya's 30th Birthday', 'Egypt Diving Trip') - never a bare category label like 'Upcoming Event' or 'Travel & Vacation Trip' with nothing specific attached.",
       },
       target_date: {
         type: Type.STRING,
@@ -597,7 +597,16 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   // title the model also happens to emit alongside an unrelated correction.
   let title = existingEvent?.title || structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || 'Upcoming Event';
   let finalCategory = structuredPayload ? 'travel_trip' : (parsed.category || existingEvent?.category || detectEventCategory(title, params.message));
-  title = getCleanEventTitle(title, finalCategory, existingEvent?.context);
+  // On a fresh trip creation, macro_event.destination is often the ONLY
+  // place a real destination lands - existingEvent?.context alone (the
+  // previous argument here) is always empty for a brand-new event, so a
+  // generic title ("Travel & Vacation Trip") had nothing to fall back to
+  // and nowhere to recover "Trip to Egypt" from even after widening
+  // getCleanEventTitle's own generic-title detection above.
+  title = getCleanEventTitle(title, finalCategory, {
+    ...(existingEvent?.context || {}),
+    destination: structuredPayload?.macro_event.destination || existingEvent?.context?.destination,
+  });
 
   const focusText = parsed.focus || (structuredPayload
     ? `I created "${title}" (${eventDate}${endDate ? ` to ${endDate}` : ''}) with a full prep checklist.`
