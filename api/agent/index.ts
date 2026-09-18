@@ -141,22 +141,14 @@ async function handleProcess(req: any, res: any) {
     // Existing event lookup if targeted
     const existingEvent: CalendarEvent | undefined = targetEventId ? activeEvents.find(e => e.id === targetEventId) : undefined;
 
-    // ARCHITECTURAL SPEED BOOST: If user is answering intake questions or tuning variables for an existing event,
-    // we already have the structured parameters! Resolve instantly (0ms) using deterministic engine.
-    if ((intakeAnswer || batchAnswers) && existingEvent) {
-      const instantResult = processWithDeterministicRules({
-        message,
-        refDateStr,
-        refDateISO,
-        existingEvent,
-        intakeAnswer,
-        batchAnswers,
-        transcribedVoiceText,
-        userProfile
-      });
-      res.json(instantResult);
-      return;
-    }
+    // An answered intake question or a structured variable retune on an
+    // existing event used to always skip Gemini entirely ("ARCHITECTURAL
+    // SPEED BOOST" - resolve instantly via the deterministic engine alone),
+    // even when GEMINI_API_KEY is configured. Removed here to match
+    // server.ts's Express route - this Vercel function is a separate copy
+    // of the same route (see the file-level comment above) and had drifted
+    // out of sync with that earlier fix. Now takes the exact same
+    // Gemini-first, deterministic-fallback path as every other message.
 
     let result: ProcessAgentResponsePayload;
 
@@ -175,6 +167,7 @@ async function handleProcess(req: any, res: any) {
         if (transcribedVoiceText) {
           result.transcribedText = transcribedVoiceText;
         }
+        result.usedAi = true;
       } catch (geminiError: any) {
         console.warn("Fast Gemini notice, seamlessly using deterministic rules engine:", geminiError?.message || "Fallback");
         // Pure logging - does not affect the deterministic fallback below.
@@ -197,6 +190,7 @@ async function handleProcess(req: any, res: any) {
           transcribedVoiceText,
           userProfile
         });
+        result.usedAi = false;
       }
     } else {
       result = processWithDeterministicRules({
@@ -209,6 +203,7 @@ async function handleProcess(req: any, res: any) {
         transcribedVoiceText,
         userProfile
       });
+      result.usedAi = false;
     }
 
     res.json(result);

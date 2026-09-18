@@ -680,6 +680,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         if (transcribedVoiceText) {
           result.transcribedText = transcribedVoiceText;
         }
+        result.usedAi = true;
       } catch (geminiError: any) {
         console.warn("Fast Gemini notice, seamlessly using deterministic rules engine:", geminiError?.message || "Fallback");
         // Pure logging - does not affect the deterministic fallback below.
@@ -700,6 +701,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
           transcribedVoiceText,
           userProfile
         });
+        result.usedAi = false;
       }
     } else {
       result = processWithDeterministicRules({
@@ -712,6 +714,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         transcribedVoiceText,
         userProfile
       });
+      result.usedAi = false;
     }
 
     res.json(result);

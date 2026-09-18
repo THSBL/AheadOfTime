@@ -1236,9 +1236,14 @@ const TRANSPORT_MODE_WORDS: Record<string, RegExp> = {
   car: /\bdriving\b|\broad\s*trip\b|\bpersonal\s*car\b|\brental\s*car\b/i,
 };
 const TRANSPORT_NEGATION_PATTERNS: Record<string, RegExp> = {
-  flight: /\bno\s+(more\s+)?flights?\b|\bnot\s+(flying|taking\s+a\s+flight)\b|\bno\s+longer\s+flying\b|\bnot\s+going\s+by\s+(plane|air)\b/i,
-  train: /\bno\s+(more\s+)?trains?\b|\bnot\s+(taking|going\s+by)\s+(the\s+)?train\b/i,
-  car: /\bnot\s+driving\b|\bno\s+(more\s+)?road\s*trip\b|\bnot\s+doing\s+a\s+road\s*trip\b/i,
+  // Each mode also matches a "change/switch/replace" phrasing naming that
+  // mode as the thing being replaced FROM - "change flight to train" is at
+  // least as common a way to state this correction as a bare negation like
+  // "no flights", and was confirmed live to otherwise slip straight past
+  // this guardrail.
+  flight: /\bno\s+(more\s+)?flights?\b|\bnot\s+(flying|taking\s+a\s+flight)\b|\bno\s+longer\s+flying\b|\bnot\s+going\s+by\s+(plane|air)\b|\b(change|changed|changing|switch(ed|ing)?)\s+(the\s+)?flights?\s+(to|for)\b|\breplac(e|ed|ing)\s+(the\s+)?flights?\s+with\b|\bswitch(ed|ing)?\s+from\s+flights?\b/i,
+  train: /\bno\s+(more\s+)?trains?\b|\bnot\s+(taking|going\s+by)\s+(the\s+)?train\b|\b(change|changed|changing|switch(ed|ing)?)\s+(the\s+)?trains?\s+(to|for)\b|\breplac(e|ed|ing)\s+(the\s+)?trains?\s+with\b|\bswitch(ed|ing)?\s+from\s+trains?\b/i,
+  car: /\bnot\s+driving\b|\bno\s+(more\s+)?road\s*trip\b|\bnot\s+doing\s+a\s+road\s*trip\b|\b(change|changed|changing|switch(ed|ing)?)\s+(the\s+)?(driving|road\s*trip)\s+(to|for)\b|\bswitch(ed|ing)?\s+from\s+driving\b/i,
 };
 
 /**

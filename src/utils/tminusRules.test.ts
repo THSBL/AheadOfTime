@@ -631,6 +631,15 @@ describe('applyMilestoneQualityGuardrails - explicit transport-mode negation', (
     expect(result).toHaveLength(0);
   });
 
+  it('recognizes a "change X to Y" phrasing, not just a bare negation', () => {
+    // Regression test for a real, live-reported gap: "change flight to
+    // train" slipped straight past the guardrail because it only matched
+    // bare negations like "no flights" / "not flying".
+    const milestones = [makeMilestone({ title: 'Flights, trains & hotel reservation lock' })];
+    const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'change flight to train' });
+    expect(result[0].title).toBe('Trains & hotel reservation lock');
+  });
+
   it('leaves milestones untouched when no negation phrase is present', () => {
     const milestones = [makeMilestone({ title: 'Flights & lodging Booked & Confirmed' })];
     const result = applyMilestoneQualityGuardrails(milestones, { rawText: 'Also need a rental car' });

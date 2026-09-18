@@ -269,6 +269,13 @@ export interface ProcessAgentResponsePayload {
   tailoredOptions?: string[];
   transcribedText?: string;
   explanation?: string;
+  // Whether this response actually came from a live Gemini call vs. the
+  // deterministic rules fallback (no GEMINI_API_KEY, or Gemini errored/
+  // timed out) - added after live testing showed hardcoded fallback
+  // wording ("Flights, trains & hotel reservation lock") appearing in a
+  // response whose conversational reply read as if Gemini had handled it,
+  // with no way to tell from the client which path actually ran.
+  usedAi?: boolean;
 }
 
 export interface UserOnboardingProfile {
