@@ -23,6 +23,12 @@
  *   - Colour communicates meaning, never decoration.
  */
 @theme {
+  /* Brand sage: sampled from the mint tiles/stripes of the logo artwork, so
+     buttons match the mark exactly. Use bg-aot-sage / hover:bg-aot-sage-hover
+     for green buttons rather than the darker forest greens below. */
+  --color-aot-sage: #95BFB5;
+  --color-aot-sage-hover: #85B0A6;
+
   --color-aot-green: #447463;
   --color-aot-green-50: #f2f7f5;
   --color-aot-green-100: #e1ece7;

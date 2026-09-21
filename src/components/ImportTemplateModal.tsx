@@ -727,7 +727,7 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
                     disabled={isCalibrating}
                     className={`text-xs font-bold px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-xs ${
                       calibrationSuccess
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-aot-sage text-white'
                         : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white'
                     }`}
                   >

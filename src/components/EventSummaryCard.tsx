@@ -247,7 +247,7 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
                         onClick={() => onToggleMilestoneStatus(event.id, ms.id)}
                         className={`w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                           isCompleted
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-aot-sage text-white'
                             : isOverdue
                             ? 'border-2 border-rose-400 hover:border-rose-600 text-transparent'
                             : 'border-2 border-slate-300 hover:border-sky-600 text-transparent'

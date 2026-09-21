@@ -62,7 +62,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
             <button
               type="button"
               onClick={handleOpenPage}
-              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl transition-colors shrink-0 inline-flex items-center gap-1 cursor-pointer"
+              className="px-3 py-1.5 bg-aot-sage hover:bg-aot-sage-hover text-white font-bold rounded-xl transition-colors shrink-0 inline-flex items-center gap-1 cursor-pointer"
             >
               <span>Open /privacy</span>
               <ExternalLink className="w-3 h-3" />

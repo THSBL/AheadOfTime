@@ -635,7 +635,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               isSkipped
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : isCompleted
-                ? 'bg-emerald-600 text-white shadow-2xs cursor-pointer'
+                ? 'bg-aot-sage text-white shadow-2xs cursor-pointer'
                 // Checkbox encodes completion state only - overdue/
                 // deliverable are already shown via the card's left-
                 // border accent and the due-pill, so this doesn't
@@ -868,7 +868,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               isSkipped
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : isCompleted
-                ? 'bg-emerald-600 text-white cursor-pointer'
+                ? 'bg-aot-sage text-white cursor-pointer'
                 : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
             }`}
             title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
@@ -1048,7 +1048,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className="flex items-center gap-1.5 shrink-0 relative">
             <button
               onClick={() => setIsPushModalOpen(true)}
-              className="bg-[#447463] hover:bg-[#376052] text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className="bg-aot-sage hover:bg-aot-sage-hover text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
               title="Push 1 event + prep tasks to Google Calendar"
             >
               <Calendar className="w-3.5 h-3.5 text-white/90 shrink-0" />

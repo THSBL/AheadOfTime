@@ -94,7 +94,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
         className={`hidden sm:inline-flex items-center tracking-tight leading-none ${textSize} text-white whitespace-nowrap`}
         style={{ textShadow: '0 2px 4px rgba(0,0,0,0.55)' }}
       >
-        <span className="font-black text-[#91BDB2]">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>
+        <span className="font-black text-aot-sage">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>
       </span>
     </div>
   );

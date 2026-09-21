@@ -216,7 +216,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-aot-sage text-white flex items-center justify-center shadow-sm">
               <MessageSquare className="w-5 h-5" />
             </div>
             <div>
@@ -364,7 +364,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                     <button
                       onClick={handleTriggerOutreach}
                       disabled={isSendingOutreach || !selectedEventId}
-                      className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                      className="w-full py-2.5 px-4 bg-aot-sage hover:bg-aot-sage-hover text-white text-xs font-medium rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
                     >
                       {isSendingOutreach ? (
                         <>
@@ -563,7 +563,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                                     <button
                                       onClick={() => handleSimulateIncoming('Push to Calendar', `BTN_PUSH_CALENDAR:${activeSession.eventId}`)}
                                       disabled={isSimulatingReply}
-                                      className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                                      className="w-full py-2.5 px-3 bg-aot-sage hover:bg-aot-sage-hover text-white font-semibold text-xs rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-colors"
                                     >
                                       <CheckCircle2 className="w-4 h-4" />
                                       [ Push to Calendar ]
@@ -628,7 +628,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                   <button
                     onClick={handleRunBackgroundScan}
                     disabled={isScanning}
-                    className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-2 shadow-sm transition-all whitespace-nowrap self-start disabled:opacity-50"
+                    className="py-2.5 px-5 bg-aot-sage hover:bg-aot-sage-hover text-white text-xs font-semibold rounded-lg flex items-center gap-2 shadow-sm transition-all whitespace-nowrap self-start disabled:opacity-50"
                   >
                     {isScanning ? (
                       <>

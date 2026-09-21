@@ -398,7 +398,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onOpenScanAgenda}
                 id="btn-scan-agenda"
-                className="hidden md:flex bg-[#447463] hover:bg-[#376052] text-white border border-[#376052]/50 text-xs font-bold px-3 py-1 sm:py-1.5 rounded-full items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                className="hidden md:flex bg-aot-sage hover:bg-aot-sage-hover text-white border border-aot-sage-hover/50 text-xs font-bold px-3 py-1 sm:py-1.5 rounded-full items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
                 title="Scan for existing events in your agenda"
               >
                 <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />

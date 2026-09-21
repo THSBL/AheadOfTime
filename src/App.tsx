@@ -53,7 +53,6 @@ import {
   LayoutDashboard, 
   Target,
   RefreshCw,
-  RotateCcw,
   Loader2,
   Check,
   FileSpreadsheet
@@ -2045,18 +2044,6 @@ function App() {
               </a>
             </div>
 
-            <div className="flex items-center gap-2 mt-1.5 sm:mt-0">
-              <button
-                type="button"
-                id="btn-footer-reset-demo"
-                onClick={handleResetDemo}
-                className="text-[11px] text-slate-300 hover:text-white hover:bg-white/10 px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
-                title="Reset local demo data"
-              >
-                <RotateCcw className="w-3 h-3 text-slate-300" />
-                <span>Reset Demo</span>
-              </button>
-            </div>
           </footer>
 
       {/* Agent Confirmation Toast - echoes back what the agent understood

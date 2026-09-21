@@ -368,7 +368,7 @@ export const RecurringUserLanding: React.FC = () => {
             marginClassName="mx-[6%]"
             shapeIndex={1}
             colorClassName="bg-white border-slate-200"
-            barColorClassName="bg-[#447463]"
+            barColorClassName="bg-aot-sage"
             darkAccent={STRIPE_TWO_DARK_ACCENT}
             mounted={mounted}
             isSettled={isSettled}
