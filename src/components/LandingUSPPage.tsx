@@ -41,10 +41,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                   trackButtonClick('Go to Dashboard', 'landing_header');
                   onGoToDashboard();
                 }}
-                className="bg-aot-sage hover:bg-aot-sage-hover text-white border border-aot-sage-hover/50 font-bold text-xs sm:text-sm px-3.5 py-2 rounded-xl shadow-xs hover:shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] border border-aot-sage-hover/50 font-bold text-xs sm:text-sm px-3.5 py-2 rounded-xl shadow-xs hover:shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                 title="Return to your active events dashboard"
               >
-                <LayoutDashboard className="w-4 h-4 text-white" />
+                <LayoutDashboard className="w-4 h-4 text-[#182A42]" />
                 <span>Go to Dashboard</span>
               </button>
             )}
@@ -70,7 +70,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                   trackButtonClick('Get Started For Free', 'landing_header');
                   onGetStarted();
                 }}
-                className="bg-aot-sage hover:bg-aot-sage-hover text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <span>Get started for free</span>
               </button>
@@ -128,9 +128,9 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Open My Dashboard', 'landing_hero');
                 onGoToDashboard();
               }}
-              className="px-8 py-3.5 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-white border border-aot-sage-hover/50 font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              className="px-8 py-3.5 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] border border-aot-sage-hover/50 font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
-              <LayoutDashboard className="w-4 h-4 text-white" />
+              <LayoutDashboard className="w-4 h-4 text-[#182A42]" />
               <span>Open My Dashboard</span>
             </button>
           ) : (
@@ -139,7 +139,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Get Started For Free', 'landing_hero');
                 onGetStarted();
               }}
-              className="px-8 py-3.5 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              className="px-8 py-3.5 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <span>Get started for free</span>
             </button>
@@ -237,9 +237,9 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Get Started For Free', 'landing_footer_cta');
                 onGetStarted();
               }}
-              className="px-8 py-4 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-white font-black text-base shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
+              className="px-8 py-4 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-black text-base shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
             >
-              <Sparkles className="w-4 h-4 text-white" />
+              <Sparkles className="w-4 h-4 text-[#182A42]" />
               <span>Get started for free</span>
             </button>
           </div>

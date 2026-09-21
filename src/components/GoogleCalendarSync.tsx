@@ -590,7 +590,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                       href={batchSuccessResult.calendarLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 bg-aot-sage hover:bg-aot-sage-hover text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>Open in Google Calendar</span>
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -728,7 +728,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                       href={syncSuccessResult.calendarLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 bg-aot-sage hover:bg-aot-sage-hover text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>Open in Google Calendar</span>
                       <ExternalLink className="w-3.5 h-3.5" />
