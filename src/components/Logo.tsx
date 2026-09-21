@@ -53,8 +53,6 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
   }
 
   // Small / Dark / Header inline title + logo variant
-  const isDark = variant === 'dark';
-
   const imgSize = size === 'sm'
     ? 'w-6 h-6 sm:w-7 sm:h-7'
     : size === 'lg'
@@ -76,7 +74,9 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
     : 'text-base sm:text-2xl';
 
   return (
-    <div className={`inline-flex items-center gap-2 select-none ${className}`}>
+    // One navy badge holds the mark and the brand name from sm up; on phones
+    // it's just the mark, to keep the header uncluttered.
+    <div className={`inline-flex items-center gap-2 select-none sm:bg-[#182A42] sm:rounded-2xl sm:p-1 sm:pr-4 sm:shadow-sm ${className}`}>
       <div className="flex items-center justify-center shrink-0">
         <img 
           src={smallImgSrc} 
@@ -86,24 +86,12 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
         />
       </div>
       {/* Same treatment as the landing-page wordmark: "Ahead" heavy and sage,
-          "Of Time" lighter. The soft shadow keeps the sage legible on the
-          white header bars and adds the same depth the logo mark has. */}
+          "Of Time" lighter, white on the navy badge with the same soft depth. */}
       <span
-        className={`inline-flex items-center tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#182A42]'} whitespace-nowrap`}
-        style={
-          isDark
-            ? { textShadow: '0 2px 4px rgba(0,0,0,0.55)' }
-            : { textShadow: '0 2px 3px rgba(24,42,66,0.35)' }
-        }
+        className={`hidden sm:inline-flex items-center tracking-tight leading-none ${textSize} text-white whitespace-nowrap`}
+        style={{ textShadow: '0 2px 4px rgba(0,0,0,0.55)' }}
       >
-        {/* On the white header the sage alone is too pale, so "Ahead" gets a
-            navy edge (same navy as the page background) painted under the fill. */}
-        <span
-          className="font-black text-[#91BDB2]"
-          style={isDark ? undefined : { WebkitTextStroke: '3px #182A42', paintOrder: 'stroke fill' }}
-        >
-          Ahead
-        </span>&nbsp;<span className="font-semibold">Of Time</span>
+        <span className="font-black text-[#91BDB2]">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>
       </span>
     </div>
   );
