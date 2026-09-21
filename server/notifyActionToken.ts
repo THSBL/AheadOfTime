@@ -60,8 +60,14 @@ export function verifyOAuthState(state: string | undefined | null): { email: str
   if (!secret || !state) return null;
   try {
     const decoded = Buffer.from(state, 'base64url').toString('utf8');
-    const [email, expiresAtRaw, token] = decoded.split('.');
-    if (!email || !expiresAtRaw || !token) return null;
+    // "<email>.<expiresAt>.<hex token>": the email itself contains dots
+    // (every address has one in its domain), so the fields are split off
+    // from the RIGHT. Splitting on every "." made verification fail for
+    // every real address, which surfaced as "Something went wrong
+    // connecting background sync" after the consent screen.
+    const match = /^(.+)\.(\d+)\.([0-9a-f]+)$/.exec(decoded);
+    if (!match) return null;
+    const [, email, expiresAtRaw, token] = match;
     const expiresAt = Number(expiresAtRaw);
     if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return null;
     const expected = sign(`${email}.${expiresAt}`, secret);
