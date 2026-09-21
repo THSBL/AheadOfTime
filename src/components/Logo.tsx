@@ -93,16 +93,17 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
         style={
           isDark
             ? { textShadow: '0 2px 4px rgba(0,0,0,0.55)' }
-            : {
-                // White edge under the fill (paint-order) + a darker drop shadow:
-                // lifts the sage off the white header like the mark's raised edge.
-                WebkitTextStroke: '3px #fff',
-                paintOrder: 'stroke fill',
-                textShadow: '0 2px 3px rgba(24,42,66,0.55)',
-              }
+            : { textShadow: '0 2px 3px rgba(24,42,66,0.35)' }
         }
       >
-        <span className="font-black text-[#91BDB2]">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>
+        {/* On the white header the sage alone is too pale, so "Ahead" gets a
+            navy edge (same navy as the page background) painted under the fill. */}
+        <span
+          className="font-black text-[#91BDB2]"
+          style={isDark ? undefined : { WebkitTextStroke: '3px #182A42', paintOrder: 'stroke fill' }}
+        >
+          Ahead
+        </span>&nbsp;<span className="font-semibold">Of Time</span>
       </span>
     </div>
   );
