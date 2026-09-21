@@ -1,5 +1,5 @@
-import React from 'react';
-import { Sparkles, ShieldCheck, LayoutDashboard } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
@@ -21,6 +21,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   // page's title/description correct if a user lands back on "/" after
   // usePageMeta reverted it from a page-specific value on another route.
   usePageMeta(DEFAULT_TITLE, DEFAULT_DESCRIPTION);
+
+  // The demo video is still being produced - the button exists so the layout
+  // is final, and says so instead of opening a browser alert() or a dead link.
+  const [showDemoNotice, setShowDemoNotice] = useState(false);
 
   return (
     <div className="relative z-10 min-h-screen w-full bg-[#182A42] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#182A42] selection:text-white">
@@ -66,9 +70,9 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                   trackButtonClick('Get Started For Free', 'landing_header');
                   onGetStarted();
                 }}
-                className="bg-[#182A42] hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="bg-[#91BDB2] hover:bg-[#82ada2] text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
-                <span>Get Started For Free</span>
+                <span>Get started for free</span>
               </button>
             )}
           </div>
@@ -78,17 +82,38 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       {/* Hero Section featuring Big Logo */}
       <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 text-center space-y-6">
         
-        {/* Big Logo Featured Prominently - very light sage tint instead of stark white */}
-        <div className="flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="bg-[#F2F7F5] border border-white/60 p-5 sm:p-7 md:p-8 rounded-2xl inline-flex flex-col items-center shadow-lg shadow-slate-900/10">
-            <Logo variant="large" size="xl" />
+        {/* Hero logo lockup: brighter 3D mark, divider, and a wordmark with
+            "Ahead" as the dominant word. The mark's own navy backdrop is
+            feathered into the page so it doesn't read as a pasted-in photo. */}
+        <div className="flex items-center justify-center gap-4 sm:gap-7 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <img
+            src="/assets/logo-hero.jpg"
+            alt="Ahead Of Time logo: a calendar with a location pin above a road of stacked stripes"
+            width={640}
+            height={800}
+            className="h-28 sm:h-44 w-auto shrink-0"
+            style={{
+              WebkitMaskImage: 'radial-gradient(closest-side, #000 62%, transparent 100%)',
+              maskImage: 'radial-gradient(closest-side, #000 62%, transparent 100%)',
+            }}
+          />
+          <div className="self-stretch w-px bg-white/70 my-3 sm:my-5" aria-hidden="true" />
+          <div className="text-left">
+            <p className="text-[1.7rem] min-[400px]:text-4xl sm:text-6xl leading-none tracking-tight text-white whitespace-nowrap">
+              <span className="font-black text-[#91BDB2]">Ahead</span>{' '}
+              <span className="font-semibold">Of Time</span>
+            </p>
+            <p className="mt-2 sm:mt-3 text-sm sm:text-xl font-medium text-white">
+              Assistant for busy calendars
+            </p>
           </div>
         </div>
 
         {/* Hero Headline / USP Statement - light text, now sitting directly on the navy page background */}
         <div className="space-y-3 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700 delay-100">
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.2]">
-            Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does.
+            <span className="block">Calendars tell you when an event starts.</span>
+            <span className="block">Ahead of time makes sure you are ready.</span>
           </h1>
           <p className="text-sm sm:text-base text-slate-300 font-medium leading-relaxed">
             Drop an entry onto your calendar or plan with our assistant, and Ahead Of Time automatically builds backward preparation milestones. Whether you are organizing a birthday celebration, packing for a trip, or prepping a school theme day for your kids, we build in the breathing room.
@@ -114,16 +139,28 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Get Started For Free', 'landing_hero');
                 onGetStarted();
               }}
-              className="px-8 py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-[#182A42] font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              className="px-8 py-3.5 rounded-2xl bg-[#91BDB2] hover:bg-[#82ada2] text-white font-black text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
-              <span>Get Started For Free</span>
+              <span>Get started for free</span>
             </button>
           )}
-          {/* "Watch Demo Video" removed: it opened a raw browser alert() with
-              no actual video behind it - a stub CTA reads as broken right
-              under a headline about calm preparedness, which is worse than
-              no CTA at all. Restore once there's a real recording to link. */}
+          {/* Placeholder until the demo video exists (see showDemoNotice). */}
+          <button
+            onClick={() => {
+              trackButtonClick('Watch Demo', 'landing_hero');
+              setShowDemoNotice(true);
+            }}
+            className="px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-[#182A42] font-bold text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+            <span>Watch demo</span>
+          </button>
         </div>
+        {showDemoNotice && (
+          <p role="status" className="text-xs sm:text-sm text-slate-300 animate-in fade-in duration-300">
+            The demo video is coming soon.
+          </p>
+        )}
 
       </div>
 
@@ -200,10 +237,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 trackButtonClick('Get Started For Free', 'landing_footer_cta');
                 onGetStarted();
               }}
-              className="px-8 py-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-black text-base shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
+              className="px-8 py-4 rounded-2xl bg-[#91BDB2] hover:bg-[#82ada2] text-white font-black text-base shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
             >
-              <Sparkles className="w-4 h-4 text-[#447463]" />
-              <span>Get Started For Free</span>
+              <Sparkles className="w-4 h-4 text-white" />
+              <span>Get started for free</span>
             </button>
           </div>
         </div>
