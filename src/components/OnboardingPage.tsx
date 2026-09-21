@@ -148,22 +148,6 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
             </p>
           </div>
 
-          {/* Clean Agenda Guarantee & Tasks Explanation - leads with what the
-              user gets, before asking them to answer anything. */}
-          <div className="p-3.5 bg-sky-50/70 border border-sky-200/90 rounded-2xl flex items-start gap-3">
-            <div className="w-7 h-7 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div className="space-y-1 text-xs">
-              <p className="font-bold text-sky-950">
-                Clean Agenda Guarantee
-              </p>
-              <p className="text-sky-900/90 leading-relaxed">
-                Ahead of Time syncs preparation milestones directly to your <strong className="text-sky-950">Google Tasks</strong> layer, giving you a dedicated action checklist without cluttering your primary calendar events.
-              </p>
-            </div>
-          </div>
-
           {/* Intake Form Fields */}
           <div className="space-y-5">
             
@@ -345,7 +329,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                 <span className="font-semibold text-slate-900">
                   I agree to the processing of my calendar and profile data to generate preparation schedules.
                 </span>{' '}
-                Your metadata is processed solely to build backward preparation milestones and filter routine meeting noise.{' '}
+                Your metadata is processed solely to build backward preparation milestones and filter routine meeting noise. We do not use or sell this information for personalised advertising.{' '}
                 <a
                   href="/privacy"
                   onClick={(e) => {

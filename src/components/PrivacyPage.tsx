@@ -384,7 +384,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
             <div className="pt-2 text-xs sm:text-sm text-slate-900 font-medium space-y-1">
               <p><strong>Ahead Of Time Application Support</strong></p>
               <p>Website: <a href="https://aheadoftime.app" className="text-sky-700 underline">https://aheadoftime.app</a></p>
-              <p>Direct Inquiries &amp; Support: <a href="mailto:bl.thomas.uk@gmail.com" className="text-sky-700 underline font-semibold">bl.thomas.uk@gmail.com</a></p>
+              <p>Direct Inquiries &amp; Support: <a href="mailto:aheadoftime.support@gmail.com" className="text-sky-700 underline font-semibold">aheadoftime.support@gmail.com</a></p>
             </div>
           </section>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ArrowRight, Calendar, CheckCircle2, MessageSquare, ShieldCheck, Clock, LayoutDashboard } from 'lucide-react';
+import { Sparkles, ShieldCheck, LayoutDashboard, Route, TrendingUp, CalendarSync } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
@@ -127,49 +127,46 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
 
       </div>
 
-      {/* How the Assistant Works - Two Elements */}
+      {/* How the Assistant Works - the three core USPs */}
       <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-10 border-t border-white/10">
         <div className="text-center space-y-2 mb-8">
           <h2 className="text-xl sm:text-3xl font-black text-white tracking-tight">
             How Ahead Of Time works for you
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300">
-            The assistant can work in multiple ways:
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-
-          {/* Element 1 */}
-          <div className="bg-[#F2F7F5] border border-white/60 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-900/20 flex flex-col justify-between space-y-4 hover:shadow-lg transition-all group">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-800 group-hover:scale-110 transition-transform shrink-0">
-                  <Calendar className="w-6 h-6" />
-                </div>
-                <h3 className="text-base sm:text-lg font-black text-slate-900">Reverse-Planned Calendar Sync</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+          {[
+            {
+              icon: Route,
+              iconClass: 'bg-emerald-100 border-emerald-200 text-emerald-800',
+              title: 'Automates your backward planning',
+              body: 'Describe what is coming in plain language, in the app or over Telegram, and get the full prep timeline worked out from the date backward.',
+            },
+            {
+              icon: TrendingUp,
+              iconClass: 'bg-amber-100 border-amber-200 text-amber-800',
+              title: 'Helps you track your progress',
+              body: 'Tick tasks off as you go and see at a glance what is overdue, what is due this week, and how ready each event is.',
+            },
+            {
+              icon: CalendarSync,
+              iconClass: 'bg-sky-100 border-sky-200 text-sky-800',
+              title: 'Syncs with Google Calendar',
+              body: 'Link your calendar and every event that needs prep gets its own countdown of milestones, without cluttering the events themselves.',
+            },
+          ].map(({ icon: Icon, iconClass, title, body }) => (
+            <div
+              key={title}
+              className="bg-[#F2F7F5] border border-white/60 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-900/20 flex flex-col space-y-3 hover:shadow-lg transition-all group"
+            >
+              <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center group-hover:scale-110 transition-transform shrink-0 ${iconClass}`}>
+                <Icon className="w-6 h-6" />
               </div>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                Link your calendar and every event that needs prep gets its own countdown of T-minus milestones — book, confirm, pack — pushed straight to Google Tasks.
-              </p>
+              <h3 className="text-base sm:text-lg font-black text-slate-900">{title}</h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">{body}</p>
             </div>
-          </div>
-
-          {/* Element 2 */}
-          <div className="bg-[#F2F7F5] border border-white/60 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-900/20 flex flex-col justify-between space-y-4 hover:shadow-lg transition-all group">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800 group-hover:scale-110 transition-transform shrink-0">
-                  <MessageSquare className="w-6 h-6" />
-                </div>
-                <h3 className="text-base sm:text-lg font-black text-slate-900">Tell It What's Coming, It Works Backward</h3>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                Describe the event in plain language — in the app or over Telegram — and it hands back the full prep timeline, worked out from the date backward.
-              </p>
-            </div>
-          </div>
-
+          ))}
         </div>
       </div>
 
