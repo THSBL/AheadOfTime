@@ -90,7 +90,17 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
           white header bars and adds the same depth the logo mark has. */}
       <span
         className={`inline-flex items-center tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#182A42]'} whitespace-nowrap`}
-        style={{ textShadow: isDark ? '0 2px 4px rgba(0,0,0,0.55)' : '0 1px 1px rgba(24,42,66,0.6), 0 2px 3px rgba(24,42,66,0.3)' }}
+        style={
+          isDark
+            ? { textShadow: '0 2px 4px rgba(0,0,0,0.55)' }
+            : {
+                // White edge under the fill (paint-order) + a darker drop shadow:
+                // lifts the sage off the white header like the mark's raised edge.
+                WebkitTextStroke: '3px #fff',
+                paintOrder: 'stroke fill',
+                textShadow: '0 2px 3px rgba(24,42,66,0.55)',
+              }
+        }
       >
         <span className="font-black text-[#91BDB2]">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>
       </span>
