@@ -41,6 +41,7 @@ import {
   storeRefreshToken,
   hasBackgroundSyncLinked,
   unlinkBackgroundSync,
+  isBackgroundSyncConfigured,
 } from "./server/googleOAuthTokenStore";
 
 dotenv.config();
@@ -247,7 +248,7 @@ Event Category: "${event.category || "custom"}"
 Existing Context: "${JSON.stringify(event.context || {})}"
 
 CRITICAL LOGISTICAL & TIMING REQUIREMENTS:
-1. Deconstruct the event into 4 to 8 realistic, concrete, chronological preparation milestones leading backward from the event date.
+1. Deconstruct the event into as many realistic, concrete, chronological preparation milestones as it genuinely needs (no fixed maximum), leading backward from the event date. Include safety- or compliance-critical phases before AND after the event (e.g. a post-dive no-fly window, visa or medical clearance).
 2. Calculate exact lead times based on real-world logistical constraints:
    - Private entertainment booths (karaoke, escape rooms, bowling, VR): T-3w or T-4w for weekend peak bookings.
    - High-demand restaurants & group dining tables: T-2w to T-3w.
@@ -1337,7 +1338,7 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
   }
   const userId = await findOrCreateUserByEmail(verified.email);
   const linked = await hasBackgroundSyncLinked(userId);
-  res.json({ ok: true, linked });
+  res.json({ ok: true, linked, configured: isBackgroundSyncConfigured() });
 });
 
 app.delete("/api/auth/google/status", async (req: Request, res: Response) => {

@@ -1,7 +1,7 @@
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail } from '../../../server/telegramStore.js';
 import { signOAuthState } from '../../../server/notifyActionToken.js';
-import { hasBackgroundSyncLinked, unlinkBackgroundSync } from '../../../server/googleOAuthTokenStore.js';
+import { hasBackgroundSyncLinked, unlinkBackgroundSync, isBackgroundSyncConfigured } from '../../../server/googleOAuthTokenStore.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -81,7 +81,7 @@ async function handleStatus(req: any, res: any) {
 
   if (req.method === 'GET') {
     const linked = await hasBackgroundSyncLinked(userId);
-    return res.status(200).json({ ok: true, linked });
+    return res.status(200).json({ ok: true, linked, configured: isBackgroundSyncConfigured() });
   }
 
   if (req.method === 'DELETE') {

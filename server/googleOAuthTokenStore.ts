@@ -14,6 +14,23 @@ import { encryptSecret, decryptSecret } from './cryptoUtil.js';
 
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
+/**
+ * Whether this deployment has everything background sync needs. Any one of
+ * these missing makes the flow fail partway through (authorize, consent
+ * callback, or refresh-token storage), and the raw server message was
+ * being shown to users as an error banner - the UI uses this to hide the
+ * feature until the deployment is actually set up for it.
+ */
+export function isBackgroundSyncConfigured(): boolean {
+  const has = (name: string) => Boolean(process.env[name]?.trim());
+  return (
+    has('VITE_GOOGLE_CLIENT_ID') &&
+    has('GOOGLE_OAUTH_CLIENT_SECRET') &&
+    has('NOTIFY_LINK_SECRET') &&
+    has('TOKEN_ENCRYPTION_KEY')
+  );
+}
+
 export async function storeRefreshToken(userId: string, refreshToken: string, scope: string): Promise<void> {
   const encrypted = encryptSecret(refreshToken);
   await query(

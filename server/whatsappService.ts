@@ -229,7 +229,7 @@ export class WhatsAppService {
       '',
     ];
 
-    milestones.slice(0, 6).forEach((m, idx) => {
+    milestones.forEach((m, idx) => {
       const icon = m.tag?.toLowerCase().includes('booking') ? '🎟️' :
                    m.tag?.toLowerCase().includes('dining') || m.tag?.toLowerCase().includes('dinner') ? '🍽️' :
                    m.tag?.toLowerCase().includes('transport') ? '🚗' :

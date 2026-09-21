@@ -55,6 +55,10 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   // never survive to be used by a cron - see server/googleOAuthTokenStore.ts's
   // own doc comment for why this needs its own separate OAuth grant).
   const [isBackgroundSyncLinked, setIsBackgroundSyncLinked] = useState<boolean | null>(null);
+  // Only true once the server confirms this deployment has the secrets
+  // background sync needs. Until then (or if it isn't set up) the card is
+  // hidden, rather than offering a button that ends in a raw config error.
+  const [isBackgroundSyncConfigured, setIsBackgroundSyncConfigured] = useState<boolean>(false);
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
 
@@ -68,7 +72,10 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         const data = await res.json();
-        if (data.ok) setIsBackgroundSyncLinked(data.linked);
+        if (data.ok) {
+          setIsBackgroundSyncLinked(data.linked);
+          setIsBackgroundSyncConfigured(data.configured === true);
+        }
       } catch (err) {
         console.warn('Background sync status check notice:', err);
       }
@@ -322,6 +329,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           {/* Auto Sync & Notify: background sync needs a SEPARATE consent
               grant (offline access) from the one above - this box is only
               shown once the base connection exists, since it builds on it. */}
+          {isBackgroundSyncConfigured && (
           <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div className="flex items-start gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
@@ -370,6 +378,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
               )}
             </div>
           </div>
+          )}
 
           {backgroundSyncNotice && (
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 flex items-start gap-2 animate-in fade-in duration-200">
