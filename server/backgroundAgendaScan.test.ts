@@ -8,6 +8,7 @@ const sendEmailMock = vi.fn();
 const isEmailConfiguredMock = vi.fn();
 const recordFindingsMock = vi.fn();
 const markFindingsNotifiedMock = vi.fn();
+const listTasksMock = vi.fn();
 
 vi.mock('./db.js', () => ({ query: (...args: unknown[]) => queryMock(...args) }));
 vi.mock('./googleOAuthTokenStore.js', () => ({
@@ -25,6 +26,9 @@ vi.mock('./emailService.js', () => ({
   isEmailConfigured: () => isEmailConfiguredMock(),
   sendEmail: (...args: unknown[]) => sendEmailMock(...args),
 }));
+vi.mock('./dailyDigestData.js', () => ({
+  listTasksNeedingAttention: (...args: unknown[]) => listTasksMock(...args),
+}));
 vi.mock('./agendaFindingsStore.js', () => ({
   recordFindings: (...args: unknown[]) => recordFindingsMock(...args),
   markFindingsNotified: (...args: unknown[]) => markFindingsNotifiedMock(...args),
@@ -32,8 +36,6 @@ vi.mock('./agendaFindingsStore.js', () => ({
 
 import {
   isPrepWorthy,
-  buildDigestMessage,
-  buildDigestEmail,
   toCandidate,
   runBackgroundAgendaScan,
   type GoogleCalendarItem,
@@ -85,26 +87,6 @@ describe('isPrepWorthy', () => {
   });
 });
 
-describe('buildDigestMessage', () => {
-  it('lists events soonest first with the prep-step count', () => {
-    const text = buildDigestMessage([
-      candidate({ title: 'Later thing', eventDate: '2026-12-01', prepSteps: 4 }),
-      candidate({ title: 'Sooner thing', eventDate: '2026-10-02', prepSteps: 9 }),
-    ]);
-    expect(text).toContain('2 new events');
-    expect(text.indexOf('Sooner thing')).toBeLessThan(text.indexOf('Later thing'));
-    expect(text).toContain('9 prep steps');
-  });
-
-  it('uses singular wording and caps the list at 5 with a "more" line', () => {
-    expect(buildDigestMessage([candidate({ title: 'Solo' })])).toContain('a new event');
-    const many = Array.from({ length: 7 }, (_, i) => candidate({ title: `E${i}`, eventDate: `2026-10-0${i + 1}` }));
-    const text = buildDigestMessage(many);
-    expect(text).toContain('…and 2 more');
-    expect(text).not.toContain('E6');
-  });
-});
-
 describe('toCandidate', () => {
   it('carries the Google id and a dated prep plan', () => {
     const c = toCandidate(item({ id: 'abc', summary: 'Weekend trip to Paris', location: 'Paris' }));
@@ -112,30 +94,6 @@ describe('toCandidate', () => {
     expect(c.steps.length).toBeGreaterThan(0);
     expect(c.prepSteps).toBe(c.steps.length);
     expect([...c.steps].sort((a, b) => a.date.localeCompare(b.date))).toEqual(c.steps);
-  });
-});
-
-describe('buildDigestEmail', () => {
-  const steps = Array.from({ length: 10 }, (_, i) => ({ date: `2026-09-${20 + (i % 9)}`, title: `Step ${i}` }));
-
-  it('has a subject, the prep plan per event, a review link, and escapes event titles', () => {
-    const { subject, html, text } = buildDigestEmail(
-      [candidate({ title: '<b>Party</b> & more', steps, prepSteps: 10 }), candidate({ title: 'Trip', eventDate: '2026-11-01' })],
-      'https://aheadoftime.app'
-    );
-    expect(subject).toBe('2 new events on your calendar - your prep plans');
-    expect(text).toContain('Step 0');
-    expect(text).toContain('…and 2 more steps'); // capped at 8 per event
-    expect(text).toContain('https://aheadoftime.app/dashboard?scan=true');
-    expect(html).toContain('&lt;b&gt;Party&lt;/b&gt; &amp; more');
-    expect(html).not.toContain('<b>Party</b>');
-    expect(html).toContain('href="https://aheadoftime.app/dashboard?scan=true"');
-  });
-
-  it('names the single event in the subject and omits the link without an https app url', () => {
-    const { subject, html } = buildDigestEmail([candidate({ title: 'Solo trip' })], 'http://localhost:3000');
-    expect(subject).toBe('New on your calendar: Solo trip - your prep plan');
-    expect(html).not.toContain('Review &amp; add');
   });
 });
 
@@ -158,6 +116,7 @@ describe('runBackgroundAgendaScan', () => {
     getValidAccessTokenMock.mockResolvedValue('tok');
     sendMessageMock.mockResolvedValue({ ok: true });
     sendEmailMock.mockResolvedValue({ ok: true });
+    listTasksMock.mockResolvedValue({ overdue: [], dueThisWeek: [] });
     isEmailConfiguredMock.mockReturnValue(true);
     fetchMock.mockResolvedValue({
       ok: true,
@@ -228,7 +187,7 @@ describe('runBackgroundAgendaScan', () => {
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     const mail = sendEmailMock.mock.calls[0][0];
     expect(mail.to).toBe('a@example.com');
-    expect(mail.subject).toContain('Amsterdam trip');
+    expect(mail.subject).toBe('Your daily update: 1 new event');
     expect(mail.text).toContain('Amsterdam trip');
     expect(markFindingsNotifiedMock).toHaveBeenCalledWith('u1', ['new1'], 'email');
   });
@@ -294,6 +253,39 @@ describe('runBackgroundAgendaScan', () => {
   it('omits the Telegram button when APP_URL is not https (Telegram rejects such links)', async () => {
     await runBackgroundAgendaScan({ now: NOW, appUrl: 'http://localhost:3000' });
     expect(sendMessageMock.mock.calls[0][2].reply_markup).toBeUndefined();
+  });
+
+  it('sends a daily update with only overdue/this-week tasks even when nothing new was added', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    listTasksMock.mockResolvedValue({
+      overdue: [{ title: 'Send invites', eventTitle: "Maya's party", dueDate: '2026-09-18' }],
+      dueThisWeek: [{ title: 'Order cake', eventTitle: "Maya's party", dueDate: '2026-09-24' }],
+    });
+    const summary = await runBackgroundAgendaScan({ now: NOW });
+    expect(summary).toMatchObject({ usersNotified: 1, eventsReported: 0, failed: 0 });
+    const [, text] = sendMessageMock.mock.calls[0];
+    expect(text).toContain('Needs attention (1)');
+    expect(text).toContain('Send invites');
+    expect(recordFindingsMock).not.toHaveBeenCalled();
+    expect(updateCalls()).toHaveLength(1);
+  });
+
+  it('stays quiet when there is nothing new and nothing needs attention', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    const summary = await runBackgroundAgendaScan({ now: NOW });
+    expect(summary.usersNotified).toBe(0);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('does not look up tasks for the in-app channel (that notice is about new events only)', async () => {
+    userRow.notify_channel = 'in_app';
+    await runBackgroundAgendaScan({ now: NOW });
+    expect(listTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('sends Telegram messages in HTML mode so titles are escaped, not interpreted', async () => {
+    await runBackgroundAgendaScan({ now: NOW });
+    expect(sendMessageMock.mock.calls[0][2].parse_mode).toBe('HTML');
   });
 
   it('caps how far back it looks after a long outage', async () => {

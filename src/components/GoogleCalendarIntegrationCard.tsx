@@ -103,7 +103,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     if (!result) return;
 
     const messages: Record<string, string> = {
-      connected: 'Background sync connected! Once a day we\'ll check your calendar for new events that need prep and let you know, even when the app is closed. Pick how below.',
+      connected: 'Background sync connected! Once a day you\'ll get an update on what needs attention and any new events that need prep, even when the app is closed. Pick how below.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
       error: 'Something went wrong connecting background sync - please try again.',
@@ -377,12 +377,12 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
                 </div>
                 <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed max-w-sm">
                   {isBackgroundSyncLinked
-                    ? 'Once a day we check your calendar for new events that need prep and let you know - even while the app is closed. Events you add through Telegram are also added to your Google Calendar and Tasks automatically.'
-                    : 'Once a day we check your calendar for new events that need prep and let you know (Telegram, email or a notice in the app), without the app being open. Events you add through Telegram are also added to your Google Calendar and Tasks automatically. Requires one extra Google permission.'}
+                    ? 'Once a day you get an update with what needs attention this week and any new calendar events that need prep - even while the app is closed. Events you add through Telegram are also added to your Google Calendar and Tasks automatically.'
+                    : 'Once a day you get an update with what needs attention this week and any new calendar events that need prep (over Telegram or email), without the app being open. Events you add through Telegram are also added to your Google Calendar and Tasks automatically. Requires one extra Google permission.'}
                 </p>
                 {isBackgroundSyncLinked && (
                   <div className="mt-2 space-y-1.5">
-                    <span className="text-[11px] font-semibold text-slate-700">Tell me about new events by:</span>
+                    <span className="text-[11px] font-semibold text-slate-700">Send my daily update by:</span>
                     <div className="flex flex-wrap gap-1.5">
                       {([
                         { id: 'telegram', label: 'Telegram', disabled: !isTelegramLinked, hint: 'Connect Telegram first' },
@@ -412,7 +412,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
                     </div>
                     {notifyChannel === 'email' && accountEmail && (
                       <p className="text-[11px] text-slate-500">
-                        Sent to {accountEmail}: each new event with its prep plan, once a day.
+                        Sent to {accountEmail} once a day: what needs attention, what is due this week, and each new event with its prep plan.
                       </p>
                     )}
                     {!isTelegramLinked && (notifyChannel ?? 'in_app') === 'telegram' && (

@@ -9,6 +9,8 @@ import { recordFindings, markFindingsNotified } from './agendaFindingsStore.js';
 import { isEmailConfigured, sendEmail } from './emailService.js';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService } from './telegramService.js';
+import { listTasksNeedingAttention } from './dailyDigestData.js';
+import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, type DailyUpdateModel } from './dailyUpdateTemplate.js';
 import { detectEventCategory } from '../src/utils/tminusRules.js';
 import { deepRefineEventLocally } from '../src/utils/deepRefine.js';
 import type { CalendarEvent } from '../src/types.js';
@@ -82,7 +84,6 @@ const SCAN_WINDOW_MONTHS = 6;
 // A pass that failed for a few days shouldn't dump a week of history on the
 // user the moment it recovers.
 const MAX_LOOKBACK_MS = 72 * 60 * 60 * 1000;
-const MAX_LISTED_EVENTS = 5;
 const MAX_PAGES = 4;
 
 function toDateOnly(item: GoogleCalendarItem): string {
@@ -138,100 +139,6 @@ export function toCandidate(item: GoogleCalendarItem): ScanCandidate {
     // The plan preview is a nicety in the message, never a reason to drop the event.
   }
   return { googleEventId: item.id, title, eventDate, prepSteps: steps.length, steps };
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-const MAX_EMAIL_STEPS_PER_EVENT = 8;
-
-/** The daily email: every new event with its prep plan, soonest event first. */
-export function buildDigestEmail(
-  candidates: ScanCandidate[],
-  appUrl: string
-): { subject: string; html: string; text: string } {
-  const sorted = [...candidates].sort((a, b) => a.eventDate.localeCompare(b.eventDate));
-  const link = appUrl.startsWith('https://') ? `${appUrl}/dashboard?scan=true` : '';
-  const subject =
-    sorted.length === 1
-      ? `New on your calendar: ${sorted[0].title} - your prep plan`
-      : `${sorted.length} new events on your calendar - your prep plans`;
-
-  const textBlocks = sorted.map((c) => {
-    const shown = c.steps.slice(0, MAX_EMAIL_STEPS_PER_EVENT);
-    const more = c.steps.length - shown.length;
-    return [
-      `${c.title} - ${formatEventDate(c.eventDate)}`,
-      ...shown.map((s) => `   • ${formatEventDate(s.date)}: ${s.title}`),
-      ...(more > 0 ? [`   …and ${more} more steps`] : []),
-    ].join('\n');
-  });
-  const text = [
-    'Here are the events that were added to your Google Calendar, with a suggested prep plan for each:',
-    '',
-    textBlocks.join('\n\n'),
-    '',
-    link ? `Review and add them to your plans: ${link}` : 'Open Ahead Of Time to review and add them to your plans.',
-  ].join('\n');
-
-  const htmlBlocks = sorted
-    .map((c) => {
-      const shown = c.steps.slice(0, MAX_EMAIL_STEPS_PER_EVENT);
-      const more = c.steps.length - shown.length;
-      const items = shown
-        .map((s) => `<li><strong>${escapeHtml(formatEventDate(s.date))}</strong> - ${escapeHtml(s.title)}</li>`)
-        .join('');
-      return `<h3 style="margin:24px 0 4px;color:#182A42">${escapeHtml(c.title)}</h3>
-<p style="margin:0 0 8px;color:#556">${escapeHtml(formatEventDate(c.eventDate))}</p>
-<ul style="margin:0;padding-left:20px;color:#223">${items}${more > 0 ? `<li>…and ${more} more steps</li>` : ''}</ul>`;
-    })
-    .join('');
-  const button = link
-    ? `<p style="margin:28px 0"><a href="${escapeHtml(link)}" style="background:#95BFB5;color:#182A42;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:700">Review &amp; add to my plans</a></p>`
-    : '';
-  const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px;color:#223">
-<h2 style="color:#182A42;margin:0 0 8px">New on your calendar</h2>
-<p style="margin:0">These events were added to your Google Calendar, with a suggested prep plan for each.</p>
-${htmlBlocks}
-${button}
-<p style="color:#889;font-size:12px">You get this once a day when something new needs prep. Change or turn it off in Settings.</p>
-</div>`;
-
-  return { subject, html, text };
-}
-
-function formatEventDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  return d.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-}
-
-/** Plain text on purpose: event titles are user data, so no Markdown to escape. */
-export function buildDigestMessage(candidates: ScanCandidate[]): string {
-  const sorted = [...candidates].sort((a, b) => a.eventDate.localeCompare(b.eventDate));
-  const listed = sorted.slice(0, MAX_LISTED_EVENTS).map((c) => {
-    const steps = c.prepSteps > 0 ? ` · ${c.prepSteps} prep steps` : '';
-    return `• ${c.title} - ${formatEventDate(c.eventDate)}${steps}`;
-  });
-  const extra = sorted.length - listed.length;
-  const noun = sorted.length === 1 ? 'a new event' : `${sorted.length} new events`;
-
-  return [
-    '📅 New on your calendar',
-    '',
-    `I spotted ${noun} that could use some prep:`,
-    '',
-    ...listed,
-    ...(extra > 0 ? [`…and ${extra} more`] : []),
-    '',
-    'Open Ahead Of Time to review and build your plans.',
-  ].join('\n');
 }
 
 async function fetchNewCalendarItems(accessToken: string, since: Date, now: Date): Promise<GoogleCalendarItem[]> {
@@ -350,38 +257,60 @@ export async function runBackgroundAgendaScan(
       const items = await fetchNewCalendarItems(accessToken, since, now);
       const candidates = items.filter((item) => isPrepWorthy(item, now)).map(toCandidate);
 
-      if (candidates.length > 0) {
-        const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
-        const channel = resolveChannel(user.notify_channel, session?.chatId);
-        const telegramText = buildDigestMessage(candidates);
-        const email = buildDigestEmail(candidates, appUrl);
+      const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
+      const channel = resolveChannel(user.notify_channel, session?.chatId);
 
+      // The daily update also carries the user's own overdue / due-this-week
+      // tasks (from the synced event list). Those only go out over Telegram or
+      // email - the in-app notice is about NEW calendar events alone, so
+      // there is nothing to look up for it.
+      const tasks =
+        channel === 'in_app' ? { overdue: [], dueThisWeek: [] } : await listTasksNeedingAttention(user.user_id, now.toISOString());
+      const model: DailyUpdateModel = {
+        today: now.toISOString().substring(0, 10),
+        overdue: tasks.overdue,
+        dueThisWeek: tasks.dueThisWeek,
+        newEvents: candidates,
+        appUrl,
+      };
+      const shouldSend = channel === 'in_app' ? candidates.length > 0 : hasUpdateContent(model);
+
+      if (shouldSend) {
         if (dryRun) {
-          summary.previews!.push(channel === 'email' ? `[email] ${email.subject}\n\n${email.text}` : `[${channel}]\n${telegramText}`);
+          if (channel === 'email') {
+            const mail = renderEmailUpdate(model);
+            summary.previews!.push(`[email] ${mail.subject}\n\n${mail.text}`);
+          } else {
+            summary.previews!.push(`[${channel}]\n${renderTelegramUpdate(model).text}`);
+          }
           if (channel === 'in_app') summary.usersInAppOnly++;
           else summary.usersNotified++;
           summary.eventsReported += candidates.length;
           continue;
         }
 
-        // Always record: the in-app notice reads these, and skips the ones
-        // an external channel delivered (notified_via below).
-        await recordFindings(
-          user.user_id,
-          candidates.map((c) => ({
-            googleEventId: c.googleEventId,
-            title: c.title,
-            eventDate: c.eventDate,
-            prepSteps: c.prepSteps,
-          }))
-        );
+        // Always record new events: the in-app notice reads these, and skips
+        // the ones an external channel delivered (notified_via below).
+        if (candidates.length > 0) {
+          await recordFindings(
+            user.user_id,
+            candidates.map((c) => ({
+              googleEventId: c.googleEventId,
+              title: c.title,
+              eventDate: c.eventDate,
+              prepSteps: c.prepSteps,
+            }))
+          );
+        }
+        const candidateIds = candidates.map((c) => c.googleEventId);
 
         if (channel === 'telegram') {
-          const replyMarkup = appUrl.startsWith('https://')
-            ? { inline_keyboard: [[{ text: '🔍 Review & build plans', url: `${appUrl}/dashboard?scan=true` }]] }
-            : undefined;
-          const sent = await TelegramService.sendMessage(session!.chatId, telegramText, {
-            reply_markup: replyMarkup,
+          const update = renderTelegramUpdate(model);
+          const sent = await TelegramService.sendMessage(session!.chatId, update.text, {
+            parse_mode: update.parse_mode,
+            reply_markup: update.buttons.length
+              ? { inline_keyboard: update.buttons.map((b) => [{ text: b.text, url: b.url }]) }
+              : undefined,
             disable_web_page_preview: true,
           });
           if (!sent.ok) {
@@ -389,15 +318,16 @@ export async function runBackgroundAgendaScan(
             summary.failed++;
             continue;
           }
-          await markFindingsNotified(user.user_id, candidates.map((c) => c.googleEventId), 'telegram');
+          await markFindingsNotified(user.user_id, candidateIds, 'telegram');
           summary.usersNotified++;
         } else if (channel === 'email') {
-          const sent = await sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
+          const mail = renderEmailUpdate(model);
+          const sent = await sendEmail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text });
           if (!sent.ok) {
             summary.failed++;
             continue;
           }
-          await markFindingsNotified(user.user_id, candidates.map((c) => c.googleEventId), 'email');
+          await markFindingsNotified(user.user_id, candidateIds, 'email');
           summary.usersNotified++;
         } else {
           summary.usersInAppOnly++;
