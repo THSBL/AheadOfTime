@@ -50,6 +50,7 @@ import { listPendingFindings, dismissAllFindings } from "./server/agendaFindings
 import { handleEventsApi } from "./server/eventsApi";
 import { isEmailConfigured } from "./server/emailService";
 import { getGoogleClientId } from "./server/googleClientId";
+import { sendTestUpdate } from "./server/sendTestUpdate";
 
 dotenv.config();
 
@@ -1360,6 +1361,25 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
     email: verified.email,
     notifyChannel: linked ? await getNotifyChannel(userId) : null,
   });
+});
+
+app.post("/api/auth/google/status", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  if (!req.body?.sendTest) {
+    res.status(400).json({ ok: false, error: "Unknown request." });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  if (!(await hasBackgroundSyncLinked(userId))) {
+    res.status(409).json({ ok: false, error: "Turn on Background Sync first." });
+    return;
+  }
+  const result = await sendTestUpdate({ userId, email: verified.email, appUrl: process.env.APP_URL?.trim() || "" });
+  res.json({ ok: result.ok, ...result });
 });
 
 app.put("/api/auth/google/status", async (req: Request, res: Response) => {

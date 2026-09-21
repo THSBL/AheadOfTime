@@ -47,6 +47,31 @@ const CAPS = {
   email: { overdue: 8, week: 10, events: 6, stepsPerEvent: 8 },
 };
 
+/** Believable placeholder content for a test send when the user has nothing real to report yet. */
+export function sampleUpdateModel(today: string, appUrl: string): DailyUpdateModel {
+  const addDays = (n: number) => new Date(dayNumber(today) * 86_400_000 + n * 86_400_000).toISOString().substring(0, 10);
+  return {
+    today,
+    appUrl,
+    overdue: [{ title: 'Send invites', eventTitle: 'Sample: birthday party', dueDate: addDays(-2) }],
+    dueThisWeek: [
+      { title: 'Order the cake', eventTitle: 'Sample: birthday party', dueDate: addDays(1) },
+      { title: 'Buy drinks and ice', eventTitle: 'Sample: birthday party', dueDate: addDays(4) },
+    ],
+    newEvents: [
+      {
+        title: 'Sample: weekend in Amsterdam',
+        eventDate: addDays(21),
+        steps: [
+          { date: addDays(-7), title: 'Book train tickets' },
+          { date: addDays(1), title: 'Book hotel' },
+          { date: addDays(14), title: 'Plan the days' },
+        ],
+      },
+    ],
+  };
+}
+
 export function hasUpdateContent(m: DailyUpdateModel): boolean {
   return m.overdue.length + m.dueThisWeek.length + m.newEvents.length > 0;
 }

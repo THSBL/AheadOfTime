@@ -192,7 +192,7 @@ interface LinkedUserRow {
  * paired, email not configured on this deployment) falls back to the notice
  * rather than silently dropping the news.
  */
-function resolveChannel(
+export function resolveChannel(
   stored: string | null,
   telegramChatId: string | number | undefined
 ): NotifyChannel {

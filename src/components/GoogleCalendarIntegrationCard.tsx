@@ -68,6 +68,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   const [accountEmail, setAccountEmail] = useState<string>('');
   const [notifyChannel, setNotifyChannel] = useState<'telegram' | 'email' | 'in_app' | null>(null);
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
+  const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
 
   const isConnected = Boolean(accessToken && !isTokenExpired());
@@ -152,6 +153,32 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     } catch (err: any) {
       setNotifyChannel(previous);
       setBackgroundSyncNotice(err?.message || 'Could not save that choice.');
+    }
+  };
+
+  const handleSendTestUpdate = async () => {
+    if (!accessToken) return;
+    setIsSendingTest(true);
+    setBackgroundSyncNotice(null);
+    try {
+      const res = await fetch('/api/auth/google/status', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sendTest: true }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const where = data.channel === 'email' ? `your inbox (${accountEmail})` : 'Telegram';
+        setBackgroundSyncNotice(
+          `Test update sent to ${where}${data.usedSample ? ' with sample content, since nothing needs attention yet' : ''}. Check spam if it doesn't show up.`
+        );
+      } else {
+        setBackgroundSyncNotice(data.error || 'Could not send the test update.');
+      }
+    } catch (err: any) {
+      setBackgroundSyncNotice(err?.message || 'Could not send the test update.');
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -410,6 +437,16 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
                         );
                       })}
                     </div>
+                    {(notifyChannel ?? (isTelegramLinked ? 'telegram' : 'in_app')) !== 'in_app' && (
+                      <button
+                        type="button"
+                        onClick={handleSendTestUpdate}
+                        disabled={isSendingTest}
+                        className="text-[11px] font-semibold text-slate-600 hover:text-[#182A42] underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSendingTest ? 'Sending…' : 'Send me a test update'}
+                      </button>
+                    )}
                     {notifyChannel === 'email' && accountEmail && (
                       <p className="text-[11px] text-slate-500">
                         Sent to {accountEmail} once a day: what needs attention, what is due this week, and each new event with its prep plan.

@@ -37,7 +37,16 @@ export async function sendEmail(input: {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.warn('Resend rejected the email:', res.status, body.slice(0, 300));
-      return { ok: false, error: `Resend responded ${res.status}` };
+      // Resend explains itself ("domain is not verified", "you can only send
+      // testing emails to your own address"), and the owner testing the
+      // feature needs to see that instead of a bare status code.
+      let reason = '';
+      try {
+        reason = String(JSON.parse(body)?.message || '');
+      } catch {
+        // not JSON
+      }
+      return { ok: false, error: reason ? `Resend: ${reason}` : `Resend responded ${res.status}` };
     }
     return { ok: true };
   } catch (err: any) {
