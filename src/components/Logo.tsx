@@ -8,7 +8,7 @@ interface LogoProps {
 
 export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', size = 'normal' }) => {
   const [largeImgSrc, setLargeImgSrc] = useState('/assets/AheadOfTime_Large-logo-tag.png');
-  const [smallImgSrc, setSmallImgSrc] = useState('/assets/AheadOfTime_Small_logo.png');
+  const [smallImgSrc, setSmallImgSrc] = useState('/assets/logo-small.png');
 
   if (variant === 'icon') {
     const isLg = size === 'lg' || size === 'xl' || size === '2xl';
@@ -18,7 +18,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
           src={smallImgSrc} 
           alt="Ahead Of Time Icon" 
           onError={() => setSmallImgSrc('/assets/AheadOfTime_Small_logo.png')}
-          className={`${isLg ? 'w-16 h-16' : 'w-10 h-10'} object-contain rounded-xl`} 
+          className={`${isLg ? 'w-16 h-16' : 'w-10 h-10'} object-contain rounded-xl`}
         />
       </div>
     );
@@ -63,7 +63,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
     ? 'w-10 h-10 sm:w-12 sm:h-12'
     : size === '2xl'
     ? 'w-12 h-12 sm:w-16 sm:h-16'
-    : 'w-7 h-7 sm:w-8 sm:h-8';
+    : 'w-8 h-8 sm:w-11 sm:h-11';
 
   const textSize = size === 'sm'
     ? 'text-xs sm:text-sm'
@@ -73,7 +73,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
     ? 'text-lg sm:text-xl'
     : size === '2xl'
     ? 'text-xl sm:text-2xl'
-    : 'text-sm sm:text-base';
+    : 'text-base sm:text-2xl';
 
   return (
     <div className={`inline-flex items-center gap-2 select-none ${className}`}>
@@ -85,8 +85,14 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
           className={`${imgSize} object-contain rounded-lg shrink-0`} 
         />
       </div>
-      <span className={`inline-flex items-center font-extrabold tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#182A42]'} whitespace-nowrap`}>
-        Ahead&nbsp;<span className="text-[#447463]">Of</span>&nbsp;Time
+      {/* Same treatment as the landing-page wordmark: "Ahead" heavy and sage,
+          "Of Time" lighter. The soft shadow keeps the sage legible on the
+          white header bars and adds the same depth the logo mark has. */}
+      <span
+        className={`inline-flex items-center tracking-tight leading-none ${textSize} ${isDark ? 'text-white' : 'text-[#182A42]'} whitespace-nowrap`}
+        style={{ textShadow: isDark ? '0 2px 4px rgba(0,0,0,0.55)' : '0 1px 1px rgba(24,42,66,0.6), 0 2px 3px rgba(24,42,66,0.3)' }}
+      >
+        <span className="font-black text-[#91BDB2]">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>
       </span>
     </div>
   );
