@@ -53,15 +53,16 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
   }
 
   // Small / Dark / Header inline title + logo variant
+  // The mark is a transparent cutout (portrait, 4:5), sized by height.
   const imgSize = size === 'sm'
-    ? 'w-6 h-6 sm:w-7 sm:h-7'
+    ? 'h-6 sm:h-7'
     : size === 'lg'
-    ? 'w-8 h-8 sm:w-9 sm:h-9'
+    ? 'h-8 sm:h-9'
     : size === 'xl'
-    ? 'w-10 h-10 sm:w-12 sm:h-12'
+    ? 'h-10 sm:h-12'
     : size === '2xl'
-    ? 'w-12 h-12 sm:w-16 sm:h-16'
-    : 'w-8 h-8 sm:w-11 sm:h-11';
+    ? 'h-12 sm:h-16'
+    : 'h-9 sm:h-12';
 
   const textSize = size === 'sm'
     ? 'text-xs sm:text-sm'
@@ -74,15 +75,17 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
     : 'text-base sm:text-2xl';
 
   return (
-    // One navy badge holds the mark and the brand name from sm up; on phones
-    // it's just the mark, to keep the header uncluttered.
-    <div className={`inline-flex items-center gap-2 select-none sm:bg-[#182A42] sm:rounded-2xl sm:p-1 sm:pr-4 sm:shadow-sm ${className}`}>
+    // One navy badge (the page's own navy) holds the mark and the brand name;
+    // on phones it's just the mark, to keep the header uncluttered. The mark
+    // is a transparent cutout so it sits on the badge with no visible tile edge.
+    <div className={`inline-flex items-center gap-2.5 select-none bg-[#182A42] rounded-2xl px-2.5 py-1.5 sm:pr-4 shadow-sm ${className}`}>
       <div className="flex items-center justify-center shrink-0">
-        <img 
-          src={smallImgSrc} 
-          alt="Ahead Of Time Icon" 
-          onError={() => setSmallImgSrc('/assets/AheadOfTime_Small_logo.png')}
-          className={`${imgSize} object-contain rounded-lg shrink-0`} 
+        <img
+          src="/assets/logo-hero.png"
+          alt="Ahead Of Time Icon"
+          width={640}
+          height={800}
+          className={`${imgSize} w-auto object-contain shrink-0`}
         />
       </div>
       {/* Same treatment as the landing-page wordmark: "Ahead" heavy and sage,
