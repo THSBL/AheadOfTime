@@ -5,6 +5,7 @@ import {
   hasBackgroundSyncLinked,
   unlinkBackgroundSync,
   isBackgroundSyncConfigured,
+  missingBackgroundSyncConfig,
   getNotifyChannel,
   setNotifyChannel,
   NOTIFY_CHANNELS,
@@ -89,6 +90,12 @@ async function handleStatus(req: any, res: any) {
   const userId = await findOrCreateUserByEmail(verified.email);
 
   if (req.method === 'GET') {
+    const missingConfig = missingBackgroundSyncConfig();
+    if (missingConfig.length > 0) {
+      // Names only, never values: tells the owner (via the function logs)
+      // why the Background Sync card is hidden.
+      console.warn('Background sync is not configured; missing env vars:', missingConfig.join(', '));
+    }
     const linked = await hasBackgroundSyncLinked(userId);
     // The daily digest is delivered over Telegram, so the UI needs to know
     // whether this user has paired it (or the toggle would silently do nothing).
@@ -148,6 +155,10 @@ async function handleFindings(req: any, res: any) {
 
 export default async function handler(req: any, res: any) {
   const action = (req.query?.action as string) || 'status';
+  // Per-user, authenticated state that changes when env/settings change: never
+  // let a browser or proxy answer these from a cache (a 304 replay of an old
+  // "not configured" body would hide the Background Sync card indefinitely).
+  res.setHeader('Cache-Control', 'no-store');
   if (action === 'findings') {
     return handleFindings(req, res);
   }

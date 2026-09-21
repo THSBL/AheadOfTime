@@ -21,14 +21,14 @@ const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
  * being shown to users as an error banner - the UI uses this to hide the
  * feature until the deployment is actually set up for it.
  */
-export function isBackgroundSyncConfigured(): boolean {
-  const has = (name: string) => Boolean(process.env[name]?.trim());
-  return (
-    has('VITE_GOOGLE_CLIENT_ID') &&
-    has('GOOGLE_OAUTH_CLIENT_SECRET') &&
-    has('NOTIFY_LINK_SECRET') &&
-    has('TOKEN_ENCRYPTION_KEY')
+export function missingBackgroundSyncConfig(): string[] {
+  return ['VITE_GOOGLE_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'NOTIFY_LINK_SECRET', 'TOKEN_ENCRYPTION_KEY'].filter(
+    (name) => !process.env[name]?.trim()
   );
+}
+
+export function isBackgroundSyncConfigured(): boolean {
+  return missingBackgroundSyncConfig().length === 0;
 }
 
 let schemaReady: Promise<void> | null = null;
