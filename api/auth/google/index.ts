@@ -1,7 +1,16 @@
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail, TelegramSessionStore } from '../../../server/telegramStore.js';
 import { signOAuthState } from '../../../server/notifyActionToken.js';
-import { hasBackgroundSyncLinked, unlinkBackgroundSync, isBackgroundSyncConfigured } from '../../../server/googleOAuthTokenStore.js';
+import {
+  hasBackgroundSyncLinked,
+  unlinkBackgroundSync,
+  isBackgroundSyncConfigured,
+  getNotifyChannel,
+  setNotifyChannel,
+  NOTIFY_CHANNELS,
+} from '../../../server/googleOAuthTokenStore.js';
+import { listPendingFindings, dismissAllFindings } from '../../../server/agendaFindingsStore.js';
+import { isEmailConfigured } from '../../../server/emailService.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -89,7 +98,22 @@ async function handleStatus(req: any, res: any) {
       linked,
       configured: isBackgroundSyncConfigured(),
       telegramLinked: Boolean(telegramSession?.chatId),
+      emailConfigured: isEmailConfigured(),
+      email: verified.email,
+      notifyChannel: linked ? await getNotifyChannel(userId) : null,
     });
+  }
+
+  if (req.method === 'PUT') {
+    const channel = req.body?.notifyChannel;
+    if (!NOTIFY_CHANNELS.includes(channel)) {
+      return res.status(400).json({ ok: false, error: 'Unknown notification channel.' });
+    }
+    if (!(await hasBackgroundSyncLinked(userId))) {
+      return res.status(409).json({ ok: false, error: 'Turn on Background Sync first.' });
+    }
+    await setNotifyChannel(userId, channel);
+    return res.status(200).json({ ok: true, notifyChannel: channel });
   }
 
   if (req.method === 'DELETE') {
@@ -100,8 +124,33 @@ async function handleStatus(req: any, res: any) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+/**
+ * The in-app fallback notice: new calendar events the daily scan found that
+ * no Telegram/email message covered. GET lists them, POST dismisses them.
+ */
+async function handleFindings(req: any, res: any) {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+
+  if (req.method === 'GET') {
+    const findings = await listPendingFindings(userId, new Date().toISOString());
+    return res.status(200).json({ ok: true, findings });
+  }
+  if (req.method === 'POST') {
+    await dismissAllFindings(userId);
+    return res.status(200).json({ ok: true });
+  }
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 export default async function handler(req: any, res: any) {
   const action = (req.query?.action as string) || 'status';
+  if (action === 'findings') {
+    return handleFindings(req, res);
+  }
 
   if (action === 'authorize') {
     return handleAuthorize(req, res);

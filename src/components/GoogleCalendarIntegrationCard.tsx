@@ -62,6 +62,11 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   // The daily digest goes out over Telegram, so background sync does nothing
   // visible until Telegram is paired - the card says so instead of implying it works.
   const [isTelegramLinked, setIsTelegramLinked] = useState<boolean>(false);
+  // Which channel carries the daily update: Telegram, email (only offered once
+  // the deployment can send it) or just a notice inside the app.
+  const [isEmailAvailable, setIsEmailAvailable] = useState<boolean>(false);
+  const [accountEmail, setAccountEmail] = useState<string>('');
+  const [notifyChannel, setNotifyChannel] = useState<'telegram' | 'email' | 'in_app' | null>(null);
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
 
@@ -79,6 +84,9 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           setIsBackgroundSyncLinked(data.linked);
           setIsBackgroundSyncConfigured(data.configured === true);
           setIsTelegramLinked(data.telegramLinked === true);
+          setIsEmailAvailable(data.emailConfigured === true);
+          setAccountEmail(typeof data.email === 'string' ? data.email : '');
+          setNotifyChannel(data.notifyChannel ?? null);
         }
       } catch (err) {
         console.warn('Background sync status check notice:', err);
@@ -95,7 +103,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     if (!result) return;
 
     const messages: Record<string, string> = {
-      connected: 'Background sync connected! Once a day we\'ll check your calendar for new events that need prep and message you on Telegram, even when the app is closed.',
+      connected: 'Background sync connected! Once a day we\'ll check your calendar for new events that need prep and let you know, even when the app is closed. Pick how below.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
       error: 'Something went wrong connecting background sync - please try again.',
@@ -126,6 +134,24 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     } catch (err: any) {
       setBackgroundSyncNotice(err?.message || 'Could not start background sync setup.');
       setIsLinkingBackgroundSync(false);
+    }
+  };
+
+  const handleChangeNotifyChannel = async (channel: 'telegram' | 'email' | 'in_app') => {
+    if (!accessToken) return;
+    const previous = notifyChannel;
+    setNotifyChannel(channel);
+    try {
+      const res = await fetch('/api/auth/google/status', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifyChannel: channel }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Could not save that choice.');
+    } catch (err: any) {
+      setNotifyChannel(previous);
+      setBackgroundSyncNotice(err?.message || 'Could not save that choice.');
     }
   };
 
@@ -351,13 +377,50 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
                 </div>
                 <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed max-w-sm">
                   {isBackgroundSyncLinked
-                    ? 'Once a day we check your calendar for new events that need prep and message you on Telegram - even while the app is closed.'
-                    : 'Once a day we check your calendar for new events that need prep and message you on Telegram, without the app being open. Requires one extra Google permission.'}
+                    ? 'Once a day we check your calendar for new events that need prep and let you know - even while the app is closed. Events you add through Telegram are also added to your Google Calendar and Tasks automatically.'
+                    : 'Once a day we check your calendar for new events that need prep and let you know (Telegram, email or a notice in the app), without the app being open. Events you add through Telegram are also added to your Google Calendar and Tasks automatically. Requires one extra Google permission.'}
                 </p>
-                {!isTelegramLinked && (
-                  <p className="text-amber-700 text-[11px] mt-1 font-medium">
-                    Connect Telegram in Settings first - that's where the messages are sent.
-                  </p>
+                {isBackgroundSyncLinked && (
+                  <div className="mt-2 space-y-1.5">
+                    <span className="text-[11px] font-semibold text-slate-700">Tell me about new events by:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        { id: 'telegram', label: 'Telegram', disabled: !isTelegramLinked, hint: 'Connect Telegram first' },
+                        ...(isEmailAvailable
+                          ? [{ id: 'email', label: 'Daily email', disabled: false, hint: accountEmail }]
+                          : []),
+                        { id: 'in_app', label: 'Notice in the app', disabled: false, hint: '' },
+                      ] as Array<{ id: 'telegram' | 'email' | 'in_app'; label: string; disabled: boolean; hint: string }>).map((opt) => {
+                        const active = (notifyChannel ?? (isTelegramLinked ? 'telegram' : 'in_app')) === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            disabled={opt.disabled}
+                            title={opt.disabled ? opt.hint : opt.hint || undefined}
+                            onClick={() => handleChangeNotifyChannel(opt.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                              active
+                                ? 'bg-[#182A42] text-white border-[#182A42]'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {notifyChannel === 'email' && accountEmail && (
+                      <p className="text-[11px] text-slate-500">
+                        Sent to {accountEmail}: each new event with its prep plan, once a day.
+                      </p>
+                    )}
+                    {!isTelegramLinked && (notifyChannel ?? 'in_app') === 'telegram' && (
+                      <p className="text-amber-700 text-[11px] font-medium">
+                        Telegram isn't connected yet - until it is, you'll see a notice in the app instead.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

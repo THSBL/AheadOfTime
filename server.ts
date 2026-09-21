@@ -42,7 +42,12 @@ import {
   hasBackgroundSyncLinked,
   unlinkBackgroundSync,
   isBackgroundSyncConfigured,
+  getNotifyChannel,
+  setNotifyChannel,
+  NOTIFY_CHANNELS,
 } from "./server/googleOAuthTokenStore";
+import { listPendingFindings, dismissAllFindings } from "./server/agendaFindingsStore";
+import { isEmailConfigured } from "./server/emailService";
 
 dotenv.config();
 
@@ -1344,7 +1349,54 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
     linked,
     configured: isBackgroundSyncConfigured(),
     telegramLinked: Boolean(telegramSession?.chatId),
+    emailConfigured: isEmailConfigured(),
+    email: verified.email,
+    notifyChannel: linked ? await getNotifyChannel(userId) : null,
   });
+});
+
+app.put("/api/auth/google/status", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  const channel = req.body?.notifyChannel;
+  if (!NOTIFY_CHANNELS.includes(channel)) {
+    res.status(400).json({ ok: false, error: "Unknown notification channel." });
+    return;
+  }
+  if (!(await hasBackgroundSyncLinked(userId))) {
+    res.status(409).json({ ok: false, error: "Turn on Background Sync first." });
+    return;
+  }
+  await setNotifyChannel(userId, channel);
+  res.json({ ok: true, notifyChannel: channel });
+});
+
+// In-app fallback notice for new calendar events the daily scan found that no
+// Telegram/email message covered (twin of api/auth/google/index.ts's
+// action=findings).
+app.get("/api/auth/google/findings", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  res.json({ ok: true, findings: await listPendingFindings(userId, new Date().toISOString()) });
+});
+
+app.post("/api/auth/google/findings", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  await dismissAllFindings(userId);
+  res.json({ ok: true });
 });
 
 app.delete("/api/auth/google/status", async (req: Request, res: Response) => {

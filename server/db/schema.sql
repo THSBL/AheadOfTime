@@ -184,7 +184,37 @@ CREATE TABLE IF NOT EXISTS google_oauth_tokens (
 -- (ensureBackgroundSyncSchema) so the feature works without a manual
 -- `npm run db:migrate` against production.
 ALTER TABLE google_oauth_tokens
-  ADD COLUMN IF NOT EXISTS last_agenda_scan_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS last_agenda_scan_at TIMESTAMPTZ,
+  -- How the daily digest reaches this user: 'telegram' | 'email' | 'in_app'.
+  -- NULL = automatic (Telegram if paired, otherwise the in-app notice).
+  ADD COLUMN IF NOT EXISTS notify_channel TEXT;
+
+-- Google ids of what the server-side background push created for an event
+-- created over Telegram (server/googleBackgroundPush.ts). The web app reads
+-- them back so it shows the event as already synced instead of pushing it a
+-- second time.
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS google_event_id     TEXT,
+  ADD COLUMN IF NOT EXISTS google_event_link   TEXT,
+  ADD COLUMN IF NOT EXISTS synced_to_google_at TIMESTAMPTZ;
+ALTER TABLE milestones
+  ADD COLUMN IF NOT EXISTS google_task_id TEXT;
+
+-- New calendar events the daily scan found, kept so the app can show them
+-- as a notice when the user has no Telegram/email delivery (notified_via is
+-- NULL until an external channel actually delivered them).
+CREATE TABLE IF NOT EXISTS agenda_scan_findings (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  google_event_id TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  event_date      TEXT NOT NULL,          -- YYYY-MM-DD
+  prep_steps      INTEGER NOT NULL DEFAULT 0,
+  found_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notified_via    TEXT,                   -- 'telegram' | 'email' | NULL
+  dismissed_at    TIMESTAMPTZ,
+  UNIQUE (user_id, google_event_id)
+);
 
 -- Per-user notification preference for Auto Sync & Notify. Lives here
 -- (not localStorage, unlike every other preference in this codebase so

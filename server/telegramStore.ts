@@ -68,6 +68,10 @@ interface EventRow {
   raw_input: string | null;
   created_at: string | Date;
   updated_at: string | Date;
+  // Present only once ensureBackgroundSyncSchema has added the columns.
+  google_event_id?: string | null;
+  google_event_link?: string | null;
+  synced_to_google_at?: string | Date | null;
 }
 
 interface MilestoneRow {
@@ -82,6 +86,7 @@ interface MilestoneRow {
   confirmed_at: string | Date | null;
   confirmed_via: string | null;
   deliverables: any;
+  google_task_id?: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -187,6 +192,10 @@ function rowToMilestone(row: MilestoneRow, eventDate: string, eventTime: string 
     completedAt: row.status === 'completed' ? toIsoString(row.confirmed_at) : undefined,
     kind: (row.kind as TMinusMilestone['kind']) || 'milestone',
     deliverables: Array.isArray(row.deliverables) ? (row.deliverables as Deliverable[]) : [],
+    // Only set the key when there is a value: the web app's mergeEvents
+    // spreads server rows over local ones, and an explicit `undefined` here
+    // would wipe a googleTaskId the browser's own push had just recorded.
+    ...(row.google_task_id ? { googleTaskId: row.google_task_id } : {}),
   };
 }
 
@@ -215,6 +224,15 @@ function rowToCalendarEvent(row: EventRow, milestoneRows: MilestoneRow[]): Calen
     rawInputSnippet: row.raw_input || undefined,
     createdAt: toIsoString(row.created_at) || new Date().toISOString(),
     updatedAt: toIsoString(row.updated_at) || new Date().toISOString(),
+    // Same "only when set" rule as googleTaskId in rowToMilestone: an
+    // absent key can't clobber what the browser already knows.
+    ...(row.google_event_id
+      ? {
+          googleEventId: row.google_event_id,
+          googleEventLink: row.google_event_link || undefined,
+          syncedToGoogleAt: toIsoString(row.synced_to_google_at) || undefined,
+        }
+      : {}),
   };
 }
 

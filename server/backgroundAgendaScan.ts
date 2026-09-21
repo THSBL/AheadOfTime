@@ -1,5 +1,12 @@
 import { query } from './db.js';
-import { getValidAccessToken, ensureBackgroundSyncSchema } from './googleOAuthTokenStore.js';
+import {
+  getValidAccessToken,
+  ensureBackgroundSyncSchema,
+  type NotifyChannel,
+  NOTIFY_CHANNELS,
+} from './googleOAuthTokenStore.js';
+import { recordFindings, markFindingsNotified } from './agendaFindingsStore.js';
+import { isEmailConfigured, sendEmail } from './emailService.js';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService } from './telegramService.js';
 import { detectEventCategory } from '../src/utils/tminusRules.js';
@@ -10,11 +17,13 @@ import type { CalendarEvent } from '../src/types.js';
  * Daily background agenda scan ("Auto Sync & Notify").
  *
  * For every user who linked background sync (server-held Google refresh
- * token) AND paired Telegram: look at the calendar events created since the
- * last pass, keep the ones that look like they need prep, and send ONE
- * Telegram message listing them with a button into the app's Scan agenda
- * flow. Nothing is written to the user's calendar or event list here - the
- * user reviews and imports in the app, exactly like a manual scan.
+ * token): look at the calendar events created since the last pass, keep the
+ * ones that look like they need prep, and tell the user ONCE, over the
+ * channel they picked - Telegram, a daily email with each event's prep plan,
+ * or (the fallback for everyone else) a notice in the app, which reads the
+ * findings this scan records. Nothing is written to the user's calendar or
+ * event list here - the user reviews and imports in the app, exactly like a
+ * manual scan.
  *
  * Triggered once a day by Vercel Cron (api/cron/[job].ts).
  */
@@ -31,22 +40,31 @@ export interface GoogleCalendarItem {
   attendees?: Array<{ self?: boolean; responseStatus?: string }>;
 }
 
+export interface PrepStep {
+  date: string; // YYYY-MM-DD
+  title: string;
+}
+
 export interface ScanCandidate {
+  googleEventId: string;
   title: string;
   eventDate: string; // YYYY-MM-DD
   prepSteps: number;
+  steps: PrepStep[];
 }
 
 export interface AgendaScanSummary {
   dryRun: boolean;
   usersChecked: number;
+  /** Told over Telegram or email. */
   usersNotified: number;
+  /** Findings left as an in-app notice (no external channel available/chosen). */
+  usersInAppOnly: number;
   eventsReported: number;
-  skippedNoTelegram: number;
   skippedNoToken: number;
   failed: number;
   timedOut: boolean;
-  /** Dry run only: the message each user WOULD have received. */
+  /** Dry run only: what each user WOULD have received. */
   previews?: string[];
 }
 
@@ -97,7 +115,7 @@ export function toCandidate(item: GoogleCalendarItem): ScanCandidate {
   const title = (item.summary || '').trim();
   const eventDate = toDateOnly(item);
   const startStr = item.start?.dateTime || '';
-  let prepSteps = 0;
+  let steps: PrepStep[] = [];
   try {
     const tempEvent: CalendarEvent = {
       id: `scan-${item.id}`,
@@ -113,11 +131,74 @@ export function toCandidate(item: GoogleCalendarItem): ScanCandidate {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    prepSteps = deepRefineEventLocally(tempEvent).length;
+    steps = deepRefineEventLocally(tempEvent)
+      .map((m) => ({ date: m.calculatedDate.substring(0, 10), title: m.title }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   } catch {
-    // The count is a nicety in the message, never a reason to drop the event.
+    // The plan preview is a nicety in the message, never a reason to drop the event.
   }
-  return { title, eventDate, prepSteps };
+  return { googleEventId: item.id, title, eventDate, prepSteps: steps.length, steps };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const MAX_EMAIL_STEPS_PER_EVENT = 8;
+
+/** The daily email: every new event with its prep plan, soonest event first. */
+export function buildDigestEmail(
+  candidates: ScanCandidate[],
+  appUrl: string
+): { subject: string; html: string; text: string } {
+  const sorted = [...candidates].sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+  const link = appUrl.startsWith('https://') ? `${appUrl}/dashboard?scan=true` : '';
+  const subject =
+    sorted.length === 1
+      ? `New on your calendar: ${sorted[0].title} - your prep plan`
+      : `${sorted.length} new events on your calendar - your prep plans`;
+
+  const textBlocks = sorted.map((c) => {
+    const shown = c.steps.slice(0, MAX_EMAIL_STEPS_PER_EVENT);
+    const more = c.steps.length - shown.length;
+    return [
+      `${c.title} - ${formatEventDate(c.eventDate)}`,
+      ...shown.map((s) => `   • ${formatEventDate(s.date)}: ${s.title}`),
+      ...(more > 0 ? [`   …and ${more} more steps`] : []),
+    ].join('\n');
+  });
+  const text = [
+    'Here are the events that were added to your Google Calendar, with a suggested prep plan for each:',
+    '',
+    textBlocks.join('\n\n'),
+    '',
+    link ? `Review and add them to your plans: ${link}` : 'Open Ahead Of Time to review and add them to your plans.',
+  ].join('\n');
+
+  const htmlBlocks = sorted
+    .map((c) => {
+      const shown = c.steps.slice(0, MAX_EMAIL_STEPS_PER_EVENT);
+      const more = c.steps.length - shown.length;
+      const items = shown
+        .map((s) => `<li><strong>${escapeHtml(formatEventDate(s.date))}</strong> - ${escapeHtml(s.title)}</li>`)
+        .join('');
+      return `<h3 style="margin:24px 0 4px;color:#182A42">${escapeHtml(c.title)}</h3>
+<p style="margin:0 0 8px;color:#556">${escapeHtml(formatEventDate(c.eventDate))}</p>
+<ul style="margin:0;padding-left:20px;color:#223">${items}${more > 0 ? `<li>…and ${more} more steps</li>` : ''}</ul>`;
+    })
+    .join('');
+  const button = link
+    ? `<p style="margin:28px 0"><a href="${escapeHtml(link)}" style="background:#95BFB5;color:#182A42;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:700">Review &amp; add to my plans</a></p>`
+    : '';
+  const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px;color:#223">
+<h2 style="color:#182A42;margin:0 0 8px">New on your calendar</h2>
+<p style="margin:0">These events were added to your Google Calendar, with a suggested prep plan for each.</p>
+${htmlBlocks}
+${button}
+<p style="color:#889;font-size:12px">You get this once a day when something new needs prep. Change or turn it off in Settings.</p>
+</div>`;
+
+  return { subject, html, text };
 }
 
 function formatEventDate(dateStr: string): string {
@@ -195,6 +276,24 @@ interface LinkedUserRow {
   email: string;
   linked_at: string;
   last_agenda_scan_at: string | null;
+  notify_channel: string | null;
+}
+
+/**
+ * The user's explicit pick, else Telegram when paired, else the in-app
+ * notice - and a chosen channel that cannot deliver right now (Telegram not
+ * paired, email not configured on this deployment) falls back to the notice
+ * rather than silently dropping the news.
+ */
+function resolveChannel(
+  stored: string | null,
+  telegramChatId: string | number | undefined
+): NotifyChannel {
+  const chosen = (NOTIFY_CHANNELS as readonly string[]).includes(stored || '') ? (stored as NotifyChannel) : null;
+  const wanted: NotifyChannel = chosen ?? (telegramChatId ? 'telegram' : 'in_app');
+  if (wanted === 'telegram' && !telegramChatId) return 'in_app';
+  if (wanted === 'email' && !isEmailConfigured()) return 'in_app';
+  return wanted;
 }
 
 export async function runBackgroundAgendaScan(
@@ -212,7 +311,7 @@ export async function runBackgroundAgendaScan(
   await ensureBackgroundSyncSchema();
 
   const users = await query<LinkedUserRow>(
-    `SELECT t.user_id, u.email, t.linked_at, t.last_agenda_scan_at
+    `SELECT t.user_id, u.email, t.linked_at, t.last_agenda_scan_at, t.notify_channel
        FROM google_oauth_tokens t
        JOIN users u ON u.id = t.user_id
       WHERE t.revoked_at IS NULL
@@ -223,8 +322,8 @@ export async function runBackgroundAgendaScan(
     dryRun,
     usersChecked: 0,
     usersNotified: 0,
+    usersInAppOnly: 0,
     eventsReported: 0,
-    skippedNoTelegram: 0,
     skippedNoToken: 0,
     failed: 0,
     timedOut: false,
@@ -239,12 +338,6 @@ export async function runBackgroundAgendaScan(
     summary.usersChecked++;
 
     try {
-      const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
-      if (!session?.chatId) {
-        summary.skippedNoTelegram++;
-        continue;
-      }
-
       const accessToken = await getValidAccessToken(user.user_id);
       if (!accessToken) {
         summary.skippedNoToken++;
@@ -258,27 +351,57 @@ export async function runBackgroundAgendaScan(
       const candidates = items.filter((item) => isPrepWorthy(item, now)).map(toCandidate);
 
       if (candidates.length > 0) {
-        const message = buildDigestMessage(candidates);
+        const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
+        const channel = resolveChannel(user.notify_channel, session?.chatId);
+        const telegramText = buildDigestMessage(candidates);
+        const email = buildDigestEmail(candidates, appUrl);
+
         if (dryRun) {
-          summary.previews!.push(message);
-          summary.usersNotified++;
+          summary.previews!.push(channel === 'email' ? `[email] ${email.subject}\n\n${email.text}` : `[${channel}]\n${telegramText}`);
+          if (channel === 'in_app') summary.usersInAppOnly++;
+          else summary.usersNotified++;
           summary.eventsReported += candidates.length;
           continue;
         }
 
-        const replyMarkup = appUrl.startsWith('https://')
-          ? { inline_keyboard: [[{ text: '🔍 Review & build plans', url: `${appUrl}/dashboard?scan=true` }]] }
-          : undefined;
-        const sent = await TelegramService.sendMessage(session.chatId, message, {
-          reply_markup: replyMarkup,
-          disable_web_page_preview: true,
-        });
-        if (!sent.ok) {
-          // Leave the timestamp alone so tomorrow's pass retries these events.
-          summary.failed++;
-          continue;
+        // Always record: the in-app notice reads these, and skips the ones
+        // an external channel delivered (notified_via below).
+        await recordFindings(
+          user.user_id,
+          candidates.map((c) => ({
+            googleEventId: c.googleEventId,
+            title: c.title,
+            eventDate: c.eventDate,
+            prepSteps: c.prepSteps,
+          }))
+        );
+
+        if (channel === 'telegram') {
+          const replyMarkup = appUrl.startsWith('https://')
+            ? { inline_keyboard: [[{ text: '🔍 Review & build plans', url: `${appUrl}/dashboard?scan=true` }]] }
+            : undefined;
+          const sent = await TelegramService.sendMessage(session!.chatId, telegramText, {
+            reply_markup: replyMarkup,
+            disable_web_page_preview: true,
+          });
+          if (!sent.ok) {
+            // Leave the timestamp alone so tomorrow's pass retries these events.
+            summary.failed++;
+            continue;
+          }
+          await markFindingsNotified(user.user_id, candidates.map((c) => c.googleEventId), 'telegram');
+          summary.usersNotified++;
+        } else if (channel === 'email') {
+          const sent = await sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
+          if (!sent.ok) {
+            summary.failed++;
+            continue;
+          }
+          await markFindingsNotified(user.user_id, candidates.map((c) => c.googleEventId), 'email');
+          summary.usersNotified++;
+        } else {
+          summary.usersInAppOnly++;
         }
-        summary.usersNotified++;
         summary.eventsReported += candidates.length;
       }
 

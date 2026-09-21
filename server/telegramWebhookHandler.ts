@@ -5,6 +5,7 @@ import { CalendarEvent } from '../src/types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 import { signEventDeepLink } from './deepLinkToken.js';
 import { logQualityEvent, checkAndLogRapidCorrection } from './qualityStore.js';
+import { pushEventToGoogleInBackground, isAutoPushEnabledForUser } from './googleBackgroundPush.js';
 
 export class TelegramWebhookHandler {
   // Deduplication cache: stores update_id -> timestamp (ms)
@@ -303,7 +304,14 @@ export class TelegramWebhookHandler {
         // the user nothing to judge before tapping "Looks Good". Letting
         // sendRefinementPrompt fall through to its own default builds the
         // real milestone list instead.
-        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl);
+        // Users with Background Sync get the event pushed to Google
+        // Calendar/Tasks right after this reply, so the prompt says so
+        // instead of telling them to open the app and push it themselves.
+        const session = await TelegramSessionStore.getOrCreateSession(chatId);
+        const autoPush = await isAutoPushEnabledForUser(session.webUserId);
+        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl, undefined, {
+          autoPushingToGoogle: autoPush,
+        });
         // Pure logging, fire-and-forget - gives checkAndLogRapidCorrection
         // something to compare a later correction against.
         logQualityEvent({
@@ -312,11 +320,15 @@ export class TelegramWebhookHandler {
           signalType: 'plan_generated',
           severity: 'low',
         });
+        if (autoPush) await this.pushToGoogleAndReport(chatId, agentResult.createdEvent.id);
       } else {
         // Schedule query or status response
         await TelegramService.sendMessage(chatId, agentResult.replyText, {
           parse_mode: 'Markdown',
         });
+        // A plain-text update that merged new milestones into an existing
+        // event: push just the additions.
+        if (agentResult.updatedEventId) await this.pushToGoogleAndReport(chatId, agentResult.updatedEventId);
       }
     } catch (err: any) {
       console.error('Error in processNaturalLanguageEvent:', err);
@@ -334,6 +346,34 @@ export class TelegramWebhookHandler {
     } finally {
       stopTyping();
     }
+  }
+
+  /**
+   * Pushes an event (or just its new milestones) to the owner's Google
+   * Calendar/Tasks in the background and tells them how it went. Silent for
+   * users without Background Sync - the manual "Push to Cal" in the app
+   * stays their way in. Awaited by callers (not fire-and-forget): on
+   * serverless the work would be cut off once the handler returns.
+   */
+  private static async pushToGoogleAndReport(chatId: number | string, eventId: string): Promise<void> {
+    const result = await pushEventToGoogleInBackground(eventId);
+    if (result.status === 'skipped') return;
+
+    if (result.status === 'failed') {
+      await TelegramService.sendMessage(
+        chatId,
+        "⚠️ I couldn't add that to your Google Calendar just now. Nothing is lost - open the app and tap Push to Cal whenever you like."
+      );
+      return;
+    }
+
+    const parts: string[] = [];
+    if (result.createdCalendarEvent) parts.push('📅 Added to your Google Calendar');
+    if (result.tasksCreated > 0) {
+      parts.push(`✅ ${result.tasksCreated} prep ${result.tasksCreated === 1 ? 'task' : 'tasks'} added to Google Tasks`);
+    }
+    if (result.error) parts.push(`(${result.error} Open the app and tap Push to Cal to finish.)`);
+    if (parts.length > 0) await TelegramService.sendMessage(chatId, parts.join('\n'));
   }
 
   /**
@@ -389,6 +429,7 @@ export class TelegramWebhookHandler {
       }
 
       await TelegramService.sendMessage(chatId, result.replyText, { parse_mode: 'Markdown' });
+      if (result.newlyAddedMilestones.length > 0) await this.pushToGoogleAndReport(chatId, eventId);
 
       // Pure logging, fire-and-forget - a correction shortly after a plan
       // was generated for this same event is strong evidence the first

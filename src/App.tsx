@@ -40,6 +40,7 @@ import { Analytics as VercelAnalytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { ImportTemplateModal } from './components/ImportTemplateModal';
 import { ApplyPresetModal } from './components/ApplyPresetModal';
+import { AgendaFindingsBanner } from './components/AgendaFindingsBanner';
 import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings, CustomPreset } from './types';
 import { 
   MessageSquare, 
@@ -1797,6 +1798,8 @@ function App() {
               onSignIn={handleSignIn}
             />
           </div>
+
+          <AgendaFindingsBanner onReview={() => setIsScanAgendaModalOpen(true)} />
 
           {/* Main Dashboard Layout (Master-Detail on Mobile, 2-Column on Desktop) */}
           <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 overflow-hidden relative z-10 animate-in fade-in duration-700">

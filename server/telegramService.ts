@@ -198,7 +198,8 @@ export class TelegramService {
     chatId: number | string,
     event: CalendarEvent,
     appBaseUrl: string,
-    customText?: string
+    customText?: string,
+    options: { autoPushingToGoogle?: boolean } = {}
   ): Promise<{ ok: boolean; result?: any }> {
     // Signed so tapping this link works whether or not the browser has a
     // live Google session - a user chatting with the bot right now
@@ -235,7 +236,9 @@ export class TelegramService {
         `Here's your prep checklist, saved to your account:`,
         milestoneLines || '📌 Initial review and planning',
         '',
-        `Not on your calendar yet - open the app to push it to Google Calendar/Tasks. Anything off? Tap Refine in Chat below and tell me.`,
+        options.autoPushingToGoogle
+          ? `Adding it to your Google Calendar and Tasks now. Anything off? Tap Refine in Chat below and tell me.`
+          : `Not on your calendar yet - open the app to push it to Google Calendar/Tasks. Anything off? Tap Refine in Chat below and tell me.`,
       ]
         .filter(Boolean)
         .join('\n');

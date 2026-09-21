@@ -25,6 +25,8 @@ export interface CalendarAgentResult {
     result: any;
   }>;
   createdEvent?: CalendarEvent;
+  /** Set when a plain-text message merged new milestones into an existing event. */
+  updatedEventId?: string;
 }
 
 const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", a calendar-prep assistant communicating via Telegram. You talk like a sharp, friendly person texting - not a formal executive assistant.
@@ -558,7 +560,7 @@ export class GeminiCalendarAgent {
       ? newlyAdded.map((m) => `✅ Added *${m.title}* (${m.tMinusLabel}) to *${event.title}*`).join('\n')
       : `That looks like it's already covered on *${event.title}*, so I didn't add anything new.`);
 
-    return { replyText };
+    return { replyText, ...(newlyAdded.length > 0 ? { updatedEventId: event.id } : {}) };
   }
 
   /**

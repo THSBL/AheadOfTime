@@ -53,6 +53,27 @@ export function ensureBackgroundSyncSchema(): Promise<void> {
          )`
       );
       await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS last_agenda_scan_at TIMESTAMPTZ`);
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_channel TEXT`);
+      // Where the server-side push (server/googleBackgroundPush.ts) records
+      // what it created in Google, so nothing is ever pushed twice.
+      await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_id TEXT`);
+      await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_link TEXT`);
+      await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS synced_to_google_at TIMESTAMPTZ`);
+      await query(`ALTER TABLE milestones ADD COLUMN IF NOT EXISTS google_task_id TEXT`);
+      await query(
+        `CREATE TABLE IF NOT EXISTS agenda_scan_findings (
+           id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           google_event_id TEXT NOT NULL,
+           title           TEXT NOT NULL,
+           event_date      TEXT NOT NULL,
+           prep_steps      INTEGER NOT NULL DEFAULT 0,
+           found_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+           notified_via    TEXT,
+           dismissed_at    TIMESTAMPTZ,
+           UNIQUE (user_id, google_event_id)
+         )`
+      );
     })().catch((err) => {
       schemaReady = null; // retry on the next call instead of caching a failure
       throw err;
@@ -91,8 +112,28 @@ export async function hasBackgroundSyncLinked(userId: string): Promise<boolean> 
   return rows.length > 0 && !rows[0].revoked_at;
 }
 
+export type NotifyChannel = 'telegram' | 'email' | 'in_app';
+export const NOTIFY_CHANNELS: readonly NotifyChannel[] = ['telegram', 'email', 'in_app'];
+
+/** The user's explicit choice, or null when they never chose (= automatic). */
+export async function getNotifyChannel(userId: string): Promise<NotifyChannel | null> {
+  await ensureBackgroundSyncSchema();
+  const rows = await query<{ notify_channel: string | null }>(
+    `SELECT notify_channel FROM google_oauth_tokens WHERE user_id = $1`,
+    [userId]
+  );
+  const value = rows[0]?.notify_channel;
+  return value && (NOTIFY_CHANNELS as readonly string[]).includes(value) ? (value as NotifyChannel) : null;
+}
+
+export async function setNotifyChannel(userId: string, channel: NotifyChannel): Promise<void> {
+  await ensureBackgroundSyncSchema();
+  await query(`UPDATE google_oauth_tokens SET notify_channel = $2 WHERE user_id = $1`, [userId, channel]);
+}
+
 export async function unlinkBackgroundSync(userId: string): Promise<void> {
   await ensureBackgroundSyncSchema();
+  await query(`DELETE FROM agenda_scan_findings WHERE user_id = $1`, [userId]);
   await query(`DELETE FROM google_oauth_tokens WHERE user_id = $1`, [userId]);
 }
 
