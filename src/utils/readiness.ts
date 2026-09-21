@@ -260,6 +260,9 @@ export interface SimpleAheadStatus {
   totalCount: number;
 }
 
+/** More than this many items to wrap up this week counts as a "Busy week". */
+export const BUSY_WEEK_THRESHOLD = 5;
+
 /**
  * A single, unambiguous "am I ahead of time?" reading for the whole
  * dashboard - exactly three states, each with one non-contradictory line.
@@ -320,7 +323,10 @@ export function computeSimpleAheadStatus(
     return {
       ...base,
       level: 'almost_ahead',
-      label: 'You are almost ahead',
+      // "Almost ahead" reads as a near-finish line, which is misleading with
+      // a pile of items still to do - past 5 it's honestly just a busy week.
+      // Same amber level/styling; only the wording changes.
+      label: wrapUpCount > BUSY_WEEK_THRESHOLD ? 'Busy week' : 'You are almost ahead',
       sub: `${wrapUpCount} item${wrapUpCount === 1 ? '' : 's'} to wrap up this week`,
     };
   }

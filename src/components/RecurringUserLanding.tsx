@@ -305,7 +305,7 @@ export const RecurringUserLanding: React.FC = () => {
           </svg>
 
           <div className="relative flex flex-col items-center pt-6 pb-7 px-4 sm:px-6">
-            {/* The hero mark - a real rendered image (public/assets/road-ahead-hero.png)
+            {/* The hero mark - a real rendered image (public/assets/summary-hero.png, a transparent cutout)
                 instead of a hand-drawn SVG recreation, which could never
                 match this look. It stays on screen after the intro finishes
                 (it never needs to disappear - "the animation IS the loading
@@ -314,9 +314,11 @@ export const RecurringUserLanding: React.FC = () => {
                 draw-in, since there's no longer a separate outline/grid/pin
                 to animate piece by piece. */}
             <img
-              src="/assets/road-ahead-hero.png"
+              src="/assets/summary-hero.png"
               alt="Ahead Of Time"
-              className={`w-32 h-32 sm:w-44 sm:h-44 object-contain transition-[opacity,transform] duration-500 ease-out hover:scale-110 ${
+              width={720}
+              height={780}
+              className={`h-32 sm:h-44 w-auto object-contain transition-[opacity,transform] duration-500 ease-out hover:scale-110 ${
                 mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
               }`}
               style={{ filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.3))' }}
@@ -356,8 +358,9 @@ export const RecurringUserLanding: React.FC = () => {
             eyebrow="THIS WEEK"
             eyebrowClassName={stripeOneStyle.text}
             content={stripeOne.copy}
+            secondaryContent={stripeOne.secondary}
             contentClassName={stripeOneStyle.text}
-            ariaLabel={`This week: ${stripeOne.copy}. Go to My Week Ahead.`}
+            ariaLabel={`This week: ${stripeOne.copy}${stripeOne.secondary ? `, ${stripeOne.secondary}` : ''}. Go to My Week Ahead.`}
           />
 
           <StripeButton
@@ -557,6 +560,8 @@ interface StripeButtonProps {
   eyebrow: string;
   eyebrowClassName: string;
   content: string;
+  /** Optional second line under `content` (same colour, slightly lighter weight). */
+  secondaryContent?: string;
   contentClassName: string;
   ariaLabel: string;
 }
@@ -580,6 +585,7 @@ const StripeButton: React.FC<StripeButtonProps> = ({
   eyebrow,
   eyebrowClassName,
   content,
+  secondaryContent,
   contentClassName,
   ariaLabel,
 }) => {
@@ -674,6 +680,9 @@ const StripeButton: React.FC<StripeButtonProps> = ({
                     above already sizes to whatever height the content
                     actually needs, wrapped or not. */}
                 <div className={`text-sm sm:text-base font-bold leading-snug ${contentClassName}`}>{content}</div>
+                {secondaryContent && (
+                  <div className={`text-sm sm:text-base font-semibold leading-snug ${contentClassName}`}>{secondaryContent}</div>
+                )}
               </div>
               <ChevronRight className="w-5 h-5 shrink-0 text-slate-400" />
             </div>

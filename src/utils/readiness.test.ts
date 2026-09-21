@@ -383,6 +383,18 @@ describe('computeSimpleAheadStatus', () => {
     expect(status.level).toBe('almost_ahead');
     expect(status.dueSoonCount).toBe(1);
     expect(status.sub).toBe('1 item to wrap up this week');
+    expect(status.label).toBe('You are almost ahead');
+  });
+
+  it('says "Busy week" instead of "You are almost ahead" once more than 5 items are due, keeping the same level', () => {
+    const dueThisWeek = (n: number) => makeMilestone({ id: `d${n}`, calculatedDate: '2026-09-14', status: 'pending' });
+    const five = computeSimpleAheadStatus([makeEvent([1, 2, 3, 4, 5].map(dueThisWeek))], REF_DATE_ISO);
+    expect(five.label).toBe('You are almost ahead');
+
+    const six = computeSimpleAheadStatus([makeEvent([1, 2, 3, 4, 5, 6].map(dueThisWeek))], REF_DATE_ISO);
+    expect(six.level).toBe('almost_ahead');
+    expect(six.label).toBe('Busy week');
+    expect(six.sub).toBe('6 items to wrap up this week');
   });
 
   it('is "behind" once 3 or more items are overdue, even if each is only barely late', () => {

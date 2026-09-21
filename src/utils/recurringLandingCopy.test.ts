@@ -48,6 +48,25 @@ describe('computeStripeOneStatus', () => {
     const status = computeStripeOneStatus([event], REF_DATE_ISO);
     expect(status.level).toBe('overdue');
     expect(status.copy).toBe('1 task needs attention');
+    expect(status.secondary).toBe('1 is due this week');
+  });
+
+  it('adds a second "N are due this week" line when overdue and due-this-week tasks coexist', () => {
+    const event = makeEvent([
+      makeMilestone({ id: 'ms-o1', calculatedDate: '2026-09-10', status: 'pending' }),
+      makeMilestone({ id: 'ms-o2', calculatedDate: '2026-09-12', status: 'pending' }),
+      makeMilestone({ id: 'ms-w1', calculatedDate: '2026-09-19', status: 'pending' }),
+      makeMilestone({ id: 'ms-w2', calculatedDate: '2026-09-20', status: 'pending' }),
+      makeMilestone({ id: 'ms-w3', calculatedDate: '2026-09-21', status: 'pending' }),
+    ]);
+    const status = computeStripeOneStatus([event], REF_DATE_ISO);
+    expect(status.copy).toBe('2 tasks need attention');
+    expect(status.secondary).toBe('3 are due this week');
+  });
+
+  it('has no second line when something is overdue but nothing else is due this week', () => {
+    const event = makeEvent([makeMilestone({ calculatedDate: '2026-09-10', status: 'pending' })]);
+    expect(computeStripeOneStatus([event], REF_DATE_ISO).secondary).toBeUndefined();
   });
 
   it('pluralizes the overdue count correctly', () => {
@@ -62,7 +81,8 @@ describe('computeStripeOneStatus', () => {
     const event = makeEvent([makeMilestone({ calculatedDate: '2026-09-19', status: 'pending' })]);
     const status = computeStripeOneStatus([event], REF_DATE_ISO);
     expect(status.level).toBe('due_soon');
-    expect(status.copy).toBe('1 task to finish the week');
+    expect(status.copy).toBe('1 task is due this week');
+    expect(status.secondary).toBeUndefined();
   });
 
   it('is sage/"clear" when there are events but nothing overdue or due this week', () => {

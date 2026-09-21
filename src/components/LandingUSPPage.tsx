@@ -95,7 +95,11 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           />
           <div className="self-stretch w-px bg-white/70 my-3 sm:my-5" aria-hidden="true" />
           <div className="text-left">
-            <p className="text-[1.7rem] min-[400px]:text-4xl sm:text-6xl leading-none tracking-tight text-white whitespace-nowrap">
+            {/* Dark drop shadow matches the depth on the logo mark beside it. */}
+            <p
+              className="text-[1.7rem] min-[400px]:text-4xl sm:text-6xl leading-none tracking-tight text-white whitespace-nowrap"
+              style={{ textShadow: '0 3px 6px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.6)' }}
+            >
               <span className="font-black text-[#91BDB2]">Ahead</span>{' '}
               <span className="font-semibold">Of Time</span>
             </p>
