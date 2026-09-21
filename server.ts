@@ -49,6 +49,7 @@ import {
 import { listPendingFindings, dismissAllFindings } from "./server/agendaFindingsStore";
 import { handleEventsApi } from "./server/eventsApi";
 import { isEmailConfigured } from "./server/emailService";
+import { getGoogleClientId } from "./server/googleClientId";
 
 dotenv.config();
 
@@ -1287,7 +1288,7 @@ app.get("/api/auth/google/authorize", async (req: Request, res: Response) => {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
   }
-  const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
+  const clientId = getGoogleClientId();
   if (!clientId) {
     res.status(500).json({ ok: false, error: "Google client id is not configured." });
     return;

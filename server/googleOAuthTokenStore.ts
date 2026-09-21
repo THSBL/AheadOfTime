@@ -1,5 +1,6 @@
 import { query } from './db.js';
 import { encryptSecret, decryptSecret } from './cryptoUtil.js';
+import { getGoogleClientId } from './googleClientId.js';
 
 /**
  * Server-side counterpart to src/services/googleAuth.ts's browser-only
@@ -22,7 +23,8 @@ const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
  * feature until the deployment is actually set up for it.
  */
 export function missingBackgroundSyncConfig(): string[] {
-  return ['VITE_GOOGLE_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'NOTIFY_LINK_SECRET', 'TOKEN_ENCRYPTION_KEY'].filter(
+  // The client id is not listed: it is public and always resolvable (see googleClientId.ts).
+  return ['GOOGLE_OAUTH_CLIENT_SECRET', 'NOTIFY_LINK_SECRET', 'TOKEN_ENCRYPTION_KEY'].filter(
     (name) => !process.env[name]?.trim()
   );
 }
@@ -156,7 +158,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   const row = rows[0];
   if (!row || row.revoked_at) return null;
 
-  const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
+  const clientId = getGoogleClientId();
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     console.warn('getValidAccessToken: GOOGLE_OAUTH_CLIENT_SECRET is not configured.');
@@ -195,7 +197,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
 }
 
 export async function exchangeAuthorizationCode(code: string, redirectUri: string): Promise<{ refreshToken: string; scope: string } | null> {
-  const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
+  const clientId = getGoogleClientId();
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error('GOOGLE_OAUTH_CLIENT_SECRET is not configured in environment.');

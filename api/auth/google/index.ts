@@ -12,6 +12,7 @@ import {
 } from '../../../server/googleOAuthTokenStore.js';
 import { listPendingFindings, dismissAllFindings } from '../../../server/agendaFindingsStore.js';
 import { isEmailConfigured } from '../../../server/emailService.js';
+import { getGoogleClientId } from '../../../server/googleClientId.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -54,7 +55,7 @@ async function handleAuthorize(req: any, res: any) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
-  const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
+  const clientId = getGoogleClientId();
   if (!clientId) {
     return res.status(500).json({ ok: false, error: 'Google client id is not configured.' });
   }
