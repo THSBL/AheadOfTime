@@ -11,11 +11,15 @@ const markFindingsNotifiedMock = vi.fn();
 const listTasksMock = vi.fn();
 
 vi.mock('./db.js', () => ({ query: (...args: unknown[]) => queryMock(...args) }));
-vi.mock('./googleOAuthTokenStore.js', () => ({
-  getValidAccessToken: (...args: unknown[]) => getValidAccessTokenMock(...args),
-  ensureBackgroundSyncSchema: () => Promise.resolve(),
-  NOTIFY_CHANNELS: ['telegram', 'email', 'in_app'],
-}));
+vi.mock('./googleOAuthTokenStore.js', async () => {
+  // Real preference parsing (pure); only the I/O is faked.
+  const actual = await vi.importActual<typeof import('./googleOAuthTokenStore')>('./googleOAuthTokenStore');
+  return {
+    ...actual,
+    getValidAccessToken: (...args: unknown[]) => getValidAccessTokenMock(...args),
+    ensureBackgroundSyncSchema: () => Promise.resolve(),
+  };
+});
 vi.mock('./telegramStore.js', () => ({
   TelegramSessionStore: { getLinkedSessionForWebUser: (...args: unknown[]) => getLinkedSessionMock(...args) },
 }));
@@ -110,6 +114,12 @@ describe('runBackgroundAgendaScan', () => {
       linked_at: '2026-09-10T00:00:00.000Z',
       last_agenda_scan_at: '2026-09-20T07:00:00.000Z',
       notify_channel: null,
+      notify_channels: null,
+      notify_frequency: null,
+      notify_hour: null,
+      notify_weekday: null,
+      notify_timezone: null,
+      last_update_sent_at: null,
     };
     queryMock.mockImplementation(async (sql: string) => (sql.includes('FROM google_oauth_tokens') ? [userRow] : []));
     getLinkedSessionMock.mockResolvedValue({ chatId: '555' });
@@ -180,7 +190,7 @@ describe('runBackgroundAgendaScan', () => {
   });
 
   it('sends the daily email with the prep plan when the user chose email', async () => {
-    userRow.notify_channel = 'email';
+    userRow.notify_channels = 'email';
     const summary = await runBackgroundAgendaScan({ now: NOW, appUrl: 'https://aheadoftime.app' });
     expect(summary).toMatchObject({ usersNotified: 1, usersInAppOnly: 0, failed: 0 });
     expect(sendMessageMock).not.toHaveBeenCalled();
@@ -193,7 +203,7 @@ describe('runBackgroundAgendaScan', () => {
   });
 
   it('retries tomorrow when the email fails to send', async () => {
-    userRow.notify_channel = 'email';
+    userRow.notify_channels = 'email';
     sendEmailMock.mockResolvedValue({ ok: false });
     const summary = await runBackgroundAgendaScan({ now: NOW });
     expect(summary.failed).toBe(1);
@@ -202,7 +212,7 @@ describe('runBackgroundAgendaScan', () => {
   });
 
   it('falls back to the in-app notice when email is chosen but not configured on this deployment', async () => {
-    userRow.notify_channel = 'email';
+    userRow.notify_channels = 'email';
     isEmailConfiguredMock.mockReturnValue(false);
     const summary = await runBackgroundAgendaScan({ now: NOW });
     expect(summary.usersInAppOnly).toBe(1);
@@ -210,7 +220,7 @@ describe('runBackgroundAgendaScan', () => {
   });
 
   it('honours an explicit in-app choice even when Telegram is paired', async () => {
-    userRow.notify_channel = 'in_app';
+    userRow.notify_channels = 'in_app';
     const summary = await runBackgroundAgendaScan({ now: NOW });
     expect(summary.usersInAppOnly).toBe(1);
     expect(sendMessageMock).not.toHaveBeenCalled();
@@ -278,7 +288,7 @@ describe('runBackgroundAgendaScan', () => {
   });
 
   it('does not look up tasks for the in-app channel (that notice is about new events only)', async () => {
-    userRow.notify_channel = 'in_app';
+    userRow.notify_channels = 'in_app';
     await runBackgroundAgendaScan({ now: NOW });
     expect(listTasksMock).not.toHaveBeenCalled();
   });
@@ -286,6 +296,99 @@ describe('runBackgroundAgendaScan', () => {
   it('sends Telegram messages in HTML mode so titles are escaped, not interpreted', async () => {
     await runBackgroundAgendaScan({ now: NOW });
     expect(sendMessageMock.mock.calls[0][2].parse_mode).toBe('HTML');
+  });
+
+  describe('schedule and multiple channels', () => {
+    it('skips a user whose chosen time has not come round yet, without touching Google', async () => {
+      userRow.last_update_sent_at = '2026-09-21T07:00:00.000Z'; // this morning's slot already went out
+      const summary = await runBackgroundAgendaScan({ now: new Date('2026-09-21T09:00:00.000Z') });
+      expect(summary).toMatchObject({ usersChecked: 1, usersNotDue: 1, usersNotified: 0 });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(getValidAccessTokenMock).not.toHaveBeenCalled();
+    });
+
+    it('waits for the chosen local hour (08:00 London = 07:00 UTC in September)', async () => {
+      userRow.notify_hour = 8;
+      userRow.notify_timezone = 'Europe/London';
+      userRow.last_update_sent_at = '2026-09-20T07:05:00.000Z';
+      const early = await runBackgroundAgendaScan({ now: new Date('2026-09-21T06:30:00.000Z') });
+      expect(early.usersNotDue).toBe(1);
+      const ontime = await runBackgroundAgendaScan({ now: new Date('2026-09-21T07:05:00.000Z') });
+      expect(ontime.usersNotified).toBe(1);
+    });
+
+    it('weekly users are only handled on their day, and look back a full week', async () => {
+      userRow.notify_frequency = 'weekly';
+      userRow.notify_weekday = 1; // Monday; 2026-09-21 is a Monday
+      userRow.notify_hour = 7;
+      userRow.notify_timezone = 'UTC';
+      userRow.last_update_sent_at = '2026-09-14T07:05:00.000Z';
+      userRow.last_agenda_scan_at = '2026-09-14T07:05:00.000Z';
+      const midweek = await runBackgroundAgendaScan({ now: new Date('2026-09-17T12:00:00.000Z') });
+      expect(midweek.usersNotDue).toBe(1);
+
+      fetchMock.mockClear();
+      await runBackgroundAgendaScan({ now: new Date('2026-09-21T07:10:00.000Z') });
+      // Everything since last Monday, not just the last three days.
+      expect(String(fetchMock.mock.calls[0][0])).toContain('updatedMin=2026-09-14T07%3A05%3A00.000Z');
+    });
+
+    it('a dry run previews everyone regardless of schedule', async () => {
+      userRow.last_update_sent_at = '2026-09-21T07:00:00.000Z';
+      const summary = await runBackgroundAgendaScan({ now: NOW, dryRun: true });
+      expect(summary.usersNotDue).toBe(0);
+      expect(summary.previews!.length).toBeGreaterThan(0);
+    });
+
+    it('delivers over every chosen channel at once', async () => {
+      userRow.notify_channels = 'telegram,email';
+      const summary = await runBackgroundAgendaScan({ now: NOW });
+      expect(summary).toMatchObject({ usersNotified: 1, failed: 0 });
+      expect(sendMessageMock).toHaveBeenCalledTimes(1);
+      expect(sendEmailMock).toHaveBeenCalledTimes(1);
+      expect(updateCalls()).toHaveLength(1);
+    });
+
+    it('counts it as delivered when one channel fails but another gets through (no duplicate retry tomorrow)', async () => {
+      userRow.notify_channels = 'telegram,email';
+      sendEmailMock.mockResolvedValue({ ok: false });
+      const summary = await runBackgroundAgendaScan({ now: NOW });
+      expect(summary).toMatchObject({ usersNotified: 1, failed: 0 });
+      expect(markFindingsNotifiedMock).toHaveBeenCalledWith('u1', ['new1'], 'telegram');
+      expect(updateCalls()).toHaveLength(1);
+    });
+
+    it('fails (and retries next run) only when every chosen channel fails', async () => {
+      userRow.notify_channels = 'telegram,email';
+      sendEmailMock.mockResolvedValue({ ok: false });
+      sendMessageMock.mockResolvedValue({ ok: false });
+      const summary = await runBackgroundAgendaScan({ now: NOW });
+      expect(summary.failed).toBe(1);
+      expect(updateCalls()).toHaveLength(0);
+    });
+
+    it('keeps new events visible in the app when the user also selected the app notice', async () => {
+      userRow.notify_channels = 'telegram,in_app';
+      await runBackgroundAgendaScan({ now: NOW });
+      expect(sendMessageMock).toHaveBeenCalledTimes(1);
+      expect(markFindingsNotifiedMock).not.toHaveBeenCalled(); // banner still shows them
+    });
+
+    it('sends nothing external but still records findings for an app-only user', async () => {
+      userRow.notify_channels = 'in_app';
+      const summary = await runBackgroundAgendaScan({ now: NOW });
+      expect(summary.usersInAppOnly).toBe(1);
+      expect(sendMessageMock).not.toHaveBeenCalled();
+      expect(recordFindingsMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to the app when the only chosen external channel cannot deliver', async () => {
+      userRow.notify_channels = 'email';
+      isEmailConfiguredMock.mockReturnValue(false);
+      const summary = await runBackgroundAgendaScan({ now: NOW });
+      expect(summary.usersInAppOnly).toBe(1);
+      expect(sendEmailMock).not.toHaveBeenCalled();
+    });
   });
 
   it('caps how far back it looks after a long outage', async () => {

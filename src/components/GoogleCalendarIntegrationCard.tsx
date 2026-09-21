@@ -24,6 +24,7 @@ import {
   GoogleCalendarProfile
 } from '../services/googleCalendar';
 import { CalendarEvent } from '../types';
+import { BackgroundSyncPanel, type NotifyPrefsDTO } from './BackgroundSyncPanel';
 import { trackEvent } from '../services/analytics';
 import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
@@ -66,7 +67,8 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   // the deployment can send it) or just a notice inside the app.
   const [isEmailAvailable, setIsEmailAvailable] = useState<boolean>(false);
   const [accountEmail, setAccountEmail] = useState<string>('');
-  const [notifyChannel, setNotifyChannel] = useState<'telegram' | 'email' | 'in_app' | null>(null);
+  const [notifyPrefs, setNotifyPrefs] = useState<NotifyPrefsDTO | null>(null);
+  const [prefsSaved, setPrefsSaved] = useState<boolean>(false);
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
@@ -87,7 +89,8 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           setIsTelegramLinked(data.telegramLinked === true);
           setIsEmailAvailable(data.emailConfigured === true);
           setAccountEmail(typeof data.email === 'string' ? data.email : '');
-          setNotifyChannel(data.notifyChannel ?? null);
+          setNotifyPrefs(data.prefs ?? null);
+          setPrefsSaved(data.prefsSaved === true);
         }
       } catch (err) {
         console.warn('Background sync status check notice:', err);
@@ -104,7 +107,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     if (!result) return;
 
     const messages: Record<string, string> = {
-      connected: 'Background sync connected! Once a day you\'ll get an update on what needs attention and any new events that need prep, even when the app is closed. Pick how below.',
+      connected: 'Background sync connected. Choose when and where you want your update below.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
       error: 'Something went wrong connecting background sync - please try again.',
@@ -138,20 +141,33 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     }
   };
 
-  const handleChangeNotifyChannel = async (channel: 'telegram' | 'email' | 'in_app') => {
+  // Saves as you choose (optimistic, reverted if the server refuses). The
+  // browser's own time zone rides along so "07:00" means the user's 07:00.
+  const handleChangePrefs = async (partial: Partial<NotifyPrefsDTO>) => {
     if (!accessToken) return;
-    const previous = notifyChannel;
-    setNotifyChannel(channel);
+    const previous = notifyPrefs;
+    const previousSaved = prefsSaved;
+    let timezone = 'UTC';
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      // keep UTC
+    }
+    const base: NotifyPrefsDTO = notifyPrefs ?? { channels: [], frequency: 'daily', hour: 7, weekday: 1, timezone };
+    setNotifyPrefs({ ...base, ...partial, timezone });
+    setPrefsSaved(true);
     try {
       const res = await fetch('/api/auth/google/status', {
         method: 'PUT',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notifyChannel: channel }),
+        body: JSON.stringify({ prefs: { ...partial, timezone } }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Could not save that choice.');
+      if (data.prefs) setNotifyPrefs(data.prefs);
     } catch (err: any) {
-      setNotifyChannel(previous);
+      setNotifyPrefs(previous);
+      setPrefsSaved(previousSaved);
       setBackgroundSyncNotice(err?.message || 'Could not save that choice.');
     }
   };
@@ -168,9 +184,9 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
       });
       const data = await res.json();
       if (data.ok) {
-        const where = data.channel === 'email' ? `your inbox (${accountEmail})` : 'Telegram';
+        const sentTo = (data.results || []).map((r: { channel: string }) => (r.channel === 'email' ? `your inbox (${accountEmail})` : 'Telegram'));
         setBackgroundSyncNotice(
-          `Test update sent to ${where}${data.usedSample ? ' with sample content, since nothing needs attention yet' : ''}. Check spam if it doesn't show up.`
+          `Test sent to ${sentTo.join(' and ')}${data.usedSample ? ', with sample content since nothing needs attention yet' : ''}. Check spam if it doesn't show up.`
         );
       } else {
         setBackgroundSyncNotice(data.error || 'Could not send the test update.');
@@ -384,109 +400,23 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           </div>
 
           {/* Auto Sync & Notify: background sync needs a SEPARATE consent
-              grant (offline access) from the one above - this box is only
-              shown once the base connection exists, since it builds on it. */}
+              grant (offline access) from the one above - only offered once
+              the deployment has what it needs. */}
           {isBackgroundSyncConfigured && (
-          <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-start gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-900">Background Sync & Notify</span>
-                  {isBackgroundSyncLinked && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                      <Check className="w-2.5 h-2.5 stroke-[3]" />
-                      Active
-                    </span>
-                  )}
-                </div>
-                <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed max-w-sm">
-                  {isBackgroundSyncLinked
-                    ? "You're set: a daily update on what needs attention, even when the app is closed."
-                    : 'Stay ahead: approve automatic sync between Ahead Of Time and your Google Calendar.'}
-                </p>
-                {isBackgroundSyncLinked && (
-                  <div className="mt-2 space-y-1.5">
-                    <span className="text-[11px] font-semibold text-slate-700">Send my daily update by:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        { id: 'telegram', label: 'Telegram', disabled: !isTelegramLinked, hint: 'Connect Telegram first' },
-                        ...(isEmailAvailable
-                          ? [{ id: 'email', label: 'Daily email', disabled: false, hint: accountEmail }]
-                          : []),
-                        { id: 'in_app', label: 'Notice in the app', disabled: false, hint: '' },
-                      ] as Array<{ id: 'telegram' | 'email' | 'in_app'; label: string; disabled: boolean; hint: string }>).map((opt) => {
-                        const active = (notifyChannel ?? (isTelegramLinked ? 'telegram' : 'in_app')) === opt.id;
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            disabled={opt.disabled}
-                            title={opt.disabled ? opt.hint : opt.hint || undefined}
-                            onClick={() => handleChangeNotifyChannel(opt.id)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                              active
-                                ? 'bg-[#182A42] text-white border-[#182A42]'
-                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {(notifyChannel ?? (isTelegramLinked ? 'telegram' : 'in_app')) !== 'in_app' && (
-                      <button
-                        type="button"
-                        onClick={handleSendTestUpdate}
-                        disabled={isSendingTest}
-                        className="text-[11px] font-semibold text-slate-600 hover:text-[#182A42] underline underline-offset-2 disabled:opacity-50 cursor-pointer"
-                      >
-                        {isSendingTest ? 'Sending…' : 'Send me a test update'}
-                      </button>
-                    )}
-                    {notifyChannel === 'email' && accountEmail && (
-                      <p className="text-[11px] text-slate-500">
-                        Sent to {accountEmail} once a day: what needs attention, what is due this week, and each new event with its prep plan.
-                      </p>
-                    )}
-                    {!isTelegramLinked && (notifyChannel ?? 'in_app') === 'telegram' && (
-                      <p className="text-amber-700 text-[11px] font-medium">
-                        Telegram isn't connected yet - until it is, you'll see a notice in the app instead.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="shrink-0">
-              {isBackgroundSyncLinked ? (
-                <button
-                  type="button"
-                  onClick={handleDisconnectBackgroundSync}
-                  className="px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-semibold rounded-lg border border-slate-200 text-xs transition cursor-pointer"
-                >
-                  Disconnect
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleConnectBackgroundSync}
-                  disabled={isLinkingBackgroundSync}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                >
-                  {isLinkingBackgroundSync ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Zap className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isLinkingBackgroundSync ? 'Redirecting...' : 'Turn On'}</span>
-                </button>
-              )}
-            </div>
-          </div>
+            <BackgroundSyncPanel
+              linked={isBackgroundSyncLinked}
+              isLinking={isLinkingBackgroundSync}
+              onConnect={handleConnectBackgroundSync}
+              onDisconnect={handleDisconnectBackgroundSync}
+              telegramLinked={isTelegramLinked}
+              emailAvailable={isEmailAvailable}
+              accountEmail={accountEmail}
+              prefs={notifyPrefs}
+              prefsSaved={prefsSaved}
+              onChangePrefs={handleChangePrefs}
+              onSendTest={handleSendTestUpdate}
+              isSendingTest={isSendingTest}
+            />
           )}
 
           {backgroundSyncNotice && (

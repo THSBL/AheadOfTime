@@ -1,6 +1,7 @@
 import { query } from './db.js';
 import { encryptSecret, decryptSecret } from './cryptoUtil.js';
 import { getGoogleClientId } from './googleClientId.js';
+import { DEFAULT_NOTIFY_PREFS, isValidTimeZone, parseChannelList, type NotifyPrefs } from './notifyPrefs.js';
 
 /**
  * Server-side counterpart to src/services/googleAuth.ts's browser-only
@@ -56,6 +57,14 @@ export function ensureBackgroundSyncSchema(): Promise<void> {
       );
       await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS last_agenda_scan_at TIMESTAMPTZ`);
       await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_channel TEXT`);
+      // Update preferences: channels (comma list, any combination), how often,
+      // and the local time, plus when the last update went out.
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_channels TEXT`);
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_frequency TEXT`);
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_hour SMALLINT`);
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_weekday SMALLINT`);
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS notify_timezone TEXT`);
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS last_update_sent_at TIMESTAMPTZ`);
       // Where the server-side push (server/googleBackgroundPush.ts) records
       // what it created in Google, so nothing is ever pushed twice.
       await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_id TEXT`);
@@ -114,23 +123,58 @@ export async function hasBackgroundSyncLinked(userId: string): Promise<boolean> 
   return rows.length > 0 && !rows[0].revoked_at;
 }
 
-export type NotifyChannel = 'telegram' | 'email' | 'in_app';
-export const NOTIFY_CHANNELS: readonly NotifyChannel[] = ['telegram', 'email', 'in_app'];
+export { NOTIFY_CHANNELS, type NotifyChannel } from './notifyPrefs.js';
 
-/** The user's explicit choice, or null when they never chose (= automatic). */
-export async function getNotifyChannel(userId: string): Promise<NotifyChannel | null> {
-  await ensureBackgroundSyncSchema();
-  const rows = await query<{ notify_channel: string | null }>(
-    `SELECT notify_channel FROM google_oauth_tokens WHERE user_id = $1`,
-    [userId]
-  );
-  const value = rows[0]?.notify_channel;
-  return value && (NOTIFY_CHANNELS as readonly string[]).includes(value) ? (value as NotifyChannel) : null;
+export interface StoredNotifyPrefs {
+  prefs: NotifyPrefs;
+  /** False until the user has saved preferences at least once (defaults apply). */
+  saved: boolean;
 }
 
-export async function setNotifyChannel(userId: string, channel: NotifyChannel): Promise<void> {
+/** The token-row columns that make up the preferences (also selected by the daily scan). */
+export interface NotifyPrefsColumns {
+  notify_channel?: string | null;
+  notify_channels?: string | null;
+  notify_frequency?: string | null;
+  notify_hour?: number | null;
+  notify_weekday?: number | null;
+  notify_timezone?: string | null;
+}
+
+/** Builds preferences from a token row, falling back to defaults (and to the old single channel). */
+export function prefsFromRow(row: NotifyPrefsColumns | undefined): StoredNotifyPrefs {
+  if (!row) return { prefs: { ...DEFAULT_NOTIFY_PREFS }, saved: false };
+  const channels =
+    row.notify_channels != null ? parseChannelList(row.notify_channels) : parseChannelList(row.notify_channel);
+  const prefs: NotifyPrefs = {
+    channels,
+    frequency: row.notify_frequency === 'weekly' ? 'weekly' : 'daily',
+    hour: Number.isInteger(row.notify_hour) ? (row.notify_hour as number) : DEFAULT_NOTIFY_PREFS.hour,
+    weekday: Number.isInteger(row.notify_weekday) ? (row.notify_weekday as number) : DEFAULT_NOTIFY_PREFS.weekday,
+    timezone: isValidTimeZone(row.notify_timezone) ? row.notify_timezone : DEFAULT_NOTIFY_PREFS.timezone,
+  };
+  const saved = row.notify_channels != null || row.notify_channel != null || row.notify_frequency != null;
+  return { prefs, saved };
+}
+
+export async function getNotifyPrefs(userId: string): Promise<StoredNotifyPrefs> {
   await ensureBackgroundSyncSchema();
-  await query(`UPDATE google_oauth_tokens SET notify_channel = $2 WHERE user_id = $1`, [userId, channel]);
+  const rows = await query<NotifyPrefsColumns>(
+    `SELECT notify_channel, notify_channels, notify_frequency, notify_hour, notify_weekday, notify_timezone
+       FROM google_oauth_tokens WHERE user_id = $1`,
+    [userId]
+  );
+  return prefsFromRow(rows[0]);
+}
+
+export async function setNotifyPrefs(userId: string, prefs: NotifyPrefs): Promise<void> {
+  await ensureBackgroundSyncSchema();
+  await query(
+    `UPDATE google_oauth_tokens
+        SET notify_channels = $2, notify_frequency = $3, notify_hour = $4, notify_weekday = $5, notify_timezone = $6
+      WHERE user_id = $1`,
+    [userId, prefs.channels.join(','), prefs.frequency, prefs.hour, prefs.weekday, prefs.timezone]
+  );
 }
 
 export async function unlinkBackgroundSync(userId: string): Promise<void> {

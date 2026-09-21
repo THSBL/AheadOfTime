@@ -42,10 +42,10 @@ import {
   hasBackgroundSyncLinked,
   unlinkBackgroundSync,
   isBackgroundSyncConfigured,
-  getNotifyChannel,
-  setNotifyChannel,
-  NOTIFY_CHANNELS,
+  getNotifyPrefs,
+  setNotifyPrefs,
 } from "./server/googleOAuthTokenStore";
+import { mergeNotifyPrefs } from "./server/notifyPrefs";
 import { listPendingFindings, dismissAllFindings } from "./server/agendaFindingsStore";
 import { handleEventsApi } from "./server/eventsApi";
 import { isEmailConfigured } from "./server/emailService";
@@ -1359,7 +1359,8 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
     telegramLinked: Boolean(telegramSession?.chatId),
     emailConfigured: isEmailConfigured(),
     email: verified.email,
-    notifyChannel: linked ? await getNotifyChannel(userId) : null,
+    prefs: linked ? (await getNotifyPrefs(userId)).prefs : null,
+    prefsSaved: linked ? (await getNotifyPrefs(userId)).saved : false,
   });
 });
 
@@ -1389,17 +1390,18 @@ app.put("/api/auth/google/status", async (req: Request, res: Response) => {
     return;
   }
   const userId = await findOrCreateUserByEmail(verified.email);
-  const channel = req.body?.notifyChannel;
-  if (!NOTIFY_CHANNELS.includes(channel)) {
-    res.status(400).json({ ok: false, error: "Unknown notification channel." });
-    return;
-  }
   if (!(await hasBackgroundSyncLinked(userId))) {
     res.status(409).json({ ok: false, error: "Turn on Background Sync first." });
     return;
   }
-  await setNotifyChannel(userId, channel);
-  res.json({ ok: true, notifyChannel: channel });
+  const current = await getNotifyPrefs(userId);
+  const next = mergeNotifyPrefs(req.body?.prefs, current.prefs);
+  if (!next) {
+    res.status(400).json({ ok: false, error: "Those preferences are not valid." });
+    return;
+  }
+  await setNotifyPrefs(userId, next);
+  res.json({ ok: true, prefs: next });
 });
 
 // In-app fallback notice for new calendar events the daily scan found that no

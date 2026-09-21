@@ -494,15 +494,14 @@ export class TelegramSessionStore {
     telegram_chat_id?: number | string;
     session?: TelegramUserSession | null;
   }> {
-    const activeRows = await query<IntegrationAccountRow>(
-      `SELECT ia.*, u.email AS user_email
-       FROM integration_accounts ia
-       LEFT JOIN users u ON u.id = ia.user_id
-       WHERE ia.channel = 'telegram' AND ia.external_id NOT IN ('123456789')
-       ORDER BY ia.last_active_at DESC
-       LIMIT 1`
-    );
-    const latestActiveSession = activeRows[0] ? rowToSession(activeRows[0]) : undefined;
+    // SECURITY: this used to also look up the globally most recently active
+    // Telegram chat (of ANY user) and both showed it to the caller as "their"
+    // connection and flagged it linked, and let a pending pairing code
+    // auto-attach to it. Any signed-in user could therefore see another
+    // user's Telegram username, and a chat could be attached to the wrong
+    // account. Linking now only ever happens through the bot itself
+    // (linkUserByPairingCode, when the user sends their code in the chat),
+    // and status is answered strictly from the caller's own account.
 
     if (code) {
       const normalizedCode = code.trim();
@@ -541,29 +540,6 @@ export class TelegramSessionStore {
           telegram_chat_id: chatId,
           session: session || null,
         };
-      } else if (record && latestActiveSession) {
-        // Auto-link pending pairing code with the user currently chatting with the bot!
-        await query(`UPDATE pairing_codes SET status = 'linked' WHERE code = $1`, [normalizedCode]);
-        await query(
-          `UPDATE integration_accounts
-           SET user_id = COALESCE($2, user_id), is_linked = true, linked_at = now()
-           WHERE channel = 'telegram' AND external_id = $1`,
-          [String(latestActiveSession.chatId), record.user_id]
-        );
-        const refreshedRow = await this.getAccountRow(latestActiveSession.chatId);
-        const refreshedSession = refreshedRow ? rowToSession(refreshedRow) : latestActiveSession;
-
-        return {
-          ok: true,
-          linked: true,
-          status: 'linked',
-          username: refreshedSession.username || refreshedSession.firstName || 'Telegram User',
-          chatId: refreshedSession.chatId,
-          telegram_linked: true,
-          isLinked: true,
-          telegram_chat_id: refreshedSession.chatId,
-          session: refreshedSession,
-        };
       } else if (record) {
         return {
           ok: true,
@@ -590,26 +566,6 @@ export class TelegramSessionStore {
         isLinked: true,
         telegram_chat_id: session.chatId,
         session,
-      };
-    }
-
-    // Fallback: If user is actively chatting with the bot, recognize them as connected!
-    if (latestActiveSession) {
-      await query(
-        `UPDATE integration_accounts SET is_linked = true WHERE channel = 'telegram' AND external_id = $1`,
-        [String(latestActiveSession.chatId)]
-      );
-      const username = latestActiveSession.username || latestActiveSession.firstName || 'Telegram User';
-      return {
-        ok: true,
-        linked: true,
-        status: 'linked',
-        username,
-        chatId: latestActiveSession.chatId,
-        telegram_linked: true,
-        isLinked: true,
-        telegram_chat_id: latestActiveSession.chatId,
-        session: { ...latestActiveSession, isLinked: true },
       };
     }
 

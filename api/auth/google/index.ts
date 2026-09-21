@@ -8,10 +8,10 @@ import {
   missingBackgroundSyncConfig,
   getGoogleClientSecret,
   describeSecretShape,
-  getNotifyChannel,
-  setNotifyChannel,
-  NOTIFY_CHANNELS,
+  getNotifyPrefs,
+  setNotifyPrefs,
 } from '../../../server/googleOAuthTokenStore.js';
+import { mergeNotifyPrefs } from '../../../server/notifyPrefs.js';
 import { listPendingFindings, dismissAllFindings } from '../../../server/agendaFindingsStore.js';
 import { isEmailConfigured } from '../../../server/emailService.js';
 import { getGoogleClientId } from '../../../server/googleClientId.js';
@@ -118,7 +118,8 @@ async function handleStatus(req: any, res: any) {
       telegramLinked: Boolean(telegramSession?.chatId),
       emailConfigured: isEmailConfigured(),
       email: verified.email,
-      notifyChannel: linked ? await getNotifyChannel(userId) : null,
+      prefs: linked ? (await getNotifyPrefs(userId)).prefs : null,
+      prefsSaved: linked ? (await getNotifyPrefs(userId)).saved : false,
     });
   }
 
@@ -131,15 +132,16 @@ async function handleStatus(req: any, res: any) {
   }
 
   if (req.method === 'PUT') {
-    const channel = req.body?.notifyChannel;
-    if (!NOTIFY_CHANNELS.includes(channel)) {
-      return res.status(400).json({ ok: false, error: 'Unknown notification channel.' });
-    }
     if (!(await hasBackgroundSyncLinked(userId))) {
       return res.status(409).json({ ok: false, error: 'Turn on Background Sync first.' });
     }
-    await setNotifyChannel(userId, channel);
-    return res.status(200).json({ ok: true, notifyChannel: channel });
+    const current = await getNotifyPrefs(userId);
+    const next = mergeNotifyPrefs(req.body?.prefs, current.prefs);
+    if (!next) {
+      return res.status(400).json({ ok: false, error: 'Those preferences are not valid.' });
+    }
+    await setNotifyPrefs(userId, next);
+    return res.status(200).json({ ok: true, prefs: next });
   }
 
   if (req.method === 'DELETE') {

@@ -2,9 +2,11 @@ import { query } from './db.js';
 import {
   getValidAccessToken,
   ensureBackgroundSyncSchema,
+  prefsFromRow,
   type NotifyChannel,
-  NOTIFY_CHANNELS,
+  type NotifyPrefsColumns,
 } from './googleOAuthTokenStore.js';
+import { isUpdateDue, lookbackMs } from './notifySchedule.js';
 import { recordFindings, markFindingsNotified } from './agendaFindingsStore.js';
 import { isEmailConfigured, sendEmail } from './emailService.js';
 import { TelegramSessionStore } from './telegramStore.js';
@@ -58,6 +60,8 @@ export interface ScanCandidate {
 export interface AgendaScanSummary {
   dryRun: boolean;
   usersChecked: number;
+  /** Skipped because their chosen day/time has not come round yet. */
+  usersNotDue: number;
   /** Told over Telegram or email. */
   usersNotified: number;
   /** Findings left as an in-app notice (no external channel available/chosen). */
@@ -81,9 +85,6 @@ const SKIPPED_EVENT_TYPES = new Set(['workingLocation', 'outOfOffice', 'focusTim
 
 const MIN_DAYS_AHEAD = 2;
 const SCAN_WINDOW_MONTHS = 6;
-// A pass that failed for a few days shouldn't dump a week of history on the
-// user the moment it recovers.
-const MAX_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const MAX_PAGES = 4;
 
 function toDateOnly(item: GoogleCalendarItem): string {
@@ -178,29 +179,38 @@ async function fetchNewCalendarItems(accessToken: string, since: Date, now: Date
   return collected;
 }
 
-interface LinkedUserRow {
+interface LinkedUserRow extends NotifyPrefsColumns {
   user_id: string;
   email: string;
   linked_at: string;
   last_agenda_scan_at: string | null;
-  notify_channel: string | null;
+  last_update_sent_at: string | null;
+}
+
+export interface ResolvedChannels {
+  /** External channels that can actually deliver right now. */
+  deliver: Array<'telegram' | 'email'>;
+  /** Also (or only) show new events as a notice in the app. */
+  inApp: boolean;
 }
 
 /**
- * The user's explicit pick, else Telegram when paired, else the in-app
- * notice - and a chosen channel that cannot deliver right now (Telegram not
- * paired, email not configured on this deployment) falls back to the notice
- * rather than silently dropping the news.
+ * The user's chosen channels (any combination), narrowed to what can deliver
+ * right now: Telegram needs a paired chat, email needs the deployment set up.
+ * Nothing chosen means "automatic" - Telegram if paired, else the app. If none
+ * of the chosen external channels can deliver, the app notice takes over
+ * rather than the news being dropped.
  */
-export function resolveChannel(
-  stored: string | null,
-  telegramChatId: string | number | undefined
-): NotifyChannel {
-  const chosen = (NOTIFY_CHANNELS as readonly string[]).includes(stored || '') ? (stored as NotifyChannel) : null;
-  const wanted: NotifyChannel = chosen ?? (telegramChatId ? 'telegram' : 'in_app');
-  if (wanted === 'telegram' && !telegramChatId) return 'in_app';
-  if (wanted === 'email' && !isEmailConfigured()) return 'in_app';
-  return wanted;
+export function resolveChannels(
+  chosen: NotifyChannel[],
+  telegramChatId: string | number | undefined,
+  emailAvailable: boolean
+): ResolvedChannels {
+  const wanted: NotifyChannel[] = chosen.length > 0 ? chosen : [telegramChatId ? 'telegram' : 'in_app'];
+  const deliver = wanted.filter((c): c is 'telegram' | 'email' =>
+    c === 'telegram' ? Boolean(telegramChatId) : c === 'email' ? emailAvailable : false
+  );
+  return { deliver, inApp: wanted.includes('in_app') || deliver.length === 0 };
 }
 
 export async function runBackgroundAgendaScan(
@@ -210,7 +220,7 @@ export async function runBackgroundAgendaScan(
   const now = options.now ?? new Date();
   const dryRun = Boolean(options.dryRun);
   // Vercel Hobby functions default to a 10s limit: stop cleanly before it and
-  // let the users we did not reach go first tomorrow (their timestamp is
+  // let the users we did not reach go first next run (their timestamp is
   // untouched, so nothing is lost).
   const budgetMs = options.budgetMs ?? 8000;
   const appUrl = (options.appUrl || '').replace(/\/+$/, '');
@@ -218,16 +228,18 @@ export async function runBackgroundAgendaScan(
   await ensureBackgroundSyncSchema();
 
   const users = await query<LinkedUserRow>(
-    `SELECT t.user_id, u.email, t.linked_at, t.last_agenda_scan_at, t.notify_channel
+    `SELECT t.user_id, u.email, t.linked_at, t.last_agenda_scan_at, t.last_update_sent_at,
+            t.notify_channel, t.notify_channels, t.notify_frequency, t.notify_hour, t.notify_weekday, t.notify_timezone
        FROM google_oauth_tokens t
        JOIN users u ON u.id = t.user_id
       WHERE t.revoked_at IS NULL
-      ORDER BY t.last_agenda_scan_at ASC NULLS FIRST`
+      ORDER BY t.last_update_sent_at ASC NULLS FIRST`
   );
 
   const summary: AgendaScanSummary = {
     dryRun,
     usersChecked: 0,
+    usersNotDue: 0,
     usersNotified: 0,
     usersInAppOnly: 0,
     eventsReported: 0,
@@ -245,6 +257,16 @@ export async function runBackgroundAgendaScan(
     summary.usersChecked++;
 
     try {
+      // Each user picked how often and at what local time. The job may run
+      // once a day or hourly; a user is only handled when their slot has
+      // arrived and nothing went out since (a dry run previews everyone).
+      const { prefs } = prefsFromRow(user);
+      const lastSent = user.last_update_sent_at ? Date.parse(user.last_update_sent_at) : null;
+      if (!dryRun && !isUpdateDue(now.getTime(), prefs, lastSent)) {
+        summary.usersNotDue++;
+        continue;
+      }
+
       const accessToken = await getValidAccessToken(user.user_id);
       if (!accessToken) {
         summary.skippedNoToken++;
@@ -252,20 +274,19 @@ export async function runBackgroundAgendaScan(
       }
 
       const lastPass = Date.parse(user.last_agenda_scan_at || user.linked_at);
-      const since = new Date(Math.max(lastPass, now.getTime() - MAX_LOOKBACK_MS));
+      const since = new Date(Math.max(lastPass, now.getTime() - lookbackMs(prefs.frequency)));
 
       const items = await fetchNewCalendarItems(accessToken, since, now);
       const candidates = items.filter((item) => isPrepWorthy(item, now)).map(toCandidate);
 
       const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
-      const channel = resolveChannel(user.notify_channel, session?.chatId);
+      const { deliver, inApp } = resolveChannels(prefs.channels, session?.chatId, isEmailConfigured());
 
-      // The daily update also carries the user's own overdue / due-this-week
-      // tasks (from the synced event list). Those only go out over Telegram or
-      // email - the in-app notice is about NEW calendar events alone, so
-      // there is nothing to look up for it.
+      // The update also carries the user's own overdue / due-this-week tasks
+      // (from the synced event list). Those only go out over Telegram or email
+      // - the in-app notice is about NEW calendar events alone.
       const tasks =
-        channel === 'in_app' ? { overdue: [], dueThisWeek: [] } : await listTasksNeedingAttention(user.user_id, now.toISOString());
+        deliver.length === 0 ? { overdue: [], dueThisWeek: [] } : await listTasksNeedingAttention(user.user_id, now.toISOString());
       const model: DailyUpdateModel = {
         today: now.toISOString().substring(0, 10),
         overdue: tasks.overdue,
@@ -273,24 +294,27 @@ export async function runBackgroundAgendaScan(
         newEvents: candidates,
         appUrl,
       };
-      const shouldSend = channel === 'in_app' ? candidates.length > 0 : hasUpdateContent(model);
+      const shouldSend = deliver.length === 0 ? candidates.length > 0 : hasUpdateContent(model);
 
       if (shouldSend) {
         if (dryRun) {
-          if (channel === 'email') {
-            const mail = renderEmailUpdate(model);
-            summary.previews!.push(`[email] ${mail.subject}\n\n${mail.text}`);
-          } else {
-            summary.previews!.push(`[${channel}]\n${renderTelegramUpdate(model).text}`);
+          for (const channel of deliver) {
+            if (channel === 'email') {
+              const mail = renderEmailUpdate(model);
+              summary.previews!.push(`[email] ${mail.subject}\n\n${mail.text}`);
+            } else {
+              summary.previews!.push(`[telegram]\n${renderTelegramUpdate(model).text}`);
+            }
           }
-          if (channel === 'in_app') summary.usersInAppOnly++;
+          if (deliver.length === 0) summary.usersInAppOnly++;
           else summary.usersNotified++;
           summary.eventsReported += candidates.length;
           continue;
         }
 
         // Always record new events: the in-app notice reads these, and skips
-        // the ones an external channel delivered (notified_via below).
+        // the ones an external channel delivered (notified_via below) unless
+        // the user also asked for the app notice.
         if (candidates.length > 0) {
           await recordFindings(
             user.user_id,
@@ -304,42 +328,44 @@ export async function runBackgroundAgendaScan(
         }
         const candidateIds = candidates.map((c) => c.googleEventId);
 
-        if (channel === 'telegram') {
-          const update = renderTelegramUpdate(model);
-          const sent = await TelegramService.sendMessage(session!.chatId, update.text, {
-            parse_mode: update.parse_mode,
-            reply_markup: update.buttons.length
-              ? { inline_keyboard: update.buttons.map((b) => [{ text: b.text, url: b.url }]) }
-              : undefined,
-            disable_web_page_preview: true,
-          });
-          if (!sent.ok) {
-            // Leave the timestamp alone so tomorrow's pass retries these events.
-            summary.failed++;
-            continue;
+        let delivered: 'telegram' | 'email' | null = null;
+        for (const channel of deliver) {
+          let ok = false;
+          if (channel === 'telegram') {
+            const update = renderTelegramUpdate(model);
+            const sent = await TelegramService.sendMessage(session!.chatId, update.text, {
+              parse_mode: update.parse_mode,
+              reply_markup: update.buttons.length
+                ? { inline_keyboard: update.buttons.map((b) => [{ text: b.text, url: b.url }]) }
+                : undefined,
+              disable_web_page_preview: true,
+            });
+            ok = sent.ok;
+          } else {
+            const mail = renderEmailUpdate(model);
+            ok = (await sendEmail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text })).ok;
           }
-          await markFindingsNotified(user.user_id, candidateIds, 'telegram');
-          summary.usersNotified++;
-        } else if (channel === 'email') {
-          const mail = renderEmailUpdate(model);
-          const sent = await sendEmail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text });
-          if (!sent.ok) {
-            summary.failed++;
-            continue;
-          }
-          await markFindingsNotified(user.user_id, candidateIds, 'email');
-          summary.usersNotified++;
-        } else {
-          summary.usersInAppOnly++;
+          if (ok) delivered = delivered ?? channel;
         }
+
+        if (deliver.length > 0 && !delivered) {
+          // Nothing got through: leave the timestamps alone so the next run retries.
+          summary.failed++;
+          continue;
+        }
+        if (delivered && !inApp && candidateIds.length > 0) {
+          await markFindingsNotified(user.user_id, candidateIds, delivered);
+        }
+        if (delivered) summary.usersNotified++;
+        else summary.usersInAppOnly++;
         summary.eventsReported += candidates.length;
       }
 
       if (!dryRun) {
-        await query(`UPDATE google_oauth_tokens SET last_agenda_scan_at = $2 WHERE user_id = $1`, [
-          user.user_id,
-          now.toISOString(),
-        ]);
+        await query(
+          `UPDATE google_oauth_tokens SET last_agenda_scan_at = $2, last_update_sent_at = $2 WHERE user_id = $1`,
+          [user.user_id, now.toISOString()]
+        );
       }
     } catch (err) {
       summary.failed++;
