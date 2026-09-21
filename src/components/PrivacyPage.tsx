@@ -305,7 +305,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 <li><strong>No Central Database of User Calendars:</strong> We do not store copies of your full calendar database on persistent central servers.</li>
                 <li><strong>Token Security:</strong> OAuth access tokens are held in short-lived client-side session storage on your device and are never written to permanent public storage.</li>
                 <li><strong>Encryption in Transit:</strong> All communications between your browser, our API endpoints, and Google API servers are encrypted using modern Transport Layer Security (TLS/HTTPS).</li>
-                <li><strong>Retention:</strong> Synced event plans are stored locally in your browser&rsquo;s LocalStorage so you can revisit them across sessions. Clearing browser data removes all local records instantly.</li>
+                <li><strong>Retention:</strong> When you are signed in, the events and prep tasks you create or import are stored in your account on our servers so they stay in sync across your devices, and a copy is kept in your browser&rsquo;s LocalStorage. A deleted event is kept for 30 days so you can restore it from Settings, then permanently removed. If you turn on Background Sync, an encrypted Google refresh token is also stored until you turn it off. Clearing browser data removes only the local copy.</li>
               </ul>
             </div>
           </section>

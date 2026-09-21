@@ -41,6 +41,8 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import { ImportTemplateModal } from './components/ImportTemplateModal';
 import { ApplyPresetModal } from './components/ApplyPresetModal';
 import { AgendaFindingsBanner } from './components/AgendaFindingsBanner';
+import { loadSyncState, saveSyncState, pullEventChanges, pushEventChanges, type ChangesResponse } from './services/eventSync';
+import { hashEvent, mergeServerChanges, findDirtyEvents, stampUpdatedAt } from './utils/eventSyncMerge';
 import { CalendarEvent, AgentMessage, TMinusMilestone, FocusMode, OnboardingProfile, CookieConsentSettings, CustomPreset } from './types';
 import { 
   MessageSquare, 
@@ -419,81 +421,161 @@ function App() {
     };
   }, []);
 
-  // Periodically sync and merge events created via Telegram Assistant (Strictly User-Scoped)
+  // Multi-device event sync. Events used to live only in this browser's local
+  // storage (plus Telegram events on the server), so a second device saw none
+  // of the events scanned or created here. Now every signed-in device pulls
+  // what changed on the server and pushes what it changed itself; conflicts
+  // resolve per event by edit time, and a delete elsewhere removes the event
+  // here too (deletes are soft on the server, restorable from Settings).
+  // Runs on mount, on focus, every 4s (the incremental pull is tiny) and
+  // shortly after any local change.
+  const runEventSyncRef = useRef<(() => Promise<void>) | null>(null);
+
   useEffect(() => {
-    // If not authenticated, do not poll or sync telegram events
+    // If not authenticated, do not sync anything
     if (!currentUser?.id) {
+      runEventSyncRef.current = null;
       return;
     }
+    const userId = currentUser.id;
+    const syncState = loadSyncState(userId);
+    let inFlight = false;
+    let runAgain = false;
+    let cancelled = false;
 
-    const syncTelegramEvents = async () => {
-      try {
-        const userParam = `?userId=${encodeURIComponent(currentUser.id)}`;
-        const accessToken = getStoredAccessToken();
-        const res = await fetch(`/api/telegram/events${userParam}`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-        });
-        const data = await res.json();
-        // Drop anything the user deleted this session before it can be
-        // treated as "new" below - closes the race where this poll's
-        // response was already in flight when the delete call fired.
-        const incomingEvents: CalendarEvent[] = data.ok && Array.isArray(data.events)
-          ? data.events.filter((e: CalendarEvent) => !deletedEventIdsRef.current.has(e.id))
-          : [];
-        if (incomingEvents.length > 0) {
-          // Double check user didn't log out while request was in flight
-          if (!currentUser?.id) return;
+    // Telegram-created events have database uuids as ids; events created in the
+    // web app have their own ids. Only the former get the chat "new event" note.
+    const isTelegramEventId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id);
 
-          setEvents((prev) => {
-            const prevIds = new Set(prev.map((e) => e.id));
-            const newIncoming = incomingEvents.filter((e: CalendarEvent) => !prevIds.has(e.id));
+    // Folds server changes into local state and records which events are now
+    // known-synced. Returns the merged list so callers can keep reasoning on it.
+    const applyServerChanges = (current: CalendarEvent[], data: ChangesResponse): CalendarEvent[] => {
+      const locallyDeleted = deletedEventIdsRef.current;
+      const result = mergeServerChanges(current, data.events, data.deletedIds, locallyDeleted);
 
-            if (newIncoming.length > 0) {
-              // Add notification message to agent chat console for newly detected Telegram events
-              const newMessages: AgentMessage[] = newIncoming.map((newEvent: CalendarEvent) => ({
-                id: `msg-tg-${newEvent.id}-${Date.now()}`,
-                sender: 'agent',
-                text: `📥 **New Event from Telegram**: "${newEvent.title}" (${newEvent.eventDate}). Generated ${newEvent.milestones?.length || 0} backward preparation milestones.`,
-                associatedEventId: newEvent.id,
-                focusText: `Parsed from Telegram chat: ${newEvent.title}`,
-                additionText: `Activated ${newEvent.milestones?.length || 0} T-Minus milestones for ${newEvent.eventDate}.`,
-                timestamp: new Date().toISOString(),
-                mode: 'NORMAL',
-              }));
-
-              setMessages((prevMsgs) => {
-                const existingMsgIds = new Set(prevMsgs.map((m) => m.id));
-                const filteredNew = newMessages.filter((m) => !existingMsgIds.has(m.id));
-                const updated = [...prevMsgs, ...filteredNew];
-                saveUserMessages(updated, currentUser?.id);
-                return updated;
-              });
-
-              // Select the newest incoming event if none is currently selected
-              if (!selectedEventId && newIncoming[0]) {
-                setSelectedEventId(newIncoming[0].id);
-              }
-            }
-
-            const merged = mergeEvents(prev, incomingEvents);
-            saveUserEvents(merged, currentUser?.id);
-            return merged;
-          });
+      const serverById = new Map(data.events.map((e) => [e.id, e]));
+      for (const id of result.removed) delete syncState.hashes[id];
+      for (const e of result.events) {
+        const s = serverById.get(e.id);
+        if (s && (result.adopted.includes(e.id) || hashEvent(s) === hashEvent(e))) {
+          syncState.hashes[e.id] = hashEvent(e);
         }
-      } catch (e) {
-        // Silently catch background polling errors
+      }
+      // Back a second so an update landing in the same instant as this read
+      // is never missed; re-receiving one event is harmless.
+      syncState.since = new Date(Date.parse(data.serverTime) - 1000).toISOString();
+      saveSyncState(userId, syncState);
+
+      const knownIds = new Set(current.map((e) => e.id));
+      const newTelegram = result.adopted
+        .filter((id) => !knownIds.has(id) && isTelegramEventId(id))
+        .map((id) => result.events.find((e) => e.id === id))
+        .filter((e): e is CalendarEvent => Boolean(e));
+
+      if (result.adopted.length > 0 || result.removed.length > 0) {
+        setEvents((prev) => mergeServerChanges(prev, data.events, data.deletedIds, locallyDeleted).events);
+        if (result.removed.length > 0) {
+          setSelectedEventId((sel) => (sel && result.removed.includes(sel) ? null : sel));
+        }
+      }
+
+      if (newTelegram.length > 0) {
+        // Add notification message to agent chat console for newly detected Telegram events
+        const newMessages: AgentMessage[] = newTelegram.map((newEvent) => ({
+          id: `msg-tg-${newEvent.id}-${Date.now()}`,
+          sender: 'agent',
+          text: `📥 **New Event from Telegram**: "${newEvent.title}" (${newEvent.eventDate}). Generated ${newEvent.milestones?.length || 0} backward preparation milestones.`,
+          associatedEventId: newEvent.id,
+          focusText: `Parsed from Telegram chat: ${newEvent.title}`,
+          additionText: `Activated ${newEvent.milestones?.length || 0} T-Minus milestones for ${newEvent.eventDate}.`,
+          timestamp: new Date().toISOString(),
+          mode: 'NORMAL',
+        }));
+        setMessages((prevMsgs) => {
+          const existingMsgIds = new Set(prevMsgs.map((m) => m.id));
+          const updated = [...prevMsgs, ...newMessages.filter((m) => !existingMsgIds.has(m.id))];
+          saveUserMessages(updated, userId);
+          return updated;
+        });
+        // Select the newest incoming event if none is currently selected
+        setSelectedEventId((sel) => sel ?? newTelegram[0].id);
+      }
+      return result.events;
+    };
+
+    const run = async () => {
+      if (cancelled) return;
+      const token = getStoredAccessToken();
+      if (!token || isTokenExpired()) return;
+      if (inFlight) {
+        runAgain = true;
+        return;
+      }
+      inFlight = true;
+      try {
+        // 1. Pull first, so a stale local copy is never pushed over a newer one.
+        const pulled = await pullEventChanges(token, syncState.since);
+        if (!pulled || cancelled) return;
+        let current = applyServerChanges(eventsRef.current, pulled);
+
+        // 2. Push what changed here.
+        const dirty = findDirtyEvents(current, syncState.hashes).filter((e) => !deletedEventIdsRef.current.has(e.id));
+        if (dirty.length > 0) {
+          const ids = new Set(dirty.map((e) => e.id));
+          const stampedAt = new Date().toISOString();
+          current = stampUpdatedAt(current, ids, stampedAt);
+          setEvents((prev) => stampUpdatedAt(prev, ids, stampedAt));
+
+          const toPush = current.filter((e) => ids.has(e.id));
+          for (let i = 0; i < toPush.length; i += 50) {
+            const batch = toPush.slice(i, i + 50);
+            const pushed = await pushEventChanges(token, batch, syncState.since);
+            if (!pushed || cancelled) break;
+            for (const e of batch) syncState.hashes[e.id] = hashEvent(e);
+            current = applyServerChanges(current, pushed);
+          }
+          saveSyncState(userId, syncState);
+        }
+      } catch {
+        // Best-effort: silently retry on the next tick.
+      } finally {
+        inFlight = false;
+        if (runAgain && !cancelled) {
+          runAgain = false;
+          void run();
+        }
       }
     };
 
-    syncTelegramEvents();
-    const interval = window.setInterval(syncTelegramEvents, 4000);
-    window.addEventListener('focus', syncTelegramEvents);
+    runEventSyncRef.current = run;
+    void run();
+    const interval = window.setInterval(() => void run(), 4000);
+    const onFocus = () => void run();
+    window.addEventListener('focus', onFocus);
+    // An event restored from Settings must be allowed back in and fetched.
+    const onRestored = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) deletedEventIdsRef.current.delete(id);
+      syncState.since = undefined; // full pull: the restored event predates the cursor
+      void run();
+    };
+    window.addEventListener('aot_event_restored', onRestored);
 
     return () => {
+      cancelled = true;
+      runEventSyncRef.current = null;
       window.clearInterval(interval);
-      window.removeEventListener('focus', syncTelegramEvents);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('aot_event_restored', onRestored);
     };
-  }, [selectedEventId, currentUser?.id]);
+  }, [currentUser?.id]);
+
+  // Push shortly after a local change instead of waiting for the next tick.
+  useEffect(() => {
+    if (!currentUser?.id || isInitializing) return;
+    const timer = window.setTimeout(() => void runEventSyncRef.current?.(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [events, currentUser?.id, isInitializing]);
 
   // Account switching and clean logout actions
   const handleSignIn = async () => {
@@ -1742,7 +1824,10 @@ function App() {
 
   // Reset to bare minimum state
   const handleResetData = () => {
-    if (window.confirm('Reset events and chat history to the clean bare minimum for this account?')) {
+    if (window.confirm('Reset events and chat history to the clean bare minimum for this account? Deleted events stay restorable from Settings for 30 days.')) {
+      // Events now live on the server too: without deleting them there, the
+      // next sync would simply bring every one of them back.
+      eventsRef.current.forEach((e) => deleteServerEventRecord(e.id));
       const initEvents: CalendarEvent[] = [];
       const initMessages = INITIAL_MESSAGES;
       setEvents(initEvents);

@@ -189,6 +189,21 @@ ALTER TABLE google_oauth_tokens
   -- NULL = automatic (Telegram if paired, otherwise the in-app notice).
   ADD COLUMN IF NOT EXISTS notify_channel TEXT;
 
+-- Multi-device event sync + soft delete (server/eventSyncSchema.ts also
+-- applies these idempotently at runtime). An event's public id everywhere is
+-- client_id ?? id::text; deleted_at marks a soft delete (restorable from
+-- Settings, purged by the daily cron after 30 days).
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS client_id         TEXT,
+  ADD COLUMN IF NOT EXISTS client_updated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS deleted_at        TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS client_payload    JSONB;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_user_client_id ON events(user_id, client_id) WHERE client_id IS NOT NULL;
+ALTER TABLE milestones
+  ADD COLUMN IF NOT EXISTS client_id      TEXT,
+  ADD COLUMN IF NOT EXISTS client_payload JSONB;
+CREATE INDEX IF NOT EXISTS idx_milestones_event_client ON milestones(event_id, client_id);
+
 -- Google ids of what the server-side background push created for an event
 -- created over Telegram (server/googleBackgroundPush.ts). The web app reads
 -- them back so it shows the event as already synced instead of pushing it a

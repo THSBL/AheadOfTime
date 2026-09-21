@@ -132,7 +132,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
               <span>4. Storage &amp; Cookies</span>
             </div>
             <p>
-              We use client-side local storage and functional cookies to remember your calibration parameters and authentication state across browser sessions. You may clear this data anytime via the app controls or your browser settings.
+              We use client-side local storage and functional cookies to remember your calibration parameters and authentication state across browser sessions. You may clear this data anytime via the app controls or your browser settings. When you are signed in, your events and prep tasks are also stored in your account on our servers so they sync across your devices; a deleted event is kept for 30 days so you can restore it, then permanently removed.
             </p>
           </section>
 

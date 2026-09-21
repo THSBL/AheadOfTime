@@ -1,5 +1,6 @@
 import { getWeeklyDigestData, sendOwnerAlert } from '../../server/qualityStore.js';
 import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
+import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
 // /api/cron/agenda-scan - the paths vercel.json's crons entries point at).
@@ -33,12 +34,21 @@ async function handleAgendaScan(req: any, res: any) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
+  // Riding the same daily run (Hobby allows two cron jobs, both taken): events
+  // deleted more than PURGE_AFTER_DAYS ago are removed for good.
+  let purged = 0;
+  try {
+    purged = await purgeDeletedEvents();
+  } catch (err) {
+    console.warn('Purging deleted events failed (non-fatal):', err);
+  }
+
   try {
     const summary = await runBackgroundAgendaScan({
       appUrl: process.env.APP_URL?.trim(),
       dryRun: req.query?.dryRun === '1' || req.query?.dryRun === 'true',
     });
-    return res.status(200).json({ ok: true, ...summary });
+    return res.status(200).json({ ok: true, purgedDeletedEvents: purged, ...summary });
   } catch (err: any) {
     console.error('Background agenda scan failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Agenda scan failed' });

@@ -47,6 +47,7 @@ import {
   NOTIFY_CHANNELS,
 } from "./server/googleOAuthTokenStore";
 import { listPendingFindings, dismissAllFindings } from "./server/agendaFindingsStore";
+import { handleEventsApi } from "./server/eventsApi";
 import { isEmailConfigured } from "./server/emailService";
 
 dotenv.config();
@@ -1152,17 +1153,22 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
 });
 
 // 5. Get Events created via Telegram (User/Account Scoped)
-app.get("/api/telegram/events", async (req: Request, res: Response) => {
-  // Returns real event data, so identity must be verified rather than
-  // trusted from a query param - a client-supplied userId was exactly how
-  // the earlier cross-user event exposure bug worked.
+// Now the multi-device event sync endpoint (list/incremental pull, push,
+// restore) - one implementation shared with the Vercel function, see
+// server/eventsApi.ts.
+app.all("/api/telegram/events", async (req: Request, res: Response) => {
+  // Identity is verified, never trusted from a query param - a
+  // client-supplied userId was exactly how the earlier cross-user event
+  // exposure bug worked.
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));
-  if (!verified) {
-    res.json({ ok: true, events: [] });
-    return;
-  }
-  const events = await TelegramSessionStore.getAllEvents(verified.email);
-  res.json({ ok: true, events });
+  const result = await handleEventsApi({
+    method: req.method,
+    query: req.query as Record<string, any>,
+    body: req.body,
+    email: verified?.email ?? null,
+  });
+  res.setHeader("Cache-Control", "no-store");
+  res.status(result.status).json(result.json);
 });
 
 app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {

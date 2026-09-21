@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleCalendarIntegrationCard } from './GoogleCalendarIntegrationCard';
 import { TelegramIntegrationCard } from './TelegramIntegrationCard';
+import { RecentlyDeletedEventsCard } from './RecentlyDeletedEventsCard';
 import { ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, Settings2, Check } from 'lucide-react';
 import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
@@ -105,6 +106,9 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
 
           {/* CARD 2: TELEGRAM ASSISTANT BOT */}
           <TelegramIntegrationCard userId={currentUser?.id} />
+
+          {/* Undo for accidental deletes (soft-deleted for 30 days) */}
+          <RecentlyDeletedEventsCard />
 
           {/* CARD 3: QUESTIONNAIRE PROFILE & PRESET HEURISTICS */}
           <div className="bg-white border border-sky-200/90 rounded-2xl p-5 shadow-xs">

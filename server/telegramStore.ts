@@ -1,4 +1,5 @@
 import { query } from './db.js';
+import { ensureEventSyncSchema } from './eventSyncSchema.js';
 import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, MilestoneCategory } from '../src/types.js';
 
 export interface TelegramUserSession {
@@ -72,6 +73,11 @@ interface EventRow {
   google_event_id?: string | null;
   google_event_link?: string | null;
   synced_to_google_at?: string | Date | null;
+  // Multi-device sync columns (server/eventSyncSchema.ts).
+  client_id?: string | null;
+  client_updated_at?: string | Date | null;
+  deleted_at?: string | Date | null;
+  client_payload?: Record<string, any> | null;
 }
 
 interface MilestoneRow {
@@ -87,6 +93,8 @@ interface MilestoneRow {
   confirmed_via: string | null;
   deliverables: any;
   google_task_id?: string | null;
+  client_id?: string | null;
+  client_payload?: Record<string, any> | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -176,14 +184,24 @@ function computeTMinus(
   return { label, offsetMinutes };
 }
 
-function rowToMilestone(row: MilestoneRow, eventDate: string, eventTime: string | null): TMinusMilestone {
+export function rowToMilestone(
+  row: MilestoneRow,
+  eventDate: string,
+  eventTime: string | null,
+  publicEventId?: string
+): TMinusMilestone {
   const calculatedDate = row.calculated_date instanceof Date ? row.calculated_date : new Date(row.calculated_date);
   const { label, offsetMinutes } = computeTMinus(eventDate, eventTime, calculatedDate);
   return {
-    id: row.id,
-    eventId: row.event_id,
-    tMinusLabel: label,
-    tMinusOffsetMinutes: offsetMinutes,
+    // Fields with no column of their own (slotKey, scope, custom flags...)
+    // come from the web app's own copy; the columns below stay authoritative.
+    ...(row.client_payload || {}),
+    // Public id: the id the web app generated when it created this row, else
+    // the database uuid (Telegram-created rows).
+    id: row.client_id || row.id,
+    eventId: publicEventId || row.event_id,
+    tMinusLabel: row.client_payload?.tMinusLabel ?? label,
+    tMinusOffsetMinutes: row.client_payload?.tMinusOffsetMinutes ?? offsetMinutes,
     calculatedDate: toDateOnly(calculatedDate) || eventDate,
     title: row.title,
     description: row.description || undefined,
@@ -199,10 +217,17 @@ function rowToMilestone(row: MilestoneRow, eventDate: string, eventTime: string 
   };
 }
 
-function rowToCalendarEvent(row: EventRow, milestoneRows: MilestoneRow[]): CalendarEvent {
+export function rowToCalendarEvent(row: EventRow, milestoneRows: MilestoneRow[]): CalendarEvent {
   const eventDate = toDateOnly(row.event_date) as string;
+  // Public id: what the web app called this event when it created it, else the
+  // database uuid (Telegram-created rows) - the same on every device.
+  const publicId = row.client_id || row.id;
+  // The web app's own copy of the event carries fields with no column (recurrence,
+  // custom flags...); the columns below stay authoritative.
+  const { milestones: _ignoredPayloadMilestones, ...payloadExtras } = (row.client_payload || {}) as Record<string, any>;
   return {
-    id: row.id,
+    ...payloadExtras,
+    id: publicId,
     title: row.title,
     category: row.category as EventCategory,
     eventDate,
@@ -220,10 +245,11 @@ function rowToCalendarEvent(row: EventRow, milestoneRows: MilestoneRow[]): Calen
     structuredPayload: row.structured_payload || undefined,
     milestones: milestoneRows
       .filter((m) => m.event_id === row.id)
-      .map((m) => rowToMilestone(m, eventDate, row.event_time)),
+      .map((m) => rowToMilestone(m, eventDate, row.event_time, publicId)),
     rawInputSnippet: row.raw_input || undefined,
     createdAt: toIsoString(row.created_at) || new Date().toISOString(),
-    updatedAt: toIsoString(row.updated_at) || new Date().toISOString(),
+    // The web app's own edit time when it has one, so devices compare like with like.
+    updatedAt: toIsoString(row.client_updated_at) || toIsoString(row.updated_at) || new Date().toISOString(),
     // Same "only when set" rule as googleTaskId in rowToMilestone: an
     // absent key can't clobber what the browser already knows.
     ...(row.google_event_id
@@ -792,14 +818,39 @@ export class TelegramSessionStore {
    * didn't already exist in the DB - used by the "Refine Event in Chat"
    * flow, which only ever adds to a plan, never rewrites what's there.
    */
+  /**
+   * Resolves an event's PUBLIC id (what every client sees: the web app's own
+   * id when it created the event, else the database uuid) to the row's uuid.
+   * Compared as text so a non-uuid public id can't raise a cast error.
+   */
+  public static async resolveEventUuid(publicId: string): Promise<string | undefined> {
+    await ensureEventSyncSchema();
+    const rows = await query<{ id: string }>(
+      `SELECT id FROM events WHERE (id::text = $1 OR client_id = $1) AND deleted_at IS NULL LIMIT 1`,
+      [String(publicId)]
+    );
+    return rows[0]?.id;
+  }
+
   public static async addMilestonesToEvent(eventId: string, milestones: TMinusMilestone[]): Promise<void> {
+    const eventUuid = await this.resolveEventUuid(eventId);
+    if (!eventUuid) return;
     for (const m of milestones) {
       await query(
         `INSERT INTO milestones (event_id, title, description, category, calculated_date, status, kind)
          VALUES ($1, $2, $3, $4, $5, 'pending', 'milestone')`,
-        [eventId, m.title, m.description || '', m.category || 'prep', m.calculatedDate]
+        [eventUuid, m.title, m.description || '', m.category || 'prep', m.calculatedDate]
       );
     }
+    // The plan changed on the server: make it the newest copy so another
+    // device's older push can't silently drop these additions.
+    await query(
+      `UPDATE events
+          SET updated_at = now(),
+              client_updated_at = CASE WHEN client_updated_at IS NULL THEN NULL ELSE GREATEST(client_updated_at, now()) END
+        WHERE id = $1`,
+      [eventUuid]
+    );
   }
 
   public static async recordEventCreated(chatId: number | string, event: CalendarEvent): Promise<void> {
@@ -892,20 +943,24 @@ export class TelegramSessionStore {
    * already persists and getEvent already reads back.
    */
   public static async markEventConfirmed(eventId: string): Promise<void> {
+    const eventUuid = await this.resolveEventUuid(eventId);
+    if (!eventUuid) return;
     await query(
       `UPDATE events
        SET context = jsonb_set(jsonb_set(COALESCE(context, '{}'::jsonb), '{needsRefinement}', 'false'::jsonb, true), '{refinedAt}', to_jsonb(now()::text), true),
            updated_at = now()
        WHERE id = $1`,
-      [eventId]
+      [eventUuid]
     );
   }
 
   public static async getEvent(eventId: string): Promise<CalendarEvent | undefined> {
-    const eventRows = await query<EventRow>(`SELECT * FROM events WHERE id = $1`, [eventId]);
+    const eventUuid = await this.resolveEventUuid(eventId);
+    if (!eventUuid) return undefined;
+    const eventRows = await query<EventRow>(`SELECT * FROM events WHERE id = $1`, [eventUuid]);
     const eventRow = eventRows[0];
     if (!eventRow) return undefined;
-    const milestoneRows = await query<MilestoneRow>(`SELECT * FROM milestones WHERE event_id = $1`, [eventId]);
+    const milestoneRows = await query<MilestoneRow>(`SELECT * FROM milestones WHERE event_id = $1`, [eventUuid]);
     return rowToCalendarEvent(eventRow, milestoneRows);
   }
 
@@ -932,10 +987,11 @@ export class TelegramSessionStore {
       return [];
     }
 
+    await ensureEventSyncSchema();
     const eventRows = await query<EventRow>(
       `SELECT e.* FROM events e
        JOIN users u ON u.id = e.user_id
-       WHERE lower(u.email) = lower($1)`,
+       WHERE lower(u.email) = lower($1) AND e.deleted_at IS NULL`,
       [normUserId]
     );
     if (eventRows.length === 0) return [];
@@ -950,9 +1006,11 @@ export class TelegramSessionStore {
   }
 
   /**
-   * Permanently removes a stored event (and, via ON DELETE CASCADE, its
-   * milestones) - scoped to the owning user so one user can't delete
-   * another's event by guessing an id. Without this, an event created via
+   * Deletes a stored event for its owner - a SOFT delete: the row is only
+   * marked deleted_at, so it can be restored from Settings for
+   * PURGE_AFTER_DAYS (the daily cron purges it after that, see
+   * eventSyncStore.purgeDeletedEvents). Scoped to the owning user so one user
+   * can't delete another's event by guessing an id. Without this, an event created via
    * Telegram lived in Postgres forever: the app's own delete only ever
    * touched local React state, so /api/telegram/events kept returning the
    * "deleted" event on its next poll and the client's mergeEvents logic
@@ -964,12 +1022,16 @@ export class TelegramSessionStore {
     if (!normUserId || normUserId === 'guest' || normUserId === 'anonymous') {
       return false;
     }
+    await ensureEventSyncSchema();
     const deleted = await query<{ id: string }>(
-      `DELETE FROM events e
-       USING users u
-       WHERE e.id = $1 AND e.user_id = u.id AND lower(u.email) = lower($2)
+      `UPDATE events e
+          SET deleted_at = now()
+         FROM users u
+        WHERE (e.id::text = $1 OR e.client_id = $1)
+          AND e.user_id = u.id AND lower(u.email) = lower($2)
+          AND e.deleted_at IS NULL
        RETURNING e.id`,
-      [eventId, normUserId]
+      [String(eventId), normUserId]
     );
     return deleted.length > 0;
   }
@@ -980,7 +1042,8 @@ export class TelegramSessionStore {
     const eventIds: string[] = Array.isArray(account.metadata?.eventsCreated) ? account.metadata.eventsCreated : [];
     if (eventIds.length === 0) return [];
 
-    const eventRows = await query<EventRow>(`SELECT * FROM events WHERE id = ANY($1::uuid[])`, [eventIds]);
+    await ensureEventSyncSchema();
+    const eventRows = await query<EventRow>(`SELECT * FROM events WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, [eventIds]);
     if (eventRows.length === 0) return [];
 
     const milestoneRows = await query<MilestoneRow>(

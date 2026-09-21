@@ -132,7 +132,7 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
       try {
         const main = await createMainCalendarEvent(accessToken, event, timeZone);
         await query(
-          `UPDATE events SET google_event_id = $2, google_event_link = $3, synced_to_google_at = now() WHERE id = $1`,
+          `UPDATE events SET google_event_id = $2, google_event_link = $3, synced_to_google_at = now(), updated_at = now() WHERE id = $1`,
           [eventId, main.id, main.htmlLink || null]
         );
         result.createdCalendarEvent = true;
@@ -156,7 +156,8 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
     }
 
     if (result.tasksCreated > 0) {
-      await query(`UPDATE events SET synced_to_google_at = now() WHERE id = $1`, [eventId]);
+      // updated_at too: other devices' incremental pulls only see changed rows.
+      await query(`UPDATE events SET synced_to_google_at = now(), updated_at = now() WHERE id = $1`, [eventId]);
     }
     if (firstError && !result.createdCalendarEvent && result.tasksCreated === 0) {
       return { ...result, status: 'failed', error: firstError };

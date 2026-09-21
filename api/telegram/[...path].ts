@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { TelegramWebhookHandler } from '../../server/telegramWebhookHandler.js';
 import { TelegramService } from '../../server/telegramService.js';
 import { TelegramSessionStore } from '../../server/telegramStore.js';
+import { handleEventsApi } from '../../server/eventsApi.js';
 import { extractBearerToken, verifyGoogleAccessToken } from '../../server/googleAuthVerify.js';
 
 // Consolidated Vercel catch-all for everything under /api/telegram/*.
@@ -235,29 +236,19 @@ export default async function handler(req: any, res: any) {
 
   // --- /api/telegram/events (list, or ?id=... for a single event) ---
   if (route === 'events') {
-    if (req.method !== 'GET') {
-      return res.status(405).json({ error: 'Method not allowed' });
-    }
-    // This endpoint returns real event data, so identity must be verified
-    // rather than trusted from a query param - a client-supplied userId
-    // was exactly how the earlier cross-user event exposure bug worked.
+    // Shared with server.ts (server/eventsApi.ts) so both runtimes behave
+    // identically: list/incremental pull (GET), push + restore (POST).
+    // Identity is verified, never trusted from a query param.
     const verified = await verifyGoogleAccessToken(extractBearerToken(req));
-    if (!verified) {
-      return res.status(200).json({ ok: true, events: [] });
-    }
-
-    const ownedEvents = await TelegramSessionStore.getAllEvents(verified.email);
-
-    const eventId = req.query.id || req.query.eventId || req.query.event_id;
-    if (eventId) {
-      const event = ownedEvents.find((e) => e.id === String(eventId));
-      if (event) {
-        return res.status(200).json({ ok: true, event });
-      }
-      return res.status(404).json({ ok: false, error: 'Event not found' });
-    }
-
-    return res.status(200).json({ ok: true, events: ownedEvents });
+    const result = await handleEventsApi({
+      method: req.method,
+      query: req.query || {},
+      body: req.body,
+      email: verified?.email ?? null,
+    });
+    // Per-user data that changes constantly: never let a cache answer it.
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(result.status).json(result.json);
   }
 
   // Note: /api/telegram/event/:id is handled by its own dedicated file
