@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ShieldCheck, LayoutDashboard, Route, TrendingUp, CalendarSync } from 'lucide-react';
+import { Sparkles, ShieldCheck, LayoutDashboard } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
@@ -136,40 +136,51 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+          {/* Every image is pre-cropped to the same 3:2 frame with the subject
+              centred at the same height, so image tops/bottoms line up across
+              the three cards. */}
           {[
             {
-              icon: Route,
-              iconClass: 'bg-emerald-100 border-emerald-200 text-emerald-800',
+              image: '/assets/usp-plan.jpg',
+              alt: 'A calendar grid with a location pin marking the day that matters',
               title: 'Automates your backward planning',
               body: 'Describe what is coming in plain language, in the app or over Telegram, and get the full prep timeline worked out from the date backward.',
             },
             {
-              icon: TrendingUp,
-              iconClass: 'bg-amber-100 border-amber-200 text-amber-800',
+              image: '/assets/usp-progress.jpg',
+              alt: 'Ahead Of Time overview showing tasks to finish this week, events coming up in the next 30 days, and a prompt to plan something new',
               title: 'Helps you track your progress',
               body: 'Tick tasks off as you go and see at a glance what is overdue, what is due this week, and how ready each event is.',
             },
             {
-              icon: CalendarSync,
-              iconClass: 'bg-sky-100 border-sky-200 text-sky-800',
+              image: '/assets/usp-calendar.jpg',
+              alt: 'Google Calendar',
               title: 'Syncs with Google Calendar',
               body: 'Link your calendar and every event that needs prep gets its own countdown of milestones, without cluttering the events themselves.',
             },
-          ].map(({ icon: Icon, iconClass, title, body }) => (
+          ].map(({ image, alt, title, body }) => (
             <div
               key={title}
-              className="bg-[#F2F7F5] border border-white/60 rounded-3xl p-6 sm:p-8 shadow-md shadow-slate-900/20 flex flex-col space-y-3 hover:shadow-lg transition-all group"
+              className="bg-[#F2F7F5] border border-white/60 rounded-3xl p-4 sm:p-5 shadow-md shadow-slate-900/20 flex flex-col gap-4 hover:shadow-lg transition-all group"
             >
-              <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center group-hover:scale-110 transition-transform shrink-0 ${iconClass}`}>
-                <Icon className="w-6 h-6" />
+              <div className="aspect-[3/2] w-full overflow-hidden rounded-2xl bg-[#2b324e]">
+                <img
+                  src={image}
+                  alt={alt}
+                  width={900}
+                  height={600}
+                  loading="lazy"
+                  className="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                />
               </div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900">{title}</h3>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">{body}</p>
+              <div className="space-y-2 px-1.5 pb-2">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug md:min-h-[3.25rem]">{title}</h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">{body}</p>
+              </div>
             </div>
           ))}
         </div>
       </div>
-
       {/* Bottom Closing Banner - a lighter navy + border so it still reads as
           its own raised card now that the page behind it is navy too */}
       <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-12 text-center space-y-6">
