@@ -1,5 +1,5 @@
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
-import { findOrCreateUserByEmail } from '../../../server/telegramStore.js';
+import { findOrCreateUserByEmail, TelegramSessionStore } from '../../../server/telegramStore.js';
 import { signOAuthState } from '../../../server/notifyActionToken.js';
 import { hasBackgroundSyncLinked, unlinkBackgroundSync, isBackgroundSyncConfigured } from '../../../server/googleOAuthTokenStore.js';
 
@@ -81,7 +81,15 @@ async function handleStatus(req: any, res: any) {
 
   if (req.method === 'GET') {
     const linked = await hasBackgroundSyncLinked(userId);
-    return res.status(200).json({ ok: true, linked, configured: isBackgroundSyncConfigured() });
+    // The daily digest is delivered over Telegram, so the UI needs to know
+    // whether this user has paired it (or the toggle would silently do nothing).
+    const telegramSession = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
+    return res.status(200).json({
+      ok: true,
+      linked,
+      configured: isBackgroundSyncConfigured(),
+      telegramLinked: Boolean(telegramSession?.chatId),
+    });
   }
 
   if (req.method === 'DELETE') {

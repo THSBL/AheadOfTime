@@ -59,6 +59,9 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   // background sync needs. Until then (or if it isn't set up) the card is
   // hidden, rather than offering a button that ends in a raw config error.
   const [isBackgroundSyncConfigured, setIsBackgroundSyncConfigured] = useState<boolean>(false);
+  // The daily digest goes out over Telegram, so background sync does nothing
+  // visible until Telegram is paired - the card says so instead of implying it works.
+  const [isTelegramLinked, setIsTelegramLinked] = useState<boolean>(false);
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
 
@@ -75,6 +78,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
         if (data.ok) {
           setIsBackgroundSyncLinked(data.linked);
           setIsBackgroundSyncConfigured(data.configured === true);
+          setIsTelegramLinked(data.telegramLinked === true);
         }
       } catch (err) {
         console.warn('Background sync status check notice:', err);
@@ -91,7 +95,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     if (!result) return;
 
     const messages: Record<string, string> = {
-      connected: 'Background sync connected! We\'ll now check your calendar and notify you when a new plan is ready, even when the app is closed.',
+      connected: 'Background sync connected! Once a day we\'ll check your calendar for new events that need prep and message you on Telegram, even when the app is closed.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
       error: 'Something went wrong connecting background sync - please try again.',
@@ -347,9 +351,14 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
                 </div>
                 <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed max-w-sm">
                   {isBackgroundSyncLinked
-                    ? 'We check your calendar for new events and notify you when a plan is ready - even while the app is closed.'
-                    : 'Get notified when a new plan is ready, without having to keep the app open. Requires one extra Google permission.'}
+                    ? 'Once a day we check your calendar for new events that need prep and message you on Telegram - even while the app is closed.'
+                    : 'Once a day we check your calendar for new events that need prep and message you on Telegram, without the app being open. Requires one extra Google permission.'}
                 </p>
+                {!isTelegramLinked && (
+                  <p className="text-amber-700 text-[11px] mt-1 font-medium">
+                    Connect Telegram in Settings first - that's where the messages are sent.
+                  </p>
+                )}
               </div>
             </div>
             <div className="shrink-0">

@@ -1338,7 +1338,13 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
   }
   const userId = await findOrCreateUserByEmail(verified.email);
   const linked = await hasBackgroundSyncLinked(userId);
-  res.json({ ok: true, linked, configured: isBackgroundSyncConfigured() });
+  const telegramSession = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
+  res.json({
+    ok: true,
+    linked,
+    configured: isBackgroundSyncConfigured(),
+    telegramLinked: Boolean(telegramSession?.chatId),
+  });
 });
 
 app.delete("/api/auth/google/status", async (req: Request, res: Response) => {

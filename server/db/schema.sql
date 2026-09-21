@@ -175,6 +175,17 @@ CREATE TABLE IF NOT EXISTS google_oauth_tokens (
   revoked_at              TIMESTAMPTZ
 );
 
+-- When the daily background agenda scan (api/cron/[job].ts ->
+-- server/backgroundAgendaScan.ts) last finished a pass for this user. Only
+-- calendar events CREATED after this moment count as "new" on the next
+-- pass, and it only advances after the Telegram message went out, so a
+-- failed delivery is retried the next day instead of being lost.
+-- server/backgroundAgendaScan.ts also runs this idempotent statement itself
+-- (ensureBackgroundSyncSchema) so the feature works without a manual
+-- `npm run db:migrate` against production.
+ALTER TABLE google_oauth_tokens
+  ADD COLUMN IF NOT EXISTS last_agenda_scan_at TIMESTAMPTZ;
+
 -- Per-user notification preference for Auto Sync & Notify. Lives here
 -- (not localStorage, unlike every other preference in this codebase so
 -- far) because a background cron has no browser to read from - only

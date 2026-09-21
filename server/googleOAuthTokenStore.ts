@@ -31,7 +31,43 @@ export function isBackgroundSyncConfigured(): boolean {
   );
 }
 
+let schemaReady: Promise<void> | null = null;
+
+/**
+ * Idempotent and memoised per instance, so the feature does not hinge on
+ * someone remembering to run `npm run db:migrate` against production: the
+ * first call creates the table if it is missing and adds the scan-progress
+ * column (both also live in server/db/schema.sql).
+ */
+export function ensureBackgroundSyncSchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      await query(
+        `CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+           user_id                 UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+           encrypted_refresh_token TEXT NOT NULL,
+           scope                   TEXT,
+           linked_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+           last_refreshed_at       TIMESTAMPTZ,
+           revoked_at              TIMESTAMPTZ
+         )`
+      );
+      await query(`ALTER TABLE google_oauth_tokens ADD COLUMN IF NOT EXISTS last_agenda_scan_at TIMESTAMPTZ`);
+    })().catch((err) => {
+      schemaReady = null; // retry on the next call instead of caching a failure
+      throw err;
+    });
+  }
+  return schemaReady;
+}
+
+/** Test hook: forget the memoised schema check. */
+export function resetSchemaCheckForTests(): void {
+  schemaReady = null;
+}
+
 export async function storeRefreshToken(userId: string, refreshToken: string, scope: string): Promise<void> {
+  await ensureBackgroundSyncSchema();
   const encrypted = encryptSecret(refreshToken);
   await query(
     `INSERT INTO google_oauth_tokens (user_id, encrypted_refresh_token, scope, linked_at, last_refreshed_at, revoked_at)
@@ -47,6 +83,7 @@ export async function storeRefreshToken(userId: string, refreshToken: string, sc
 }
 
 export async function hasBackgroundSyncLinked(userId: string): Promise<boolean> {
+  await ensureBackgroundSyncSchema();
   const rows = await query<{ revoked_at: string | null }>(
     `SELECT revoked_at FROM google_oauth_tokens WHERE user_id = $1`,
     [userId]
@@ -55,6 +92,7 @@ export async function hasBackgroundSyncLinked(userId: string): Promise<boolean> 
 }
 
 export async function unlinkBackgroundSync(userId: string): Promise<void> {
+  await ensureBackgroundSyncSchema();
   await query(`DELETE FROM google_oauth_tokens WHERE user_id = $1`, [userId]);
 }
 

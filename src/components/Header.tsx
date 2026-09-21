@@ -299,7 +299,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="p-2.5 bg-sky-50/90 border border-sky-200/90 rounded-xl text-xs text-sky-950 flex items-start gap-2">
                     <Clock className="w-4 h-4 text-sky-700 shrink-0 mt-0.5" />
                     <div className="leading-snug text-[11px]">
-                      Tasks you tick off sync with Google Tasks <strong className="text-sky-950">about every 15 minutes while the app is open</strong>. New calendar events are picked up when you scan your agenda.
+                      Tasks you tick off sync with Google Tasks <strong className="text-sky-950">about every 15 minutes while the app is open</strong>. New calendar events are picked up when you scan your agenda, or once a day on Telegram if you turned on Background Sync in Settings.
                     </div>
                   </div>
 
