@@ -83,19 +83,15 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
       <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 text-center space-y-6">
         
         {/* Hero logo lockup: brighter 3D mark, divider, and a wordmark with
-            "Ahead" as the dominant word. The mark's own navy backdrop is
-            feathered into the page so it doesn't read as a pasted-in photo. */}
+            "Ahead" as the dominant word. The mark is a transparent-background
+            cutout, so there is no backdrop box to hide or fade. */}
         <div className="flex items-center justify-center gap-4 sm:gap-7 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <img
-            src="/assets/logo-hero.jpg"
+            src="/assets/logo-hero.png"
             alt="Ahead Of Time logo: a calendar with a location pin above a road of stacked stripes"
             width={640}
             height={800}
             className="h-28 sm:h-44 w-auto shrink-0"
-            style={{
-              WebkitMaskImage: 'radial-gradient(closest-side, #000 62%, transparent 100%)',
-              maskImage: 'radial-gradient(closest-side, #000 62%, transparent 100%)',
-            }}
           />
           <div className="self-stretch w-px bg-white/70 my-3 sm:my-5" aria-hidden="true" />
           <div className="text-left">
