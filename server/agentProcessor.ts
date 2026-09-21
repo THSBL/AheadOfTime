@@ -18,7 +18,8 @@ import {
   decomposeComplexTripIntent,
   finalizeMilestonePlan,
   sanitizeSlotKey,
-  parseNaturalDateRange
+  parseNaturalDateRange,
+  formatTMinusLabel
 } from "../src/utils/tminusRules.js";
 import {
   SHARED_PLANNING_RULES,
@@ -181,7 +182,7 @@ CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
 
 TASK FOR GEMINI ENGINE:
 When evaluating any event (Wedding, Birthday, Holiday, Conference, or Project Management):
-1. Break the runway into 3 to 5 chronological Milestones (T-minus gates).
+1. Break the runway into as many chronological Milestones (T-minus gates) as the event genuinely needs - typically 3 to 5 for a simple event, more for one with real distinct phases. Never compress or drop a genuinely distinct, safety-relevant, or compliance-relevant phase just to land on a round number. Confirmed live: a scuba dive trip's plan dropped its post-trip "no-fly window" safety milestone (surface interval required before flying) to stay near a 5-milestone ceiling - that is a real diving safety practice, not padding, and cutting it for list length is a worse outcome than a slightly longer list. The same applies to any category with genuine pre/post-event obligations: a visa/medical clearance for international travel, a cooldown/recovery window after a procedure, a mandatory waiting period, a legal/compliance deadline.
 2. Attach 1 to 3 essential Deliverables under each Milestone.
 3. Keep milestones named as past-participle or state-change achievements ("X Secured", "Y Finalized", "Z Packed").
 4. Populate the "runway" array in your JSON output.
@@ -308,7 +309,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
       runway: {
         type: Type.ARRAY,
-        description: "3 to 5 chronological Milestones (T-minus gates) with 1 to 3 attached Deliverables per milestone",
+        description: "Chronological Milestones (T-minus gates) - as many as the event genuinely needs (typically 3 to 5 for a simple event, more for one with real distinct phases), each with 1 to 3 attached Deliverables. Include safety-critical or compliance-critical pre- AND post-event phases (e.g. a post-dive no-fly window, visa/medical clearance) - never drop one just to keep the count low.",
         minItems: 1,
         items: {
           type: Type.OBJECT,
@@ -713,7 +714,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       return {
         id: `ms-${eventId}-${idx + 1}-${Date.now() % 100000}`,
         eventId,
-        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusLabel: formatTMinusLabel(tMinusDays),
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: calcDate,
         title: gate.milestone_title,
@@ -745,7 +746,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       return {
         id: `ms-${eventId}-${idx + 1}-${Date.now() % 100000}`,
         eventId,
-        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusLabel: formatTMinusLabel(tMinusDays),
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: calcDate,
         title: m.task,

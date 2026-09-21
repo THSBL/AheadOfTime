@@ -9,6 +9,7 @@ import {
   attachDeliverablesToMilestones,
   finalizeMilestonePlan,
   sanitizeSlotKey,
+  formatTMinusLabel,
 } from '../src/utils/tminusRules.js';
 import {
   buildCandidateEventIndex,
@@ -37,6 +38,7 @@ const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", a calendar-prep a
 You are acting as an elite event logistics director, personal concierge, and timing strategist - not a form filling in category-template blanks. A user who asks you directly "build me a backward plan for my Amsterdam trip" gets real, specific expertise (the Anne Frank House's actual timed-ticket release pattern, the Van Gogh Museum, the GVB/9292 transit apps, real December weather and what to pack for it). Every milestone and deliverable you produce here must reflect that SAME level of genuine, specific knowledge about THIS event - never settle for a vague, could-apply-to-any-event phrase when a concrete, real one is available:
 - Name REAL things when you have genuine knowledge of them for the stated destination/category/season - actual well-known attractions, venues, transit systems, seasonal conditions, or booking-window patterns - never a generic "book museum tickets" or "pack appropriate clothing" when you can name the actual museum, its real booking behavior, or the actual weather to prepare for.
 - Ground timing in real-world logistical knowledge, not arbitrary round numbers: private entertainment/experience bookings typically need 3-4 weeks for weekend slots, high-demand restaurants 2-3 weeks, flights/lodging 4-6 weeks, custom/monogrammed goods 2-3 weeks for production, timed museum/attraction tickets often release on a fixed weekly schedule weeks ahead, bakeries/custom cakes 5-7 days out.
+- Plan for what happens AFTER the event starts or ends when a real obligation exists there, not only before it (use a negative t_minus_days, e.g. -1 for "Day +1"). Examples: a scuba trip's no-fly window (final dives at least 18-24 hours before any flight home, per DAN/PADI guidance), a return-flight check, trip expense filing, a post-launch review. Never skip a safety-relevant post-event milestone just to keep the list short.
 - This does not relax the "specific, concrete thing" rule below - it raises the bar on what fills it. A concrete milestone_title paired with a generic, could-apply-to-anything deliverable has not actually used your knowledge.
 
 ### CRITICAL RULE - CONTEXT LEADS, NEVER GENERIC TEMPLATES:
@@ -465,7 +467,7 @@ export class GeminiCalendarAgent {
           return {
             id: `ms_${Date.now()}_${idx}`,
             eventId: event.id,
-            tMinusLabel: `T-${tMinusDays}d`,
+            tMinusLabel: formatTMinusLabel(tMinusDays),
             tMinusOffsetMinutes: -1 * tMinusDays * 1440,
             calculatedDate: m.target_date || event.eventDate,
             title: m.milestone_title || `Milestone ${idx + 1}`,
@@ -528,7 +530,7 @@ export class GeminiCalendarAgent {
       return {
         id: `ms_${Date.now()}_${idx}`,
         eventId: event.id,
-        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusLabel: formatTMinusLabel(tMinusDays),
         tMinusOffsetMinutes: -1 * tMinusDays * 1440,
         calculatedDate: m.target_date || event.eventDate,
         title: m.milestone_title || `Milestone ${idx + 1}`,
@@ -626,7 +628,7 @@ export class GeminiCalendarAgent {
       return {
         id: `ms_${Date.now()}_${idx}`,
         eventId,
-        tMinusLabel: `T-${tMinusDays}d`,
+        tMinusLabel: formatTMinusLabel(tMinusDays),
         tMinusOffsetMinutes: -1 * tMinusDays * 1440,
         calculatedDate: targetDate,
         title: m.milestone_title || `Milestone ${idx + 1}`,

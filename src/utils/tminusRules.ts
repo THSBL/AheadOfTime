@@ -57,6 +57,12 @@ export function detectEventCategory(title: string, description?: string): EventC
 /**
  * Calculates a date offset given an event date string, optional time, and offset minutes.
  */
+// Same label convention as EditMilestoneModal/generateHeuristicMilestones:
+// "T-7d" before the event, "Day +3" after it (negative days-before).
+export function formatTMinusLabel(daysBefore: number): string {
+  return daysBefore >= 0 ? `T-${daysBefore}d` : `Day +${Math.abs(daysBefore)}`;
+}
+
 export function calculateOffsetDate(eventDateStr: string, eventTimeStr: string | undefined, offsetMinutes: number): string {
   // Use eventDate and eventTime (or default 10:00 AM)
   const timePart = eventTimeStr || '10:00';

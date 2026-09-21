@@ -12,7 +12,17 @@ import {
   sanitizeSlotKey,
   isSameMilestoneTask,
   preserveCompletedMilestones,
+  formatTMinusLabel,
 } from './tminusRules';
+
+describe('formatTMinusLabel', () => {
+  it('labels days before the event as T-Nd and days after it as Day +N', () => {
+    expect(formatTMinusLabel(14)).toBe('T-14d');
+    expect(formatTMinusLabel(0)).toBe('T-0d');
+    expect(formatTMinusLabel(-1)).toBe('Day +1');
+    expect(formatTMinusLabel(-3)).toBe('Day +3');
+  });
+});
 import type { TMinusMilestone } from '../types';
 
 // Fixed reference date used throughout so date-offset assertions are stable
