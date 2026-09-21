@@ -6,6 +6,8 @@ import {
   unlinkBackgroundSync,
   isBackgroundSyncConfigured,
   missingBackgroundSyncConfig,
+  getGoogleClientSecret,
+  describeSecretShape,
   getNotifyChannel,
   setNotifyChannel,
   NOTIFY_CHANNELS,
@@ -96,6 +98,13 @@ async function handleStatus(req: any, res: any) {
       // Names only, never values: tells the owner (via the function logs)
       // why the Background Sync card is hidden.
       console.warn('Background sync is not configured; missing env vars:', missingConfig.join(', '));
+    }
+    const secret = getGoogleClientSecret();
+    if (secret && !secret.startsWith('GOCSPX-')) {
+      // Shape only: Google client secrets start with GOCSPX-. A value that
+      // does not is the usual reason the consent round trip ends in
+      // "invalid_client".
+      console.warn('GOOGLE_OAUTH_CLIENT_SECRET does not look like a Google client secret;', describeSecretShape(secret));
     }
     const linked = await hasBackgroundSyncLinked(userId);
     // The daily digest is delivered over Telegram, so the UI needs to know

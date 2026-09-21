@@ -377,8 +377,8 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
                 </div>
                 <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed max-w-sm">
                   {isBackgroundSyncLinked
-                    ? 'Once a day you get an update with what needs attention this week and any new calendar events that need prep - even while the app is closed. Events you add through Telegram are also added to your Google Calendar and Tasks automatically.'
-                    : 'Once a day you get an update with what needs attention this week and any new calendar events that need prep (over Telegram or email), without the app being open. Events you add through Telegram are also added to your Google Calendar and Tasks automatically. Requires one extra Google permission.'}
+                    ? "You're set: a daily update on what needs attention, even when the app is closed."
+                    : 'Stay ahead: approve automatic sync between Ahead Of Time and your Google Calendar.'}
                 </p>
                 {isBackgroundSyncLinked && (
                   <div className="mt-2 space-y-1.5">

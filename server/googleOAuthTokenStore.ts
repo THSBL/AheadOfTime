@@ -159,7 +159,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   if (!row || row.revoked_at) return null;
 
   const clientId = getGoogleClientId();
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const clientSecret = getGoogleClientSecret();
   if (!clientId || !clientSecret) {
     console.warn('getValidAccessToken: GOOGLE_OAUTH_CLIENT_SECRET is not configured.');
     return null;
@@ -196,9 +196,18 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   return data.access_token as string;
 }
 
+/** The OAuth client secret, tolerant of the stray whitespace or quotes a copy-paste adds. */
+export function getGoogleClientSecret(): string {
+  return (process.env.GOOGLE_OAUTH_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '').trim();
+}
+
+export function describeSecretShape(secret: string): string {
+  return `secret shape: length=${secret.length}, startsWithGOCSPX=${secret.startsWith('GOCSPX-')}`;
+}
+
 export async function exchangeAuthorizationCode(code: string, redirectUri: string): Promise<{ refreshToken: string; scope: string } | null> {
   const clientId = getGoogleClientId();
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const clientSecret = getGoogleClientSecret();
   if (!clientId || !clientSecret) {
     throw new Error('GOOGLE_OAUTH_CLIENT_SECRET is not configured in environment.');
   }
@@ -217,8 +226,12 @@ export async function exchangeAuthorizationCode(code: string, redirectUri: strin
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    console.error('Google authorization code exchange failed:', res.status, body);
-    return null;
+    // Shape only, never the value: Google client secrets start with GOCSPX- and
+    // are 35 characters, so this tells the owner whether the wrong thing got pasted.
+    console.error('Google authorization code exchange failed:', res.status, body, describeSecretShape(clientSecret));
+    // Not the same as 'no refresh token': the caller must not tell the user to
+    // reconnect when the fault is this deployment's own configuration.
+    throw new Error('google_code_exchange_failed');
   }
 
   const data = await res.json();
