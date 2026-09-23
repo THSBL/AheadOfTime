@@ -176,3 +176,49 @@ describe('processWithDeterministicRules', () => {
     expect(result.event.context.homeZipOrLocation).toBe('Brussels, Belgium');
   });
 });
+
+describe('processWithDeterministicRules - preparation level (architecture reset Phase 6)', () => {
+  it('computes and tags a fresh event with an AOT-owned preparation level', () => {
+    const result = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    expect(result.event.preparationLevelSetBy).toBe('aot');
+    expect(['essentials', 'balanced', 'extensive']).toContain(result.event.preparationLevel);
+    expect(result.event.milestones.every((m) => m.tier === result.event.preparationLevel)).toBe(true);
+  });
+
+  it('never overrides a user-set level, even when AOT would assess something different', () => {
+    const first = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    const userLocked = {
+      ...first.event,
+      preparationLevel: 'extensive' as const,
+      preparationLevelSetBy: 'user' as const,
+      preparationLevelReasons: ['You chose this.'],
+    };
+    const second = processWithDeterministicRules({
+      message: 'also need to send invitations',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: userLocked,
+    });
+    expect(second.event.preparationLevel).toBe('extensive');
+    expect(second.event.preparationLevelSetBy).toBe('user');
+    expect(second.event.preparationLevelReasons).toEqual(['You chose this.']);
+  });
+
+  it('tags the trip-decomposition early-return path too', () => {
+    const result = processWithDeterministicRules({
+      message: 'Weekend trip Friday to Sunday with activity for the 2nd day',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    expect(result.event.preparationLevel).toBeDefined();
+    expect(result.event.milestones.every((m) => m.tier === result.event.preparationLevel)).toBe(true);
+  });
+});

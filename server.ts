@@ -17,7 +17,8 @@ import {
 } from "./src/utils/tminusRules";
 import { inferTaskTimingLocally } from "./src/utils/timingAI";
 import { generateDeterministicMilestones } from "./src/utils/deterministicMilestoneGenerator";
-import { SHARED_PLANNING_RULES } from "./server/planningPipeline";
+import { getActiveAssessor } from "./src/utils/preparationAssessment";
+import { SHARED_PLANNING_RULES, buildPreparationLevelAddendum } from "./server/planningPipeline";
 import {
   generateContentFast,
   DEFAULT_FAST_MODELS,
@@ -225,6 +226,16 @@ app.post("/api/event/deep-refine", async (req: Request, res: Response): Promise<
       return;
     }
 
+    // Architecture reset Phase 6 - always a fresh, never-before-seen event
+    // here (no existingEvent concept), so always AOT's own fresh
+    // assessment, never a sticky user-set level to respect.
+    const prepAssessment = getActiveAssessor().assessPreparationLevel({
+      category: event.category,
+      title: event.title,
+      location: event.location,
+      context: event.context,
+    });
+
     const localMilestones = generateDeterministicMilestones({
       eventId: event.id,
       title: event.title,
@@ -233,13 +244,16 @@ app.post("/api/event/deep-refine", async (req: Request, res: Response): Promise<
       location: event.location,
       category: event.category,
       context: event.context,
-    });
+    }).map((m) => ({ ...m, tier: prepAssessment.level }));
     const localRefinedEvent: CalendarEvent = {
       ...event,
       needsRefinement: false,
       refinedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       milestones: localMilestones,
+      preparationLevel: prepAssessment.level,
+      preparationLevelReasons: prepAssessment.reasons,
+      preparationLevelSetBy: "aot",
     };
 
     if (!process.env.GEMINI_API_KEY) {
@@ -265,6 +279,8 @@ Event Category: "${event.category || "custom"}"
 Existing Context: "${JSON.stringify(event.context || {})}"
 
 ${SHARED_PLANNING_RULES}
+
+${buildPreparationLevelAddendum(prepAssessment.level)}
 
 ### Schema notes for the rules above:
 This is a fresh, one-shot generation for a single event with no prior plan - there is no "existingMilestones"/"existingTargetEvent" here, so the REFINEMENT MEANS MERGE and DECIDE THE TARGET EVENT rules above don't apply. This schema is also flatter than the one those rules describe: each milestone is a single object with "title"/"description" and no separate "deliverables" array and no "slot_key" - fold whatever a deliverable would have said into the milestone's own description instead of inventing extra fields.
@@ -328,6 +344,7 @@ Output ONLY the raw JSON object.`;
       });
 
       refinedMilestones.sort((a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime());
+      const taggedMilestones = refinedMilestones.map((m) => ({ ...m, tier: prepAssessment.level }));
 
       res.json({
         event: {
@@ -335,7 +352,10 @@ Output ONLY the raw JSON object.`;
           needsRefinement: false,
           refinedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          milestones: refinedMilestones,
+          milestones: taggedMilestones,
+          preparationLevel: prepAssessment.level,
+          preparationLevelReasons: prepAssessment.reasons,
+          preparationLevelSetBy: "aot",
         },
         usedAi: true,
       });
@@ -347,6 +367,12 @@ Output ONLY the raw JSON object.`;
     console.warn("AI deep refinement notice, using local engine:", err?.message);
     const { event }: { event: CalendarEvent } = req.body;
     if (event) {
+      const fallbackAssessment = getActiveAssessor().assessPreparationLevel({
+        category: event.category,
+        title: event.title,
+        location: event.location,
+        context: event.context,
+      });
       const localMilestones = generateDeterministicMilestones({
         eventId: event.id,
         title: event.title,
@@ -355,7 +381,7 @@ Output ONLY the raw JSON object.`;
         location: event.location,
         category: event.category,
         context: event.context,
-      });
+      }).map((m) => ({ ...m, tier: fallbackAssessment.level }));
       res.json({
         event: {
           ...event,
@@ -363,6 +389,9 @@ Output ONLY the raw JSON object.`;
           refinedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           milestones: localMilestones,
+          preparationLevel: fallbackAssessment.level,
+          preparationLevelReasons: fallbackAssessment.reasons,
+          preparationLevelSetBy: "aot",
         },
         usedAi: false,
       });

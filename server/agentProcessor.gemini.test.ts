@@ -190,3 +190,55 @@ describe('processWithGemini - preserving existing milestones when the model omit
     expect(sentMilestones[1].status).toBe('pending');
   });
 });
+
+describe('processWithGemini - preparation level (architecture reset Phase 6)', () => {
+  it('tells the model which preparation level to plan at, and tags the returned milestones with it', async () => {
+    mockResponseText = JSON.stringify({
+      mode: 'RESOLVE_MILESTONES',
+      target_event_id: 'NEW',
+      focus: 'Created.',
+      addition: '',
+      runway: [{ milestone_title: 'Table Reserved', t_minus_days: 7, target_date: '2026-10-17', status: 'pending', deliverables: [] }],
+    });
+
+    const result = await processWithGemini({
+      message: 'Dinner with friends next month',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      activeEvents: [],
+    });
+
+    expect(lastGenerateContentCall).toBeTruthy();
+    expect(lastGenerateContentCall.config.systemInstruction).toMatch(/PLAN TO THE USER'S ACTUAL RESPONSIBILITY/);
+    expect(result.event.preparationLevelSetBy).toBe('aot');
+    expect(result.event.milestones.every((m) => m.tier === result.event.preparationLevel)).toBe(true);
+  });
+
+  it('never overrides a user-set preparation level, and the prompt reflects the locked level', async () => {
+    mockResponseText = JSON.stringify({
+      mode: 'RESOLVE_MILESTONES',
+      target_event_id: 'evt-dinner-curacao',
+      focus: 'Noted.',
+      addition: '',
+    });
+    const existingEvent: CalendarEvent = {
+      ...makeExistingEvent(),
+      preparationLevel: 'extensive',
+      preparationLevelSetBy: 'user',
+      preparationLevelReasons: ['You chose this.'],
+    };
+
+    const result = await processWithGemini({
+      message: 'two guests are vegetarian',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      existingEvent,
+      activeEvents: [existingEvent],
+    });
+
+    expect(lastGenerateContentCall.config.systemInstruction).toContain('EXTENSIVE');
+    expect(result.event.preparationLevel).toBe('extensive');
+    expect(result.event.preparationLevelSetBy).toBe('user');
+    expect(result.event.preparationLevelReasons).toEqual(['You chose this.']);
+  });
+});

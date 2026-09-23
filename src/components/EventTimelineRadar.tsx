@@ -24,14 +24,16 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
+import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
+import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { DeleteEventModal } from './DeleteEventModal';
 import { RefineDeliverableModal } from './RefineDeliverableModal';
+import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
 
@@ -134,6 +136,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [clarifyLocation, setClarifyLocation] = useState('');
   const [isSavingClarification, setIsSavingClarification] = useState(false);
   const [isDeepRefining, setIsDeepRefining] = useState(false);
+  const [isPreparationLevelBusy, setIsPreparationLevelBusy] = useState(false);
   const [correctionInput, setCorrectionInput] = useState('');
   const [isSendingCorrection, setIsSendingCorrection] = useState(false);
   const [correctionReply, setCorrectionReply] = useState<string | null>(null);
@@ -310,6 +313,61 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
   const handleAnswerSuggestion = (optionLabel: string) => {
     handleSendCorrection(optionLabel);
+  };
+
+  /**
+   * Architecture reset Phase 6 - a manual preparation-level change. Purely
+   * local hide/show (applyPreparationLevelChange) applies instantly and
+   * syncs to the server through the app's existing background sync, same
+   * as any other local edit - no dedicated endpoint needed. Only when the
+   * target tier has no content yet does this reach the server at all,
+   * reusing the same /api/agent/process refinement path every other
+   * correction already uses (never a bespoke code path). Marking the level
+   * user-set here is what makes agentProcessor.ts's sticky-level logic
+   * honor exactly this level on that refinement call.
+   */
+  const handleChangePreparationLevel = async (newLevel: PreparationLevel) => {
+    if (!activeEvent || !onUpdateEvent) return;
+    const { milestones, needsReplan } = applyPreparationLevelChange(activeEvent.milestones || [], newLevel);
+    const updatedEvent: CalendarEvent = {
+      ...activeEvent,
+      milestones,
+      preparationLevel: newLevel,
+      preparationLevelSetBy: 'user',
+      preparationLevelReasons: ['You set this level yourself.'],
+      updatedAt: new Date().toISOString(),
+    };
+    onUpdateEvent(updatedEvent);
+    if (!needsReplan) return;
+
+    setIsPreparationLevelBusy(true);
+    try {
+      const res = await fetch('/api/agent/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Expand this into a full ${newLevel} preparation plan, given my actual responsibility for this event.`,
+          currentReferenceDate,
+          activeEvents: [updatedEvent],
+          targetEventId: updatedEvent.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      const data = await res.json();
+      if (!data?.event?.milestones?.length) throw new Error('Empty milestone plan returned');
+      onUpdateEvent({
+        ...updatedEvent,
+        milestones: preserveCompletedMilestones(updatedEvent.milestones, data.event.milestones, updatedEvent.title),
+        preparationLevelReasons: data.event.preparationLevelReasons?.length ? data.event.preparationLevelReasons : updatedEvent.preparationLevelReasons,
+      });
+    } catch (e) {
+      // The local hide/show above already applied and stays in effect -
+      // just without this tier's freshly-generated content yet. Never
+      // worse than before this feature existed.
+      console.warn('Preparation level expand notice:', e);
+    } finally {
+      setIsPreparationLevelBusy(false);
+    }
   };
 
   React.useEffect(() => {
@@ -572,7 +630,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     );
   }
 
-  const rawMilestones = activeEvent.milestones || [];
+  // Hidden by a preparation-level downgrade (architecture reset Phase 6) -
+  // the row still exists (never deleted, so an upgrade can restore it
+  // instantly), just not shown anywhere in this view: progress counts,
+  // scope filters, and every downstream list all derive from this.
+  const rawMilestones = (activeEvent.milestones || []).filter((m) => m.isActive !== false);
   const countdown = getCountdownStatus(activeEvent.eventDate, currentReferenceDate);
   const completedCount = rawMilestones.filter((m) => m.status === 'completed').length;
   // Skipped (e.g. the linked Google Task was deleted) is excluded from the
@@ -1191,12 +1253,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <span className="font-mono text-slate-700 font-bold">{completedCount} of {totalCount} completed</span>
           </div>
           <div className="w-full h-1.5 bg-sky-100 rounded-full overflow-hidden border border-sky-200/40">
-            <div 
+            <div
               className="h-full bg-slate-900 rounded-full transition-all duration-300 shadow-2xs"
               style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
             />
           </div>
         </div>
+
+        <PreparationLevelSwitcher
+          level={activeEvent.preparationLevel || 'balanced'}
+          reasons={activeEvent.preparationLevelReasons || []}
+          setBy={activeEvent.preparationLevelSetBy}
+          onChangeLevel={handleChangePreparationLevel}
+          isBusy={isPreparationLevelBusy}
+        />
       </div>
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}

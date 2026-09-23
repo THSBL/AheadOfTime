@@ -8,7 +8,8 @@ import {
   IntakeQuestion,
   StructuredPlanningPayload,
   Deliverable,
-  DeliverableType
+  DeliverableType,
+  PreparationLevel,
 } from "../src/types.js";
 import {
   calculateOffsetDate,
@@ -21,12 +22,43 @@ import {
   formatTMinusLabel
 } from "../src/utils/tminusRules.js";
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
+import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment } from "../src/utils/preparationAssessment.js";
 import {
   SHARED_PLANNING_RULES,
   buildCandidateEventIndex,
   resolveTargetEvent,
+  buildPreparationLevelAddendum,
 } from "./planningPipeline.js";
 import { logQualityEvent } from "./qualityStore.js";
+
+/**
+ * Architecture reset Phase 6 - computed once per request, shared by both
+ * processWithGemini and processWithDeterministicRules so the two engines
+ * never disagree about the event's current level. A user-set level is
+ * sticky: AOT's own assessment is still computed (for the reasons shown in
+ * the UI, and because a later downgrade back to "aot" should resume from a
+ * fresh read, not a stale one) but never silently overrides
+ * preparation_level_set_by === 'user'.
+ */
+function resolveEffectivePreparationLevel(
+  existingEvent: CalendarEvent | undefined,
+  message: string
+): { level: PreparationLevel; assessment: PreparationLevelAssessment; setBy: 'aot' | 'user' } {
+  const input: AssessmentInput = {
+    category: existingEvent?.category,
+    title: existingEvent?.title || message,
+    location: existingEvent?.location,
+    context: existingEvent?.context,
+    rawText: message,
+  };
+  const assessment = getActiveAssessor().assessPreparationLevel(input);
+  const isUserLocked = existingEvent?.preparationLevelSetBy === 'user' && Boolean(existingEvent.preparationLevel);
+  return {
+    level: isUserLocked ? (existingEvent!.preparationLevel as PreparationLevel) : assessment.level,
+    assessment,
+    setBy: isUserLocked ? 'user' : 'aot',
+  };
+}
 
 // Lazy initialize Gemini SDK
 let aiClient: GoogleGenAI | null = null;
@@ -167,9 +199,12 @@ export async function processWithGemini(params: {
   activeEvents: CalendarEvent[];
   userProfile?: { homeZipOrLocation?: string };
 }): Promise<ProcessAgentResponsePayload> {
+  const prepLevel = resolveEffectivePreparationLevel(params.existingEvent, params.message);
   const systemInstruction = `You are the AheadOfTime Conversational Planning Engine.
 
 ${SHARED_PLANNING_RULES}
+
+${buildPreparationLevelAddendum(prepLevel.level)}
 
 CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
 1. Milestone (State Checkpoint - 0-day duration):
@@ -842,6 +877,14 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     milestones = finalizeMilestonePlan([...existingEvent.milestones, ...milestones], { title, context: mergedContext, rawText: params.message });
   }
 
+  // Tag each milestone with which PreparationLevel it belongs to. A
+  // milestone that already existed (matched by id - true whenever a merge
+  // path reused the old object, e.g. "the model didn't touch the plan")
+  // keeps whatever tier it already had; anything newly produced this turn
+  // is tagged with the level this turn was actually planned at.
+  const existingTierById = new Map((existingEvent?.milestones || []).map((m) => [m.id, m.tier]));
+  milestones = milestones.map((m) => ({ ...m, tier: existingTierById.get(m.id) ?? m.tier ?? prepLevel.level }));
+
   // Construct CalendarEvent object
   const calendarEvent: CalendarEvent = {
     id: eventId,
@@ -868,6 +911,9 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     rawInputSnippet: params.message,
     createdAt: existingEvent?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    preparationLevel: prepLevel.level,
+    preparationLevelReasons: prepLevel.setBy === 'user' ? (existingEvent?.preparationLevelReasons || []) : prepLevel.assessment.reasons,
+    preparationLevelSetBy: prepLevel.setBy,
   };
 
   return {
@@ -894,6 +940,10 @@ export function processWithDeterministicRules(params: {
 }): ProcessAgentResponsePayload {
   const msgLower = (params.message || "").toLowerCase();
   const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  // Same computation processWithGemini uses - the deterministic engine is
+  // the safety net, so it must agree with the Gemini path on the event's
+  // level, not silently disagree the moment a request falls back to it.
+  const prepLevel = resolveEffectivePreparationLevel(params.existingEvent, params.message);
 
   // Hierarchical Context Decomposition check - only for a genuinely NEW
   // event. Confirmed live: with an existingEvent present, this branch
@@ -938,7 +988,8 @@ export function processWithDeterministicRules(params: {
         deliverableType: m.deliverableType,
       };
     });
-    const finalMappedMilestones = finalizeMilestonePlan(mappedMilestones, { title: macro.title, rawText: params.message });
+    const finalMappedMilestones = finalizeMilestonePlan(mappedMilestones, { title: macro.title, rawText: params.message })
+      .map((m) => ({ ...m, tier: prepLevel.level }));
 
     const focusText = `I built the full prep plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
     const additionText = tripDecomposition.conversational_response || `Covers the overall trip logistics plus the specific prep for what you mentioned.`;
@@ -969,6 +1020,9 @@ export function processWithDeterministicRules(params: {
       rawInputSnippet: params.message,
       createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      preparationLevel: prepLevel.level,
+      preparationLevelReasons: prepLevel.setBy === 'user' ? (params.existingEvent?.preparationLevelReasons || []) : prepLevel.assessment.reasons,
+      preparationLevelSetBy: prepLevel.setBy,
     };
 
     return {
@@ -1246,6 +1300,9 @@ export function processWithDeterministicRules(params: {
 
   const replyText = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
+  const existingTierById = new Map((params.existingEvent?.milestones || []).map((m) => [m.id, m.tier]));
+  milestones = milestones.map((m) => ({ ...m, tier: existingTierById.get(m.id) ?? m.tier ?? prepLevel.level }));
+
   const calendarEvent: CalendarEvent = {
     id: eventId,
     title,
@@ -1264,6 +1321,9 @@ export function processWithDeterministicRules(params: {
     rawInputSnippet: params.message,
     createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    preparationLevel: prepLevel.level,
+    preparationLevelReasons: prepLevel.setBy === 'user' ? (params.existingEvent?.preparationLevelReasons || []) : prepLevel.assessment.reasons,
+    preparationLevelSetBy: prepLevel.setBy,
   };
 
   // Pure logging, fire-and-forget - never awaited so it can't add latency

@@ -1,4 +1,4 @@
-import { CalendarEvent } from "../src/types.js";
+import { CalendarEvent, PreparationLevel } from "../src/types.js";
 
 /**
  * Shared prose rules injected into every channel's system instruction (web
@@ -59,6 +59,26 @@ Before building or updating any milestone, decide target_event_id. Default to cu
 
 CRITICAL RULE - PROPOSE ONE PROACTIVE, SPECIFIC FOLLOW-UP EVERY TURN:
 After resolving the milestones, separately check for ONE concrete, category/destination-specific gap the plan doesn't yet cover - the kind of thing a knowledgeable concierge would think to ask (a canal boat tour or museum visit for an Amsterdam trip, a rental car for a road trip, a dietary check for a dinner party). If you find one, propose it as a single targeted intake question with 2-3 concrete answer options - never a generic "anything else?" catch-all, and never more than one question per turn. If nothing genuinely specific comes to mind, leave it empty rather than padding with a filler question. Do this on every turn, not only when first creating the event - a plan that already has milestones can still have exactly one more thoughtful thing worth asking about.`;
+
+/**
+ * Architecture reset Phase 6 - tells Gemini HOW DEEP to plan, not what
+ * category-standard content to include (that's still CONTEXT LEADS,
+ * above). Framed around the user's actual responsibility, per the doc's
+ * own correction: "Extensive" means broader coverage because the user owns
+ * more of the outcome, never "more milestones" as a goal in itself - the
+ * guardrail line below exists because padding was the exact failure mode
+ * observed once a naive "more for Extensive" framing was tried.
+ */
+export function buildPreparationLevelAddendum(level: PreparationLevel): string {
+  const framing: Record<PreparationLevel, string> = {
+    essentials: 'ESSENTIALS - this user has minimal responsibility here (e.g. they are a guest or independent participant, not the organizer). Think: what does the user themselves genuinely need to do or know? Cover only the core, load-bearing items - do not add logistics, coordination, or contingency milestones that belong to whoever else is actually running this.',
+    balanced: 'BALANCED - this user is responsible for handling their own part of this event (arranging it for themselves or someone in their care), but is not necessarily running the whole thing. Think: what are the key steps and logistics THIS USER is responsible for handling? Cover those thoroughly, without expanding into every contingency a full organizer would need to track.',
+    extensive: 'EXTENSIVE - this user owns organizing or running this event. Think: what must this user coordinate, organize, and handle as the owner - including dependencies, coordination with other people, and realistic contingencies? Broader coverage is warranted here because their actual responsibility is broader, not as a target milestone count.',
+  };
+  return `CRITICAL RULE - PLAN TO THE USER'S ACTUAL RESPONSIBILITY (preparationLevel: ${level.toUpperCase()}):
+${framing[level]}
+Never pad a plan with busywork just to look more thorough at a higher level, and never thin one out just to look minimal at a lower level - every milestone must correspond to something this specific user genuinely needs, given what they are actually responsible for. This is about DEPTH of responsibility coverage, not a target milestone count at any level.`;
+}
 
 export interface CandidateEventSummary {
   id: string;
