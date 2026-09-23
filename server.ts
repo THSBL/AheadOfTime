@@ -17,6 +17,7 @@ import {
 } from "./src/utils/tminusRules";
 import { inferTaskTimingLocally } from "./src/utils/timingAI";
 import { deepRefineEventLocally } from "./src/utils/deepRefine";
+import { SHARED_PLANNING_RULES } from "./server/planningPipeline";
 import {
   generateContentFast,
   DEFAULT_FAST_MODELS,
@@ -255,14 +256,15 @@ Event Location: "${event.location || "None specified"}"
 Event Category: "${event.category || "custom"}"
 Existing Context: "${JSON.stringify(event.context || {})}"
 
+${SHARED_PLANNING_RULES}
+
+### Schema notes for the rules above:
+This is a fresh, one-shot generation for a single event with no prior plan - there is no "existingMilestones"/"existingTargetEvent" here, so the REFINEMENT MEANS MERGE and DECIDE THE TARGET EVENT rules above don't apply. This schema is also flatter than the one those rules describe: each milestone is a single object with "title"/"description" and no separate "deliverables" array and no "slot_key" - fold whatever a deliverable would have said into the milestone's own description instead of inventing extra fields.
+
 CRITICAL LOGISTICAL & TIMING REQUIREMENTS:
 1. Deconstruct the event into as many realistic, concrete, chronological preparation milestones as it genuinely needs (no fixed maximum), leading backward from the event date. Include safety- or compliance-critical phases before AND after the event (e.g. a post-dive no-fly window, visa or medical clearance).
-2. Calculate exact lead times based on real-world logistical constraints:
+2. Calculate exact lead times based on real-world logistical constraints - in addition to the general timing knowledge above, use these concrete anchors where relevant:
    - Private entertainment booths (karaoke, escape rooms, bowling, VR): T-3w or T-4w for weekend peak bookings.
-   - High-demand restaurants & group dining tables: T-2w to T-3w.
-   - Flights & lodging: T-4w to T-6w.
-   - Custom gifts, monogramming, artisan crafting & parcel shipping: T-2w to T-3w.
-   - Bakeries & custom cakes: T-7d to T-5d with T-4h pickup.
    - Invitations & RSVPs: T-3w for headcount collection.
    - Fresh grocery shopping, ice, perishable appetizers: T-1d or T-2d.
    - Travel packing, luggage, roaming eSIM: T-3d.

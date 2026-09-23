@@ -8,6 +8,7 @@ import {
   detectEventCategory,
   attachDeliverablesToMilestones,
   finalizeMilestonePlan,
+  preserveCompletedMilestones,
   sanitizeSlotKey,
   formatTMinusLabel,
 } from '../src/utils/tminusRules.js';
@@ -15,6 +16,7 @@ import {
   buildCandidateEventIndex,
   resolveTargetEvent,
   CandidateEventSummary,
+  SHARED_PLANNING_RULES,
 } from './planningPipeline.js';
 
 export interface CalendarAgentResult {
@@ -36,42 +38,13 @@ const COMPOUND_EVENT_SYSTEM_PROMPT = `You are "Ahead Of Time", a calendar-prep a
 2. Calculate realistic backward preparation milestones with tangible deliverables based on real-world lead times (e.g., weddings take 6-12 months for venue/dress/caterer; dog sitters and boarding take 4-8 weeks; passports and international flights take 8-12 weeks).
 3. Manage the user's schedule with speed, clarity, and zero unnecessary conversational filler. Use clean, modern plain English (avoid archaic words like 'dispatched', 'garments', 'artifact', etc.) and never internal planning vocabulary either - no "runway", "Track A/B", "macro/micro", "checkpoint gate". Say what you actually did, the way the user themselves would describe it.
 
-### CRITICAL RULE - BRING REAL EXPERTISE, NEVER GENERIC PLACEHOLDER CONTENT:
-You are acting as an elite event logistics director, personal concierge, and timing strategist - not a form filling in category-template blanks. A user who asks you directly "build me a backward plan for my Amsterdam trip" gets real, specific expertise (the Anne Frank House's actual timed-ticket release pattern, the Van Gogh Museum, the GVB/9292 transit apps, real December weather and what to pack for it). Every milestone and deliverable you produce here must reflect that SAME level of genuine, specific knowledge about THIS event - never settle for a vague, could-apply-to-any-event phrase when a concrete, real one is available:
-- Name REAL things when you have genuine knowledge of them for the stated destination/category/season - actual well-known attractions, venues, transit systems, seasonal conditions, or booking-window patterns - never a generic "book museum tickets" or "pack appropriate clothing" when you can name the actual museum, its real booking behavior, or the actual weather to prepare for.
-- Ground timing in real-world logistical knowledge, not arbitrary round numbers: private entertainment/experience bookings typically need 3-4 weeks for weekend slots, high-demand restaurants 2-3 weeks, flights/lodging 4-6 weeks, custom/monogrammed goods 2-3 weeks for production, timed museum/attraction tickets often release on a fixed weekly schedule weeks ahead, bakeries/custom cakes 5-7 days out.
-- Plan for what happens AFTER the event starts or ends when a real obligation exists there, not only before it (use a negative t_minus_days, e.g. -1 for "Day +1"). Examples: a scuba trip's no-fly window (final dives at least 18-24 hours before any flight home, per DAN/PADI guidance), a return-flight check, trip expense filing, a post-launch review. Never skip a safety-relevant post-event milestone just to keep the list short.
-- This does not relax the "specific, concrete thing" rule below - it raises the bar on what fills it. A concrete milestone_title paired with a generic, could-apply-to-anything deliverable has not actually used your knowledge.
-
-### CRITICAL RULE - CONTEXT LEADS, NEVER GENERIC TEMPLATES:
-Category-standard milestones (the usual checklist for "birthday party", "trip", etc.) are a STARTING POINT, not a fixed script. Before including any generic/routine milestone, check it against everything the user actually said. If a stated detail makes a routine milestone irrelevant, DROP it entirely:
-- If the event is at an external venue the user names or implies (a bar, restaurant, hired hall, venue, club) - do NOT generate milestones for supplies/setup that venue would already provide (buying ice, glassware, decorations, tables, a sound system). Only generate milestones for what the user must personally still arrange.
-- Example: "planning a party in a bar" needs a reservation/headcount milestone, NOT "buy ice and glassware". If the user mentions a specific preference (e.g. "make sure her favorite liqueur is available"), generate ONE targeted milestone for exactly that, not a generic shopping list.
-- For a trip: do NOT default to group-coordination milestones (collecting shared funds/deposits, locking a headcount, chasing RSVPs, a "group activity"/"group dinner") unless the input names a wider group of independent people (friends, colleagues, a stag/hen party, an explicit attendee count). A trip with a partner, girlfriend/boyfriend, spouse, or family is not a group to coordinate.
-- When genuinely unsure whether a routine milestone still applies, leave it out rather than include something irrelevant.
-
-### CRITICAL RULE - NO DUPLICATE TASKS:
-Each real-world task exists as exactly ONE milestone. Review your own list before responding and remove anything that covers the same underlying task as another entry, even if worded differently.
-
-### CRITICAL RULE - MILESTONES MUST NAME A SPECIFIC, CONCRETE THING - NEVER A GENERIC PHASE LABEL:
-Never title a milestone with a vague category or phase name like "Logistics & Bookings", "Work & Trip Prep", "Pre-departure Checks", or "General Preparation" - these tell the user nothing they can actually check off or verify, and they're so broad they make every future request look "already covered" even when nothing concrete addresses it. Every milestone must name the actual thing being tracked: a specific document, booking, or deliverable someone could point to and say "yes, that's done" - e.g. "Passport & Visa Verified", "Flights & Hotel Booked", "Rental Car Reserved", "Pitch Deck Finalized", "Business Attire Ready". If a business trip needs travel documents checked, a rental car booked, and a pitch deck finished, those are separate specific milestones (or explicit named deliverables under one), never folded into a single vague bucket.
-
-### CRITICAL RULE - A MILESTONE TITLE MUST NEVER OPEN WITH A HEDGE OR CONJUNCTION:
-Never start a milestone_title with "or ...", "and ...", "maybe ..." - state the single concrete thing directly. If unsure between two options, pick the more likely one and name it plainly.
-
-### CRITICAL RULE - GIVE EACH MILESTONE A STABLE slot_key, AND REUSE IT ON REFINEMENT:
-Every milestone object needs a short, stable, snake_case slot_key describing WHAT it tracks, independent of wording (e.g. "gift", "flights_hotel", "passport_visa"). If existingMilestones has one that already covers this same underlying task, REUSE that exact slot_key verbatim - this is how the app recognizes "same task, don't duplicate" even when you phrase the title differently than before.
+${SHARED_PLANNING_RULES}
 
 ### CRITICAL RULE - DECIDE THE TARGET EVENT FIRST:
 The input may include currentlyOpenEventId and candidateEvents (a lightweight list of the user's other active events - id/title/category/dates only). Before anything else, decide target_event_id: default to currentlyOpenEventId if given, unless the message clearly names a different event from candidateEvents by topic/destination/date - then use that id instead. If this is a genuinely new plan unrelated to anything given, use the literal string "NEW". Always include target_event_id in your JSON response.
 
-### CRITICAL RULE - REFINING AN EXISTING EVENT MEANS MERGE, NEVER REPLACE:
-If "existingTargetEvent" is present in the input, an event ALREADY EXISTS with the milestones listed under "existingMilestones" (each with its own deliverables) - the message is a correction, addition, or clarification to that plan, not a request to plan a new event from scratch. This is true no matter how narrow the message is (e.g. "we also need a dog sitter" on an existing business trip adds ONE thing, it does not redefine the trip).
-- Your "milestones" output must be the COMPLETE resulting plan: every existing milestone that's still relevant (unchanged or lightly adjusted), plus whatever the new message adds or changes. Returning only milestones derived from the new message discards the entire existing plan - never do that.
-- Only treat something the new message mentions as "already covered" if an existing milestone's title OR one of its deliverables names that SAME specific thing - a broad or vague existing title (e.g. "Logistics & Bookings") is never enough on its own to justify skipping a specific new request (e.g. "book a rental car", "dry clean my suit"). When in doubt, add it as a new deliverable under the most relevant existing milestone, or its own milestone if it doesn't fit anywhere - never silently drop a specific, concrete request.
-- Only drop or rewrite an existing milestone if the new message explicitly contradicts it. A destination swap is one case ("actually we're not going to Paris anymore, going to Rome instead" replaces the destination-specific tasks). A transport-mode swap is exactly the same kind of contradiction and just as common: "no flights, we're going by train instead" means REPLACE every flight-specific milestone/deliverable with train-specific ones - it does NOT mean adding a train task alongside the existing flight one, and no surviving milestone_title or deliverable may still mention the ruled-out mode anywhere.
-- "MERGE" applies to the milestone list, not to staying silent about the event's own date/location: if the new message states an explicit date or location, output that as the top-level start_date/location too, even when merging - never let an old date survive when the user just gave a new one. Never re-output "summary" (the event's title/name) on a refinement turn - that's decided elsewhere and any value you give here is ignored, so don't spend effort on it.
-- If genuinely something is unclear about the ADDITION itself (not the whole event), use Option C to ask about that one thing - e.g. "Got it, one thing: is the dog sitter needed for the full week or just a couple of days?"
+### Schema notes for the rules above:
+The rules above refer to fields generically since they're shared with the web app's schema, which differs slightly from yours. In THIS schema: a milestone's own name field is "milestone_title" (not "title"), the event's own date fields are "start_date"/"end_date" (not "target_date"), and the event's title/name field is "summary" - never re-output "summary" on a refinement turn, that's decided elsewhere and any value you give here is ignored. If genuinely something is unclear about the ADDITION itself (not the whole event), use Option C to ask about that one thing - e.g. "Got it, one thing: is the dog sitter needed for the full week or just a couple of days?"
 
 ### Temporal Grounding Rules:
 - Every incoming user message contains dynamic system time context in the format:
@@ -129,7 +102,7 @@ You MUST respond with a valid JSON object matching one of three schemas:
   "telegram_reply": "*Scottish Highlands Trip (with 4 friends)*\\n• 📅 \`2026-10-14\` to \`2026-10-18\`\\n• 📍 Scottish Highlands\\n• 🎯 3 Preparation Milestones generated"
 }
 \`\`\`
-If target_event_id resolves to an existing event instead of "NEW", "milestones" should still list every milestone that ought to exist for that event (existing ones you're keeping, reusing their slot_key, plus any new ones) - per the REFINEMENT MEANS MERGE rule below.
+If target_event_id resolves to an existing event instead of "NEW", "milestones" should still list every milestone that ought to exist for that event (existing ones you're keeping, reusing their slot_key, plus any new ones) - per the REFINEMENT MEANS MERGE rule above.
 
 #### Option B: Calendar Query / Availability Check (e.g. "What do I have going on tomorrow afternoon?", "Am I free next Monday?")
 \`\`\`json
@@ -482,10 +455,15 @@ export class GeminiCalendarAgent {
         });
         const reconciled = reconcileMilestoneDeliverables(freshMilestonesPending, modelDeliverablesByIndex);
 
-        const merged = finalizeMilestonePlan(
+        const mergedRaw = finalizeMilestonePlan(
           [...(event.milestones || []), ...reconciled],
           { title: event.title, location: event.location, rawText }
         );
+        // Web's refinement paths never let a replan drop a milestone the
+        // user already checked off - this closes the same gap here, since
+        // Gemini's own output is never fully trusted to have echoed status
+        // back correctly on its own.
+        const merged = preserveCompletedMilestones(event.milestones || [], mergedRaw, event.title);
         const existingIds = new Set((event.milestones || []).map((m) => m.id));
         const newlyAdded = merged.filter((m) => !existingIds.has(m.id));
 
@@ -545,10 +523,11 @@ export class GeminiCalendarAgent {
     });
     const reconciled = reconcileMilestoneDeliverables(freshMilestonesPending, modelDeliverablesByIndex);
 
-    const merged = finalizeMilestonePlan(
+    const mergedRaw = finalizeMilestonePlan(
       [...(event.milestones || []), ...reconciled],
       { title: event.title, location: event.location, rawText }
     );
+    const merged = preserveCompletedMilestones(event.milestones || [], mergedRaw, event.title);
     const existingIds = new Set((event.milestones || []).map((m) => m.id));
     const newlyAdded = merged.filter((m) => !existingIds.has(m.id));
 

@@ -1,6 +1,21 @@
-import { describe, it, expect } from 'vitest';
-import { reconcileMilestoneDeliverables } from './geminiCalendarAgent';
-import { TMinusMilestone, Deliverable } from '../src/types';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Same mocking pattern as agentProcessor.gemini.test.ts - exercises the real
+// refine/merge branch logic without a live API key or network call.
+let mockResponseText = '{}';
+vi.mock('@google/genai', () => {
+  function GoogleGenAI() {
+    return {
+      models: {
+        generateContent: vi.fn().mockImplementation(async () => ({ text: mockResponseText })),
+      },
+    };
+  }
+  return { GoogleGenAI };
+});
+
+import { reconcileMilestoneDeliverables, GeminiCalendarAgent } from './geminiCalendarAgent';
+import { TMinusMilestone, Deliverable, CalendarEvent } from '../src/types';
 
 function makeMilestone(overrides: Partial<TMinusMilestone> = {}): TMinusMilestone {
   return {
@@ -86,5 +101,74 @@ describe('reconcileMilestoneDeliverables', () => {
     const kitMilestone = result.find((m) => m.id === 'kit')!;
     expect(passportMilestone.deliverables.some((d) => d.title.toLowerCase().includes('passport'))).toBe(true);
     expect(kitMilestone.deliverables.some((d) => d.title.toLowerCase().includes('shin guard') || d.title.toLowerCase().includes('cleat'))).toBe(true);
+  });
+});
+
+describe('GeminiCalendarAgent.refineEvent - completion preservation', () => {
+  const OLD_ENV = process.env.GEMINI_API_KEY;
+  beforeEach(() => {
+    process.env.GEMINI_API_KEY = 'test-key';
+  });
+  afterEach(() => {
+    process.env.GEMINI_API_KEY = OLD_ENV;
+  });
+
+  const makeEvent = (): CalendarEvent => ({
+    id: 'evt-trip',
+    title: 'Lisbon Trip',
+    category: 'travel_trip',
+    eventDate: '2026-11-01',
+    status: 'milestones_active',
+    context: {},
+    milestones: [
+      {
+        id: 'ms-flights',
+        eventId: 'evt-trip',
+        tMinusLabel: 'T-21d',
+        tMinusOffsetMinutes: -30240,
+        calculatedDate: '2026-10-11',
+        title: 'Flights & Hotel Booked',
+        category: 'booking',
+        status: 'completed',
+        completedAt: '2026-09-01T10:00:00.000Z',
+        slotKey: 'flights_hotel',
+        deliverables: [],
+      },
+    ],
+    updatedAt: new Date().toISOString(),
+  } as CalendarEvent);
+
+  it('does not un-complete a milestone the user already checked off, even when Gemini omits status', async () => {
+    // Regression test: refineEvent previously called finalizeMilestonePlan
+    // alone with no preserveCompletedMilestones pass, unlike every web-side
+    // refinement path - a Telegram refinement could silently revert a
+    // completed milestone back to pending.
+    mockResponseText = JSON.stringify({
+      type: 'event_creation',
+      target_event_id: 'evt-trip',
+      milestones: [
+        {
+          milestone_title: 'Flights & Hotel Booked',
+          slot_key: 'flights_hotel',
+          t_minus_days: 21,
+          target_date: '2026-10-11',
+          deliverables: ['Booking confirmed'],
+        },
+        {
+          milestone_title: 'Rental Car Reserved',
+          slot_key: 'rental_car',
+          t_minus_days: 10,
+          target_date: '2026-10-22',
+          deliverables: ['Car booked'],
+        },
+      ],
+      telegram_reply: 'Added a rental car task.',
+    });
+
+    const event = makeEvent();
+    const result = await GeminiCalendarAgent.refineEvent(event, 'we also need a rental car', false);
+
+    const flightsMilestone = result.mergedMilestones.find((m) => m.slotKey === 'flights_hotel');
+    expect(flightsMilestone?.status).toBe('completed');
   });
 });

@@ -121,6 +121,41 @@ describe('processWithDeterministicRules', () => {
     expect(survivingMilestone?.status).toBe('completed');
   });
 
+  it('does not hijack a plain-text correction on an existing event into a fabricated new trip just because the word "trip" appears', () => {
+    // Regression test for a real bug caught via live testing: the trip-
+    // decomposition shortcut ran unconditionally before the existingEvent
+    // merge logic, so a message merely containing the word "trip" (e.g. the
+    // "Edit Event Details" form's own auto-generated "Changed the category
+    // to Trip / Travel." description) matched it and replaced the entire
+    // event with a fabricated, generically-titled "Group Trip Horizon" -
+    // discarding the real event's identity, milestones, and completed
+    // status outright, since that branch never looked at existingEvent.
+    const first = processWithDeterministicRules({
+      message: "Soccer Tournament Saturday on 2026-10-14",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    expect(first.event.milestones.length).toBeGreaterThan(0);
+    const completedMilestone = { ...first.event.milestones[0], status: 'completed' as const, completedAt: '2026-09-05T00:00:00.000Z' };
+    const existingEventWithProgress = {
+      ...first.event,
+      milestones: [completedMilestone, ...first.event.milestones.slice(1)],
+    };
+
+    const second = processWithDeterministicRules({
+      message: 'Changed the category to Trip / Travel.',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: existingEventWithProgress,
+    });
+
+    expect(second.event.title).toBe(existingEventWithProgress.title);
+    expect(second.event.title).not.toBe('Group Trip Horizon');
+    const survivingMilestone = second.event.milestones.find((m) => m.id === completedMilestone.id);
+    expect(survivingMilestone).toBeDefined();
+    expect(survivingMilestone?.status).toBe('completed');
+  });
+
   it('threads the userProfile home location into the event context (so tminusRules can consume it)', () => {
     const result = processWithDeterministicRules({
       message: "Maya's birthday party on 2026-11-20",

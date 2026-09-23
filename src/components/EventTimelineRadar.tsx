@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
-import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones } from '../utils/tminusRules';
+import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { deepRefineEventLocally } from '../utils/deepRefine';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
@@ -330,22 +330,41 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     // Deterministic fallback: shift each existing milestone's date off its
     // own stored tMinusOffsetMinutes (preserves every custom deliverable,
     // completed checkbox, and previous answer) unless the category itself
-    // changed, in which case a different category's checklist doesn't map
-    // onto the old one and a fresh heuristic build is the only option. This
-    // is also exactly what runs if the smart path below fails or there's no
-    // GEMINI_API_KEY - never worse than before this change.
-    const buildFallbackMilestones = (): TMinusMilestone[] =>
-      hasExistingMilestones && !categoryChanged
-        ? activeEvent.milestones.map((ms) => ({
-            ...ms,
-            calculatedDate: calculateOffsetDate(clarifyDate, clarifyTime || '19:00', ms.tMinusOffsetMinutes),
-          }))
-        : generateHeuristicMilestones(
-            { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
-            activeEvent.id,
-            clarifyDate,
-            clarifyTime || '19:00'
-          );
+    // changed. This is also exactly what runs if the smart path below fails
+    // or there's no GEMINI_API_KEY - never worse than before this change.
+    const buildFallbackMilestones = (): TMinusMilestone[] => {
+      if (!hasExistingMilestones) {
+        return generateHeuristicMilestones(
+          { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
+          activeEvent.id,
+          clarifyDate,
+          clarifyTime || '19:00'
+        );
+      }
+      if (!categoryChanged) {
+        return activeEvent.milestones.map((ms) => ({
+          ...ms,
+          calculatedDate: calculateOffsetDate(clarifyDate, clarifyTime || '19:00', ms.tMinusOffsetMinutes),
+        }));
+      }
+      // A category change means the old checklist doesn't map onto the new
+      // one, but the old milestones can still carry real progress (completed
+      // items, custom deliverables) - merge the new category's template in
+      // rather than discarding them outright, same as every other fallback
+      // path in the app. Previously this branch called generateHeuristicMilestones
+      // alone and returned it directly, silently wiping the old list.
+      const freshForNewCategory = generateHeuristicMilestones(
+        { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
+        activeEvent.id,
+        clarifyDate,
+        clarifyTime || '19:00'
+      );
+      const merged = finalizeMilestonePlan(
+        [...activeEvent.milestones, ...freshForNewCategory],
+        { title: clarifyTitle, location: clarifyLocation }
+      );
+      return preserveCompletedMilestones(activeEvent.milestones, merged, clarifyTitle);
+    };
 
     const buildUpdated = (milestones: TMinusMilestone[]): CalendarEvent => ({
       ...activeEvent,

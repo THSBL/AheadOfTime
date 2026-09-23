@@ -902,9 +902,18 @@ export function processWithDeterministicRules(params: {
   const msgLower = (params.message || "").toLowerCase();
   const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
-  // Hierarchical Context Decomposition check
+  // Hierarchical Context Decomposition check - only for a genuinely NEW
+  // event. Confirmed live: with an existingEvent present, this branch
+  // matched on nothing more than the word "trip" appearing anywhere in the
+  // message (even inside an auto-generated change-description like "Changed
+  // the category to Trip / Travel") and fabricated an entirely new,
+  // generically-titled event from scratch - discarding the real event's
+  // milestones, completed status, and identity outright, since this branch
+  // never looks at params.existingEvent at all. An existing event's plain
+  // text always falls through to the category cascade below instead, which
+  // correctly anchors to and merges with params.existingEvent.
   const tripDecomposition = decomposeComplexTripIntent(params.message, params.refDateISO);
-  if (tripDecomposition && !params.intakeAnswer && !params.batchAnswers) {
+  if (tripDecomposition && !params.intakeAnswer && !params.batchAnswers && !params.existingEvent) {
     const macro = tripDecomposition.macro_event;
     const mappedMilestones: TMinusMilestone[] = tripDecomposition.milestones.map((m, idx) => {
       const offsetMinutes = -m.t_minus_days * 24 * 60;

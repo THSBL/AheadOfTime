@@ -13,6 +13,7 @@ import {
   isSameMilestoneTask,
   preserveCompletedMilestones,
   formatTMinusLabel,
+  validateMilestoneChronology,
 } from './tminusRules';
 
 describe('formatTMinusLabel', () => {
@@ -858,5 +859,51 @@ describe('finalizeMilestonePlan', () => {
     }];
     const result = finalizeMilestonePlan(milestones);
     expect(result[0].title).not.toMatch(/^or\s/i);
+  });
+});
+
+describe('validateMilestoneChronology', () => {
+  const event = { eventDate: '2026-11-01', endDate: undefined as string | undefined };
+
+  function makeMilestone(calculatedDate: string): TMinusMilestone {
+    return {
+      id: 'ms-1',
+      eventId: 'evt-1',
+      tMinusLabel: 'T-14d',
+      tMinusOffsetMinutes: -20160,
+      calculatedDate,
+      title: 'Some Milestone',
+      category: 'logistics',
+      status: 'pending',
+    };
+  }
+
+  it('never flags an early date, no matter how far before the event', () => {
+    const anomalies = validateMilestoneChronology(event, [makeMilestone('2025-01-01')]);
+    expect(anomalies).toEqual([]);
+  });
+
+  it('does not flag a reasonable post-event follow-up', () => {
+    const anomalies = validateMilestoneChronology(event, [makeMilestone('2026-11-05')]);
+    expect(anomalies).toEqual([]);
+  });
+
+  it('flags a date so far past the event it is almost certainly a bug', () => {
+    const anomalies = validateMilestoneChronology(event, [makeMilestone('2029-11-01')]);
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0].reason).toBe('unreasonably_far_after_event');
+  });
+
+  it('flags an unparseable date', () => {
+    const anomalies = validateMilestoneChronology(event, [makeMilestone('not-a-date')]);
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0].reason).toBe('unparseable_date');
+  });
+
+  it('anchors against endDate when the event spans multiple days', () => {
+    const multiDayEvent = { eventDate: '2026-11-01', endDate: '2026-11-05' };
+    // 10 days after eventDate but only 6 after the real endDate - still fine.
+    const anomalies = validateMilestoneChronology(multiDayEvent, [makeMilestone('2026-11-11')]);
+    expect(anomalies).toEqual([]);
   });
 });

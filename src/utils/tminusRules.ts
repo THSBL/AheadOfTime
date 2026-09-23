@@ -1905,6 +1905,49 @@ export function finalizeMilestonePlan(
   return deduped.map((ms) => ({ ...ms, title: sanitizeMilestoneTitle(ms.title) }));
 }
 
+export interface MilestoneChronologyAnomaly {
+  milestoneId: string;
+  title: string;
+  calculatedDate: string;
+  reason: 'unparseable_date' | 'unreasonably_far_after_event';
+}
+
+// A real post-event obligation (a no-fly window, expense filing, a review
+// meeting) can legitimately land days or a couple of weeks after the event
+// - this only flags dates far enough out that they're almost certainly a
+// generation bug (e.g. an offset miscalculated by years), not genuine prep.
+const MAX_DAYS_AFTER_EVENT_ANCHOR = 90;
+
+/**
+ * Flags (never hard-rejects - callers decide what, if anything, to do with
+ * the result) milestone dates that are unparseable or absurdly far past the
+ * event's own end date. Deliberately does NOT flag an early date, no matter
+ * how early: real preparation (a passport renewal, a deposit paid months
+ * ahead) can and legitimately does start well before a booked event, so
+ * "must be after the event's first date" is never enforced here.
+ */
+export function validateMilestoneChronology(
+  event: Pick<CalendarEvent, 'eventDate' | 'endDate'>,
+  milestones: TMinusMilestone[]
+): MilestoneChronologyAnomaly[] {
+  const anomalies: MilestoneChronologyAnomaly[] = [];
+  const anchor = new Date(event.endDate || event.eventDate);
+  if (Number.isNaN(anchor.getTime())) return anomalies; // nothing sane to compare against
+
+  for (const ms of milestones) {
+    const msDate = new Date(ms.calculatedDate);
+    if (Number.isNaN(msDate.getTime())) {
+      anomalies.push({ milestoneId: ms.id, title: ms.title, calculatedDate: ms.calculatedDate, reason: 'unparseable_date' });
+      continue;
+    }
+    const daysAfterAnchor = (msDate.getTime() - anchor.getTime()) / (24 * 60 * 60 * 1000);
+    if (daysAfterAnchor > MAX_DAYS_AFTER_EVENT_ANCHOR) {
+      anomalies.push({ milestoneId: ms.id, title: ms.title, calculatedDate: ms.calculatedDate, reason: 'unreasonably_far_after_event' });
+    }
+  }
+  return anomalies;
+}
+
 /**
  * Generate iCalendar (.ics) string for the event and all its reverse-engineered milestones
  */
