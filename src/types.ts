@@ -164,6 +164,22 @@ export interface TMinusMilestone {
   // See StructuredMilestone.slotKey - same field, carried through once a
   // milestone is finalized into the app's persisted shape.
   slotKey?: string;
+  // Architecture reset (Phases 4-6) - which PreparationLevel this milestone
+  // belongs to, and whether it's currently shown. Optional so old
+  // in-memory/Telegram-sourced objects from before this migration stay
+  // valid; readers default tier to 'essentials' and isActive to true.
+  // Downgrading a level hides higher-tier rows (isActive: false) instead of
+  // deleting them - never a separate cached-plan representation.
+  tier?: PreparationLevel;
+  isActive?: boolean;
+  hiddenReason?: 'level_downgrade' | 'superseded_by_replan';
+  // Which planning_context_version (CalendarEvent.planningContextVersion)
+  // this milestone's content was generated against - lets an upgrade
+  // reactivate a hidden row only when it's still valid, per Phase 4/7.
+  generatedFromContextVersion?: string;
+  // Lightweight, optional UI-grouping label only (e.g. "Booking",
+  // "Documents") - no ordering or gating is implied by this field.
+  phase?: string;
 }
 
 export interface WatchpointData {
@@ -228,6 +244,25 @@ export interface CalendarEvent {
   rawInputSnippet?: string;
   createdAt: string;
   updatedAt: string;
+  // Architecture reset (Phases 4-7) - the event's current preparation
+  // level and why. Optional for the same reason as TMinusMilestone's tier
+  // field; defaults to 'balanced' at the DB layer (server/preparationSchema.ts),
+  // never a bare unset level.
+  preparationLevel?: PreparationLevel;
+  preparationLevelReasons?: string[];
+  preparationLevelSetBy?: 'aot' | 'user';
+  // Provenance-tagged fact bag Phase 7 builds (which facts are user-stated
+  // vs. AI-inferred) and a hash of its user-provenance subset, used to
+  // decide whether a hidden tier's milestones are still valid or need a
+  // fresh replan on upgrade.
+  planningContext?: Record<string, { value: unknown; provenance: 'user_stated' | 'user_decision' | 'ai_inferred' | 'ai_generated'; updatedAt: string }>;
+  planningContextVersion?: string;
+  // The narrow role-only gap from Phase 3/6 today - mirrors
+  // preparationAssessment.ts's InformationGap shape (duplicated here rather
+  // than imported, to avoid a types.ts <-> utils/preparationAssessment.ts
+  // cycle); the shape a future, fuller gap tracker (Phase 8) generalizes
+  // rather than replaces.
+  outstandingGaps?: Array<{ key: string; question: string; impact: 'high' | 'medium' | 'low'; requiredBeforePlanning: boolean }>;
 }
 
 export interface AgentMessage {

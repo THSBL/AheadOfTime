@@ -1,6 +1,6 @@
 import { query } from './db.js';
 import { ensureEventSyncSchema } from './eventSyncSchema.js';
-import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, MilestoneCategory } from '../src/types.js';
+import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, MilestoneCategory, PreparationLevel } from '../src/types.js';
 
 export interface TelegramUserSession {
   chatId: number | string;
@@ -78,6 +78,15 @@ interface EventRow {
   client_updated_at?: string | Date | null;
   deleted_at?: string | Date | null;
   client_payload?: Record<string, any> | null;
+  // Preparation-level columns (server/preparationSchema.ts). Present only
+  // once ensurePreparationSchema has added them; row-mapping defaults cover
+  // rows written before that.
+  preparation_level?: string | null;
+  preparation_level_reasons?: any;
+  preparation_level_set_by?: string | null;
+  planning_context?: Record<string, any> | null;
+  planning_context_version?: string | null;
+  outstanding_gaps?: any;
 }
 
 interface MilestoneRow {
@@ -95,6 +104,12 @@ interface MilestoneRow {
   google_task_id?: string | null;
   client_id?: string | null;
   client_payload?: Record<string, any> | null;
+  // Preparation-level columns (server/preparationSchema.ts).
+  tier?: string | null;
+  is_active?: boolean | null;
+  hidden_reason?: string | null;
+  generated_from_context_version?: string | null;
+  phase?: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -214,6 +229,15 @@ export function rowToMilestone(
     // spreads server rows over local ones, and an explicit `undefined` here
     // would wipe a googleTaskId the browser's own push had just recorded.
     ...(row.google_task_id ? { googleTaskId: row.google_task_id } : {}),
+    // Preparation-level columns - defaults cover rows written before
+    // ensurePreparationSchema existed (a row's tier column itself already
+    // defaults to 'essentials'/true at the DB layer, but client_payload-only
+    // rows or a stale read type need the same default applied here too).
+    tier: (row.tier as PreparationLevel) || (row.client_payload?.tier as PreparationLevel) || 'essentials',
+    isActive: row.is_active ?? row.client_payload?.isActive ?? true,
+    ...(row.hidden_reason ? { hiddenReason: row.hidden_reason as TMinusMilestone['hiddenReason'] } : {}),
+    ...(row.generated_from_context_version ? { generatedFromContextVersion: row.generated_from_context_version } : {}),
+    ...(row.phase ? { phase: row.phase } : {}),
   };
 }
 
@@ -259,6 +283,14 @@ export function rowToCalendarEvent(row: EventRow, milestoneRows: MilestoneRow[])
           syncedToGoogleAt: toIsoString(row.synced_to_google_at) || undefined,
         }
       : {}),
+    // Preparation-level columns - same default-covers-pre-migration-rows
+    // reasoning as rowToMilestone above.
+    preparationLevel: (row.preparation_level as PreparationLevel) || 'balanced',
+    preparationLevelReasons: Array.isArray(row.preparation_level_reasons) ? row.preparation_level_reasons : [],
+    ...(row.preparation_level_set_by ? { preparationLevelSetBy: row.preparation_level_set_by as CalendarEvent['preparationLevelSetBy'] } : {}),
+    ...(row.planning_context && Object.keys(row.planning_context).length > 0 ? { planningContext: row.planning_context as CalendarEvent['planningContext'] } : {}),
+    ...(row.planning_context_version ? { planningContextVersion: row.planning_context_version } : {}),
+    outstandingGaps: Array.isArray(row.outstanding_gaps) ? row.outstanding_gaps : [],
   };
 }
 

@@ -260,3 +260,26 @@ CREATE TABLE IF NOT EXISTS pending_plan_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_pending_plan_notifications_undelivered
   ON pending_plan_notifications(user_id) WHERE delivered_at IS NULL;
+
+-- Architecture reset (server/preparationSchema.ts also applies these
+-- idempotently at runtime): AOT-owned PreparationLevel per event, tiered
+-- milestones, and the provenance-tagged planning context Phase 7 builds.
+-- Additive only - inert until Phase 5+ wires up reads/writes. Downgrading
+-- a level hides higher-tier milestone rows (is_active = false) instead of
+-- deleting them or storing a separate cached-plan snapshot; upgrading
+-- reactivates a hidden row only if generated_from_context_version still
+-- matches the event's current planning_context_version.
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS preparation_level         TEXT NOT NULL DEFAULT 'balanced',
+  ADD COLUMN IF NOT EXISTS preparation_level_reasons  JSONB NOT NULL DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS preparation_level_set_by   TEXT,   -- 'aot' | 'user'
+  ADD COLUMN IF NOT EXISTS planning_context           JSONB NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS planning_context_version   TEXT,
+  ADD COLUMN IF NOT EXISTS outstanding_gaps           JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE milestones
+  ADD COLUMN IF NOT EXISTS tier                          TEXT NOT NULL DEFAULT 'essentials',
+  ADD COLUMN IF NOT EXISTS is_active                     BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS hidden_reason                 TEXT,   -- 'level_downgrade' | 'superseded_by_replan'
+  ADD COLUMN IF NOT EXISTS generated_from_context_version TEXT,
+  ADD COLUMN IF NOT EXISTS phase                         TEXT;   -- optional UI-grouping label only, no ordering/gating implied
+CREATE INDEX IF NOT EXISTS idx_milestones_event_active ON milestones(event_id) WHERE is_active = true;

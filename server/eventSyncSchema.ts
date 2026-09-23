@@ -1,4 +1,5 @@
 import { query } from './db.js';
+import { ensurePreparationSchema } from './preparationSchema.js';
 
 /**
  * Columns that let the same event live on several devices (and be undone
@@ -25,6 +26,10 @@ let ready: Promise<void> | null = null;
 export function ensureEventSyncSchema(): Promise<void> {
   if (!ready) {
     ready = (async () => {
+      // Composed here rather than at every eventSyncStore.ts/telegramStore.ts
+      // call site - both schemas govern the same events/milestones tables,
+      // and every caller that needs one already needs the other to exist.
+      await ensurePreparationSchema();
       await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS client_id TEXT`);
       await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS client_updated_at TIMESTAMPTZ`);
       await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
