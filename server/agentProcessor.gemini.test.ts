@@ -130,6 +130,33 @@ describe('processWithGemini - preserving existing milestones when the model omit
     expect(result.event.milestones.length).toBeGreaterThan(0);
   });
 
+  it('falls back to the date named in the raw message, not today, when the model omits target_date on a brand-new event', async () => {
+    // Regression test for a real, live-reported bug: "26 dec birthday
+    // celebration brother" - terse phrasing with no "on"/punctuation - made
+    // the model skip target_date in its JSON response entirely. The local
+    // parseNaturalDateRange safety net (explicitMessageDate) was previously
+    // only computed when existingEvent was present (a refinement turn), so
+    // a fresh creation with no model-provided date fell all the way through
+    // to params.refDateStr (today) instead of the date actually named in
+    // the message - even though the local parser could extract it fine.
+    mockResponseText = JSON.stringify({
+      mode: 'CREATE_AND_INTAKE',
+      target_event_id: 'NEW',
+      event_title: "Brother's Birthday Celebration",
+      focus: 'Started planning the celebration.',
+      addition: 'What else should I know?',
+    });
+
+    const result = await processWithGemini({
+      message: '26 dec birthday celebration brother',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      activeEvents: [],
+    });
+
+    expect(result.event.eventDate).toBe('2026-12-26');
+  });
+
   it('keeps the existing event title even when the model returns its own paraphrase alongside a refinement', async () => {
     // Regression test for a real, live-reported bug: correcting an existing
     // "Trip to Amsterdam" event with "no flights, we're going by train"

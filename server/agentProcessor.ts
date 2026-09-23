@@ -709,13 +709,20 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
 
   const eventId = existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   // Deterministic safety net, independent of whether the model bothered to
-  // repeat the date on a merge turn: if the user's own raw text names an
-  // explicit date, that wins over a stale existing-event date regardless of
-  // what the model output (or omitted) - a real bug let an old event's date
-  // survive a message that plainly gave a new one, because the model's
-  // merge-mode output didn't re-populate target_date/eventDate and the code
-  // fell back to the existing event's stale value instead.
-  const explicitMessageDate = existingEvent ? parseNaturalDateRange(params.message, params.currentReferenceDate)?.startDate : undefined;
+  // extract a date at all. Originally only computed on a refinement turn
+  // (existingEvent present) to stop a stale existing-event date surviving a
+  // message that plainly gave a new one when the model's merge-mode output
+  // didn't re-populate target_date/eventDate. Confirmed live that the same
+  // gap exists on a FRESH creation turn too, and is actually worse there:
+  // terse phrasing ("26 dec birthday celebration brother" - no "on", no
+  // punctuation) can make the model skip target_date entirely, and with no
+  // existingEvent to gate this on, eventDate fell all the way through to
+  // params.refDateStr (today) instead of the correct date this local
+  // parser was already capable of extracting. Now computed unconditionally -
+  // same priority slot in the fallback chain below, so a message with no
+  // parseable date at all still falls through to existingEvent/refDateStr
+  // exactly as before.
+  const explicitMessageDate = parseNaturalDateRange(params.message, params.currentReferenceDate)?.startDate;
   const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || explicitMessageDate || existingEvent?.eventDate || params.refDateStr;
   const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || existingEvent?.endDate || undefined;
   const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
