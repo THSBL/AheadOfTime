@@ -11,7 +11,6 @@ import {
   DeliverableType
 } from "../src/types.js";
 import {
-  generateHeuristicMilestones,
   calculateOffsetDate,
   detectEventCategory,
   getCleanEventTitle,
@@ -21,6 +20,7 @@ import {
   parseNaturalDateRange,
   formatTMinusLabel
 } from "../src/utils/tminusRules.js";
+import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
 import {
   SHARED_PLANNING_RULES,
   buildCandidateEventIndex,
@@ -807,12 +807,10 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
           .filter((w) => w.length > 2 && !NOISE_WORDS.has(w))
       ));
       if (messageWords.length > 0) {
-        const freshMilestones = generateHeuristicMilestones(
-          { category: finalCategory, context: mergedContext, title },
-          eventId,
-          eventDate,
-          eventTime
-        );
+        const freshMilestones = generateDeterministicMilestones({
+          eventId, title, eventDate, eventTime,
+          category: finalCategory, context: mergedContext,
+        });
         const noteRelevantFreshMilestones = freshMilestones.filter((m) => {
           const text = `${m.title} ${m.description || ''}`.toLowerCase();
           return messageWords.some((w) => new RegExp(`\\b${w}\\b`).test(text));
@@ -826,17 +824,12 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       }
     }
   } else {
-    milestones = generateHeuristicMilestones(
-      {
-        category: finalCategory,
-        context: mergedContext,
-        userRole: mergedContext.userRole,
-        title,
-      },
-      eventId,
-      eventDate,
-      eventTime
-    );
+    milestones = generateDeterministicMilestones({
+      eventId, title, eventDate, eventTime,
+      category: finalCategory,
+      context: mergedContext,
+      userRole: mergedContext.userRole,
+    });
   }
 
   // The model only had full milestone detail for whichever event it was
@@ -1193,17 +1186,14 @@ export function processWithDeterministicRules(params: {
   }
 
   // Always generate heuristic milestones for the event
-  const freshMilestones: TMinusMilestone[] = generateHeuristicMilestones(
-    { category, context, title },
-    eventId,
-    eventDate,
-    eventTime
-  );
+  const freshMilestones: TMinusMilestone[] = generateDeterministicMilestones({
+    eventId, title, eventDate, eventTime, category, context,
+  });
 
   // A correction on an existing event is additive, not a rewrite: keep
   // what's already there and only bring in the fresh milestones that are
   // actually explained by what the user just typed (shares a distinctive
-  // word with it) - generateHeuristicMilestones always returns a full
+  // word with it) - generateDeterministicMilestones always returns a full
   // category-default checklist (sunscreen, hiking boots, adapters...)
   // alongside anything the note specifically triggered (a pet-sitter task),
   // and pulling in the whole thing would bury one real addition under a

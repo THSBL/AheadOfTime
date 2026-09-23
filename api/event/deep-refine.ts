@@ -1,6 +1,6 @@
 import { generateContentFast, DEFAULT_FAST_MODELS } from '../../server/agentProcessor.js';
 import { calculateOffsetDate } from '../../src/utils/tminusRules.js';
-import { deepRefineEventLocally } from '../../src/utils/deepRefine.js';
+import { generateDeterministicMilestones } from '../../src/utils/deterministicMilestoneGenerator.js';
 import { SHARED_PLANNING_RULES } from '../../server/planningPipeline.js';
 import type { CalendarEvent, TMinusMilestone } from '../../src/types.js';
 
@@ -21,7 +21,15 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const localMilestones = deepRefineEventLocally(event);
+    const localMilestones = generateDeterministicMilestones({
+      eventId: event.id,
+      title: event.title,
+      eventDate: event.eventDate,
+      eventTime: event.eventTime,
+      location: event.location,
+      category: event.category,
+      context: event.context,
+    });
     const localRefinedEvent: CalendarEvent = {
       ...event,
       needsRefinement: false,
@@ -132,7 +140,15 @@ Output ONLY the raw JSON object.`;
     console.warn('AI deep refinement notice, using local engine:', err?.message);
     const { event }: { event: CalendarEvent } = req.body;
     if (event) {
-      const localMilestones = deepRefineEventLocally(event);
+      const localMilestones = generateDeterministicMilestones({
+        eventId: event.id,
+        title: event.title,
+        eventDate: event.eventDate,
+        eventTime: event.eventTime,
+        location: event.location,
+        category: event.category,
+        context: event.context,
+      });
       res.json({
         event: {
           ...event,

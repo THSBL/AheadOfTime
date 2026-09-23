@@ -939,6 +939,19 @@ export function generateHeuristicMilestones(
       addMilestone('T-45d', -45 * 24 * 60, 'US Entry ESTA (Electronic System for Travel Authorization)', 'booking', 'Mandatory entry authorization for non-US citizens (e.g. Belgian / EU passports) traveling to the US. Submit at least 72 hours prior to departure', undefined, 'deliverable');
     }
 
+    // Whether this event actually involves booking travel (flights, a hotel,
+    // a rental car) vs. a local event merely tagged travel_trip - confirmed
+    // via live testing that this branch previously assumed flights/hotel for
+    // ANY travel_trip event regardless of evidence (a same-village soccer
+    // tournament mis-tagged travel_trip generated "Flights, trains & hotel
+    // reservation lock"). CONTEXT LEADS, NEVER GENERIC TEMPLATES applies to
+    // the deterministic fallback too, not just the Gemini prompt.
+    const hasTravelModeEvidence = Boolean(event.location) || Boolean(context.destination) ||
+      isInternational || isDestUS ||
+      /\b(flight|flights|fly|airport|airbnb|hotel|resort|abroad|overseas|road\s*trip|driving\s+to|train|rail|ferry|cruise|rental\s*car)\b/i.test(
+        `${event.title || ''} ${context.customNote || ''}`
+      );
+
     // BUSINESS TRIP DEDICATED TRACK
     if (isBusinessTrip) {
       if (context.bookingStatus !== 'done') {
@@ -981,17 +994,33 @@ export function generateHeuristicMilestones(
       );
     } else {
       if (context.bookingStatus !== 'done') {
-        addMilestone(
-          'T-30d', 
-          -30 * 24 * 60, 
-          isStagOrGroupParty ? 'Book flights / group transit & lodging' : 'Flights, trains & hotel reservation lock', 
-          'booking', 
-          'Lock transport legs, accommodations, and travel insurance coverage',
-          undefined,
-          'deliverable',
-          true,
-          isStagOrGroupParty ? ['Group Airbnb / Villa Rental', 'Central Hotel Room Block', 'Budget Hostel Pods', 'Self-booked Individual Lodging'] : ['Hotel / Resort Reservation', 'Airbnb / Vacation Apartment', 'Flight & Hotel Package']
-        );
+        if (hasTravelModeEvidence) {
+          addMilestone(
+            'T-30d',
+            -30 * 24 * 60,
+            isStagOrGroupParty ? 'Book flights / group transit & lodging' : 'Flights, trains & hotel reservation lock',
+            'booking',
+            'Lock transport legs, accommodations, and travel insurance coverage',
+            undefined,
+            'deliverable',
+            true,
+            isStagOrGroupParty ? ['Group Airbnb / Villa Rental', 'Central Hotel Room Block', 'Budget Hostel Pods', 'Self-booked Individual Lodging'] : ['Hotel / Resort Reservation', 'Airbnb / Vacation Apartment', 'Flight & Hotel Package']
+          );
+        } else {
+          // No evidence this actually requires booking travel/lodging at
+          // all (no location, no destination, no travel-mode keyword) - a
+          // generic, mode-agnostic logistics check instead of presuming a
+          // flight or hotel that may not exist.
+          addMilestone(
+            'T-30d',
+            -30 * 24 * 60,
+            'Confirm venue, transport & logistics',
+            'booking',
+            'Confirm how you are getting there and any venue or logistics details specific to this event.',
+            undefined,
+            'deliverable'
+          );
+        }
       }
 
     if (isStagOrGroupParty) {
@@ -1101,10 +1130,31 @@ export function generateHeuristicMilestones(
   }
 
     addMilestone('T-3d', -3 * 24 * 60, 'Packing essentials & roaming setup', 'prep', 'Pack clothes, toiletries, chargers, and activate roaming/eSIM', undefined, 'milestone');
-    addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & out-of-office setup', 'logistics', 'Check in for flights 24h prior, download offline maps, and set email out-of-office', undefined, 'milestone');
+    // These three assumed a flight/airport/hotel unconditionally for any
+    // travel_trip event - same bug class as the flights/hotel booking
+    // milestone above, just further down and previously ungated entirely.
+    addMilestone(
+      'T-1d', -1 * 24 * 60,
+      hasTravelModeEvidence ? 'Online check-in & out-of-office setup' : 'Final logistics check & out-of-office setup',
+      'logistics',
+      hasTravelModeEvidence ? 'Check in for flights 24h prior, download offline maps, and set email out-of-office' : 'Confirm final logistics, download any needed directions, and set email out-of-office',
+      undefined, 'milestone'
+    );
     const returnBaseDate = context.returnDate || event.endDate || eventDate;
-    addMilestone('T-Return-1d', -1 * 24 * 60, 'Return trip prep & flight status check', 'logistics', 'Verify return flight status, pack return luggage, and plan hotel check-out', returnBaseDate, 'milestone');
-    addMilestone('T-2h', -120, 'Departure buffer & home lockup', 'logistics', 'Final luggage zip, lock house, travel to airport / terminal', undefined, 'milestone');
+    addMilestone(
+      'T-Return-1d', -1 * 24 * 60,
+      hasTravelModeEvidence ? 'Return trip prep & flight status check' : 'Return trip prep & wrap-up',
+      'logistics',
+      hasTravelModeEvidence ? 'Verify return flight status, pack return luggage, and plan hotel check-out' : 'Confirm return logistics and pack up before heading back',
+      returnBaseDate, 'milestone'
+    );
+    addMilestone(
+      'T-2h', -120,
+      'Departure buffer & home lockup',
+      'logistics',
+      hasTravelModeEvidence ? 'Final luggage zip, lock house, travel to airport / terminal' : 'Final checks, lock up, and head out with time to spare',
+      undefined, 'milestone'
+    );
     // Post-trip follow-up - the return flight isn't the last thing on this
     // list. A day after getting back, there's real work still outstanding:
     // unpacking/reimbursement for a personal trip, or an expense report and

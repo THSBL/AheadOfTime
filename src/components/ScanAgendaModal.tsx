@@ -29,8 +29,8 @@ import {
 import { CalendarEvent, EventCategory, TMinusMilestone, OnboardingProfile } from '../types';
 import { fetchGoogleCalendarEvents, fetchPrimaryCalendarProfile, GoogleCalendarProfile, GoogleCalendarEventItem } from '../services/googleCalendar';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, getStoredClientId, clearGoogleSession } from '../services/googleAuth';
-import { detectEventCategory, generateHeuristicMilestones, formatDisplayDate, getCleanEventTitle } from '../utils/tminusRules';
-import { deepRefineEventLocally } from '../utils/deepRefine';
+import { detectEventCategory, formatDisplayDate, getCleanEventTitle } from '../utils/tminusRules';
+import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { normalizeProfile } from '../data/samplePresets';
 import { getCurrentUser, loadUserEvents, setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
@@ -247,7 +247,15 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        const previewMilestones = deepRefineEventLocally(tempEvent);
+        const previewMilestones = generateDeterministicMilestones({
+          eventId: tempEvent.id,
+          title: tempEvent.title,
+          eventDate: tempEvent.eventDate,
+          eventTime: tempEvent.eventTime,
+          location: tempEvent.location,
+          category: tempEvent.category,
+          context: tempEvent.context,
+        });
 
         // Only track by default if it's actionable AND not already present in the dashboard
         const shouldTrackByDefault = !alreadyInDashboard && (isKidsPriority || !isRoutine) && diffDays >= 2;
@@ -393,7 +401,15 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       throw new Error('Empty milestone plan returned');
     } catch (e) {
       console.warn('Deep-refine import notice, using local engine:', e);
-      return deepRefineEventLocally(draft);
+      return generateDeterministicMilestones({
+        eventId: draft.id,
+        title: draft.title,
+        eventDate: draft.eventDate,
+        eventTime: draft.eventTime,
+        location: draft.location,
+        category: draft.category,
+        context: draft.context,
+      });
     }
   };
 

@@ -12,6 +12,7 @@ import {
   sanitizeSlotKey,
   formatTMinusLabel,
 } from '../src/utils/tminusRules.js';
+import { generateDeterministicMilestones } from '../src/utils/deterministicMilestoneGenerator.js';
 import {
   buildCandidateEventIndex,
   resolveTargetEvent,
@@ -725,51 +726,34 @@ export class GeminiCalendarAgent {
       summary = summary.charAt(0).toUpperCase() + summary.slice(1);
     }
 
-    // Calculate milestone dates relative to startDate
-    const startObj = new Date(`${startDateStr}T09:00:00Z`);
+    // Same category classifier the rest of the pipeline uses (also what
+    // buildAndStoreEvent would fall back to on its own if category were left
+    // unset) - replaces this engine's own ad hoc isTrip-or-not binary, which
+    // collapsed every non-trip message into a generic "dinner_social"
+    // template regardless of what it actually was.
+    const detectedCategory = detectEventCategory(summary, rawText);
 
-    const subtractDays = (d: Date, days: number): string => {
-      const res = new Date(d.getTime() - days * 86400000);
-      return res.toISOString().substring(0, 10);
-    };
-
-    const isTrip = Boolean(tripDecomposition) || /trip|highlands|cabin|vacation|flight|hotel|tour|camp/i.test(rawText);
-
-    const milestonesData = isTrip
-      ? [
-          {
-            milestone_title: 'Lodging & Transport Locked',
-            t_minus_days: 21,
-            target_date: subtractDays(startObj, 21),
-            deliverables: ['Book rental car / train passes', 'Reserve group stay / cabin'],
-          },
-          {
-            milestone_title: 'Headcount & Group Costs Settled',
-            t_minus_days: 14,
-            target_date: subtractDays(startObj, 14),
-            deliverables: ['Confirm headcount with all friends', 'Collect shared budget/expenses'],
-          },
-          {
-            milestone_title: 'Gear & Bags Packed',
-            t_minus_days: 2,
-            target_date: subtractDays(startObj, 2),
-            deliverables: ['Pack hiking boots & weather gear', 'Check offline trail maps'],
-          },
-        ]
-      : [
-          {
-            milestone_title: 'Invitations & RSVPs Finalized',
-            t_minus_days: 7,
-            target_date: subtractDays(startObj, 7),
-            deliverables: ['Send calendar invites', 'Confirm attendee headcount'],
-          },
-          {
-            milestone_title: 'Agenda & Materials Prepared',
-            t_minus_days: 2,
-            target_date: subtractDays(startObj, 2),
-            deliverables: ['Draft agenda notes', 'Prepare shared documents'],
-          },
-        ];
+    // Routes through the same deterministic engine every other fallback
+    // path uses (generateHeuristicMilestones's ~9-category logic) instead
+    // of this engine's own 2-item hardcoded template - previously this was
+    // the thinnest of the app's deterministic fallbacks, despite being the
+    // one real users hit most often when Gemini is unavailable.
+    const milestonesData = generateDeterministicMilestones({
+      eventId: 'pending',
+      title: summary,
+      eventDate: startDateStr,
+      eventTime: '09:00',
+      category: detectedCategory,
+      rawText,
+    }).map((m) => ({
+      milestone_title: m.title,
+      t_minus_days: Math.round(-m.tMinusOffsetMinutes / 1440),
+      target_date: m.calculatedDate.slice(0, 10),
+      // Discarded and re-derived from milestone_title by
+      // reconcileMilestoneDeliverables/attachDeliverablesToMilestones in
+      // buildAndStoreEvent - kept here only as a fallback for that re-derivation.
+      deliverables: (m.deliverables || []).map((d) => d.title),
+    }));
 
     return this.buildAndStoreEvent(
       chatId,
@@ -778,7 +762,7 @@ export class GeminiCalendarAgent {
         summary,
         start_date: startDateStr,
         end_date: endDateStr,
-        category: isTrip ? 'travel_trip' : 'dinner_social',
+        category: detectedCategory,
         description: rawText,
         milestones: milestonesData,
       },

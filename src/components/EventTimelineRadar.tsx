@@ -25,8 +25,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion } from '../types';
-import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, generateHeuristicMilestones, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
-import { deepRefineEventLocally } from '../utils/deepRefine';
+import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
+import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
@@ -186,7 +186,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         }
       }
       // Fallback local refiner
-      const localMilestones = deepRefineEventLocally(activeEvent);
+      const localMilestones = generateDeterministicMilestones({
+        eventId: activeEvent.id,
+        title: activeEvent.title,
+        eventDate: activeEvent.eventDate,
+        eventTime: activeEvent.eventTime,
+        location: activeEvent.location,
+        category: activeEvent.category,
+        context: activeEvent.context,
+      });
       onUpdateEvent({
         ...activeEvent,
         needsRefinement: false,
@@ -202,7 +210,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       });
     } catch (e) {
       console.warn('Deep refine fallback notice:', e);
-      const localMilestones = deepRefineEventLocally(activeEvent);
+      const localMilestones = generateDeterministicMilestones({
+        eventId: activeEvent.id,
+        title: activeEvent.title,
+        eventDate: activeEvent.eventDate,
+        eventTime: activeEvent.eventTime,
+        location: activeEvent.location,
+        category: activeEvent.category,
+        context: activeEvent.context,
+      });
       onUpdateEvent({
         ...activeEvent,
         needsRefinement: false,
@@ -334,12 +350,14 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     // or there's no GEMINI_API_KEY - never worse than before this change.
     const buildFallbackMilestones = (): TMinusMilestone[] => {
       if (!hasExistingMilestones) {
-        return generateHeuristicMilestones(
-          { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
-          activeEvent.id,
-          clarifyDate,
-          clarifyTime || '19:00'
-        );
+        return generateDeterministicMilestones({
+          eventId: activeEvent.id,
+          title: clarifyTitle,
+          eventDate: clarifyDate,
+          eventTime: clarifyTime || '19:00',
+          category: clarifyCategory,
+          context: activeEvent.context,
+        });
       }
       if (!categoryChanged) {
         return activeEvent.milestones.map((ms) => ({
@@ -353,12 +371,14 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       // rather than discarding them outright, same as every other fallback
       // path in the app. Previously this branch called generateHeuristicMilestones
       // alone and returned it directly, silently wiping the old list.
-      const freshForNewCategory = generateHeuristicMilestones(
-        { category: clarifyCategory, title: clarifyTitle, context: activeEvent.context },
-        activeEvent.id,
-        clarifyDate,
-        clarifyTime || '19:00'
-      );
+      const freshForNewCategory = generateDeterministicMilestones({
+        eventId: activeEvent.id,
+        title: clarifyTitle,
+        eventDate: clarifyDate,
+        eventTime: clarifyTime || '19:00',
+        category: clarifyCategory,
+        context: activeEvent.context,
+      });
       const merged = finalizeMilestonePlan(
         [...activeEvent.milestones, ...freshForNewCategory],
         { title: clarifyTitle, location: clarifyLocation }

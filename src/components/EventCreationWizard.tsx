@@ -43,11 +43,11 @@ import {
   CANONICAL_CATEGORIES,
   CATEGORY_REFINEMENT_QUESTIONS,
   classifySubmittedTitle,
-  generateConcreteEventMilestones,
   mapCanonicalCategoryToEventCategory,
 } from '../utils/creationStateMachine';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
 import { finalizeMilestonePlan, preserveCompletedMilestones } from '../utils/tminusRules';
+import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 
 // Looked up by each RefinementQuestion's iconKey (creationStateMachine.ts) -
 // gives every question card a distinct visual anchor instead of an
@@ -244,7 +244,13 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
     const internalCategory = mapCanonicalCategoryToEventCategory(selectedCategory);
 
     const buildFallbackFreshMilestones = (): TMinusMilestone[] =>
-      generateConcreteEventMilestones(title, targetDate, targetTime, selectedCategory, refinementAnswers, eventId);
+      generateDeterministicMilestones({
+        eventId,
+        title,
+        eventDate: targetDate,
+        eventTime: targetTime,
+        wizardChipAnswers: { canonicalCategory: selectedCategory, refinementAnswers },
+      });
 
     // Refining an existing event (opened via "Refine") used to always
     // regenerate from the category-question template alone, which has no

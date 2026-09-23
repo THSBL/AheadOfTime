@@ -301,6 +301,32 @@ describe('generateHeuristicMilestones', () => {
     expect(milestones.some((m) => /passport/i.test(m.title))).toBe(true);
   });
 
+  it('does not assume flights/hotel for a travel_trip event with no travel-mode evidence (e.g. a local event mis-tagged travel_trip)', () => {
+    // Regression test for a real bug caught via live testing: this branch
+    // previously generated "Flights, trains & hotel reservation lock" for
+    // ANY travel_trip category, purely from the label - a same-village
+    // soccer tournament with no location, destination, or travel keyword
+    // got a flight/hotel milestone it had no business getting.
+    const milestones = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Soccer Tournament Saturday', context: {} },
+      'evt-test-no-travel-evidence',
+      '2026-10-15',
+      '19:00'
+    );
+    expect(milestones.some((m) => /flight|hotel/i.test(m.title))).toBe(false);
+    expect(milestones.some((m) => /confirm venue, transport/i.test(m.title))).toBe(true);
+  });
+
+  it('still assumes flights/hotel once there is real travel-mode evidence (a location)', () => {
+    const milestones = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Weekend Trip', location: 'Lake District, UK', context: {} },
+      'evt-test-with-location',
+      '2026-10-15',
+      '19:00'
+    );
+    expect(milestones.some((m) => /flight|hotel/i.test(m.title))).toBe(true);
+  });
+
   it('generates a birthday-appropriate milestone set', () => {
     const milestones = generateHeuristicMilestones(
       { category: 'birthday_party', context: {} },

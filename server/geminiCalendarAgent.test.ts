@@ -14,6 +14,18 @@ vi.mock('@google/genai', () => {
   return { GoogleGenAI };
 });
 
+let recordedEvent: CalendarEvent | null = null;
+vi.mock('./telegramStore.js', () => ({
+  TelegramSessionStore: {
+    getPendingClarification: vi.fn().mockResolvedValue(null),
+    getOrCreateSession: vi.fn().mockResolvedValue({ lastCreatedEventId: undefined }),
+    getRecentEventsForChat: vi.fn().mockResolvedValue([]),
+    recordEventCreated: vi.fn().mockImplementation(async (_chatId: unknown, event: CalendarEvent) => {
+      recordedEvent = event;
+    }),
+  },
+}));
+
 import { reconcileMilestoneDeliverables, GeminiCalendarAgent } from './geminiCalendarAgent';
 import { TMinusMilestone, Deliverable, CalendarEvent } from '../src/types';
 
@@ -170,5 +182,34 @@ describe('GeminiCalendarAgent.refineEvent - completion preservation', () => {
 
     const flightsMilestone = result.mergedMilestones.find((m) => m.slotKey === 'flights_hotel');
     expect(flightsMilestone?.status).toBe('completed');
+  });
+});
+
+describe('GeminiCalendarAgent.processMessage - deterministic fallback (no Gemini key)', () => {
+  const OLD_ENV = process.env.GEMINI_API_KEY;
+  beforeEach(() => {
+    delete process.env.GEMINI_API_KEY;
+    recordedEvent = null;
+  });
+  afterEach(() => {
+    process.env.GEMINI_API_KEY = OLD_ENV;
+  });
+
+  it('routes through the shared deterministic engine instead of the old isTrip-or-dinner_social binary template', async () => {
+    // Regression coverage for the Phase 2 swap: intelligentNaturalLanguageEngine
+    // used to hardcode every non-trip message as category "dinner_social"
+    // with a 2-milestone template regardless of what it actually was.
+    await GeminiCalendarAgent.processMessage('chat-1', 'Dentist appointment next Tuesday');
+
+    expect(recordedEvent).not.toBeNull();
+    expect(recordedEvent!.category).not.toBe('dinner_social');
+    expect(recordedEvent!.milestones.length).toBeGreaterThan(0);
+  });
+
+  it('does not assume flights/hotel for a plain local event with no travel-mode evidence', async () => {
+    await GeminiCalendarAgent.processMessage('chat-2', 'Soccer tournament Saturday');
+
+    expect(recordedEvent).not.toBeNull();
+    expect(recordedEvent!.milestones.some((m) => /flight|hotel/i.test(m.title))).toBe(false);
   });
 });

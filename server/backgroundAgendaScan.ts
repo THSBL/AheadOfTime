@@ -14,7 +14,7 @@ import { TelegramService } from './telegramService.js';
 import { listTasksNeedingAttention } from './dailyDigestData.js';
 import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, type DailyUpdateModel } from './dailyUpdateTemplate.js';
 import { detectEventCategory } from '../src/utils/tminusRules.js';
-import { deepRefineEventLocally } from '../src/utils/deepRefine.js';
+import { generateDeterministicMilestones } from '../src/utils/deterministicMilestoneGenerator.js';
 import type { CalendarEvent } from '../src/types.js';
 
 /**
@@ -133,7 +133,15 @@ export function toCandidate(item: GoogleCalendarItem): ScanCandidate {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    steps = deepRefineEventLocally(tempEvent)
+    steps = generateDeterministicMilestones({
+      eventId: tempEvent.id,
+      title: tempEvent.title,
+      eventDate: tempEvent.eventDate,
+      eventTime: tempEvent.eventTime,
+      location: tempEvent.location,
+      category: tempEvent.category,
+      context: tempEvent.context,
+    })
       .map((m) => ({ date: m.calculatedDate.substring(0, 10), title: m.title }))
       .sort((a, b) => a.date.localeCompare(b.date));
   } catch {

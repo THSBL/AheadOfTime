@@ -64,7 +64,8 @@ import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clear
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { trackEventCreation, trackMilestoneToggle, trackAccountAction } from './services/analytics';
-import { detectEventCategory, generateHeuristicMilestones, getCleanEventTitle, sortEventsUpcomingFirst, preserveCompletedMilestones } from './utils/tminusRules';
+import { detectEventCategory, getCleanEventTitle, sortEventsUpcomingFirst, preserveCompletedMilestones } from './utils/tminusRules';
+import { generateDeterministicMilestones } from './utils/deterministicMilestoneGenerator';
 import { loadCustomPresets, saveCustomPresets, projectPresetToMilestones } from './utils/templateEngine';
 import { classifySubmittedTitle } from './utils/creationStateMachine';
 import {
@@ -1359,7 +1360,7 @@ function App() {
       title = getCleanEventTitle(title, category);
 
       const eventId = `evt-${Date.now()}`;
-      const milestones = generateHeuristicMilestones({ category, context: {} }, eventId, targetDate, targetTime);
+      const milestones = generateDeterministicMilestones({ eventId, title, eventDate: targetDate, eventTime: targetTime, category, context: {} });
 
       const fallbackEvent: CalendarEvent = {
         id: eventId,
