@@ -740,8 +740,20 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   // same priority slot in the fallback chain below, so a message with no
   // parseable date at all still falls through to existingEvent/refDateStr
   // exactly as before.
+  // Architecture reset - explicitMessageDate now comes FIRST, ahead of the
+  // model's own date fields, not just as a fallback for when they're
+  // absent. Confirmed live: "Plan surprise party 23 october" sometimes got
+  // back a confident but WRONG parsed.target_date from Gemini (e.g.
+  // "2026-09-25") - since the model's field was PRESENT, not missing, the
+  // previous fallback-only placement of explicitMessageDate never even got
+  // consulted, and the wrong AI date won outright. A month+day phrase this
+  // local parser can resolve deterministically from the user's own words is
+  // more trustworthy than a probabilistic field for something this
+  // unforgiving to get wrong. Gemini's own date fields remain the fallback
+  // for phrasing this regex-based parser can't handle at all (relative
+  // dates like "next Friday", "in three weeks").
   const explicitMessageDate = parseNaturalDateRange(params.message, params.currentReferenceDate)?.startDate;
-  const eventDate = structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || explicitMessageDate || existingEvent?.eventDate || params.refDateStr;
+  const eventDate = explicitMessageDate || structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || existingEvent?.eventDate || params.refDateStr;
   const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || existingEvent?.endDate || undefined;
   const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
 

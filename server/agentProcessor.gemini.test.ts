@@ -157,6 +157,32 @@ describe('processWithGemini - preserving existing milestones when the model omit
     expect(result.event.eventDate).toBe('2026-12-26');
   });
 
+  it('trusts a date explicitly named in the raw message over a WRONG target_date the model confidently returns', async () => {
+    // Regression test for a real, live-reported bug found right after the
+    // fix above shipped: "Plan surprise party 23 october" sometimes got
+    // back target_date: "2026-09-25" from the model - present, not
+    // missing, so the previous fallback-only placement of
+    // explicitMessageDate never got consulted and the wrong AI date won
+    // outright. explicitMessageDate must now be checked FIRST, not last.
+    mockResponseText = JSON.stringify({
+      mode: 'CREATE_AND_INTAKE',
+      target_event_id: 'NEW',
+      event_title: 'Surprise Party',
+      target_date: '2026-09-25', // wrong on purpose - simulates the observed bad model output
+      focus: 'Started planning the surprise party.',
+      addition: 'What else should I know?',
+    });
+
+    const result = await processWithGemini({
+      message: 'Plan surprise party 23 october',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      activeEvents: [],
+    });
+
+    expect(result.event.eventDate).toBe('2026-10-23');
+  });
+
   it('keeps the existing event title even when the model returns its own paraphrase alongside a refinement', async () => {
     // Regression test for a real, live-reported bug: correcting an existing
     // "Trip to Amsterdam" event with "no flights, we're going by train"
