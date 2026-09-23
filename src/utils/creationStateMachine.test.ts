@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateConcreteEventMilestones } from './creationStateMachine';
+import { generateConcreteEventMilestones, mapCanonicalCategoryToEventCategory, CanonicalCategory } from './creationStateMachine';
 
 // This is the milestone-generation path the main "Add New Event" wizard
 // actually calls (EventCreationWizard.tsx's handleBuildAndSave) - a
@@ -117,5 +117,31 @@ describe('generateConcreteEventMilestones - trip category actually reads its chi
     );
     const titles = allDeliverableTitles(milestones);
     expect(titles.some((t) => /passport/i.test(t))).toBe(true);
+  });
+});
+
+describe('mapCanonicalCategoryToEventCategory', () => {
+  const ALL_CANONICAL_CATEGORIES: CanonicalCategory[] = [
+    'party', 'friends_visiting', 'friends_family', 'hobbies', 'trip',
+    'kids_school', 'kids_hobbies', 'subscription', 'maintenance',
+    'project_management', 'work_projects',
+  ];
+
+  it('maps every canonical category to a defined event category (exhaustive, no silent fallback)', () => {
+    for (const cat of ALL_CANONICAL_CATEGORIES) {
+      expect(mapCanonicalCategoryToEventCategory(cat)).toBeTruthy();
+    }
+  });
+
+  it('maps the legacy friends_family/work_projects aliases the same as the categories they normalize to', () => {
+    expect(mapCanonicalCategoryToEventCategory('friends_family')).toBe(mapCanonicalCategoryToEventCategory('friends_visiting'));
+    expect(mapCanonicalCategoryToEventCategory('work_projects')).toBe(mapCanonicalCategoryToEventCategory('project_management'));
+  });
+
+  it('maps the common categories to their expected event category', () => {
+    expect(mapCanonicalCategoryToEventCategory('party')).toBe('birthday_party');
+    expect(mapCanonicalCategoryToEventCategory('trip')).toBe('travel_trip');
+    expect(mapCanonicalCategoryToEventCategory('friends_visiting')).toBe('hosting_visitors');
+    expect(mapCanonicalCategoryToEventCategory('project_management')).toBe('project_deadline');
   });
 });

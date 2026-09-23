@@ -98,6 +98,48 @@ export const CANONICAL_CATEGORIES: CategoryOption[] = [
   },
 ];
 
+/**
+ * Single, exhaustive mapping from the wizard's own chip-set taxonomy
+ * (CanonicalCategory) to the one taxonomy the planning pipeline actually
+ * persists and reasons about (EventCategory) - replaces the
+ * `CANONICAL_CATEGORIES.find(...).internalCategory` lookup that used to be
+ * repeated at each wizard call site with an unsafe silent fallback to
+ * 'birthday_party' whenever a category wasn't found in that array (true
+ * today for 'friends_family'/'work_projects', which classifySubmittedTitle
+ * never actually returns - they only ever arrive as legacy presetHint
+ * aliases that get normalized to 'friends_visiting'/'project_management'
+ * before classification returns - but are handled explicitly here so the
+ * mapping is exhaustive rather than silently wrong if that ever changes).
+ */
+export function mapCanonicalCategoryToEventCategory(category: CanonicalCategory): EventCategory {
+  switch (category) {
+    case 'party':
+      return 'birthday_party';
+    case 'friends_visiting':
+    case 'friends_family':
+      return 'hosting_visitors';
+    case 'hobbies':
+      return 'hobbies';
+    case 'trip':
+      return 'travel_trip';
+    case 'kids_school':
+      return 'kids_school';
+    case 'kids_hobbies':
+      return 'kids_hobbies';
+    case 'subscription':
+      return 'subscription';
+    case 'maintenance':
+      return 'maintenance';
+    case 'project_management':
+    case 'work_projects':
+      return 'project_deadline';
+    default: {
+      const _exhaustive: never = category;
+      return _exhaustive;
+    }
+  }
+}
+
 export interface RefinementQuestion {
   id: string;
   label: string;

@@ -44,6 +44,7 @@ import {
   CATEGORY_REFINEMENT_QUESTIONS,
   classifySubmittedTitle,
   generateConcreteEventMilestones,
+  mapCanonicalCategoryToEventCategory,
 } from '../utils/creationStateMachine';
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
 import { finalizeMilestonePlan, preserveCompletedMilestones } from '../utils/tminusRules';
@@ -240,8 +241,7 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
 
   const handleBuildAndSave = async () => {
     const eventId = initialEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const catDef = CANONICAL_CATEGORIES.find((c) => c.id === selectedCategory);
-    const internalCategory = catDef ? catDef.internalCategory : 'birthday_party';
+    const internalCategory = mapCanonicalCategoryToEventCategory(selectedCategory);
 
     const buildFallbackFreshMilestones = (): TMinusMilestone[] =>
       generateConcreteEventMilestones(title, targetDate, targetTime, selectedCategory, refinementAnswers, eventId);
@@ -376,7 +376,7 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
       // start range).
       endDate: initialEvent?.endDate && initialEvent.endDate > targetDate ? initialEvent.endDate : undefined,
       eventTime: targetTime,
-      category: catDef ? catDef.internalCategory : 'birthday_party',
+      category: internalCategory,
       location: location.trim() || undefined,
       status: 'milestones_active',
       userRole: initialEvent?.userRole || 'organiser',
