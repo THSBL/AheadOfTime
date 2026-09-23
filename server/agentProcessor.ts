@@ -852,7 +852,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         intakeQuestions = [
           {
             id: `q-${eventId}-1`,
-            question: "What gift strategy are you planning?",
+            question: "How would you like to handle the gift?",
             parameterKey: "giftType",
             options: [
               { label: "Group Gift", value: "group", description: "T-30d money pool rally + T-10d purchase" },
@@ -1417,7 +1417,7 @@ export function processWithDeterministicRules(params: {
         }
       ];
       focusText = `I created the event "${title}" on ${eventDate} at ${eventTime}.`;
-      additionText = `Please select your gift strategy and costume requirements below.`;
+      additionText = `Please select your gift plan and costume requirements below.`;
     } else if (category === "hosting_visitors") {
       intakeQuestions = [
         {

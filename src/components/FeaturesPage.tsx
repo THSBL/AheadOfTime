@@ -118,7 +118,7 @@ export const FeaturesPage: React.FC = () => {
               </div>
               <div>
                 <h4 className="font-semibold text-white text-sm">Answer Key Parameter Questions</h4>
-                <p className="text-xs text-slate-400 mt-1">Select gift strategy, costume theme, or dining plans via multiple-choice intake chips.</p>
+                <p className="text-xs text-slate-400 mt-1">Select gift plans, costume theme, or dining plans via multiple-choice intake chips.</p>
               </div>
             </div>
 

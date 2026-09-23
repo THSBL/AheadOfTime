@@ -12,8 +12,9 @@ import {
   MapPin, 
   ArrowRight, 
   ArrowLeft,
-  ChevronRight, 
-  CalendarX, 
+  ChevronRight,
+  ChevronDown,
+  CalendarX,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
@@ -147,6 +148,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // message that vanishes the moment you reply to it.
   const [correctionExchanges, setCorrectionExchanges] = useState<{ text: string; isUser: boolean }[]>([]);
   const [pendingSuggestion, setPendingSuggestion] = useState<IntakeQuestion | null>(null);
+  // Collapsed by default - a user happy with the already-balanced plan
+  // should see one compact box, not every open question forced on them.
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
 
@@ -648,6 +652,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const totalCount = rawMilestones.filter((m) => m.status !== 'skipped').length;
   const hasMicroTasks = rawMilestones.some((m) => m.scope === 'micro');
   const microCount = rawMilestones.filter((m) => m.scope === 'micro').length;
+  // One combined count for the "N suggestions from us" toggle: the AI's own
+  // one-off proactive follow-up plus every still-open decision.
+  const suggestionCount = (pendingSuggestion ? 1 : 0) + (activeEvent.outstandingGaps?.length || 0);
   const macroCount = totalCount - microCount;
 
   const displayedMilestones = rawMilestones.filter((ms) => {
@@ -1324,7 +1331,13 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         {/* Freeform correction box: spotted something wrong or missing?
             Type it instead of hand-editing each task - this goes through
             the same conversational engine and quality guardrails as chat
-            or Telegram, targeting this specific event. */}
+            or Telegram, targeting this specific event. Its own one-off
+            proactive follow-up (pendingSuggestion) and every still-open
+            decision (outstandingGaps, architecture reset Phase 8) are
+            folded into one collapsible "N suggestions from us" toggle
+            below it, collapsed by default - previously two separate
+            always-visible boxes, which crowded the page even when the
+            user was happy with the already-balanced plan. */}
         {onUpdateEvent && (
           <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3 shadow-2xs space-y-2">
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
@@ -1379,61 +1392,70 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 ))}
               </div>
             )}
-            {!isSendingCorrection && pendingSuggestion && (
-              <div className="pt-1 space-y-1.5">
-                <p className="text-[11px] font-bold text-amber-800">{pendingSuggestion.question}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {(pendingSuggestion.options || []).map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleAnswerSuggestion(opt.label)}
-                      className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 transition-all cursor-pointer"
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+            {!isSendingCorrection && suggestionCount > 0 && (
+              <div className="pt-1 border-t border-amber-100/80">
+                <button
+                  type="button"
+                  onClick={() => setShowSuggestions((v) => !v)}
+                  aria-expanded={showSuggestions}
+                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{suggestionCount} suggestion{suggestionCount > 1 ? 's' : ''} from us</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSuggestions ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showSuggestions && (
+                  <div className="mt-1 space-y-3">
+                    {pendingSuggestion && (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-bold text-amber-800">{pendingSuggestion.question}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(pendingSuggestion.options || []).map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => handleAnswerSuggestion(opt.label)}
+                              className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 transition-all cursor-pointer"
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Open Decisions - architecture reset Phase 8. Everything
+                        still genuinely undecided on this event (role gap or
+                        any milestone/deliverable flagged needsRefinement),
+                        recomputed fresh every turn so nothing sits silently
+                        unanswered forever. Folded into this one collapsible
+                        panel (rather than its own always-visible banner) so
+                        a user happy with the plan sees one compact box. */}
+                    {(activeEvent.outstandingGaps || []).map((gap) => (
+                      <div key={gap.key} className="space-y-1.5">
+                        <p className="text-[11px] font-bold text-indigo-900">{gap.question}</p>
+                        {gap.options && gap.options.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {gap.options.map((opt) => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => handleSendCorrection(opt)}
+                                className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 transition-all cursor-pointer"
+                              >
+                                {opt}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-indigo-700">Answer above to resolve this.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Open Decisions - architecture reset Phase 8. Everything still
-            genuinely undecided on this event (role gap + any milestone/
-            deliverable flagged needsRefinement), recomputed fresh every
-            turn so nothing sits silently unanswered forever. Sits right
-            above Add Task too, so it's visible on the way to adding one. */}
-        {onUpdateEvent && activeEvent.outstandingGaps && activeEvent.outstandingGaps.length > 0 && (
-          <div className="bg-indigo-50/60 border border-indigo-200/70 rounded-2xl p-3 shadow-2xs space-y-2">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-              <HelpCircle className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <span>Open Decisions ({activeEvent.outstandingGaps.length})</span>
-            </div>
-            <div className="space-y-2">
-              {activeEvent.outstandingGaps.map((gap) => (
-                <div key={gap.key} className="space-y-1">
-                  <p className="text-[11px] font-bold text-indigo-900">{gap.question}</p>
-                  {gap.options && gap.options.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {gap.options.map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          disabled={isSendingCorrection}
-                          onClick={() => handleSendCorrection(opt)}
-                          className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 transition-all cursor-pointer disabled:opacity-40"
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-indigo-700">Answer above to resolve this.</p>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
