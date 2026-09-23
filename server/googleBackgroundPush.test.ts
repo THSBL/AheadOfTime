@@ -94,6 +94,26 @@ describe('pushEventToGoogleInBackground', () => {
     expect(urls.filter((u) => u.includes('tasks/v1'))).toHaveLength(1);
   });
 
+  it('never pushes a milestone hidden by a preparation-level downgrade (architecture reset Phase 9)', async () => {
+    getEventMock.mockResolvedValue(
+      makeEvent({
+        milestones: [
+          { id: 'm1', title: 'Book train', tMinusLabel: 'T-30d', calculatedDate: '2027-03-10', status: 'pending' },
+          { id: 'm2', title: 'Book hotel', tMinusLabel: 'T-21d', calculatedDate: '2027-03-20', status: 'pending', isActive: false },
+        ],
+      })
+    );
+    const result = await pushEventToGoogleInBackground('evt-1');
+
+    expect(result).toMatchObject({ tasksCreated: 1 });
+    const taskUrls = fetchMock.mock.calls.filter(([u]) => String(u).includes('tasks/v1'));
+    expect(taskUrls).toHaveLength(1);
+    const taskBody = JSON.parse(taskUrls[0][1].body);
+    expect(taskBody.title).toContain('Book train');
+    expect(writes('SET google_task_id')).toHaveLength(1);
+    expect(writes('SET google_task_id')[0][1]).toEqual(['m1', 'task-2']);
+  });
+
   it('skips silently when the owner never linked Background Sync (or it was revoked)', async () => {
     getValidAccessTokenMock.mockResolvedValue(null);
     const result = await pushEventToGoogleInBackground('evt-1');

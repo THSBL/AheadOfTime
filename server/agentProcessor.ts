@@ -30,6 +30,7 @@ import {
   computePlanningContextVersion,
   extractLockedFacts,
   detectDeclineFacts,
+  findLockedFactViolations,
 } from "../src/utils/planningContext.js";
 import {
   SHARED_PLANNING_RULES,
@@ -114,9 +115,10 @@ function resolvePlanningContext(
  * "decline_", set by resolvePlanningContext/detectDeclineFacts) - the
  * failure mode both SHARED_PLANNING_RULES's own "explicit decline" rule
  * and the LOCKED FACTS prompt block target, but a model can still slip
- * past a prompt rule. Narrow, keyword-based first pass (same tunable-not-
- * exhaustive status as Phase 3's role-inference heuristics) - logs a
- * locked_fact_violation quality signal whenever it actually removes
+ * past a prompt rule. The actual matching logic lives in
+ * findLockedFactViolations (shared with geminiCalendarAgent.ts's own
+ * repair wrapper) - this is just the web-channel logging around it. Logs
+ * a locked_fact_violation quality signal whenever it actually removes
  * something, so drift stays visible rather than silently self-healing.
  */
 function repairLockedFactViolations(
@@ -124,23 +126,7 @@ function repairLockedFactViolations(
   lockedFacts: Record<string, unknown>,
   rawUserMessage: string
 ): TMinusMilestone[] {
-  const declineTerms = Object.keys(lockedFacts)
-    .filter((k) => k.startsWith('decline_'))
-    .map((k) => k.slice('decline_'.length).replace(/_/g, ' ').trim())
-    .filter((term) => term.length >= 3);
-  if (declineTerms.length === 0) return milestones;
-
-  const violating: TMinusMilestone[] = [];
-  const kept = milestones.filter((m) => {
-    // Never revert/remove a milestone the user already completed, same
-    // rule SHARED_PLANNING_RULES and preserveCompletedMilestones apply -
-    // a decline stated AFTER the user finished the task doesn't undo it.
-    if (m.status === 'completed') return true;
-    const haystack = `${m.title} ${m.description || ''}`.toLowerCase();
-    const hit = declineTerms.some((term) => haystack.includes(term));
-    if (hit) violating.push(m);
-    return !hit;
-  });
+  const { kept, violating } = findLockedFactViolations(milestones, lockedFacts);
 
   if (violating.length > 0) {
     // Fire-and-forget, matches the convention used elsewhere in this file -

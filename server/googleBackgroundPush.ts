@@ -141,7 +141,10 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
       }
     }
 
-    const pending = (event.milestones || []).filter((m) => !m.googleTaskId);
+    // A milestone hidden by a preparation-level downgrade (architecture
+    // reset Phase 6, isActive/hiddenReason) is never auto-pushed either -
+    // same rule the browser's manual "Push to Cal" path follows.
+    const pending = (event.milestones || []).filter((m) => !m.googleTaskId && m.isActive !== false);
     for (let i = 0; i < pending.length; i += TASK_CONCURRENCY) {
       const batch = pending.slice(i, i + TASK_CONCURRENCY);
       const ids = await Promise.all(

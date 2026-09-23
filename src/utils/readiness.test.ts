@@ -85,6 +85,24 @@ describe('computeAheadStatus', () => {
     expect(status.level).toBe('ready');
   });
 
+  it('excludes a milestone hidden by a preparation-level downgrade (architecture reset Phase 9) from the total and the overdue check', () => {
+    const event = makeEvent([
+      makeMilestone({ status: 'completed' }),
+      makeMilestone({
+        id: 'ms-2',
+        category: 'booking',
+        scope: 'macro',
+        calculatedDate: '2026-09-01',
+        status: 'pending',
+        isActive: false,
+      }),
+    ]);
+    const status = computeAheadStatus(event, REF_DATE_ISO);
+    expect(status.totalCount).toBe(1);
+    expect(status.overdueCount).toBe(0);
+    expect(status.level).toBe('ready');
+  });
+
   it('reports at_risk when an overdue action is critical', () => {
     const event = makeEvent([
       makeMilestone({ category: 'booking', scope: 'macro', calculatedDate: '2026-09-01', status: 'pending' }),

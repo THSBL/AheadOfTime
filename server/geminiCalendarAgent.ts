@@ -18,6 +18,7 @@ import {
   computePlanningContextVersion,
   extractLockedFacts,
   detectDeclineFacts,
+  findLockedFactViolations,
 } from '../src/utils/planningContext.js';
 import type { PlanningContextEntry } from '../src/types.js';
 import {
@@ -36,7 +37,10 @@ import { logQualityEvent } from './qualityStore.js';
  * closes the concrete failure mode the plan calls out: a locked decline
  * from event creation (or a prior refinement) silently reappearing on a
  * later refinement turn. Milestones already on the event are never
- * touched - only newly-added ones from this turn are checked.
+ * touched - only newly-added ones from this turn are checked. The actual
+ * matching logic lives in findLockedFactViolations (shared with
+ * agentProcessor.ts's own repair wrapper) - this is just the
+ * Telegram-channel logging around it.
  */
 function repairLockedFactViolations(
   newMilestones: TMinusMilestone[],
@@ -44,20 +48,7 @@ function repairLockedFactViolations(
   eventId: string,
   rawUserMessage: string
 ): TMinusMilestone[] {
-  const declineTerms = Object.keys(lockedFacts)
-    .filter((k) => k.startsWith('decline_'))
-    .map((k) => k.slice('decline_'.length).replace(/_/g, ' ').trim())
-    .filter((term) => term.length >= 3);
-  if (declineTerms.length === 0) return newMilestones;
-
-  const violating: TMinusMilestone[] = [];
-  const kept = newMilestones.filter((m) => {
-    if (m.status === 'completed') return true;
-    const haystack = `${m.title} ${m.description || ''}`.toLowerCase();
-    const hit = declineTerms.some((term) => haystack.includes(term));
-    if (hit) violating.push(m);
-    return !hit;
-  });
+  const { kept, violating } = findLockedFactViolations(newMilestones, lockedFacts);
 
   if (violating.length > 0) {
     logQualityEvent({

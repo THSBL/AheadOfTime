@@ -261,7 +261,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const isSelected = selectedEventId === evt.id;
             const isCheckedForBulk = selectedEventIds.includes(evt.id);
             const countdown = getCountdownStatus(evt.eventDate, currentReferenceDate);
-            const pendingTasks = evt.milestones?.filter((m) => m.status !== 'completed') || [];
+            const pendingTasks = evt.milestones?.filter((m) => m.status !== 'completed' && m.isActive !== false) || [];
             const nextTask = pendingTasks[0];
 
             const displayTitle = getCleanEventTitle(evt.title, evt.category, evt.context);

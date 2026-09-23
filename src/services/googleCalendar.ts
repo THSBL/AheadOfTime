@@ -495,7 +495,10 @@ export async function syncEventToGoogleCalendar(
   const updatedMilestones: TMinusMilestone[] = [];
 
   if (event.milestones && event.milestones.length > 0) {
-    for (const milestone of event.milestones) {
+    // A milestone hidden by a preparation-level downgrade (architecture
+    // reset Phase 6, isActive/hiddenReason) is never pushed to the user's
+    // real Google Calendar/Tasks - they deliberately hid it.
+    for (const milestone of event.milestones.filter((m) => m.isActive !== false)) {
       const msDateOnly = extractDateOnly(milestone.calculatedDate);
       let msCalId: string | undefined = milestone.googleCalendarEventId;
       let msTaskId: string | undefined = milestone.googleTaskId;

@@ -222,9 +222,9 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
           </div>
         </div>
 
-        {event.milestones && event.milestones.length > 0 ? (
+        {event.milestones && event.milestones.filter((ms) => ms.isActive !== false).length > 0 ? (
           <div className="space-y-2">
-            {event.milestones.map((ms) => {
+            {event.milestones.filter((ms) => ms.isActive !== false).map((ms) => {
               const isCompleted = ms.status === 'completed';
               const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
               const isOverdue = !isCompleted && msCountdown.isOverdue;

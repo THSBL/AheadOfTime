@@ -124,6 +124,46 @@ export interface DeclineFact {
   term: string;
 }
 
+type MilestoneLike = { title: string; description?: string; status?: string };
+
+export interface LockedFactViolationCheck<M> {
+  kept: M[];
+  violating: M[];
+}
+
+/**
+ * Architecture reset Phase 9 - the filtering core shared by both engines'
+ * repairLockedFactViolations (server/agentProcessor.ts,
+ * server/geminiCalendarAgent.ts). Previously each channel carried its own
+ * copy-pasted version of this exact filter; only the surrounding
+ * logQualityEvent call (which sourceChannel, whether an eventId is
+ * available) is genuinely channel-specific, so that part stays local to
+ * each file while the actual matching logic lives here once. Never strips
+ * a `completed` milestone - a decline stated after the user already
+ * finished that task doesn't undo it, same rule preserveCompletedMilestones
+ * applies elsewhere.
+ */
+export function findLockedFactViolations<M extends MilestoneLike>(
+  milestones: M[],
+  lockedFacts: Record<string, unknown>
+): LockedFactViolationCheck<M> {
+  const declineTerms = Object.keys(lockedFacts)
+    .filter((k) => k.startsWith('decline_'))
+    .map((k) => k.slice('decline_'.length).replace(/_/g, ' ').trim())
+    .filter((term) => term.length >= 3);
+  if (declineTerms.length === 0) return { kept: milestones, violating: [] };
+
+  const violating: M[] = [];
+  const kept = milestones.filter((m) => {
+    if (m.status === 'completed') return true;
+    const haystack = `${m.title} ${m.description || ''}`.toLowerCase();
+    const hit = declineTerms.some((term) => haystack.includes(term));
+    if (hit) violating.push(m);
+    return !hit;
+  });
+  return { kept, violating };
+}
+
 /**
  * Scans raw user text for an explicit decline and returns the planning-
  * context keys/terms it implies. Each is registered under a stable

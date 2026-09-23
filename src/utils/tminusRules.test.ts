@@ -14,7 +14,10 @@ import {
   preserveCompletedMilestones,
   formatTMinusLabel,
   validateMilestoneChronology,
+  generateICSContent,
+  formatMessagingSummary,
 } from './tminusRules';
+import type { CalendarEvent } from '../types';
 
 describe('formatTMinusLabel', () => {
   it('labels days before the event as T-Nd and days after it as Day +N', () => {
@@ -931,5 +934,55 @@ describe('validateMilestoneChronology', () => {
     // 10 days after eventDate but only 6 after the real endDate - still fine.
     const anomalies = validateMilestoneChronology(multiDayEvent, [makeMilestone('2026-11-11')]);
     expect(anomalies).toEqual([]);
+  });
+});
+
+describe('generateICSContent / formatMessagingSummary - respect isActive (architecture reset Phase 9)', () => {
+  function makeEvent(milestones: TMinusMilestone[]): CalendarEvent {
+    return {
+      id: 'evt-1',
+      title: 'Maya\'s birthday party',
+      category: 'birthday_party',
+      eventDate: '2026-11-20',
+      eventTime: '19:00',
+      status: 'milestones_active',
+      context: {},
+      milestones,
+      createdAt: '2026-09-23T00:00:00.000Z',
+      updatedAt: '2026-09-23T00:00:00.000Z',
+    };
+  }
+
+  function makeMs(id: string, title: string, isActive?: boolean): TMinusMilestone {
+    return {
+      id,
+      eventId: 'evt-1',
+      tMinusLabel: 'T-7d',
+      tMinusOffsetMinutes: -10080,
+      calculatedDate: '2026-11-13T19:00:00.000Z',
+      title,
+      category: 'prep',
+      status: 'pending',
+      isActive,
+    };
+  }
+
+  it('generateICSContent excludes a milestone hidden by a preparation-level downgrade', () => {
+    const event = makeEvent([makeMs('a', 'Visible Task', true), makeMs('b', 'Hidden Task', false)]);
+    const ics = generateICSContent(event);
+    expect(ics).toContain('Visible Task');
+    expect(ics).not.toContain('Hidden Task');
+  });
+
+  it('generateICSContent still includes a milestone with isActive left undefined (pre-Phase-6 data)', () => {
+    const event = makeEvent([makeMs('a', 'Legacy Task')]);
+    expect(generateICSContent(event)).toContain('Legacy Task');
+  });
+
+  it('formatMessagingSummary excludes a milestone hidden by a preparation-level downgrade', () => {
+    const event = makeEvent([makeMs('a', 'Visible Task', true), makeMs('b', 'Hidden Task', false)]);
+    const summary = formatMessagingSummary(event);
+    expect(summary).toContain('Visible Task');
+    expect(summary).not.toContain('Hidden Task');
   });
 });

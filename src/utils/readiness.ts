@@ -79,10 +79,13 @@ export function inferMilestoneImportance(milestone: TMinusMilestone): ActionImpo
 /**
  * Skipped milestones (e.g. the linked Google Task was deleted) are no
  * longer outstanding actions - excluded the same way EventTimelineRadar
- * excludes them from its progress count.
+ * excludes them from its progress count. A milestone hidden by a
+ * preparation-level downgrade (architecture reset Phase 6, isActive) is
+ * excluded for the same reason - readiness/"Next Best Action" shouldn't
+ * surface something the user just hid.
  */
 function actionableMilestones(milestones: TMinusMilestone[] | undefined): TMinusMilestone[] {
-  return (milestones || []).filter((m) => m.status !== 'skipped');
+  return (milestones || []).filter((m) => m.status !== 'skipped' && m.isActive !== false);
 }
 
 export function computeAheadStatus(event: CalendarEvent, referenceDateISO: string): AheadStatus {

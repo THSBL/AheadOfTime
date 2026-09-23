@@ -2045,8 +2045,11 @@ export function generateICSContent(event: CalendarEvent): string {
   ics.push('STATUS:CONFIRMED');
   ics.push('END:VEVENT');
 
-  // Milestone Events
-  (event.milestones || []).forEach((ms) => {
+  // Milestone Events - a milestone hidden by a preparation-level downgrade
+  // (architecture reset Phase 6, isActive/hiddenReason) is never exported;
+  // the user deliberately hid it, so it shouldn't reappear as a real
+  // calendar event/reminder outside the app.
+  (event.milestones || []).filter((ms) => ms.isActive !== false).forEach((ms) => {
     const msStart = ms.calculatedDate;
     const msEnd = calculateOffsetDate(
       ms.calculatedDate.substring(0, 10),
@@ -2094,7 +2097,10 @@ export function formatMessagingSummary(event: CalendarEvent): string {
   lines.push('');
   lines.push(`⏳ *REVERSE-ENGINEERED T-MINUS TIMELINE:*`);
   
-  const milestones = event.milestones || [];
+  // Same isActive exclusion generateICSContent applies just above - a
+  // milestone hidden by a preparation-level downgrade shouldn't show up in
+  // a shared WhatsApp/Telegram summary either.
+  const milestones = (event.milestones || []).filter((ms) => ms.isActive !== false);
   if (milestones.length === 0) {
     if (event.watchpoint) {
       lines.push(`🔍 *Watchpoint Active:* ${event.watchpoint.expectedAction}`);
