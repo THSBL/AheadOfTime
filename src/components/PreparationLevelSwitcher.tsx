@@ -17,9 +17,9 @@ const LEVEL_LABEL: Record<PreparationLevel, string> = {
 };
 
 const LEVEL_TAGLINE: Record<PreparationLevel, string> = {
-  essentials: 'Core milestones only.',
-  balanced: 'Key steps and logistics.',
-  extensive: 'Granular tasks and contingencies.',
+  essentials: "Core milestones only. Perfect for when you're just on the guest list.",
+  balanced: 'Key steps and logistics. Ideal for events where you own the execution.',
+  extensive: 'Granular tasks and contingencies. Built for complex, high-stakes planning.',
 };
 
 const LEVELS: PreparationLevel[] = ['essentials', 'balanced', 'extensive'];
@@ -75,6 +75,7 @@ export const PreparationLevelSwitcher: React.FC<PreparationLevelSwitcherProps> =
 
       {showInfo && (
         <p className="mt-1.5 text-[11px] text-slate-600 leading-relaxed max-w-md">
+          <span className="font-semibold text-slate-700">{LEVEL_TAGLINE[level]}</span>{' '}
           {reasons.length > 0 ? reasons.join(' ') : 'Based on your role in this event and what it actually requires.'}
           {setBy === 'user' && ' You set this level yourself, so it stays until you change it.'}
         </p>
