@@ -16,6 +16,21 @@ export type EventCategory =
   | 'kids_hobbies'
   | 'custom';
 
+// Architecture reset: preparation level is an AOT-owned, deterministic
+// property of an event, not a Gemini judgment call - see
+// src/utils/preparationAssessment.ts. Deliberately distinct names from
+// AheadLevel/SimpleAheadLevel (src/utils/readiness.ts) - those describe
+// deadline proximity (how close/late a task is), an unrelated concept.
+export type PreparationLevel = 'essentials' | 'balanced' | 'extensive';
+
+// What the user is actually responsible for in this event - the primary
+// driver of PreparationLevel, per "preparation level = what the event
+// requires x what the user is responsible for" (never event type alone).
+// 'unknown' only occurs for a category where role genuinely changes the
+// plan and no signal (explicit statement, or a later answered question)
+// has resolved it yet.
+export type UserResponsibility = 'independent' | 'co_responsible' | 'primary_organizer' | 'unknown';
+
 export type MilestoneCategory = 
   | 'logistics' 
   | 'gift' 
