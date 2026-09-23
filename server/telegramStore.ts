@@ -820,25 +820,33 @@ export class TelegramSessionStore {
     return rows[0]?.id;
   }
 
+  /**
+   * Architecture reset Phase 5: routes through the same sanitize+upsert
+   * path recordEventCreated now uses, instead of an even-thinner raw
+   * INSERT (previously missing deliverables entirely, on top of every gap
+   * recordEventCreated had). persistComputedPlan's underlying sync
+   * semantics treat the incoming milestone list as the COMPLETE set for
+   * the event (anything missing gets deleted as "no longer present"), so
+   * this fetches the event's current full list and sends existing+new
+   * together - this method's own append-only contract (callers pass only
+   * the new milestones) is unchanged.
+   */
   public static async addMilestonesToEvent(eventId: string, milestones: TMinusMilestone[]): Promise<void> {
     const eventUuid = await this.resolveEventUuid(eventId);
     if (!eventUuid) return;
-    for (const m of milestones) {
-      await query(
-        `INSERT INTO milestones (event_id, title, description, category, calculated_date, status, kind)
-         VALUES ($1, $2, $3, $4, $5, 'pending', 'milestone')`,
-        [eventUuid, m.title, m.description || '', m.category || 'prep', m.calculatedDate]
-      );
-    }
-    // The plan changed on the server: make it the newest copy so another
-    // device's older push can't silently drop these additions.
-    await query(
-      `UPDATE events
-          SET updated_at = now(),
-              client_updated_at = CASE WHEN client_updated_at IS NULL THEN NULL ELSE GREATEST(client_updated_at, now()) END
-        WHERE id = $1`,
-      [eventUuid]
-    );
+    const ownerRows = await query<{ user_id: string }>(`SELECT user_id FROM events WHERE id = $1`, [eventUuid]);
+    const ownerUserId = ownerRows[0]?.user_id;
+    if (!ownerUserId) return;
+
+    const existingEvent = await this.getEvent(eventUuid);
+    if (!existingEvent) return;
+
+    const { persistComputedPlan } = await import('./planning/persistComputedPlan.js');
+    await persistComputedPlan({
+      userId: ownerUserId,
+      event: { ...existingEvent, milestones: [...existingEvent.milestones, ...milestones] },
+      sourceChannel: 'telegram',
+    });
   }
 
   public static async recordEventCreated(chatId: number | string, event: CalendarEvent): Promise<void> {
@@ -864,61 +872,42 @@ export class TelegramSessionStore {
       context.creatorEmail = session.webUserEmail;
     }
 
-    const insertedEvent = await query<{ id: string }>(
-      `INSERT INTO events (user_id, title, category, event_date, end_date, event_time, location, status, source_channel, context, structured_payload, raw_input, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'telegram', $9, $10, $11, now(), now())
-       RETURNING id`,
-      [
-        ownerUserId,
-        event.title,
-        event.category,
-        event.eventDate,
-        event.endDate || null,
-        event.eventTime || null,
-        event.location || null,
-        event.status,
-        JSON.stringify(context),
-        event.structuredPayload ? JSON.stringify(event.structuredPayload) : null,
-        event.rawInputSnippet || null,
-      ]
-    );
-    const eventId = insertedEvent[0].id;
-
-    for (const milestone of event.milestones || []) {
-      await query(
-        `INSERT INTO milestones (event_id, title, description, category, calculated_date, status, kind, deliverables)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          eventId,
-          milestone.title,
-          milestone.description || null,
-          milestone.category || null,
-          milestone.calculatedDate,
-          milestone.status || 'pending',
-          milestone.kind || 'milestone',
-          JSON.stringify(milestone.deliverables || []),
-        ]
-      );
+    // Architecture reset Phase 5: the same sanitize+upsert path the web
+    // multi-device sync uses, instead of a thinner Telegram-only INSERT
+    // that dropped slotKey/scope/tag/source and every Phase 4
+    // preparation-level field until a later web sync backfilled them. The
+    // event's own pre-assigned id (e.g. "evt_...", set by whichever caller
+    // built this CalendarEvent before persisting it) becomes its client_id,
+    // exactly like a web-generated id - resolvable by either value
+    // afterwards via resolveEventUuid.
+    const { persistComputedPlan } = await import('./planning/persistComputedPlan.js');
+    const { eventUuid } = await persistComputedPlan({
+      userId: ownerUserId,
+      event: { ...event, context },
+      sourceChannel: 'telegram',
+    });
+    if (!eventUuid) {
+      throw new Error(`recordEventCreated: failed to persist event for chat ${chatId}`);
     }
 
     // Reflect the DB-assigned id back onto the caller's object so downstream
     // code (e.g. the Telegram callback buttons keyed on event.id) refers to
     // the same id we can look back up.
-    event.id = eventId;
+    event.id = eventUuid;
     for (const milestone of event.milestones || []) {
-      milestone.eventId = eventId;
+      milestone.eventId = eventUuid;
     }
     event.context = context;
 
-    const eventsCreated = Array.from(new Set([...(session.eventsCreated || []), eventId]));
+    const eventsCreated = Array.from(new Set([...(session.eventsCreated || []), eventUuid]));
     await query(
       `UPDATE integration_accounts
        SET metadata = jsonb_set(jsonb_set(metadata, '{eventsCreated}', $2::jsonb, true), '{lastCreatedEventId}', $3::jsonb, true)
        WHERE channel = 'telegram' AND external_id = $1`,
-      [String(chatId), JSON.stringify(eventsCreated), JSON.stringify(eventId)]
+      [String(chatId), JSON.stringify(eventsCreated), JSON.stringify(eventUuid)]
     );
 
-    console.log(`💾 Recorded event ${eventId} ("${event.title}") for chat ${chatId}.`);
+    console.log(`💾 Recorded event ${eventUuid} ("${event.title}") for chat ${chatId}.`);
   }
 
   /**

@@ -9,7 +9,11 @@ export type QualitySignalType =
   | 'empty_plan_returned'
   | 'rapid_correction'
   | 'plan_generated'
-  | 'plan_refined';
+  | 'plan_refined'
+  // "AOT VALIDATES" (architecture reset Phase 5) - a milestone's calculated
+  // date was unparseable or absurdly far past its event, logged as a
+  // non-blocking signal rather than rejecting the write.
+  | 'milestone_chronology_anomaly';
 
 export type QualitySeverity = 'low' | 'medium' | 'high';
 
