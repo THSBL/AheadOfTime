@@ -9,6 +9,7 @@ const isEmailConfiguredMock = vi.fn();
 const recordFindingsMock = vi.fn();
 const markFindingsNotifiedMock = vi.fn();
 const listTasksMock = vi.fn();
+const listOpenDecisionsMock = vi.fn();
 
 vi.mock('./db.js', () => ({ query: (...args: unknown[]) => queryMock(...args) }));
 vi.mock('./googleOAuthTokenStore.js', async () => {
@@ -32,6 +33,7 @@ vi.mock('./emailService.js', () => ({
 }));
 vi.mock('./dailyDigestData.js', () => ({
   listTasksNeedingAttention: (...args: unknown[]) => listTasksMock(...args),
+  listOpenDecisions: (...args: unknown[]) => listOpenDecisionsMock(...args),
 }));
 vi.mock('./agendaFindingsStore.js', () => ({
   recordFindings: (...args: unknown[]) => recordFindingsMock(...args),
@@ -127,6 +129,7 @@ describe('runBackgroundAgendaScan', () => {
     sendMessageMock.mockResolvedValue({ ok: true });
     sendEmailMock.mockResolvedValue({ ok: true });
     listTasksMock.mockResolvedValue({ overdue: [], dueThisWeek: [] });
+    listOpenDecisionsMock.mockResolvedValue([]);
     isEmailConfiguredMock.mockReturnValue(true);
     fetchMock.mockResolvedValue({
       ok: true,

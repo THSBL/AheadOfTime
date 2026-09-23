@@ -6,6 +6,7 @@
  *
  *   ⚠️ Needs attention   overdue tasks
  *   📌 This week          tasks due in the next 7 days
+ *   ❓ Open decisions     still-unanswered choices (architecture reset Phase 8)
  *   📅 New on calendar    events added since the last update, with a prep plan
  *
  * Pure functions: no I/O, everything the template needs arrives in the model.
@@ -28,11 +29,21 @@ export interface UpdateNewEvent {
   steps: UpdatePrepStep[];
 }
 
+// Architecture reset Phase 8 - a nudge for an outstanding_gaps entry that
+// wasn't resolved when first asked. Deliberately just event/question, not
+// the full gap shape - this is a reminder to go open the app/chat, not
+// another place to answer it (no options/buttons in a digest).
+export interface UpdateOpenDecision {
+  eventTitle: string;
+  question: string;
+}
+
 export interface DailyUpdateModel {
   /** Today, YYYY-MM-DD (used for "3 days late" / "tomorrow"). */
   today: string;
   overdue: UpdateTask[];
   dueThisWeek: UpdateTask[];
+  openDecisions: UpdateOpenDecision[];
   newEvents: UpdateNewEvent[];
   /** Public base URL, e.g. https://aheadoftime.app ('' when unknown/not https). */
   appUrl: string;
@@ -43,8 +54,8 @@ const NAVY = '#182A42';
 const SAGE = '#95BFB5';
 
 const CAPS = {
-  telegram: { overdue: 5, week: 6, events: 4, stepsPerEvent: 2 },
-  email: { overdue: 8, week: 10, events: 6, stepsPerEvent: 8 },
+  telegram: { overdue: 5, week: 6, decisions: 5, events: 4, stepsPerEvent: 2 },
+  email: { overdue: 8, week: 10, decisions: 8, events: 6, stepsPerEvent: 8 },
 };
 
 /** Believable placeholder content for a test send when the user has nothing real to report yet. */
@@ -57,6 +68,9 @@ export function sampleUpdateModel(today: string, appUrl: string): DailyUpdateMod
     dueThisWeek: [
       { title: 'Order the cake', eventTitle: 'Sample: birthday party', dueDate: addDays(1) },
       { title: 'Buy drinks and ice', eventTitle: 'Sample: birthday party', dueDate: addDays(4) },
+    ],
+    openDecisions: [
+      { eventTitle: 'Sample: birthday party', question: 'Decide: home dinner or restaurant reservation' },
     ],
     newEvents: [
       {
@@ -73,7 +87,7 @@ export function sampleUpdateModel(today: string, appUrl: string): DailyUpdateMod
 }
 
 export function hasUpdateContent(m: DailyUpdateModel): boolean {
-  return m.overdue.length + m.dueThisWeek.length + m.newEvents.length > 0;
+  return m.overdue.length + m.dueThisWeek.length + m.openDecisions.length + m.newEvents.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +125,7 @@ export function updateSubject(m: DailyUpdateModel): string {
   const parts: string[] = [];
   if (m.overdue.length) parts.push(`${m.overdue.length} overdue`);
   if (m.dueThisWeek.length) parts.push(`${m.dueThisWeek.length} due this week`);
+  if (m.openDecisions.length) parts.push(plural(m.openDecisions.length, 'open decision', 'open decisions'));
   if (m.newEvents.length) parts.push(plural(m.newEvents.length, 'new event', 'new events'));
   return parts.length ? `Your daily update: ${parts.join(', ')}` : 'Your daily update';
 }
@@ -145,6 +160,12 @@ export function renderTelegramUpdate(m: DailyUpdateModel): TelegramUpdate {
     lines.push('', `📌 <b>This week (${m.dueThisWeek.length})</b>`);
     lines.push(...m.dueThisWeek.slice(0, cap.week).map((t) => taskLine(t, dueLabel(m.today, t.dueDate))));
     if (m.dueThisWeek.length > cap.week) lines.push(`…and ${m.dueThisWeek.length - cap.week} more`);
+  }
+
+  if (m.openDecisions.length) {
+    lines.push('', `❓ <b>Open decisions (${m.openDecisions.length})</b>`);
+    lines.push(...m.openDecisions.slice(0, cap.decisions).map((d) => `• ${esc(d.question)} <i>- ${esc(d.eventTitle)}</i>`));
+    if (m.openDecisions.length > cap.decisions) lines.push(`…and ${m.openDecisions.length - cap.decisions} more`);
   }
 
   if (m.newEvents.length) {
@@ -182,6 +203,7 @@ export function renderEmailUpdate(m: DailyUpdateModel): EmailUpdate {
   const subject = updateSubject(m);
   const overdue = m.overdue.slice(0, cap.overdue);
   const week = m.dueThisWeek.slice(0, cap.week);
+  const decisions = m.openDecisions.slice(0, cap.decisions);
   const events = [...m.newEvents].sort((a, b) => a.eventDate.localeCompare(b.eventDate)).slice(0, cap.events);
 
   // ---- plain text ----
@@ -196,6 +218,12 @@ export function renderEmailUpdate(m: DailyUpdateModel): EmailUpdate {
     text.push(`THIS WEEK (${m.dueThisWeek.length})`);
     text.push(...week.map((t) => `  • ${t.title} - ${t.eventTitle} (${dueLabel(m.today, t.dueDate)})`));
     if (m.dueThisWeek.length > week.length) text.push(`  …and ${m.dueThisWeek.length - week.length} more`);
+    text.push('');
+  }
+  if (decisions.length) {
+    text.push(`OPEN DECISIONS (${m.openDecisions.length})`);
+    text.push(...decisions.map((d) => `  • ${d.question} - ${d.eventTitle}`));
+    if (m.openDecisions.length > decisions.length) text.push(`  …and ${m.openDecisions.length - decisions.length} more`);
     text.push('');
   }
   if (events.length) {
@@ -232,6 +260,14 @@ export function renderEmailUpdate(m: DailyUpdateModel): EmailUpdate {
       .join('');
   const more = (n: number, noun: string) => (n > 0 ? `<div style="margin-top:8px;font-size:13px;color:#667">…and ${n} more ${noun}</div>` : '');
 
+  const decisionRows = (ds: UpdateOpenDecision[]) =>
+    ds
+      .map(
+        (d) => `
+  <div style="margin-top:10px;font-size:15px;color:#223;line-height:1.35"><strong>${esc(d.question)}</strong><br><span style="font-size:13px;color:#667">${esc(d.eventTitle)}</span></div>`
+      )
+      .join('');
+
   const eventBlocks = events
     .map((e) => {
       const shown = e.steps.slice(0, cap.stepsPerEvent);
@@ -257,6 +293,9 @@ export function renderEmailUpdate(m: DailyUpdateModel): EmailUpdate {
       : '',
     week.length
       ? section(`📌 This week (${m.dueThisWeek.length})`, '#8a5a00', taskRows(week, (t) => dueLabel(m.today, t.dueDate), '#fdf1d6', '#92400e') + more(m.dueThisWeek.length - week.length, 'tasks'))
+      : '',
+    decisions.length
+      ? section(`❓ Open decisions (${m.openDecisions.length})`, '#4338ca', decisionRows(decisions) + more(m.openDecisions.length - decisions.length, 'decisions'))
       : '',
     events.length
       ? section(`📅 New on your calendar (${m.newEvents.length})`, '#2f6b5c', eventBlocks + more(m.newEvents.length - events.length, 'events'))

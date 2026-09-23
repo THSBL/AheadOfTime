@@ -1,4 +1,4 @@
-import { CalendarEvent, EventCategory, PreparationLevel, UserResponsibility } from '../types.js';
+import { CalendarEvent, EventCategory, PreparationLevel, TMinusMilestone, UserResponsibility } from '../types.js';
 
 /**
  * AOT's deterministic assessment of how much preparation help a user needs
@@ -31,6 +31,8 @@ export interface InformationGap {
   question: string;
   impact: 'high' | 'medium' | 'low';
   requiredBeforePlanning: boolean;
+  /** Architecture reset Phase 8 - 2-3 concrete choices for a chip UI; absent means "answer free text." */
+  options?: string[];
 }
 
 export interface PreparationLevelAssessment {
@@ -209,4 +211,45 @@ let activeAssessor: PreparationAssessor = new AOTPreparationAssessment();
 /** The one seam the rest of the app should depend on - see the class doc comment above. */
 export function getActiveAssessor(): PreparationAssessor {
   return activeAssessor;
+}
+
+/**
+ * Architecture reset Phase 8 - everything still open on this event: the
+ * role gap (routed through the active assessor, same JEV-safe seam as
+ * everywhere else) plus one entry per milestone/deliverable currently
+ * flagged needsRefinement. Recomputed fresh every turn (never diffed or
+ * patched, same philosophy as planningContextVersion) - a milestone or
+ * deliverable the user just resolved simply stops being needsRefinement
+ * next turn and drops out on its own.
+ */
+export function deriveOutstandingGaps(
+  milestones: TMinusMilestone[],
+  assessmentInput: AssessmentInput
+): InformationGap[] {
+  const gaps: InformationGap[] = [...getActiveAssessor().identifyInformationGaps(assessmentInput)];
+
+  for (const m of milestones) {
+    if (m.needsRefinement) {
+      gaps.push({
+        key: m.id,
+        question: `Decide: ${m.title}`,
+        impact: 'medium',
+        requiredBeforePlanning: false,
+        options: m.refinementOptions,
+      });
+    }
+    for (const d of m.deliverables || []) {
+      if (d.needsRefinement) {
+        gaps.push({
+          key: d.deliverable_id,
+          question: `Decide: ${d.title}`,
+          impact: 'medium',
+          requiredBeforePlanning: false,
+          options: d.refinementOptions,
+        });
+      }
+    }
+  }
+
+  return gaps;
 }

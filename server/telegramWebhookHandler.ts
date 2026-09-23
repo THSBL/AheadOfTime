@@ -498,6 +498,37 @@ export class TelegramWebhookHandler {
       return;
     }
 
+    if (data.startsWith('RESOLVE_GAP:')) {
+      // Architecture reset Phase 8 - "<eventId>:<gapIndex>:<optionIndex>",
+      // indices rather than the gap's own key/option text directly, to
+      // keep callback_data well under Telegram's 64-byte limit regardless
+      // of how long a question or option string is.
+      const [eventId, gapIndexStr, optionIndexStr] = data.replace('RESOLVE_GAP:', '').split(':');
+      const gapIndex = parseInt(gapIndexStr, 10);
+      const optionIndex = parseInt(optionIndexStr, 10);
+      const event = await TelegramSessionStore.getEvent(eventId);
+      const gap = event?.outstandingGaps?.[gapIndex];
+      const optionText = gap?.options?.[optionIndex];
+
+      if (!event || !gap || !optionText) {
+        await TelegramService.answerCallbackQuery(callbackId, "That decision isn't open anymore.");
+        return;
+      }
+
+      await TelegramService.answerCallbackQuery(callbackId, `✅ ${optionText}`);
+      if (chatId) {
+        try {
+          const result = await GeminiCalendarAgent.refineEvent(event, optionText, false);
+          await TelegramSessionStore.replaceMilestonesAndRecomputeGaps(eventId, result.mergedMilestones);
+          await TelegramService.sendMessage(chatId, result.replyText, { parse_mode: 'Markdown' });
+        } catch (err: any) {
+          console.error('Error resolving Open Decision:', err);
+          await TelegramService.sendMessage(chatId, `⚠️ Couldn't apply that just now - please try again.`);
+        }
+      }
+      return;
+    }
+
     if (data.startsWith('ADD_NOTE:')) {
       const eventId = data.replace('ADD_NOTE:', '');
       if (chatId) {

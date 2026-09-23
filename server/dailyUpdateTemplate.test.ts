@@ -19,6 +19,7 @@ function model(overrides: Partial<DailyUpdateModel> = {}): DailyUpdateModel {
       { title: 'Order cake', eventTitle: "Maya's <party>", dueDate: '2026-09-22' },
       { title: 'Buy drinks', eventTitle: "Maya's <party>", dueDate: '2026-09-25' },
     ],
+    openDecisions: [{ eventTitle: "Maya's <party>", question: 'Decide: home dinner or restaurant reservation' }],
     newEvents: [{ title: 'Amsterdam & friends', eventDate: '2026-10-12', steps: steps(10) }],
     appUrl: 'https://aheadoftime.app',
     ...overrides,
@@ -37,14 +38,14 @@ describe('labels', () => {
 
 describe('updateSubject / hasUpdateContent', () => {
   it('summarises only the non-empty parts', () => {
-    expect(updateSubject(model())).toBe('Your daily update: 1 overdue, 2 due this week, 1 new event');
-    expect(updateSubject(model({ overdue: [], newEvents: [] }))).toBe('Your daily update: 2 due this week');
-    expect(updateSubject(model({ overdue: [], dueThisWeek: [], newEvents: [] }))).toBe('Your daily update');
+    expect(updateSubject(model())).toBe('Your daily update: 1 overdue, 2 due this week, 1 open decision, 1 new event');
+    expect(updateSubject(model({ overdue: [], openDecisions: [], newEvents: [] }))).toBe('Your daily update: 2 due this week');
+    expect(updateSubject(model({ overdue: [], dueThisWeek: [], openDecisions: [], newEvents: [] }))).toBe('Your daily update');
   });
 
   it('knows when there is nothing to say', () => {
     expect(hasUpdateContent(model())).toBe(true);
-    expect(hasUpdateContent(model({ overdue: [], dueThisWeek: [], newEvents: [] }))).toBe(false);
+    expect(hasUpdateContent(model({ overdue: [], dueThisWeek: [], openDecisions: [], newEvents: [] }))).toBe(false);
   });
 });
 
@@ -102,9 +103,10 @@ describe('renderTelegramUpdate', () => {
 describe('renderEmailUpdate', () => {
   it('has a subject, brand header, all three sections and the plan steps (up to 8)', () => {
     const { subject, html, text } = renderEmailUpdate(model());
-    expect(subject).toBe('Your daily update: 1 overdue, 2 due this week, 1 new event');
+    expect(subject).toBe('Your daily update: 1 overdue, 2 due this week, 1 open decision, 1 new event');
     expect(html).toContain('Needs attention (1)');
     expect(html).toContain('This week (2)');
+    expect(html).toContain('Open decisions (1)');
     expect(html).toContain('New on your calendar (1)');
     expect(html).toContain('#182A42');
     expect(html).toContain('#95BFB5');

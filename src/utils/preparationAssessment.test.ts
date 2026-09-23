@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { getActiveAssessor, AOTPreparationAssessment, AssessmentInput } from './preparationAssessment';
+import { getActiveAssessor, AOTPreparationAssessment, AssessmentInput, deriveOutstandingGaps } from './preparationAssessment';
+import type { TMinusMilestone } from '../types';
 
 const assessor = getActiveAssessor();
 
@@ -93,5 +94,80 @@ describe('assessPreparationLevel - never a category-to-level lookup table', () =
     // structurally enforced by AssessmentInput not having one.
     const result = assessor.assessPreparationLevel({ category: 'birthday_party', title: 'Birthday party' });
     expect(result.signals).not.toHaveProperty('daysUntilEvent');
+  });
+});
+
+describe('deriveOutstandingGaps (architecture reset Phase 8)', () => {
+  function ms(id: string, overrides: Partial<TMinusMilestone> = {}): TMinusMilestone {
+    return {
+      id,
+      eventId: 'evt-1',
+      tMinusLabel: 'T-7d',
+      tMinusOffsetMinutes: -10080,
+      calculatedDate: '2026-11-13',
+      title: `Milestone ${id}`,
+      category: 'prep',
+      status: 'pending',
+      ...overrides,
+    };
+  }
+
+  const noRoleGapInput: AssessmentInput = {
+    category: 'dinner_social', // not in CATEGORIES_WHERE_ROLE_MATTERS, so no role gap
+    title: "Maya's dinner",
+  };
+
+  it('returns nothing when nothing is flagged and no role gap applies', () => {
+    const gaps = deriveOutstandingGaps([ms('a')], noRoleGapInput);
+    expect(gaps).toEqual([]);
+  });
+
+  it('adds one entry per milestone flagged needsRefinement, carrying its options', () => {
+    const milestones = [
+      ms('a'),
+      ms('b', { needsRefinement: true, title: 'Decide: home dinner or restaurant reservation', refinementOptions: ['Home dinner', 'Restaurant reservation'] }),
+    ];
+    const gaps = deriveOutstandingGaps(milestones, noRoleGapInput);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({
+      key: 'b',
+      question: 'Decide: Decide: home dinner or restaurant reservation',
+      options: ['Home dinner', 'Restaurant reservation'],
+    });
+  });
+
+  it('adds one entry per DELIVERABLE flagged needsRefinement, not just milestones', () => {
+    const milestones = [
+      ms('a', {
+        deliverables: [
+          { deliverable_id: 'd1', title: 'Confirm headcount', type: 'coordination', is_completed: false },
+          {
+            deliverable_id: 'd2',
+            title: 'Decide between home dinner or restaurant reservation',
+            type: 'coordination',
+            is_completed: false,
+            needsRefinement: true,
+            refinementOptions: ['Home dinner', 'Restaurant reservation'],
+          },
+        ],
+      }),
+    ];
+    const gaps = deriveOutstandingGaps(milestones, noRoleGapInput);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].key).toBe('d2');
+    expect(gaps[0].options).toEqual(['Home dinner', 'Restaurant reservation']);
+  });
+
+  it('a milestone/deliverable the user already resolved (needsRefinement: false) never appears', () => {
+    const milestones = [ms('a', { needsRefinement: false, refinementOptions: ['X', 'Y'] })];
+    expect(deriveOutstandingGaps(milestones, noRoleGapInput)).toEqual([]);
+  });
+
+  it('combines the role gap with milestone/deliverable gaps when both apply', () => {
+    const roleGapInput: AssessmentInput = { category: 'kids_hobbies', title: 'Soccer Tournament Saturday' };
+    const milestones = [ms('a', { needsRefinement: true, refinementOptions: ['X', 'Y'] })];
+    const gaps = deriveOutstandingGaps(milestones, roleGapInput);
+    expect(gaps.some((g) => g.key === 'user_responsibility')).toBe(true);
+    expect(gaps.some((g) => g.key === 'a')).toBe(true);
   });
 });

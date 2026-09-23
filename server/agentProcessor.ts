@@ -24,7 +24,7 @@ import {
   formatTMinusLabel
 } from "../src/utils/tminusRules.js";
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
-import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment } from "../src/utils/preparationAssessment.js";
+import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment, deriveOutstandingGaps } from "../src/utils/preparationAssessment.js";
 import {
   mergePlanningContext,
   computePlanningContextVersion,
@@ -458,6 +458,12 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
             t_minus_days: { type: Type.INTEGER },
             target_date: { type: Type.STRING, description: "YYYY-MM-DD" },
             status: { type: Type.STRING, description: "pending or completed" },
+            is_open_decision: { type: Type.BOOLEAN, description: "true ONLY when the WHOLE milestone (not one of its deliverables) is a genuine, still-undecided choice - rare; prefer flagging a specific deliverable instead when the milestone itself is clearly needed." },
+            decision_options: {
+              type: Type.ARRAY,
+              description: "Required when is_open_decision is true: 2-3 concrete, tailored choices.",
+              items: { type: Type.STRING },
+            },
             deliverables: {
               type: Type.ARRAY,
               description: "1 to 3 explicit Deliverables (tangible outputs)",
@@ -468,6 +474,12 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
                   title: { type: Type.STRING, description: "A concrete output SPECIFIC to what the user said for THIS milestone (e.g. user said 'rent a car in Lisbon' -> 'Lisbon rental car booking confirmed') - never generic boilerplate reused across unrelated milestones, never the milestone title restated with 'verified & completed'." },
                   type: { type: Type.STRING, description: "booking, purchase, document, or coordination" },
                   is_completed: { type: Type.BOOLEAN },
+                  is_open_decision: { type: Type.BOOLEAN, description: "true ONLY when this exact deliverable is a genuine, still-undecided choice the plan cannot move past without the user picking one (see decision_options) - never true for an ordinary actionable task." },
+                  decision_options: {
+                    type: Type.ARRAY,
+                    description: "Required when is_open_decision is true: 2-3 concrete, tailored choices (e.g. 'Home dinner', 'Restaurant reservation') - never generic placeholders.",
+                    items: { type: Type.STRING },
+                  },
                 },
                 required: ["deliverable_id", "title", "type", "is_completed"],
               },
@@ -494,6 +506,12 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
             tag: { type: Type.STRING, description: "Logistics, Activity, Reservations, or Supplies" },
             description: { type: Type.STRING },
             source: { type: Type.STRING, description: "category_default (standard track for this event type) or narrative_inferred (derived from a specific detail the user typed, e.g. an approval gate or implied prep step)" },
+            is_open_decision: { type: Type.BOOLEAN, description: "true ONLY when this exact task is a genuine, still-undecided choice the plan cannot move past without the user picking one (see decision_options) - never true for an ordinary actionable task." },
+            decision_options: {
+              type: Type.ARRAY,
+              description: "Required when is_open_decision is true: 2-3 concrete, tailored choices - never generic placeholders.",
+              items: { type: Type.STRING },
+            },
           },
           required: ["task", "target_date", "t_minus_days", "scope", "tag"],
         },
@@ -853,12 +871,23 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       const offsetMinutes = -tMinusDays * 24 * 60;
       const calcDate = gate.target_date || calculateOffsetDate(eventDate, '10:00', offsetMinutes);
       const rawDeliverables = Array.isArray(gate.deliverables) ? gate.deliverables : [];
-      const deliverables: Deliverable[] = rawDeliverables.slice(0, 3).map((d: any, dIdx: number) => ({
-        deliverable_id: d.deliverable_id || `del_${idx + 1}_${dIdx + 1}`,
-        title: d.title || 'Tangible output artifact',
-        type: (['booking', 'purchase', 'document', 'coordination'].includes(d.type) ? d.type : 'coordination') as DeliverableType,
-        is_completed: Boolean(d.is_completed),
-      }));
+      const deliverables: Deliverable[] = rawDeliverables.slice(0, 3).map((d: any, dIdx: number) => {
+        // Architecture reset Phase 8 - prefer Gemini's own explicit flag;
+        // fall back to the same keyword heuristic the Track A/B/C branch
+        // below already uses, applied to this deliverable's own title,
+        // when Gemini doesn't set it explicitly.
+        const needsRefinement = d.is_open_decision !== undefined
+          ? Boolean(d.is_open_decision)
+          : /\bhome\b|\brestaurant\b|\bactivity\b|\bdinner\b|\bflight\b|\blodging\b|\bsolo\b|\bgroup\b/i.test(d.title || '');
+        return {
+          deliverable_id: d.deliverable_id || `del_${idx + 1}_${dIdx + 1}`,
+          title: d.title || 'Tangible output artifact',
+          type: (['booking', 'purchase', 'document', 'coordination'].includes(d.type) ? d.type : 'coordination') as DeliverableType,
+          is_completed: Boolean(d.is_completed),
+          needsRefinement,
+          refinementOptions: Array.isArray(d.decision_options) ? d.decision_options.slice(0, 3) : undefined,
+        };
+      });
 
       const titleLower = (gate.milestone_title || '').toLowerCase();
       const cat: MilestoneCategory =
@@ -882,6 +911,8 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         category: cat,
         status: (gate.status === 'completed' ? 'completed' : 'pending'),
         kind: 'milestone',
+        needsRefinement: Boolean(gate.is_open_decision),
+        refinementOptions: Array.isArray(gate.decision_options) ? gate.decision_options.slice(0, 3) : undefined,
         deliverables,
       };
     });
@@ -898,7 +929,13 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         m.tag === 'Supplies' ? 'shopping' : 'prep';
 
       const isDeliverable = m.kind === 'deliverable' || cat === 'booking' || /book|reserve|order|deposit|kitty|flight|lodging|hotel|ticket/i.test(m.task || '');
-      const needsRefinement = m.needsRefinement !== undefined ? m.needsRefinement : (isDeliverable && /activity|dinner|restaurant|flight|lodging/i.test(m.task || ''));
+      // Architecture reset Phase 8 - prefer Gemini's own explicit
+      // is_open_decision flag; the keyword heuristic remains the fallback
+      // for whenever Gemini doesn't set it.
+      const needsRefinement = m.is_open_decision !== undefined
+        ? Boolean(m.is_open_decision)
+        : (m.needsRefinement !== undefined ? m.needsRefinement : (isDeliverable && /activity|dinner|restaurant|flight|lodging/i.test(m.task || '')));
+      const refinementOptions = Array.isArray(m.decision_options) ? m.decision_options.slice(0, 3) : m.refinementOptions;
 
       return {
         id: `ms-${eventId}-${idx + 1}-${Date.now() % 100000}`,
@@ -919,7 +956,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         tag: m.tag,
         kind: isDeliverable ? 'deliverable' : 'milestone',
         needsRefinement,
-        refinementOptions: m.refinementOptions,
+        refinementOptions,
         applicableRoles: m.applicableRoles,
         deliverableType: m.deliverableType,
         source: m.source === 'narrative_inferred' ? 'narrative_inferred' : 'category_default',
@@ -1020,6 +1057,17 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     generatedFromContextVersion: existingContextVersionById.get(m.id) ?? m.generatedFromContextVersion ?? planningContextResolution.version,
   }));
 
+  // Architecture reset Phase 8 - recomputed fresh every turn (see
+  // deriveOutstandingGaps's own doc comment) from the final title/
+  // category/context this turn settled on.
+  const outstandingGaps = deriveOutstandingGaps(milestones, {
+    category: finalCategory,
+    title,
+    location: parsed.location || existingEvent?.location,
+    context: mergedContext,
+    rawText: params.message,
+  });
+
   // Construct CalendarEvent object
   const calendarEvent: CalendarEvent = {
     id: eventId,
@@ -1043,6 +1091,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     planningContext: planningContextResolution.context,
     planningContextVersion: planningContextResolution.version,
     intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
+    outstandingGaps: outstandingGaps.length > 0 ? outstandingGaps : undefined,
     milestones,
     watchpoint: parsed.watchpoint || undefined,
     rawInputSnippet: params.message,
@@ -1146,6 +1195,14 @@ export function processWithDeterministicRules(params: {
     const additionText = tripDecomposition.conversational_response || `Covers the overall trip logistics plus the specific prep for what you mentioned.`;
     const replyText = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 
+    const tripOutstandingGaps = deriveOutstandingGaps(finalMappedMilestones, {
+      category: 'travel_trip',
+      title: macro.title,
+      location: macro.destination,
+      context: tripContext,
+      rawText: params.message,
+    });
+
     const calendarEvent: CalendarEvent = {
       id: eventId,
       title: macro.title,
@@ -1165,6 +1222,7 @@ export function processWithDeterministicRules(params: {
       context: tripContext,
       planningContext: tripPlanningContext.context,
       planningContextVersion: tripPlanningContext.version,
+      outstandingGaps: tripOutstandingGaps.length > 0 ? tripOutstandingGaps : undefined,
       milestones: finalMappedMilestones,
       rawInputSnippet: params.message,
       createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
@@ -1479,6 +1537,14 @@ export function processWithDeterministicRules(params: {
     generatedFromContextVersion: existingContextVersionById.get(m.id) ?? m.generatedFromContextVersion ?? planningContextResolution.version,
   }));
 
+  const outstandingGaps = deriveOutstandingGaps(milestones, {
+    category,
+    title,
+    location: undefined,
+    context,
+    rawText: params.message,
+  });
+
   const calendarEvent: CalendarEvent = {
     id: eventId,
     title,
@@ -1494,6 +1560,7 @@ export function processWithDeterministicRules(params: {
     planningContext: planningContextResolution.context,
     planningContextVersion: planningContextResolution.version,
     intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
+    outstandingGaps: outstandingGaps.length > 0 ? outstandingGaps : undefined,
     milestones,
     watchpoint,
     rawInputSnippet: params.message,

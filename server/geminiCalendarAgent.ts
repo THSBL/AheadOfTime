@@ -21,6 +21,7 @@ import {
   findLockedFactViolations,
 } from '../src/utils/planningContext.js';
 import type { PlanningContextEntry } from '../src/types.js';
+import { deriveOutstandingGaps } from '../src/utils/preparationAssessment.js';
 import {
   buildCandidateEventIndex,
   resolveTargetEvent,
@@ -90,6 +91,7 @@ The input may include currentlyOpenEventId and candidateEvents (a lightweight li
 
 ### Schema notes for the rules above:
 The rules above refer to fields generically since they're shared with the web app's schema, which differs slightly from yours. In THIS schema: a milestone's own name field is "milestone_title" (not "title"), the event's own date fields are "start_date"/"end_date" (not "target_date"), and the event's title/name field is "summary" - never re-output "summary" on a refinement turn, that's decided elsewhere and any value you give here is ignored. If genuinely something is unclear about the ADDITION itself (not the whole event), use Option C to ask about that one thing - e.g. "Got it, one thing: is the dog sitter needed for the full week or just a couple of days?"
+For the FLAG A MILESTONE OR DELIVERABLE AS is_open_decision rule specifically: in THIS schema a milestone can carry optional "is_open_decision" (boolean) and "decision_options" (2-3 concrete strings) fields - deliverables here are plain strings, not objects, so only flag the MILESTONE itself when the open choice is genuinely the whole checkpoint (e.g. "Decide: home dinner or restaurant reservation"), never a specific deliverable string within it.
 
 ### Temporal Grounding Rules:
 - Every incoming user message contains dynamic system time context in the format:
@@ -495,6 +497,8 @@ export class GeminiCalendarAgent {
             category: 'logistics',
             status: 'pending',
             scope: 'macro',
+            needsRefinement: Boolean(m.is_open_decision),
+            refinementOptions: Array.isArray(m.decision_options) ? m.decision_options.slice(0, 3) : undefined,
             deliverables: [],
           };
         });
@@ -567,6 +571,8 @@ export class GeminiCalendarAgent {
         category: 'logistics',
         status: 'pending',
         scope: 'macro',
+        needsRefinement: Boolean(m.is_open_decision),
+        refinementOptions: Array.isArray(m.decision_options) ? m.decision_options.slice(0, 3) : undefined,
         deliverables: [],
       };
     });
@@ -671,6 +677,12 @@ export class GeminiCalendarAgent {
         category: 'logistics',
         status: 'pending',
         scope: 'macro',
+        // Architecture reset Phase 8 - Telegram's lighter integration:
+        // milestone-level only (its prompt's deliverables are plain
+        // strings, not objects, so there's no per-deliverable slot to
+        // flag the way web's schema supports).
+        needsRefinement: Boolean(m.is_open_decision),
+        refinementOptions: Array.isArray(m.decision_options) ? m.decision_options.slice(0, 3) : undefined,
         deliverables: [],
       };
     });
@@ -708,6 +720,14 @@ export class GeminiCalendarAgent {
     }
     const planningContext = mergePlanningContext(undefined, contextEntries, now);
     const planningContextVersion = computePlanningContextVersion(planningContext);
+    const taggedMilestones = milestones.map((m) => ({ ...m, generatedFromContextVersion: planningContextVersion }));
+    const outstandingGaps = deriveOutstandingGaps(taggedMilestones, {
+      category,
+      title,
+      location: parsed.location || macro?.destination,
+      context: telegramContext,
+      rawText: rawInputSnippet,
+    });
 
     const newEvent: CalendarEvent = {
       id: eventId,
@@ -722,7 +742,8 @@ export class GeminiCalendarAgent {
       context: telegramContext,
       planningContext,
       planningContextVersion,
-      milestones: milestones.map((m) => ({ ...m, generatedFromContextVersion: planningContextVersion })),
+      outstandingGaps: outstandingGaps.length > 0 ? outstandingGaps : undefined,
+      milestones: taggedMilestones,
       rawInputSnippet,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

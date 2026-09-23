@@ -90,6 +90,13 @@ export interface Deliverable {
   title: string; // Tangible output (e.g., "Confirmed Airbnb reservation code")
   type: DeliverableType;
   is_completed: boolean;
+  // Architecture reset Phase 8 - mirrors TMinusMilestone's own
+  // needsRefinement/refinementOptions (previously milestone-only), now also
+  // settable on an individual deliverable so a decision buried in a
+  // sub-task (e.g. "home dinner or restaurant reservation") gets the same
+  // interactive Refine treatment a milestone-level one already does.
+  needsRefinement?: boolean;
+  refinementOptions?: string[];
 }
 
 export interface RunwayMilestoneGate {
@@ -271,12 +278,15 @@ export interface CalendarEvent {
   // fresh replan on upgrade.
   planningContext?: Record<string, PlanningContextEntry>;
   planningContextVersion?: string;
-  // The narrow role-only gap from Phase 3/6 today - mirrors
-  // preparationAssessment.ts's InformationGap shape (duplicated here rather
-  // than imported, to avoid a types.ts <-> utils/preparationAssessment.ts
-  // cycle); the shape a future, fuller gap tracker (Phase 8) generalizes
-  // rather than replaces.
-  outstandingGaps?: Array<{ key: string; question: string; impact: 'high' | 'medium' | 'low'; requiredBeforePlanning: boolean }>;
+  // Architecture reset Phase 8 - every still-open decision on this event:
+  // the narrow role-only gap from Phase 3/6, plus one entry per milestone/
+  // deliverable flagged as an open decision (key = that item's own id).
+  // Mirrors preparationAssessment.ts's InformationGap shape (duplicated
+  // here rather than imported, to avoid a types.ts <-> utils/
+  // preparationAssessment.ts cycle). `options`, when present, are 2-3
+  // concrete choices a chip UI can offer directly; absent means "answer
+  // free text, no fixed options fit."
+  outstandingGaps?: Array<{ key: string; question: string; impact: 'high' | 'medium' | 'low'; requiredBeforePlanning: boolean; options?: string[] }>;
 }
 
 export interface AgentMessage {

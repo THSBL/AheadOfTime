@@ -11,7 +11,7 @@ import { recordFindings, markFindingsNotified } from './agendaFindingsStore.js';
 import { isEmailConfigured, sendEmail } from './emailService.js';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService } from './telegramService.js';
-import { listTasksNeedingAttention } from './dailyDigestData.js';
+import { listTasksNeedingAttention, listOpenDecisions } from './dailyDigestData.js';
 import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, type DailyUpdateModel } from './dailyUpdateTemplate.js';
 import { detectEventCategory } from '../src/utils/tminusRules.js';
 import { generateDeterministicMilestones } from '../src/utils/deterministicMilestoneGenerator.js';
@@ -295,10 +295,12 @@ export async function runBackgroundAgendaScan(
       // - the in-app notice is about NEW calendar events alone.
       const tasks =
         deliver.length === 0 ? { overdue: [], dueThisWeek: [] } : await listTasksNeedingAttention(user.user_id, now.toISOString());
+      const openDecisions = deliver.length === 0 ? [] : await listOpenDecisions(user.user_id, now.toISOString());
       const model: DailyUpdateModel = {
         today: now.toISOString().substring(0, 10),
         overdue: tasks.overdue,
         dueThisWeek: tasks.dueThisWeek,
+        openDecisions,
         newEvents: candidates,
         appUrl,
       };

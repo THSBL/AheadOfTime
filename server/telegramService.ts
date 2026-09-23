@@ -224,6 +224,11 @@ export class TelegramService {
         .map((m: TMinusMilestone) => `📌 *${m.calculatedDate}* — ${m.title}`)
         .join('\n');
 
+      const gapsWithOptions = (event.outstandingGaps || []).filter((g) => g.options && g.options.length > 0);
+      const gapLine = gapsWithOptions.length > 0
+        ? `❓ Still deciding: ${gapsWithOptions.map((g) => g.question.replace(/^Decide:\s*/i, '')).join(' · ')}`
+        : null;
+
       // Was "Initial Runway Created" / "lock your optimal reverse-logistics
       // schedule" - internal planning vocabulary a user has no reason to
       // know. Also now honest about what actually happened: the event is
@@ -235,6 +240,8 @@ export class TelegramService {
         '',
         `Here's your prep checklist, saved to your account:`,
         milestoneLines || '📌 Initial review and planning',
+        gapLine ? '' : null,
+        gapLine,
         '',
         options.autoPushingToGoogle
           ? `Adding it to your Google Calendar and Tasks now. Anything off? Tap Refine in Chat below and tell me.`
@@ -243,6 +250,23 @@ export class TelegramService {
         .filter(Boolean)
         .join('\n');
     }
+
+    // Architecture reset Phase 8 - one button row per still-open decision
+    // that has concrete options (e.g. "Decide: home dinner or restaurant
+    // reservation" -> ["Home dinner", "Restaurant reservation"]), so a
+    // Telegram user can resolve it with a tap instead of typing free text.
+    // Capped at 3 gaps here to keep the message from ballooning - the rest
+    // stay answerable via "Refine in Chat" or the app.
+    const gapRows = (event.outstandingGaps || [])
+      .map((gap, gapIndex) => ({ gap, gapIndex }))
+      .filter(({ gap }) => gap.options && gap.options.length > 0)
+      .slice(0, 3)
+      .map(({ gap, gapIndex }) =>
+        (gap.options || []).slice(0, 3).map((opt, optionIndex) => ({
+          text: opt,
+          callback_data: `RESOLVE_GAP:${event.id}:${gapIndex}:${optionIndex}`,
+        }))
+      );
 
     return this.sendMessage(chatId, text, {
       parse_mode: 'Markdown',
@@ -260,6 +284,7 @@ export class TelegramService {
               url: pushToCalDeepLink,
             },
           ],
+          ...gapRows,
           [
             {
               text: '✅ Looks Good',

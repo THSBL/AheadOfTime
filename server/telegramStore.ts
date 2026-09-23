@@ -831,6 +831,46 @@ export class TelegramSessionStore {
    * together - this method's own append-only contract (callers pass only
    * the new milestones) is unchanged.
    */
+  /**
+   * Architecture reset Phase 8 - replaces the event's ENTIRE milestone
+   * list with the given one (the complete resulting plan a refinement
+   * already returns, per GeminiCalendarAgent.refineEvent's own
+   * "mergedMilestones" contract) and recomputes outstandingGaps from it.
+   * Distinct from addMilestonesToEvent, which only ever appends - that
+   * contract can't clear a needsRefinement flag on an EXISTING milestone,
+   * which is exactly what resolving an Open Decision needs to do.
+   */
+  public static async replaceMilestonesAndRecomputeGaps(eventId: string, fullMilestoneList: TMinusMilestone[]): Promise<void> {
+    const eventUuid = await this.resolveEventUuid(eventId);
+    if (!eventUuid) return;
+    const ownerRows = await query<{ user_id: string }>(`SELECT user_id FROM events WHERE id = $1`, [eventUuid]);
+    const ownerUserId = ownerRows[0]?.user_id;
+    if (!ownerUserId) return;
+
+    const existingEvent = await this.getEvent(eventUuid);
+    if (!existingEvent) return;
+
+    const { deriveOutstandingGaps } = await import('../src/utils/preparationAssessment.js');
+    const outstandingGaps = deriveOutstandingGaps(fullMilestoneList, {
+      category: existingEvent.category,
+      title: existingEvent.title,
+      location: existingEvent.location,
+      context: existingEvent.context,
+      rawText: '',
+    });
+
+    const { persistComputedPlan } = await import('./planning/persistComputedPlan.js');
+    await persistComputedPlan({
+      userId: ownerUserId,
+      event: {
+        ...existingEvent,
+        milestones: fullMilestoneList,
+        outstandingGaps: outstandingGaps.length > 0 ? outstandingGaps : undefined,
+      },
+      sourceChannel: 'telegram',
+    });
+  }
+
   public static async addMilestonesToEvent(eventId: string, milestones: TMinusMilestone[]): Promise<void> {
     const eventUuid = await this.resolveEventUuid(eventId);
     if (!eventUuid) return;

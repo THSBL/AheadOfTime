@@ -1,32 +1,41 @@
 import React, { useState } from 'react';
 import { X, Check, Sparkles, SlidersHorizontal, MapPin, Clock, FileText } from 'lucide-react';
-import { TMinusMilestone, CalendarEvent } from '../types';
+import { TMinusMilestone, CalendarEvent, Deliverable } from '../types';
 
 interface RefineDeliverableModalProps {
   isOpen: boolean;
   onClose: () => void;
   milestone: TMinusMilestone | null;
+  // Architecture reset Phase 8 - when set, this modal refines ONE
+  // deliverable nested inside `milestone` (e.g. "Decide between home
+  // dinner or restaurant reservation") rather than the milestone itself.
+  // `milestone` still supplies header context (tMinusLabel) either way.
+  deliverable?: Deliverable | null;
   event: CalendarEvent;
   onSaveMilestone: (updatedMilestone: TMinusMilestone) => void;
+  onSaveDeliverable?: (parentMilestoneId: string, updatedDeliverable: Deliverable) => void;
 }
 
 export const RefineDeliverableModal: React.FC<RefineDeliverableModalProps> = ({
   isOpen,
   onClose,
   milestone,
+  deliverable,
   event,
   onSaveMilestone,
+  onSaveDeliverable,
 }) => {
   if (!isOpen || !milestone) return null;
 
-  const [title, setTitle] = useState(milestone.title);
+  const refiningDeliverable = Boolean(deliverable);
+  const [title, setTitle] = useState(deliverable ? deliverable.title : milestone.title);
   const [selectedOption, setSelectedOption] = useState<string>('');
   const [providerOrVenue, setProviderOrVenue] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('');
-  const [notes, setNotes] = useState<string>(milestone.description || '');
+  const [notes, setNotes] = useState<string>(deliverable ? '' : (milestone.description || ''));
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
-  const options = milestone.refinementOptions || [
+  const options = (deliverable ? deliverable.refinementOptions : milestone.refinementOptions) || [
     'Go-Karting Grand Prix',
     'Paintball / Laser Combat',
     'Private Craft Brewery Tour & Tasting',
@@ -39,9 +48,10 @@ export const RefineDeliverableModal: React.FC<RefineDeliverableModalProps> = ({
   const handleSelectOption = (opt: string) => {
     setSelectedOption(opt);
     // Replace generic placeholder in title or prefix with choice
-    if (milestone.title.includes('activity') || milestone.title.includes('excursion') || milestone.title.includes('tour')) {
+    const baseTitle = deliverable ? deliverable.title : milestone.title;
+    if (baseTitle.includes('activity') || baseTitle.includes('excursion') || baseTitle.includes('tour')) {
       setTitle(`Book ${opt}`);
-    } else if (milestone.title.includes('reservation') || milestone.title.includes('table')) {
+    } else if (baseTitle.includes('reservation') || baseTitle.includes('table')) {
       setTitle(`Reserve table: ${opt}`);
     } else {
       setTitle(`${opt}`);
@@ -50,6 +60,17 @@ export const RefineDeliverableModal: React.FC<RefineDeliverableModalProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (deliverable) {
+      const updatedDeliverable: Deliverable = {
+        ...deliverable,
+        title: title.trim() || deliverable.title,
+        needsRefinement: false, // Refinement resolved!
+      };
+      onSaveDeliverable?.(milestone.id, updatedDeliverable);
+      onClose();
+      return;
+    }
 
     let finalDesc = notes;
     if (providerOrVenue || scheduledTime) {
@@ -147,18 +168,22 @@ export const RefineDeliverableModal: React.FC<RefineDeliverableModalProps> = ({
             />
           </div>
 
-          {/* Progressive Disclosure Toggle */}
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-xs font-semibold text-indigo-700 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-            >
-              <span>{showAdvanced ? 'Hide Extra Details' : '+ Add Venue / Booking Details'}</span>
-            </button>
-          </div>
+          {/* Progressive Disclosure Toggle - a deliverable has no
+              description field of its own to fold venue/time/notes into,
+              so this extra step only applies when refining a milestone. */}
+          {!refiningDeliverable && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-xs font-semibold text-indigo-700 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+              >
+                <span>{showAdvanced ? 'Hide Extra Details' : '+ Add Venue / Booking Details'}</span>
+              </button>
+            </div>
+          )}
 
-          {showAdvanced && (
+          {!refiningDeliverable && showAdvanced && (
             <div className="space-y-2.5 pt-1 border-t border-slate-100 animate-in fade-in duration-200">
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
