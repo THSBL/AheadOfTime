@@ -54,7 +54,12 @@ import { isEmailConfigured } from "./server/emailService";
 import { getGoogleClientId } from "./server/googleClientId";
 import { sendTestUpdate } from "./server/sendTestUpdate";
 
-dotenv.config();
+// dotenv only loads .env by default - it does NOT auto-load .env.local the
+// way Next.js/Vite's own env handling does. Loading both here (.env first,
+// then .env.local so a local override wins) means a key set only in
+// .env.local (e.g. GEMINI_API_KEY) actually reaches this Express server,
+// not just Vite's client-side build.
+dotenv.config({ path: ['.env', '.env.local'] });
 
 const app = express();
 const PORT = 3000;
