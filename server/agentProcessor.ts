@@ -10,6 +10,8 @@ import {
   Deliverable,
   DeliverableType,
   PreparationLevel,
+  PlanningContextEntry,
+  ContextProvenance,
 } from "../src/types.js";
 import {
   calculateOffsetDate,
@@ -24,10 +26,17 @@ import {
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
 import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment } from "../src/utils/preparationAssessment.js";
 import {
+  mergePlanningContext,
+  computePlanningContextVersion,
+  extractLockedFacts,
+  detectDeclineFacts,
+} from "../src/utils/planningContext.js";
+import {
   SHARED_PLANNING_RULES,
   buildCandidateEventIndex,
   resolveTargetEvent,
   buildPreparationLevelAddendum,
+  buildLockedFactsBlock,
 } from "./planningPipeline.js";
 import { logQualityEvent } from "./qualityStore.js";
 
@@ -58,6 +67,95 @@ function resolveEffectivePreparationLevel(
     assessment,
     setBy: isUserLocked ? 'user' : 'aot',
   };
+}
+
+/**
+ * Architecture reset Phase 7 - folds this turn's context into the event's
+ * provenance-tagged fact bag. Keys the caller identifies as explicitly
+ * chosen by the user (answering AOT's own question) are tagged
+ * user_decision; keys extracted directly from the user's own raw text
+ * (bracket tags) are user_stated; everything else in mergedContext
+ * (typically the model's own parsed.context extraction) is ai_inferred.
+ * An explicit decline detected in the raw message (detectDeclineFacts) is
+ * always folded in as a user_decision, regardless of mergedContext.
+ * mergePlanningContext's own rule then protects any of these from being
+ * silently overwritten by a later ai_inferred/ai_generated entry.
+ */
+function resolvePlanningContext(
+  existingEvent: CalendarEvent | undefined,
+  message: string,
+  mergedContext: Record<string, unknown>,
+  explicitStatedKeys: Set<string>,
+  explicitDecisionKeys: Set<string>
+): { context: Record<string, PlanningContextEntry>; version: string } {
+  const now = new Date().toISOString();
+  const incoming: Record<string, PlanningContextEntry> = {};
+  for (const key of Object.keys(mergedContext)) {
+    const value = mergedContext[key];
+    if (value === undefined) continue;
+    const provenance: ContextProvenance = explicitDecisionKeys.has(key)
+      ? 'user_decision'
+      : explicitStatedKeys.has(key)
+      ? 'user_stated'
+      : 'ai_inferred';
+    incoming[key] = { value, provenance, updatedAt: now };
+  }
+  for (const decline of detectDeclineFacts(message)) {
+    incoming[decline.key] = { value: `No ${decline.term} needed.`, provenance: 'user_decision', updatedAt: now };
+  }
+  const context = mergePlanningContext(existingEvent?.planningContext, incoming, now);
+  const version = computePlanningContextVersion(context);
+  return { context, version };
+}
+
+/**
+ * Strips any milestone that reintroduces something the user explicitly
+ * declined (a locked user_decision fact whose key starts with
+ * "decline_", set by resolvePlanningContext/detectDeclineFacts) - the
+ * failure mode both SHARED_PLANNING_RULES's own "explicit decline" rule
+ * and the LOCKED FACTS prompt block target, but a model can still slip
+ * past a prompt rule. Narrow, keyword-based first pass (same tunable-not-
+ * exhaustive status as Phase 3's role-inference heuristics) - logs a
+ * locked_fact_violation quality signal whenever it actually removes
+ * something, so drift stays visible rather than silently self-healing.
+ */
+function repairLockedFactViolations(
+  milestones: TMinusMilestone[],
+  lockedFacts: Record<string, unknown>,
+  rawUserMessage: string
+): TMinusMilestone[] {
+  const declineTerms = Object.keys(lockedFacts)
+    .filter((k) => k.startsWith('decline_'))
+    .map((k) => k.slice('decline_'.length).replace(/_/g, ' ').trim())
+    .filter((term) => term.length >= 3);
+  if (declineTerms.length === 0) return milestones;
+
+  const violating: TMinusMilestone[] = [];
+  const kept = milestones.filter((m) => {
+    // Never revert/remove a milestone the user already completed, same
+    // rule SHARED_PLANNING_RULES and preserveCompletedMilestones apply -
+    // a decline stated AFTER the user finished the task doesn't undo it.
+    if (m.status === 'completed') return true;
+    const haystack = `${m.title} ${m.description || ''}`.toLowerCase();
+    const hit = declineTerms.some((term) => haystack.includes(term));
+    if (hit) violating.push(m);
+    return !hit;
+  });
+
+  if (violating.length > 0) {
+    // Fire-and-forget, matches the convention used elsewhere in this file -
+    // logQualityEvent never throws and this must never add latency to a
+    // successful response.
+    logQualityEvent({
+      sourceChannel: 'web',
+      signalType: 'locked_fact_violation',
+      severity: 'low',
+      rawUserMessage,
+      errorDetail: `Removed ${violating.length} milestone(s) contradicting a locked decline: ${violating.map((m) => m.title).join('; ')}`,
+    });
+  }
+
+  return kept;
 }
 
 // Lazy initialize Gemini SDK
@@ -200,11 +298,25 @@ export async function processWithGemini(params: {
   userProfile?: { homeZipOrLocation?: string };
 }): Promise<ProcessAgentResponsePayload> {
   const prepLevel = resolveEffectivePreparationLevel(params.existingEvent, params.message);
+  // Architecture reset Phase 7 - locked facts from EARLIER turns (plus any
+  // decline this turn's own raw message makes) are computed here, before
+  // mergedContext exists, purely from existingEvent.planningContext + the
+  // raw text - this turn's own decline is already covered by SHARED_PLANNING_
+  // RULES's "explicit decline" rule for the CURRENT turn, but re-asserting
+  // it here too is what keeps it honored on a LATER, unrelated turn.
+  const earlyDeclineEntries: Record<string, PlanningContextEntry> = {};
+  for (const decline of detectDeclineFacts(params.message)) {
+    earlyDeclineEntries[decline.key] = { value: `No ${decline.term} needed.`, provenance: 'user_decision', updatedAt: new Date().toISOString() };
+  }
+  const lockedFactsPreview = mergePlanningContext(params.existingEvent?.planningContext, earlyDeclineEntries);
+  const lockedFactsBlock = buildLockedFactsBlock(extractLockedFacts(lockedFactsPreview));
   const systemInstruction = `You are the AheadOfTime Conversational Planning Engine.
 
 ${SHARED_PLANNING_RULES}
 
 ${buildPreparationLevelAddendum(prepLevel.level)}
+
+${lockedFactsBlock}
 
 CORE ARCHITECTURAL DEFINITIONS (Milestones vs Deliverables):
 1. Milestone (State Checkpoint - 0-day duration):
@@ -680,6 +792,23 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     });
   }
 
+  // Architecture reset Phase 7 - keys the user directly typed (tagContext,
+  // extracted from their own raw text) are user_stated; keys that are an
+  // explicit answer to a question AOT itself asked (intakeAnswer/
+  // batchAnswers) are user_decision. Everything else in mergedContext
+  // (parsed.context - the model's own extraction) defaults to ai_inferred.
+  const explicitStatedKeys = new Set(Object.keys(tagContext));
+  const explicitDecisionKeys = new Set<string>();
+  if (params.intakeAnswer) explicitDecisionKeys.add(params.intakeAnswer.parameterKey);
+  if (params.batchAnswers) params.batchAnswers.forEach((ans) => explicitDecisionKeys.add(ans.parameterKey));
+  const planningContextResolution = resolvePlanningContext(
+    existingEvent,
+    params.message,
+    mergedContext,
+    explicitStatedKeys,
+    explicitDecisionKeys
+  );
+
   // Format intake questions with IDs. Previously gated to mode ===
   // "CREATE_AND_INTAKE" && !structuredPayload only - a proactive follow-up
   // suggestion the model found on an already-resolved plan (mode
@@ -885,6 +1014,19 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   const existingTierById = new Map((existingEvent?.milestones || []).map((m) => [m.id, m.tier]));
   milestones = milestones.map((m) => ({ ...m, tier: existingTierById.get(m.id) ?? m.tier ?? prepLevel.level }));
 
+  // Architecture reset Phase 7 - a last-line repair against a model
+  // response that slipped past the LOCKED FACTS prompt rule; tag each
+  // genuinely-new milestone (one that didn't already exist, so it keeps
+  // whatever version it was originally generated under) with the context
+  // version it was just planned against, for Phase 6's upgrade staleness
+  // check.
+  milestones = repairLockedFactViolations(milestones, extractLockedFacts(planningContextResolution.context), params.message);
+  const existingContextVersionById = new Map((existingEvent?.milestones || []).map((m) => [m.id, m.generatedFromContextVersion]));
+  milestones = milestones.map((m) => ({
+    ...m,
+    generatedFromContextVersion: existingContextVersionById.get(m.id) ?? m.generatedFromContextVersion ?? planningContextResolution.version,
+  }));
+
   // Construct CalendarEvent object
   const calendarEvent: CalendarEvent = {
     id: eventId,
@@ -905,6 +1047,8 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     structuredPayload,
     tailoredOptions: structuredPayload?.tailored_options,
     context: mergedContext,
+    planningContext: planningContextResolution.context,
+    planningContextVersion: planningContextResolution.version,
     intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
     milestones,
     watchpoint: parsed.watchpoint || undefined,
@@ -988,8 +1132,22 @@ export function processWithDeterministicRules(params: {
         deliverableType: m.deliverableType,
       };
     });
+    const tripContext = {
+      ...extractContextFromMessage(params.message, params.existingEvent?.context),
+      archetype: macro.type,
+      ...(params.userProfile?.homeZipOrLocation ? { homeZipOrLocation: params.userProfile.homeZipOrLocation } : {}),
+    };
+    // No existingEvent reaches this branch (see the condition above), so
+    // every key here is this turn's own extraction - all user_stated.
+    const tripPlanningContext = resolvePlanningContext(
+      undefined,
+      params.message,
+      tripContext,
+      new Set(Object.keys(tripContext)),
+      new Set()
+    );
     const finalMappedMilestones = finalizeMilestonePlan(mappedMilestones, { title: macro.title, rawText: params.message })
-      .map((m) => ({ ...m, tier: prepLevel.level }));
+      .map((m) => ({ ...m, tier: prepLevel.level, generatedFromContextVersion: tripPlanningContext.version }));
 
     const focusText = `I built the full prep plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
     const additionText = tripDecomposition.conversational_response || `Covers the overall trip logistics plus the specific prep for what you mentioned.`;
@@ -1011,11 +1169,9 @@ export function processWithDeterministicRules(params: {
       subEvents: tripDecomposition.sub_events,
       structuredPayload: tripDecomposition,
       tailoredOptions: tripDecomposition.tailored_options,
-      context: {
-        ...extractContextFromMessage(params.message, params.existingEvent?.context),
-        archetype: macro.type,
-        ...(params.userProfile?.homeZipOrLocation ? { homeZipOrLocation: params.userProfile.homeZipOrLocation } : {}),
-      },
+      context: tripContext,
+      planningContext: tripPlanningContext.context,
+      planningContextVersion: tripPlanningContext.version,
       milestones: finalMappedMilestones,
       rawInputSnippet: params.message,
       createdAt: params.existingEvent?.createdAt || new Date().toISOString(),
@@ -1083,6 +1239,7 @@ export function processWithDeterministicRules(params: {
   let mode: OperationalMode = "CREATE_AND_INTAKE";
   let category: any = params.existingEvent?.category || detectEventCategory(title || params.message, params.message);
   const context: any = extractContextFromMessage(params.message, params.existingEvent?.context);
+  const explicitStatedKeys = new Set(Object.keys(context));
   if (params.userProfile?.homeZipOrLocation) {
     context.homeZipOrLocation = params.userProfile.homeZipOrLocation;
   }
@@ -1095,17 +1252,30 @@ export function processWithDeterministicRules(params: {
   }
   title = getCleanEventTitle(title, category, context);
 
+  const explicitDecisionKeys = new Set<string>();
   if (params.intakeAnswer) {
     context[params.intakeAnswer.parameterKey] = params.intakeAnswer.answerValue;
+    explicitDecisionKeys.add(params.intakeAnswer.parameterKey);
     mode = "RESOLVE_MILESTONES";
   }
 
   if (params.batchAnswers) {
     params.batchAnswers.forEach(ans => {
       context[ans.parameterKey] = ans.answerValue;
+      explicitDecisionKeys.add(ans.parameterKey);
     });
     mode = "RESOLVE_MILESTONES";
   }
+
+  // Architecture reset Phase 7 - same provenance resolution processWithGemini
+  // does, so the two engines never disagree about which facts are locked.
+  const planningContextResolution = resolvePlanningContext(
+    params.existingEvent,
+    params.message,
+    context,
+    explicitStatedKeys,
+    explicitDecisionKeys
+  );
 
   const hasExplicitBrackets = /\[[a-zA-Z0-9_-]+:\s*[^\]]+\]/.test(params.message);
   if (hasExplicitBrackets || (context.neededItems && context.neededItems.length > 0) || (context.customItems && context.customItems.length > 0) || context.transportType || context.foodPlan || context.giftType) {
@@ -1303,6 +1473,19 @@ export function processWithDeterministicRules(params: {
   const existingTierById = new Map((params.existingEvent?.milestones || []).map((m) => [m.id, m.tier]));
   milestones = milestones.map((m) => ({ ...m, tier: existingTierById.get(m.id) ?? m.tier ?? prepLevel.level }));
 
+  // Architecture reset Phase 7 - same repair + version-tagging pass
+  // processWithGemini does. The deterministic engine never sees a LOCKED
+  // FACTS prompt (there's no prompt at all here), so this repair is the
+  // only guardrail on this path - and it's a real one, since the
+  // deterministic generator's category defaults don't know about a
+  // decline unless it's reflected in `context` as a flag it recognizes.
+  milestones = repairLockedFactViolations(milestones, extractLockedFacts(planningContextResolution.context), params.message);
+  const existingContextVersionById = new Map((params.existingEvent?.milestones || []).map((m) => [m.id, m.generatedFromContextVersion]));
+  milestones = milestones.map((m) => ({
+    ...m,
+    generatedFromContextVersion: existingContextVersionById.get(m.id) ?? m.generatedFromContextVersion ?? planningContextResolution.version,
+  }));
+
   const calendarEvent: CalendarEvent = {
     id: eventId,
     title,
@@ -1315,6 +1498,8 @@ export function processWithDeterministicRules(params: {
     needsRefinement: (params.intakeAnswer || params.batchAnswers || params.existingEvent || mode === "RESOLVE_MILESTONES" || (context && Object.keys(context).length > 0) || milestones.length > 0) ? false : false,
     refinedAt: (params.intakeAnswer || params.batchAnswers || params.existingEvent || mode === "RESOLVE_MILESTONES" || (context && Object.keys(context).length > 0) || milestones.length > 0) ? new Date().toISOString() : params.existingEvent?.refinedAt,
     context,
+    planningContext: planningContextResolution.context,
+    planningContextVersion: planningContextResolution.version,
     intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
     milestones,
     watchpoint,

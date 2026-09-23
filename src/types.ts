@@ -203,6 +203,20 @@ export interface EventRecurrenceConfig {
   occurrencesCount?: number; // how many cycles to project (default e.g. 4)
 }
 
+// Architecture reset Phase 7 - who/what actually asserted a planning fact,
+// so a replan can tell "the user explicitly decided this" (never silently
+// drop or contradict it) apart from "Gemini's own guess this turn" (fine to
+// reconsider freely). user_decision is a strict subset of user_stated: an
+// explicit choice/decline (e.g. "no gift needed") vs. any other user-typed
+// detail (e.g. a destination mentioned in passing).
+export type ContextProvenance = 'user_stated' | 'user_decision' | 'ai_inferred' | 'ai_generated';
+
+export interface PlanningContextEntry {
+  value: unknown;
+  provenance: ContextProvenance;
+  updatedAt: string;
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -255,7 +269,7 @@ export interface CalendarEvent {
   // vs. AI-inferred) and a hash of its user-provenance subset, used to
   // decide whether a hidden tier's milestones are still valid or need a
   // fresh replan on upgrade.
-  planningContext?: Record<string, { value: unknown; provenance: 'user_stated' | 'user_decision' | 'ai_inferred' | 'ai_generated'; updatedAt: string }>;
+  planningContext?: Record<string, PlanningContextEntry>;
   planningContextVersion?: string;
   // The narrow role-only gap from Phase 3/6 today - mirrors
   // preparationAssessment.ts's InformationGap shape (duplicated here rather

@@ -222,3 +222,107 @@ describe('processWithDeterministicRules - preparation level (architecture reset 
     expect(result.event.milestones.every((m) => m.tier === result.event.preparationLevel)).toBe(true);
   });
 });
+
+describe('processWithDeterministicRules - planning context & locked facts (architecture reset Phase 7)', () => {
+  it('records an explicit decline as a locked user_decision fact, and tags a non-empty planningContextVersion', () => {
+    const result = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20, no cake needed",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    const declineEntry = Object.entries(result.event.planningContext || {}).find(([k]) => k.startsWith('decline_'));
+    expect(declineEntry).toBeDefined();
+    expect(declineEntry![1].provenance).toBe('user_decision');
+    expect(result.event.planningContextVersion).toBeTruthy();
+  });
+
+  it('a locked decline survives an unrelated later correction unchanged, with a stable version', () => {
+    const first = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20, no cake needed",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    const second = processWithDeterministicRules({
+      message: 'also need balloons',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: first.event,
+    });
+    const firstDecline = Object.entries(first.event.planningContext || {}).find(([k]) => k.startsWith('decline_'));
+    const secondDecline = Object.entries(second.event.planningContext || {}).find(([k]) => k.startsWith('decline_'));
+    expect(secondDecline).toBeDefined();
+    expect(secondDecline![1].provenance).toBe('user_decision');
+    expect(secondDecline![1].value).toBe(firstDecline![1].value);
+    expect(second.event.planningContextVersion).toBe(first.event.planningContextVersion);
+  });
+
+  it('strips a carried-over milestone that contradicts a locked decline from an earlier turn', () => {
+    const base = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    const withDeclineAndGiftMilestone = {
+      ...base.event,
+      planningContext: {
+        decline_gift: { value: 'No gift needed.', provenance: 'user_decision' as const, updatedAt: new Date().toISOString() },
+      },
+      milestones: [
+        ...base.event.milestones,
+        {
+          id: 'ms-gift-manual',
+          eventId: base.event.id,
+          tMinusLabel: 'T-7d',
+          tMinusOffsetMinutes: -10080,
+          calculatedDate: '2026-11-13',
+          title: 'Gift Purchased',
+          description: 'Buy and wrap a birthday gift.',
+          category: 'gift' as const,
+          status: 'pending' as const,
+        },
+      ],
+    };
+    const result = processWithDeterministicRules({
+      message: 'confirm the venue is booked',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: withDeclineAndGiftMilestone,
+    });
+    expect(result.event.milestones.some((m) => m.title === 'Gift Purchased')).toBe(false);
+  });
+
+  it('never strips a COMPLETED milestone even if it contradicts a locked decline made afterward', () => {
+    const base = processWithDeterministicRules({
+      message: "Maya's birthday party on 2026-11-20",
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    const withCompletedGiftMilestone = {
+      ...base.event,
+      planningContext: {
+        decline_gift: { value: 'No gift needed.', provenance: 'user_decision' as const, updatedAt: new Date().toISOString() },
+      },
+      milestones: [
+        ...base.event.milestones,
+        {
+          id: 'ms-gift-completed',
+          eventId: base.event.id,
+          tMinusLabel: 'T-7d',
+          tMinusOffsetMinutes: -10080,
+          calculatedDate: '2026-11-13',
+          title: 'Gift Purchased',
+          description: 'Buy and wrap a birthday gift.',
+          category: 'gift' as const,
+          status: 'completed' as const,
+        },
+      ],
+    };
+    const result = processWithDeterministicRules({
+      message: 'confirm the venue is booked',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: withCompletedGiftMilestone,
+    });
+    expect(result.event.milestones.some((m) => m.title === 'Gift Purchased' && m.status === 'completed')).toBe(true);
+  });
+});

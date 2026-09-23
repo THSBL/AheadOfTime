@@ -13,7 +13,13 @@ export type QualitySignalType =
   // "AOT VALIDATES" (architecture reset Phase 5) - a milestone's calculated
   // date was unparseable or absurdly far past its event, logged as a
   // non-blocking signal rather than rejecting the write.
-  | 'milestone_chronology_anomaly';
+  | 'milestone_chronology_anomaly'
+  // Architecture reset Phase 7 - a model response silently re-included a
+  // milestone for something the user explicitly declined (a locked fact).
+  // The offending milestone is stripped before the response is returned;
+  // this logs that it happened so drift in the underlying prompt/model
+  // behavior is visible rather than silently self-healing forever.
+  | 'locked_fact_violation';
 
 export type QualitySeverity = 'low' | 'medium' | 'high';
 

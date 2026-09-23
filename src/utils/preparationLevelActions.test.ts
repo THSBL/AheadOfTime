@@ -54,4 +54,30 @@ describe('applyPreparationLevelChange', () => {
     expect(result.milestones[0].isActive).toBe(true);
     expect(result.needsReplan).toBe(false);
   });
+
+  describe('architecture reset Phase 7 - staleness against planningContextVersion', () => {
+    it('flags needsReplan when the target tier exists but was generated under an older context version', () => {
+      const milestones = [{ ...ms('a', 'balanced'), generatedFromContextVersion: 'v1' }];
+      const result = applyPreparationLevelChange(milestones, 'balanced', 'v2');
+      expect(result.needsReplan).toBe(true);
+    });
+
+    it('does not flag needsReplan when the target tier matches the current context version', () => {
+      const milestones = [{ ...ms('a', 'balanced'), generatedFromContextVersion: 'v2' }];
+      const result = applyPreparationLevelChange(milestones, 'balanced', 'v2');
+      expect(result.needsReplan).toBe(false);
+    });
+
+    it('treats a milestone with no recorded generatedFromContextVersion as trustworthy (pre-Phase-7 data), not stale', () => {
+      const milestones = [ms('a', 'balanced')];
+      const result = applyPreparationLevelChange(milestones, 'balanced', 'v2');
+      expect(result.needsReplan).toBe(false);
+    });
+
+    it('omitting currentPlanningContextVersion entirely preserves the exact Phase 6 behavior', () => {
+      const milestones = [{ ...ms('a', 'balanced'), generatedFromContextVersion: 'v1' }];
+      const result = applyPreparationLevelChange(milestones, 'balanced');
+      expect(result.needsReplan).toBe(false);
+    });
+  });
 });

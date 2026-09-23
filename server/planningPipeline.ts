@@ -80,6 +80,26 @@ ${framing[level]}
 Never pad a plan with busywork just to look more thorough at a higher level, and never thin one out just to look minimal at a lower level - every milestone must correspond to something this specific user genuinely needs, given what they are actually responsible for. This is about DEPTH of responsibility coverage, not a target milestone count at any level.`;
 }
 
+/**
+ * Architecture reset Phase 7 - a hard-constraints block built from the
+ * user's own explicit decisions/declines (planning_context entries with
+ * provenance 'user_decision'), interpolated into the prompt alongside
+ * SHARED_PLANNING_RULES's own "AN EXPLICIT DECLINE MEANS NO MILESTONE"
+ * rule. That rule alone only covers the turn the decline was made on - a
+ * LATER, unrelated correction turn has no way to know a decline from
+ * several turns ago still holds unless it's re-stated as a standing
+ * constraint every time. Returns '' when there are no locked facts, so
+ * callers can interpolate it unconditionally.
+ */
+export function buildLockedFactsBlock(lockedFacts: Record<string, unknown>): string {
+  const keys = Object.keys(lockedFacts);
+  if (keys.length === 0) return '';
+  const lines = keys.map((key) => `- ${String(lockedFacts[key])}`);
+  return `CRITICAL RULE - LOCKED FACTS, NEVER SILENTLY DROP OR CONTRADICT THESE:
+The user has already made these explicit decisions earlier in this plan. They remain in force on every future turn, even a turn about something else entirely - never reintroduce a milestone/deliverable for something declined here, and never contradict a locked decision unless THIS turn's message explicitly reverses it:
+${lines.join('\n')}`;
+}
+
 export interface CandidateEventSummary {
   id: string;
   title: string;

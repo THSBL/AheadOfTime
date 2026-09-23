@@ -14,11 +14,64 @@ import {
 } from '../src/utils/tminusRules.js';
 import { generateDeterministicMilestones } from '../src/utils/deterministicMilestoneGenerator.js';
 import {
+  mergePlanningContext,
+  computePlanningContextVersion,
+  extractLockedFacts,
+  detectDeclineFacts,
+} from '../src/utils/planningContext.js';
+import type { PlanningContextEntry } from '../src/types.js';
+import {
   buildCandidateEventIndex,
   resolveTargetEvent,
   CandidateEventSummary,
   SHARED_PLANNING_RULES,
 } from './planningPipeline.js';
+import { logQualityEvent } from './qualityStore.js';
+
+/**
+ * Architecture reset Phase 7 - Telegram's lighter integration (per the
+ * plan's own scoping note: full LOCKED FACTS prompt injection is web-only,
+ * since Telegram's context model is much thinner - no structured field
+ * extraction equivalent to agentProcessor.ts's mergedContext). This still
+ * closes the concrete failure mode the plan calls out: a locked decline
+ * from event creation (or a prior refinement) silently reappearing on a
+ * later refinement turn. Milestones already on the event are never
+ * touched - only newly-added ones from this turn are checked.
+ */
+function repairLockedFactViolations(
+  newMilestones: TMinusMilestone[],
+  lockedFacts: Record<string, unknown>,
+  eventId: string,
+  rawUserMessage: string
+): TMinusMilestone[] {
+  const declineTerms = Object.keys(lockedFacts)
+    .filter((k) => k.startsWith('decline_'))
+    .map((k) => k.slice('decline_'.length).replace(/_/g, ' ').trim())
+    .filter((term) => term.length >= 3);
+  if (declineTerms.length === 0) return newMilestones;
+
+  const violating: TMinusMilestone[] = [];
+  const kept = newMilestones.filter((m) => {
+    if (m.status === 'completed') return true;
+    const haystack = `${m.title} ${m.description || ''}`.toLowerCase();
+    const hit = declineTerms.some((term) => haystack.includes(term));
+    if (hit) violating.push(m);
+    return !hit;
+  });
+
+  if (violating.length > 0) {
+    logQualityEvent({
+      eventId,
+      sourceChannel: 'telegram',
+      signalType: 'locked_fact_violation',
+      severity: 'low',
+      rawUserMessage,
+      errorDetail: `Removed ${violating.length} milestone(s) contradicting a locked decline: ${violating.map((m) => m.title).join('; ')}`,
+    });
+  }
+
+  return kept;
+}
 
 export interface CalendarAgentResult {
   replyText: string;
@@ -466,13 +519,17 @@ export class GeminiCalendarAgent {
         // back correctly on its own.
         const merged = preserveCompletedMilestones(event.milestones || [], mergedRaw, event.title);
         const existingIds = new Set((event.milestones || []).map((m) => m.id));
-        const newlyAdded = merged.filter((m) => !existingIds.has(m.id));
+        let newlyAdded = merged.filter((m) => !existingIds.has(m.id));
+        const repairedNewlyAdded = repairLockedFactViolations(newlyAdded, extractLockedFacts(event.planningContext), event.id, rawText);
+        const removedIds = new Set(newlyAdded.filter((m) => !repairedNewlyAdded.includes(m)).map((m) => m.id));
+        newlyAdded = repairedNewlyAdded;
+        const finalMerged = removedIds.size > 0 ? merged.filter((m) => !removedIds.has(m.id)) : merged;
 
         const replyText = newlyAdded.length > 0
           ? newlyAdded.map((m) => `✅ Added *${m.title}* (${m.tMinusLabel})`).join('\n')
           : `That looks like it's already covered by an existing task, so I didn't add anything new.`;
 
-        return { replyText, clarificationPending: false, newlyAddedMilestones: newlyAdded, mergedMilestones: merged };
+        return { replyText, clarificationPending: false, newlyAddedMilestones: newlyAdded, mergedMilestones: finalMerged };
       }
 
       return { ...fallback, replyText: "I didn't quite catch a specific change there - could you say it a different way?" };
@@ -530,7 +587,12 @@ export class GeminiCalendarAgent {
     );
     const merged = preserveCompletedMilestones(event.milestones || [], mergedRaw, event.title);
     const existingIds = new Set((event.milestones || []).map((m) => m.id));
-    const newlyAdded = merged.filter((m) => !existingIds.has(m.id));
+    const newlyAdded = repairLockedFactViolations(
+      merged.filter((m) => !existingIds.has(m.id)),
+      extractLockedFacts(event.planningContext),
+      event.id,
+      rawText
+    );
 
     if (newlyAdded.length > 0) {
       await TelegramSessionStore.addMilestonesToEvent(event.id, newlyAdded);
@@ -633,6 +695,29 @@ export class GeminiCalendarAgent {
       rawText: rawInputSnippet,
     });
 
+    // Architecture reset Phase 7 - Telegram's lighter integration: no
+    // structured field extraction to classify per-key the way web's
+    // mergedContext allows, so everything AOT actually captured about this
+    // brand-new event (customNote/guestCount) is tagged user_stated - it
+    // came directly from the user's own message. Any explicit decline in
+    // that same message is tagged user_decision, same detector web uses.
+    const telegramContext = {
+      customNote: parsed.description || title,
+      guestCount: parsed.guest_count,
+    };
+    const now = new Date().toISOString();
+    const contextEntries: Record<string, PlanningContextEntry> = {};
+    for (const key of Object.keys(telegramContext)) {
+      const value = (telegramContext as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      contextEntries[key] = { value, provenance: 'user_stated', updatedAt: now };
+    }
+    for (const decline of detectDeclineFacts(rawInputSnippet)) {
+      contextEntries[decline.key] = { value: `No ${decline.term} needed.`, provenance: 'user_decision', updatedAt: now };
+    }
+    const planningContext = mergePlanningContext(undefined, contextEntries, now);
+    const planningContextVersion = computePlanningContextVersion(planningContext);
+
     const newEvent: CalendarEvent = {
       id: eventId,
       title,
@@ -643,11 +728,10 @@ export class GeminiCalendarAgent {
       location: parsed.location || macro?.destination || undefined,
       status: 'milestones_active',
       needsRefinement: true,
-      context: {
-        customNote: parsed.description || title,
-        guestCount: parsed.guest_count,
-      },
-      milestones,
+      context: telegramContext,
+      planningContext,
+      planningContextVersion,
+      milestones: milestones.map((m) => ({ ...m, generatedFromContextVersion: planningContextVersion })),
       rawInputSnippet,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
