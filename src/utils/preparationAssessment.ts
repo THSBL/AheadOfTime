@@ -213,14 +213,46 @@ export function getActiveAssessor(): PreparationAssessor {
   return activeAssessor;
 }
 
+// Architecture reset Phase 8 - a deterministic backstop against
+// SHARED_PLANNING_RULES's own is_open_decision instruction being ignored.
+// Confirmed live, even after tightening that prompt rule: the model can
+// still flag an ordinary, already-actionable task as an open decision
+// ("Order cake from local bakery," "Place cake order for Sunday pickup") -
+// these open with a concrete action verb aimed at a specific, already-known
+// object, which is never what a genuine unresolved fork looks like (that's
+// framed as a question or an "X or Y" choice, e.g. "home or a restaurant").
+// A prompt instruction alone isn't reliable enough for something this
+// user-visible - this catches what the wording missed, the same
+// belt-and-suspenders pattern LOCKED FACTS' repairLockedFactViolations uses.
+const ORDINARY_TASK_VERB = /^(order|book|purchase|buy|reserve|confirm|pick\s*up|place|arrange|schedule|pay|send|write|wrap|pack)\b/i;
+
+// "Confirm the headcount" (task) and "Confirm restaurant or home setting"
+// (genuine decision) both open with "confirm" - the verb alone can't tell
+// them apart, confirmed live in both directions (the verb check alone
+// wrongly excluded this exact "...or..." decision when the model didn't
+// also supply decision_options). Two signals override the verb check, in
+// order: 2+ real decision_options is the strongest evidence of an actual
+// fork; failing that, the title's own "X or Y" phrasing is how a genuine
+// alternative naturally reads even with no explicit options list. Only
+// when NEITHER signal is present does the verb check decide - that's
+// exactly the shape a mislabeled ordinary task takes ("Order cake from
+// local bakery" has no options and no "or").
+function looksLikeAGenuineOpenDecision(title: string, options: string[] | undefined): boolean {
+  if (options && options.length >= 2) return true;
+  if (/\bor\b/i.test(title)) return true;
+  return !ORDINARY_TASK_VERB.test(title.trim());
+}
+
 /**
  * Architecture reset Phase 8 - everything still open on this event: the
  * role gap (routed through the active assessor, same JEV-safe seam as
  * everywhere else) plus one entry per milestone/deliverable currently
- * flagged needsRefinement. Recomputed fresh every turn (never diffed or
- * patched, same philosophy as planningContextVersion) - a milestone or
- * deliverable the user just resolved simply stops being needsRefinement
- * next turn and drops out on its own.
+ * flagged needsRefinement AND phrased like an actual open question, not an
+ * ordinary task (see looksLikeAGenuineOpenDecision above). Recomputed fresh
+ * every turn (never diffed or patched, same philosophy as
+ * planningContextVersion) - a milestone or deliverable the user just
+ * resolved simply stops being needsRefinement next turn and drops out on
+ * its own.
  */
 export function deriveOutstandingGaps(
   milestones: TMinusMilestone[],
@@ -229,7 +261,7 @@ export function deriveOutstandingGaps(
   const gaps: InformationGap[] = [...getActiveAssessor().identifyInformationGaps(assessmentInput)];
 
   for (const m of milestones) {
-    if (m.needsRefinement) {
+    if (m.needsRefinement && looksLikeAGenuineOpenDecision(m.title, m.refinementOptions)) {
       gaps.push({
         key: m.id,
         question: `Decide: ${m.title}`,
@@ -239,7 +271,7 @@ export function deriveOutstandingGaps(
       });
     }
     for (const d of m.deliverables || []) {
-      if (d.needsRefinement) {
+      if (d.needsRefinement && looksLikeAGenuineOpenDecision(d.title, d.refinementOptions)) {
         gaps.push({
           key: d.deliverable_id,
           question: `Decide: ${d.title}`,

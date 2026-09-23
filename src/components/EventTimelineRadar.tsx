@@ -26,7 +26,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel, Deliverable } from '../types';
+import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
@@ -166,10 +166,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     });
   };
   const [refiningDeliverable, setRefiningDeliverable] = useState<TMinusMilestone | null>(null);
-  // Architecture reset Phase 8 - when set alongside refiningDeliverable
-  // (its parent), the Refine modal targets this specific deliverable
-  // instead of the whole milestone.
-  const [refiningDeliverableItem, setRefiningDeliverableItem] = useState<Deliverable | null>(null);
 
   const activeEvent = selectedEventId 
     ? (events.find((e) => e.id === selectedEventId) || events[0] || null) 
@@ -827,7 +823,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     setRefiningDeliverable(ms);
-                    setRefiningDeliverableItem(null);
                   }}
                   className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
                   title="Refine specifics for this deliverable"
@@ -907,21 +902,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                           <span className={`text-[11px] sm:text-xs truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
                             {deliv.title}
                           </span>
-                          {(deliv.needsRefinement || (deliv.refinementOptions && deliv.refinementOptions.length > 0)) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setRefiningDeliverable(ms);
-                                setRefiningDeliverableItem(deliv);
-                              }}
-                              className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95 ml-auto"
-                              title="Decide this detail"
-                            >
-                              <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                              <span>Decide</span>
-                            </button>
-                          )}
                         </div>
                       );
                     })}
@@ -1083,21 +1063,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       <span className={`text-[11px] truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
                         {deliv.title}
                       </span>
-                      {(deliv.needsRefinement || (deliv.refinementOptions && deliv.refinementOptions.length > 0)) && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRefiningDeliverable(ms);
-                            setRefiningDeliverableItem(deliv);
-                          }}
-                          className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95 ml-auto"
-                          title="Decide this detail"
-                        >
-                          <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                          <span>Decide</span>
-                        </button>
-                      )}
                     </div>
                   );
                 })}
@@ -1398,7 +1363,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   type="button"
                   onClick={() => setShowSuggestions((v) => !v)}
                   aria-expanded={showSuggestions}
-                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer"
                 >
                   <HelpCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{suggestionCount} suggestion{suggestionCount > 1 ? 's' : ''} from us</span>
@@ -1433,7 +1398,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         a user happy with the plan sees one compact box. */}
                     {(activeEvent.outstandingGaps || []).map((gap) => (
                       <div key={gap.key} className="space-y-1.5">
-                        <p className="text-[11px] font-bold text-indigo-900">{gap.question}</p>
+                        <p className="text-[11px] font-bold text-slate-700">{gap.question}</p>
                         {gap.options && gap.options.length > 0 ? (
                           <div className="flex flex-wrap gap-1.5">
                             {gap.options.map((opt) => (
@@ -1441,14 +1406,14 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                                 key={opt}
                                 type="button"
                                 onClick={() => handleSendCorrection(opt)}
-                                className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 transition-all cursor-pointer"
+                                className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 transition-all cursor-pointer"
                               >
                                 {opt}
                               </button>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-[11px] text-indigo-700">Answer above to resolve this.</p>
+                          <p className="text-[11px] text-slate-500">Answer above to resolve this.</p>
                         )}
                       </div>
                     ))}
@@ -1786,57 +1751,32 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       )}
 
 
-      {/* Refine Deliverable Modal */}
+      {/* Refine Deliverable Modal - milestone-level only. The deliverable-
+          level "Decide" button/popup (architecture reset Phase 8) was
+          removed - it duplicated the unified Open Decisions panel above
+          with a worse, often irrelevant options list, per live feedback. */}
       {refiningDeliverable && activeEvent && (
         <RefineDeliverableModal
           isOpen={Boolean(refiningDeliverable)}
-          onClose={() => {
-            setRefiningDeliverable(null);
-            setRefiningDeliverableItem(null);
-          }}
+          onClose={() => setRefiningDeliverable(null)}
           milestone={refiningDeliverable}
-          deliverable={refiningDeliverableItem}
           event={activeEvent}
           onSaveMilestone={(updated) => {
-            // Architecture reset Phase 8 - a single onUpdateEvent call
-            // carrying both the milestone patch and the outstandingGaps
-            // patch together, rather than two separate calls
-            // (onUpdateMilestone + onUpdateEvent) - two calls each closing
-            // over the same pre-update `activeEvent` raced, with the
-            // second silently reverting the first's milestone change
-            // (confirmed live: the "Decide" button reappeared after save).
-            if (activeEvent && onUpdateEvent) {
+            // A single onUpdateEvent call carrying both the milestone patch
+            // and the outstandingGaps patch together, rather than two
+            // separate calls each closing over the same pre-update
+            // `activeEvent` - two separate calls raced, with the second
+            // silently reverting the first's milestone change.
+            if (onUpdateEvent) {
               const milestones = activeEvent.milestones.map((m) => (m.id === updated.id ? updated : m));
               const outstandingGaps = activeEvent.outstandingGaps?.some((g) => g.key === updated.id)
                 ? activeEvent.outstandingGaps.filter((g) => g.key !== updated.id)
                 : activeEvent.outstandingGaps;
               onUpdateEvent({ ...activeEvent, milestones, outstandingGaps });
-            } else if (activeEvent && onUpdateMilestone) {
+            } else if (onUpdateMilestone) {
               onUpdateMilestone(activeEvent.id, updated);
             }
             setRefiningDeliverable(null);
-            setRefiningDeliverableItem(null);
-          }}
-          onSaveDeliverable={(parentMilestoneId, updatedDeliverable) => {
-            if (activeEvent && refiningDeliverable) {
-              const updatedMilestone: TMinusMilestone = {
-                ...refiningDeliverable,
-                deliverables: (refiningDeliverable.deliverables || []).map((d) =>
-                  d.deliverable_id === updatedDeliverable.deliverable_id ? updatedDeliverable : d
-                ),
-              };
-              if (onUpdateEvent) {
-                const milestones = activeEvent.milestones.map((m) => (m.id === updatedMilestone.id ? updatedMilestone : m));
-                const outstandingGaps = activeEvent.outstandingGaps?.some((g) => g.key === updatedDeliverable.deliverable_id)
-                  ? activeEvent.outstandingGaps.filter((g) => g.key !== updatedDeliverable.deliverable_id)
-                  : activeEvent.outstandingGaps;
-                onUpdateEvent({ ...activeEvent, milestones, outstandingGaps });
-              } else if (onUpdateMilestone) {
-                onUpdateMilestone(activeEvent.id, updatedMilestone);
-              }
-            }
-            setRefiningDeliverable(null);
-            setRefiningDeliverableItem(null);
           }}
         />
       )}

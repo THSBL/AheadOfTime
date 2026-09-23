@@ -170,4 +170,71 @@ describe('deriveOutstandingGaps (architecture reset Phase 8)', () => {
     expect(gaps.some((g) => g.key === 'user_responsibility')).toBe(true);
     expect(gaps.some((g) => g.key === 'a')).toBe(true);
   });
+
+  it('excludes an ordinary already-actionable task the model incorrectly flagged, even when needsRefinement is true', () => {
+    // Regression test for a real, live-reported bug: even after tightening
+    // SHARED_PLANNING_RULES's own instructions, the model still flagged
+    // "Order cake from local bakery" as an open decision - it's a normal
+    // task with a known objective, not a genuine unresolved fork like
+    // "home dinner or a restaurant reservation." A prompt rule alone isn't
+    // reliable enough for something this user-visible.
+    const milestones = [
+      ms('a', {
+        deliverables: [
+          {
+            deliverable_id: 'cake_order',
+            title: 'Order cake from local bakery',
+            type: 'purchase',
+            is_completed: false,
+            needsRefinement: true,
+          },
+          {
+            deliverable_id: 'confirm_location',
+            title: 'Confirm if celebration is at home or a restaurant',
+            type: 'coordination',
+            is_completed: false,
+            needsRefinement: true,
+            refinementOptions: ['Home', 'Restaurant'],
+          },
+        ],
+      }),
+    ];
+    const gaps = deriveOutstandingGaps(milestones, noRoleGapInput);
+    expect(gaps.some((g) => g.key === 'cake_order')).toBe(false);
+    expect(gaps.some((g) => g.key === 'confirm_location')).toBe(true);
+  });
+
+  it('trusts an "X or Y" phrasing as a genuine decision even when the model gave no decision_options', () => {
+    // Regression test for a real, live-reported bug found fixing the one
+    // above: the verb-only fallback then wrongly excluded a genuine
+    // decision the model DID flag correctly ("Confirm restaurant or home
+    // setting for the Sunday afternoon") just because it opened with
+    // "Confirm" and had no options - "confirm" alone can't distinguish a
+    // real fork from an ordinary task, but the sentence's own "X or Y"
+    // phrasing can.
+    const milestones = [
+      ms('a', {
+        deliverables: [
+          {
+            deliverable_id: 'venue_confirmation',
+            title: 'Confirm restaurant or home setting for the Sunday afternoon',
+            type: 'coordination',
+            is_completed: false,
+            needsRefinement: true,
+            // No refinementOptions - exactly the observed live case.
+          },
+          {
+            deliverable_id: 'confirm_headcount',
+            title: 'Confirm the final headcount',
+            type: 'coordination',
+            is_completed: false,
+            needsRefinement: true,
+          },
+        ],
+      }),
+    ];
+    const gaps = deriveOutstandingGaps(milestones, noRoleGapInput);
+    expect(gaps.some((g) => g.key === 'venue_confirmation')).toBe(true);
+    expect(gaps.some((g) => g.key === 'confirm_headcount')).toBe(false);
+  });
 });
