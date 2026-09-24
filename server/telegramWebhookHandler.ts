@@ -304,14 +304,13 @@ export class TelegramWebhookHandler {
         // the user nothing to judge before tapping "Looks Good". Letting
         // sendRefinementPrompt fall through to its own default builds the
         // real milestone list instead.
-        // Users with Background Sync get the event pushed to Google
-        // Calendar/Tasks right after this reply, so the prompt says so
-        // instead of telling them to open the app and push it themselves.
-        const session = await TelegramSessionStore.getOrCreateSession(chatId);
-        const autoPush = await isAutoPushEnabledForUser(session.webUserId);
-        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl, undefined, {
-          autoPushingToGoogle: autoPush,
-        });
+        // Background Sync users used to get the event pushed to Google
+        // Calendar/Tasks immediately here, before they'd seen the checklist
+        // or had a chance to correct anything - live-reported as "the bot
+        // adds it to your calendar without verification." The push now
+        // happens only once the user taps "Looks Good" (see the
+        // CONFIRM_DEFAULT handler below), same as every other user.
+        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl);
         // Pure logging, fire-and-forget - gives checkAndLogRapidCorrection
         // something to compare a later correction against.
         logQualityEvent({
@@ -320,7 +319,6 @@ export class TelegramWebhookHandler {
           signalType: 'plan_generated',
           severity: 'low',
         });
-        if (autoPush) await this.pushToGoogleAndReport(chatId, agentResult.createdEvent.id);
       } else {
         // Schedule query or status response
         await TelegramService.sendMessage(chatId, agentResult.replyText, {
@@ -494,6 +492,16 @@ export class TelegramWebhookHandler {
             },
           }
         );
+
+        // Background Sync users' push to Google Calendar/Tasks now happens
+        // here, gated behind this explicit "Looks Good" tap, instead of
+        // firing the instant the event was created (before the user had
+        // seen the checklist at all) - live-reported as a real gap: the
+        // calendar was already written to before there was any chance to
+        // catch a wrong date or detail.
+        const session = await TelegramSessionStore.getOrCreateSession(chatId);
+        const autoPush = await isAutoPushEnabledForUser(session.webUserId);
+        if (autoPush) await this.pushToGoogleAndReport(chatId, eventId);
       }
       return;
     }

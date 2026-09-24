@@ -198,8 +198,7 @@ export class TelegramService {
     chatId: number | string,
     event: CalendarEvent,
     appBaseUrl: string,
-    customText?: string,
-    options: { autoPushingToGoogle?: boolean } = {}
+    customText?: string
   ): Promise<{ ok: boolean; result?: any }> {
     // Signed so tapping this link works whether or not the browser has a
     // live Google session - a user chatting with the bot right now
@@ -233,7 +232,12 @@ export class TelegramService {
       // schedule" - internal planning vocabulary a user has no reason to
       // know. Also now honest about what actually happened: the event is
       // saved here, not pushed to Google Calendar/Tasks yet - that used to
-      // be implied by "Runway Created" without ever being stated.
+      // be implied by "Runway Created" without ever being stated. Even for
+      // Background Sync users, nothing reaches Google Calendar until "Looks
+      // Good" is tapped below (see CONFIRM_DEFAULT in
+      // telegramWebhookHandler.ts) - a fixed, live-reported gap where the
+      // calendar write used to happen before the user had seen this
+      // checklist at all.
       text = [
         `*${event.title}*${event.eventDate ? ` — ${event.eventDate}` : ''}`,
         event.location ? `📍 ${event.location}` : null,
@@ -243,9 +247,7 @@ export class TelegramService {
         gapLine ? '' : null,
         gapLine,
         '',
-        options.autoPushingToGoogle
-          ? `Adding it to your Google Calendar and Tasks now. Anything off? Tap Refine in Chat below and tell me.`
-          : `Not on your calendar yet - open the app to push it to Google Calendar/Tasks. Anything off? Tap Refine in Chat below and tell me.`,
+        `Not on your calendar yet - tap Looks Good below (or Push to Calendar) once it's right. Anything off? Tap Refine in Chat and tell me.`,
       ]
         .filter(Boolean)
         .join('\n');
