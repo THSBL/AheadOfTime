@@ -9,6 +9,10 @@
       "destination": "/api/feedback"
     },
     {
+      "source": "/api/feedback/admin-list",
+      "destination": "/api/feedback?action=admin-list"
+    },
+    {
       "source": "/api/auth/google/authorize",
       "destination": "/api/auth/google?action=authorize"
     },

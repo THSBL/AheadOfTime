@@ -56,3 +56,20 @@ export function extractBearerToken(req: any): string | null {
   const match = header.match(/^Bearer\s+(.+)$/i);
   return match ? match[1].trim() : null;
 }
+
+/**
+ * Whether a verified email is allowed to see admin-only data (e.g. the
+ * feedback inbox). Configured entirely through the ADMIN_EMAILS env var
+ * (comma-separated) rather than a hardcoded address, so who counts as an
+ * admin is never something committed to the repo - it's set once per
+ * environment (.env.local for dev, the Vercel project's env vars for
+ * prod). No ADMIN_EMAILS set means no one is an admin, not "everyone is."
+ */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const allowlist = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return allowlist.includes(email.toLowerCase().trim());
+}

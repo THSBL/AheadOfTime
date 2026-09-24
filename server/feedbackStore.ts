@@ -60,6 +60,52 @@ export interface SubmitFeedbackInput {
   sourceChannel?: 'web' | 'telegram' | 'whatsapp';
 }
 
+export interface FeedbackRow {
+  id: string;
+  createdAt: string;
+  responseType: 'csat' | 'general_feedback';
+  score: number | null;
+  feedbackText: string | null;
+  tags: string[];
+  sourceChannel: string;
+  userEmail: string;
+}
+
+/**
+ * Admin-only listing, most recent first. Joined to `users` for a readable
+ * email instead of a bare user_id - there is no admin UI for browsing
+ * users separately, so this is the only place that join is needed.
+ */
+export async function listRecentFeedback(limit: number = 200): Promise<FeedbackRow[]> {
+  const rows = await query<{
+    id: string;
+    created_at: string;
+    response_type: 'csat' | 'general_feedback';
+    score: number | null;
+    feedback_text: string | null;
+    tags: string[];
+    source_channel: string;
+    email: string;
+  }>(
+    `SELECT c.id, c.created_at, c.response_type, c.score, c.feedback_text, c.tags, c.source_channel, u.email
+     FROM csat_responses c
+     JOIN users u ON u.id = c.user_id
+     ORDER BY c.created_at DESC
+     LIMIT $1`,
+    [Math.min(Math.max(limit, 1), 1000)]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    createdAt: r.created_at,
+    responseType: r.response_type,
+    score: r.score,
+    feedbackText: r.feedback_text,
+    tags: r.tags || [],
+    sourceChannel: r.source_channel,
+    userEmail: r.email,
+  }));
+}
+
 export async function submitFeedback(input: SubmitFeedbackInput): Promise<{ id: string; tags: string[] }> {
   if (input.responseType === 'csat') {
     const eligibility = await getFeedbackEligibility(input.userId);

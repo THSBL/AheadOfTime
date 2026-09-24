@@ -1,6 +1,6 @@
-import { extractBearerToken, verifyGoogleAccessToken } from '../../server/googleAuthVerify.js';
+import { extractBearerToken, verifyGoogleAccessToken, isAdminEmail } from '../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
-import { getFeedbackEligibility, submitFeedback } from '../../server/feedbackStore.js';
+import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from '../../server/feedbackStore.js';
 
 // Consolidated Vercel function for /api/feedback/eligibility (GET) and
 // /api/feedback/submit (POST) - two files, same auth, cleanly split by
@@ -15,6 +15,19 @@ export default async function handler(req: any, res: any) {
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
+  if (req.method === 'GET' && req.query?.action === 'admin-list') {
+    if (!isAdminEmail(verified.email)) {
+      return res.status(403).json({ ok: false, error: 'Not authorized' });
+    }
+    try {
+      const rows = await listRecentFeedback(200);
+      return res.status(200).json({ ok: true, rows });
+    } catch (err: any) {
+      console.error('feedback admin-list error:', err);
+      return res.status(500).json({ ok: false, error: err?.message || 'Failed to load feedback' });
+    }
   }
 
   if (req.method === 'GET') {

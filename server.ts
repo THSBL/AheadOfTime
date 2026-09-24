@@ -32,11 +32,11 @@ import { WhatsAppService } from "./server/whatsappService";
 import { AgendaScannerService } from "./server/agendaScanner";
 import { TelegramWebhookHandler } from "./server/telegramWebhookHandler";
 import { TelegramSessionStore, findOrCreateUserByEmail } from "./server/telegramStore";
-import { extractBearerToken, verifyGoogleAccessToken } from "./server/googleAuthVerify";
+import { extractBearerToken, verifyGoogleAccessToken, isAdminEmail } from "./server/googleAuthVerify";
 import { verifyEventDeepLink } from "./server/deepLinkToken";
 import { TelegramService } from "./server/telegramService";
 import { logQualityEvent, QualitySignalType } from "./server/qualityStore";
-import { getFeedbackEligibility, submitFeedback } from "./server/feedbackStore";
+import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from "./server/feedbackStore";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
   exchangeAuthorizationCode,
@@ -1267,6 +1267,25 @@ app.delete("/api/telegram/event/:id", async (req: Request, res: Response) => {
   }
   const deleted = await TelegramSessionStore.deleteEvent(req.params.id, verified.email);
   res.json({ ok: true, deleted });
+});
+
+app.get("/api/feedback/admin-list", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  if (!isAdminEmail(verified.email)) {
+    res.status(403).json({ ok: false, error: "Not authorized" });
+    return;
+  }
+  try {
+    const rows = await listRecentFeedback(200);
+    res.json({ ok: true, rows });
+  } catch (err: any) {
+    console.error("feedback admin-list error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Failed to load feedback" });
+  }
 });
 
 app.get("/api/feedback/eligibility", async (req: Request, res: Response) => {
