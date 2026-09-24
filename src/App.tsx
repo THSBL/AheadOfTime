@@ -2102,6 +2102,7 @@ function App() {
                     onFocusChange={setIsWizardInputFocused}
                     onboardingProfile={onboardingProfile}
                     onOpenPreferences={() => setIsPreferencesModalOpen(true)}
+                    currentReferenceDate={currentReferenceDate}
                   />
                 </div>
               )}
