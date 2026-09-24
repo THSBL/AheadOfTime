@@ -41,6 +41,10 @@
       "destination": "/api/agent?action=process"
     },
     {
+      "source": "/api/agent/clarify",
+      "destination": "/api/agent?action=clarify"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

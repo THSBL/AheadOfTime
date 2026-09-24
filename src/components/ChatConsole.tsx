@@ -205,6 +205,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const [draftEvent, setDraftEvent] = useState<CalendarEvent | null>(null);
   const [isDraftLoading, setIsDraftLoading] = useState(false);
   const [draftReplyInput, setDraftReplyInput] = useState('');
+  // Set only while waiting on the user's answer to a pre-creation
+  // clarifying question (see askClarifyingQuestion/handleInitialDraftMessage
+  // below) - holds the original message so the eventual full-generation
+  // call gets ONE combined prompt (original + answer) instead of the
+  // original being discarded once a question was asked about it.
+  const [pendingClarification, setPendingClarification] = useState<{ originalMessage: string } | null>(null);
   const draftScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -216,24 +222,33 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setDraftEvent(null);
     setDraftReplyInput('');
     setIsDraftLoading(false);
+    setPendingClarification(null);
   };
 
-  // Shared by the initial freeform submit, typed follow-ups, and clicked
-  // intake options - the one thing that varies per caller is what goes in
-  // the request body beyond the common fields, and what the user-facing
-  // message bubble says (an intake answer shows the option's label, not
-  // the raw "Intake selection: key = value" the server actually receives).
+  // Runs the actual plan-generation call - shared by "no clarification was
+  // needed" (called with the original message) and "clarification just got
+  // answered" (called with the original message + the answer combined into
+  // one prompt, per the explicit design: ask Gemini what to ask first, then
+  // feed it the full combined prompt in one generation call, rather than
+  // creating a thin plan and patching it - live-tested that patching
+  // produced visibly generic results ("Calendar Event" / "Event Framework
+  // Established") compared to generating from full context in one pass).
+  // Also reused for ordinary follow-ups once a draftEvent already exists
+  // (targetEventId then correctly routes it as a refinement, not a
+  // duplicate creation).
   const sendDraftTurn = async (
-    userBubbleText: string,
+    userBubbleText: string | null,
     extraBody: Record<string, unknown>
   ) => {
-    const userMsg: AgentMessage = {
-      id: `usr-draft-${Date.now()}`,
-      sender: 'user',
-      text: userBubbleText,
-      timestamp: new Date().toISOString(),
-    };
-    setDraftConversation((prev) => [...prev, userMsg]);
+    if (userBubbleText !== null) {
+      const userMsg: AgentMessage = {
+        id: `usr-draft-${Date.now()}`,
+        sender: 'user',
+        text: userBubbleText,
+        timestamp: new Date().toISOString(),
+      };
+      setDraftConversation((prev) => [...prev, userMsg]);
+    }
     setIsDraftLoading(true);
     try {
       const response = await fetch('/api/agent/process', {
@@ -278,9 +293,76 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     }
   };
 
+  // The very first message in a fresh conversation: check with Gemini
+  // whether one clarifying question is worth asking BEFORE generating
+  // anything, rather than always generating a full (possibly under-
+  // specified) plan immediately. A failed/slow check just falls through to
+  // generating straight away - this pre-check must never block creation.
+  const handleInitialDraftMessage = async (text: string) => {
+    const userMsg: AgentMessage = {
+      id: `usr-draft-${Date.now()}`,
+      sender: 'user',
+      text,
+      timestamp: new Date().toISOString(),
+    };
+    setDraftConversation([userMsg]);
+    setIsDraftLoading(true);
+
+    let needsClarification = false;
+    try {
+      const res = await fetch('/api/agent/clarify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, currentReferenceDate }),
+      });
+      const data = await res.json();
+      if (data?.needsClarification && data.question && Array.isArray(data.options) && data.options.length >= 2) {
+        needsClarification = true;
+        setPendingClarification({ originalMessage: text });
+        const agentMsg: AgentMessage = {
+          id: `agt-clarify-${Date.now()}`,
+          sender: 'agent',
+          text: data.question,
+          timestamp: new Date().toISOString(),
+          clarifyOptions: data.options,
+        };
+        setDraftConversation((prev) => [...prev, agentMsg]);
+        setIsDraftLoading(false);
+      }
+    } catch (err) {
+      console.warn('Clarify check failed, proceeding straight to plan generation:', err);
+    }
+
+    if (!needsClarification) {
+      // No bubble to add here - the user's message is already shown above,
+      // and sendDraftTurn's own loading state picks up where this left off.
+      await sendDraftTurn(null, { message: text });
+    }
+  };
+
   const handleDraftFreeformSubmit = (text: string) => {
-    if (!text.trim() || isDraftLoading) return;
-    sendDraftTurn(text.trim(), { message: text.trim() });
+    const trimmed = text.trim();
+    if (!trimmed || isDraftLoading) return;
+
+    if (pendingClarification) {
+      const combined = `${pendingClarification.originalMessage}. ${trimmed}`;
+      setPendingClarification(null);
+      sendDraftTurn(trimmed, { message: combined });
+      return;
+    }
+
+    if (draftConversation.length === 0) {
+      handleInitialDraftMessage(trimmed);
+      return;
+    }
+
+    sendDraftTurn(trimmed, { message: trimmed });
+  };
+
+  const handleClarifyOptionSelect = (originalMessage: string, option: string) => {
+    if (isDraftLoading) return;
+    setPendingClarification(null);
+    sendDraftTurn(option, { message: `${originalMessage}. ${option}` });
   };
 
   const handleDraftIntakeOptionSelect = (question: IntakeQuestion, option: IntakeOption) => {
@@ -665,9 +747,30 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                     </div>
                   </div>
 
-                  {/* Clickable options for the AI's own clarifying question -
-                      free text always still works too, via the input bar
-                      below. */}
+                  {/* Clickable options for the pre-creation clarifying
+                      question (askClarifyingQuestion, asked before any plan
+                      exists) - free text in the input bar below always
+                      still works too, and gets combined with the original
+                      message the same way a clicked option does. */}
+                  {isLast && pendingClarification && msg.clarifyOptions && msg.clarifyOptions.length > 0 && (
+                    <div className="pl-9 flex flex-wrap gap-1.5">
+                      {msg.clarifyOptions.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => handleClarifyOptionSelect(pendingClarification.originalMessage, opt)}
+                          disabled={isDraftLoading}
+                          className="text-xs font-bold px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Clickable options for the AI's own post-creation
+                      clarifying question - free text always still works
+                      too, via the input bar below. */}
                   {isLast && unansweredQuestion && (
                     <div className="pl-9 flex flex-wrap gap-1.5">
                       {unansweredQuestion.options!.map((opt) => (

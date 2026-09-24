@@ -306,6 +306,12 @@ export interface AgentMessage {
   isVoiceMemo?: boolean;
   voiceAudioUrl?: string;
   voiceDurationSeconds?: number;
+  // Architecture reset Phase C - a pre-creation clarifying question from
+  // /api/agent/clarify (askClarifyingQuestion), asked before any event or
+  // plan exists yet. Deliberately a plain string list, not IntakeQuestion
+  // (which needs an id/parameterKey tied to an already-created event) -
+  // this is a lighter-weight, event-less question/answer pair.
+  clarifyOptions?: string[];
 }
 
 export interface ProcessAgentInputPayload {

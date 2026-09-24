@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractContextFromMessage, processWithDeterministicRules } from './agentProcessor';
+import { extractContextFromMessage, processWithDeterministicRules, askClarifyingQuestion } from './agentProcessor';
 
 const REF_DATE_ISO = '2026-09-01T12:00:00.000Z';
 const REF_DATE_STR = '2026-09-01';
@@ -353,5 +353,30 @@ describe('processWithDeterministicRules - planning context & locked facts (archi
       existingEvent: withCompletedGiftMilestone,
     });
     expect(result.event.milestones.some((m) => m.title === 'Gift Purchased' && m.status === 'completed')).toBe(true);
+  });
+});
+
+describe('askClarifyingQuestion (architecture reset Phase C)', () => {
+  it('never blocks event creation - resolves to no-clarification when GEMINI_API_KEY is unset', async () => {
+    // vitest runs with no .env loaded, same as this whole test file already
+    // relies on for every processWithDeterministicRules test above (none of
+    // them mock Gemini) - this is the real "Gemini unavailable" contract,
+    // not a simulated one.
+    const originalKey = process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    try {
+      const result = await askClarifyingQuestion({
+        message: 'Dinner party with friends',
+        currentReferenceDate: REF_DATE_ISO,
+      });
+      expect(result).toEqual({ needsClarification: false });
+    } finally {
+      if (originalKey !== undefined) process.env.GEMINI_API_KEY = originalKey;
+    }
+  });
+
+  it('resolves to no-clarification for an empty message without calling Gemini at all', async () => {
+    const result = await askClarifyingQuestion({ message: '', currentReferenceDate: REF_DATE_ISO });
+    expect(result).toEqual({ needsClarification: false });
   });
 });

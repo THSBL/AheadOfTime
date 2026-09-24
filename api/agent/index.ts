@@ -4,6 +4,7 @@ import {
   TRANSCRIBE_MODELS,
   processWithGemini,
   processWithDeterministicRules,
+  askClarifyingQuestion,
 } from '../../server/agentProcessor.js';
 import { logQualityEvent } from '../../server/qualityStore.js';
 
@@ -223,6 +224,30 @@ async function handleProcess(req: any, res: any) {
   }
 }
 
+// Architecture reset Phase C - see server.ts's own /api/agent/clarify
+// route doc comment for why this is a separate, always-resolves-quickly
+// pre-check rather than folded into handleProcess.
+async function handleClarify(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed. /api/agent/clarify requires POST.' });
+    return;
+  }
+  try {
+    const { message, currentReferenceDate } = req.body || {};
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'Message is required.' });
+      return;
+    }
+    const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date();
+    const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
+    const result = await askClarifyingQuestion({ message, currentReferenceDate: refDateISO });
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error in /api/agent/clarify:', error);
+    res.json({ needsClarification: false });
+  }
+}
+
 export default async function handler(req: any, res: any) {
   const action = req.query?.action as string;
 
@@ -231,6 +256,9 @@ export default async function handler(req: any, res: any) {
   }
   if (action === 'process') {
     return handleProcess(req, res);
+  }
+  if (action === 'clarify') {
+    return handleClarify(req, res);
   }
 
   return res.status(404).json({ error: 'Unknown action' });

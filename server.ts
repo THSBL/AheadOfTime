@@ -25,6 +25,7 @@ import {
   TRANSCRIBE_MODELS,
   processWithGemini,
   processWithDeterministicRules,
+  askClarifyingQuestion,
 } from "./server/agentProcessor";
 import { WhatsAppWebhookHandler } from "./server/whatsappWebhookHandler";
 import { WhatsAppSessionStore } from "./server/whatsappStore";
@@ -650,6 +651,30 @@ Output ONLY the raw JSON object.`;
   } catch (error: any) {
     console.error("Error in /api/presets/smart-import:", error);
     res.status(500).json({ error: "Failed to extract milestones from this file. Try manual column mapping instead." });
+  }
+});
+
+// Architecture reset Phase C - a small, fast pre-check the client calls
+// before the first full generation: does this message need one clarifying
+// question first? Kept as its own endpoint (not folded into /api/agent/
+// process) since it never touches an event, never calls the deterministic
+// fallback, and always resolves quickly either way (Gemini not configured
+// or the call itself failing both just mean "no clarification needed" -
+// this never blocks event creation).
+app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { message, currentReferenceDate } = req.body || {};
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: "Message is required." });
+      return;
+    }
+    const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date();
+    const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
+    const result = await askClarifyingQuestion({ message, currentReferenceDate: refDateISO });
+    res.json(result);
+  } catch (error: any) {
+    console.error("Error in /api/agent/clarify:", error);
+    res.json({ needsClarification: false });
   }
 });
 

@@ -214,6 +214,92 @@ export async function generateContentFast(
   throw lastError || new Error("All fast Gemini models timed out or were unavailable.");
 }
 
+const CLARIFY_SYSTEM_INSTRUCTION = `You help a calendar-prep app decide whether ONE quick clarifying question is worth asking before it builds a full backward-planning preparation timeline for an event the user just described.
+
+Ask sparingly - only for a genuinely high-value, plan-changing ambiguity (a missing date when "this weekend"/relative phrasing wasn't used, who's actually responsible for organizing it, or a key decision like gift/venue/format that would meaningfully change what gets planned). Don't ask just to ask, and don't ask about minor details a reasonable default can cover (exact guest count, precise time of day, etc.) - if the description is already clear enough to build a good first-pass plan, say no clarification is needed.
+
+When you do ask, the question must be answerable with a short pick from 2-4 concrete options you provide - never an open-ended "tell me more."
+
+Respond with JSON only: { "needsClarification": boolean, "question": string (only if needsClarification), "options": string[] of 2-4 short concrete choices (only if needsClarification) }`;
+
+const CLARIFY_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    needsClarification: { type: Type.BOOLEAN },
+    question: { type: Type.STRING },
+    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  required: ['needsClarification'],
+};
+
+export interface ClarifyingQuestionResult {
+  needsClarification: boolean;
+  question?: string;
+  options?: string[];
+}
+
+/**
+ * Architecture reset Phase C - a small, fast, separate Gemini call that
+ * decides ONLY whether a clarifying question is worth asking, without
+ * generating any plan yet. Deliberately not folded into processWithGemini
+ * (whose own prompt requires a non-empty "runway" on every single turn,
+ * by design - see its own system instruction) - this is the step that
+ * runs BEFORE that, so the eventual full-generation call can be given one
+ * combined, complete prompt (the user's original message plus their
+ * answer) instead of creating a thin plan and patching it, which
+ * live-tested visibly worse ("Calendar Event" / "Event Framework
+ * Established" - a generic title and milestone - compared to generating
+ * from the full context in one pass).
+ */
+export async function askClarifyingQuestion(params: {
+  message: string;
+  currentReferenceDate: string;
+}): Promise<ClarifyingQuestionResult> {
+  if (!process.env.GEMINI_API_KEY || !params.message?.trim()) {
+    return { needsClarification: false };
+  }
+  try {
+    const response = await generateContentFast(
+      () => ({
+        contents: [{ text: JSON.stringify({ eventDescription: params.message, referenceDate: params.currentReferenceDate }) }],
+        config: {
+          systemInstruction: CLARIFY_SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: CLARIFY_SCHEMA,
+        },
+      }),
+      DEFAULT_FAST_MODELS,
+      6000
+    );
+    let rawText = response.text || '{}';
+    if (rawText.startsWith('```json')) {
+      rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (rawText.startsWith('```')) {
+      rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    const parsed = JSON.parse(rawText);
+    if (
+      parsed?.needsClarification &&
+      typeof parsed.question === 'string' &&
+      Array.isArray(parsed.options) &&
+      parsed.options.filter((o: unknown) => typeof o === 'string' && o.trim()).length >= 2
+    ) {
+      return {
+        needsClarification: true,
+        question: parsed.question,
+        options: parsed.options.filter((o: unknown) => typeof o === 'string' && o.trim()).slice(0, 4),
+      };
+    }
+    return { needsClarification: false };
+  } catch (err: any) {
+    // Never blocks event creation - a failed/slow clarify check just means
+    // the app proceeds straight to full generation, same as if Gemini had
+    // said no clarification was needed.
+    console.warn('Clarifying-question check notice, proceeding straight to plan generation:', err?.message || err);
+    return { needsClarification: false };
+  }
+}
+
 // Helper function to reliably parse preset tags and user requirements from message
 export function extractContextFromMessage(message: string, existingContext: any = {}) {
   const context = { ...(existingContext || {}) };
