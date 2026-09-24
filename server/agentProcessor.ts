@@ -42,6 +42,8 @@ import {
   buildLockedFactsBlock,
 } from "./planningPipeline.js";
 import { logQualityEvent } from "./qualityStore.js";
+import { describeGeminiError } from "./geminiErrors.js";
+export { describeGeminiError };
 import {
   buildProfileRefinementQuestions,
   buildTripRefinementQuestions,
@@ -216,7 +218,7 @@ export async function generateContentFast(
       }
     } catch (err: any) {
       lastError = err;
-      console.warn(`Fast model execution notice (${modelName}):`, err?.message || err);
+      console.warn(`Fast model execution notice (${modelName}): ${describeGeminiError(err)}`);
       // Try next fast model immediately without sleeping
       continue;
     }
@@ -338,7 +340,7 @@ export async function askRefinementQuestions(params: {
       }
       messageQuestions = sanitizeMessageQuestions(JSON.parse(rawText)?.questions);
     } catch (err: any) {
-      console.warn('Refinement-question notice, using fallback questions:', err?.message || err);
+      console.warn(`Refinement-question notice, using fallback questions: ${describeGeminiError(err)}`);
     }
   }
 

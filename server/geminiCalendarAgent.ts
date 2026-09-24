@@ -1,3 +1,4 @@
+import { describeGeminiError } from './geminiErrors.js';
 import { GoogleGenAI } from '@google/genai';
 import { TelegramSessionStore } from './telegramStore.js';
 import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, StructuredPlanningPayload } from '../src/types.js';
@@ -291,7 +292,7 @@ export class GeminiCalendarAgent {
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`⚠️ Gemini model ${modelName} unavailable for Telegram:`, err?.message || err);
+        console.warn(`⚠️ Gemini model ${modelName} unavailable for Telegram: ${describeGeminiError(err)}`);
         continue;
       }
     }

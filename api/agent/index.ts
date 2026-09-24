@@ -5,6 +5,7 @@ import {
   processWithGemini,
   processWithDeterministicRules,
   askRefinementQuestions,
+  describeGeminiError,
 } from '../../server/agentProcessor.js';
 import { sanitizePlanningProfile } from '../../src/utils/refinementQuestions.js';
 import { logQualityEvent } from '../../server/qualityStore.js';
@@ -178,7 +179,7 @@ async function handleProcess(req: any, res: any) {
         }
         result.usedAi = true;
       } catch (geminiError: any) {
-        console.warn("Fast Gemini notice, seamlessly using deterministic rules engine:", geminiError?.message || "Fallback");
+        console.warn(`Fast Gemini notice, seamlessly using deterministic rules engine: ${describeGeminiError(geminiError)}`);
         // Pure logging - does not affect the deterministic fallback below.
         // Note: web-chat events use client-generated ids (evt-...), not
         // Postgres UUIDs, so eventId is intentionally omitted here.
@@ -186,7 +187,7 @@ async function handleProcess(req: any, res: any) {
           sourceChannel: 'web',
           signalType: 'gemini_fallback',
           severity: 'medium',
-          errorDetail: geminiError?.message || String(geminiError),
+          errorDetail: describeGeminiError(geminiError),
           rawUserMessage: message,
         });
         result = processWithDeterministicRules({

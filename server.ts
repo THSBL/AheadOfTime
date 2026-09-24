@@ -26,6 +26,7 @@ import {
   processWithGemini,
   processWithDeterministicRules,
   askRefinementQuestions,
+  describeGeminiError,
 } from "./server/agentProcessor";
 import { sanitizePlanningProfile } from "./src/utils/refinementQuestions";
 import { WhatsAppWebhookHandler } from "./server/whatsappWebhookHandler";
@@ -776,13 +777,13 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         }
         result.usedAi = true;
       } catch (geminiError: any) {
-        console.warn("Fast Gemini notice, seamlessly using deterministic rules engine:", geminiError?.message || "Fallback");
+        console.warn(`Fast Gemini notice, seamlessly using deterministic rules engine: ${describeGeminiError(geminiError)}`);
         // Pure logging - does not affect the deterministic fallback below.
         await logQualityEvent({
           sourceChannel: 'web',
           signalType: 'gemini_fallback',
           severity: 'medium',
-          errorDetail: geminiError?.message || String(geminiError),
+          errorDetail: describeGeminiError(geminiError),
           rawUserMessage: message,
         });
         result = processWithDeterministicRules({

@@ -21,7 +21,10 @@ export function getPool(): Pool {
       throw new Error('No Postgres connection string found (expected POSTGRES_URL or DATABASE_URL env var).');
     }
     pool = new Pool({
-      connectionString,
+      // Same behaviour, stated explicitly: pg already treats sslmode=require
+      // as verify-full and logs a SECURITY WARNING on every cold start
+      // saying so. Neon's injected URL uses sslmode=require.
+      connectionString: connectionString.replace(/([?&])sslmode=(prefer|require|verify-ca)\b/, '$1sslmode=verify-full'),
       ssl: { rejectUnauthorized: false },
     });
   }
