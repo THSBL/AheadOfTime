@@ -237,4 +237,31 @@ describe('deriveOutstandingGaps (architecture reset Phase 8)', () => {
     expect(gaps.some((g) => g.key === 'venue_confirmation')).toBe(true);
     expect(gaps.some((g) => g.key === 'confirm_headcount')).toBe(false);
   });
+
+  it('excludes a flagged safety instruction with no actual choice in it, even though it names no ordinary-task verb', () => {
+    // Regression test for a real, live-reported bug: an earlier version of
+    // this filter excluded by VERB (order/book/confirm/...), which let
+    // through anything that didn't start with one of those - "Wait at
+    // least 18-24 hours after final dive before boarding return flight"
+    // has no options and no "or", but "Wait" wasn't on the verb list, so it
+    // slipped through as a false "open decision" despite being a plain
+    // safety fact with nothing to choose between. The filter must require
+    // POSITIVE evidence of a real fork (options or "X or Y"), not merely
+    // the absence of a recognized task verb.
+    const milestones = [
+      ms('a', {
+        deliverables: [
+          {
+            deliverable_id: 'post_trip_cooldown',
+            title: 'Wait at least 18-24 hours after final dive before boarding return flight',
+            type: 'coordination',
+            is_completed: false,
+            needsRefinement: true,
+          },
+        ],
+      }),
+    ];
+    const gaps = deriveOutstandingGaps(milestones, noRoleGapInput);
+    expect(gaps.some((g) => g.key === 'post_trip_cooldown')).toBe(false);
+  });
 });

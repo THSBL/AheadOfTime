@@ -215,32 +215,24 @@ export function getActiveAssessor(): PreparationAssessor {
 
 // Architecture reset Phase 8 - a deterministic backstop against
 // SHARED_PLANNING_RULES's own is_open_decision instruction being ignored.
-// Confirmed live, even after tightening that prompt rule: the model can
-// still flag an ordinary, already-actionable task as an open decision
-// ("Order cake from local bakery," "Place cake order for Sunday pickup") -
-// these open with a concrete action verb aimed at a specific, already-known
-// object, which is never what a genuine unresolved fork looks like (that's
-// framed as a question or an "X or Y" choice, e.g. "home or a restaurant").
-// A prompt instruction alone isn't reliable enough for something this
-// user-visible - this catches what the wording missed, the same
-// belt-and-suspenders pattern LOCKED FACTS' repairLockedFactViolations uses.
-const ORDINARY_TASK_VERB = /^(order|book|purchase|buy|reserve|confirm|pick\s*up|place|arrange|schedule|pay|send|write|wrap|pack)\b/i;
-
-// "Confirm the headcount" (task) and "Confirm restaurant or home setting"
-// (genuine decision) both open with "confirm" - the verb alone can't tell
-// them apart, confirmed live in both directions (the verb check alone
-// wrongly excluded this exact "...or..." decision when the model didn't
-// also supply decision_options). Two signals override the verb check, in
-// order: 2+ real decision_options is the strongest evidence of an actual
-// fork; failing that, the title's own "X or Y" phrasing is how a genuine
-// alternative naturally reads even with no explicit options list. Only
-// when NEITHER signal is present does the verb check decide - that's
-// exactly the shape a mislabeled ordinary task takes ("Order cake from
-// local bakery" has no options and no "or").
+// Confirmed live across three separate false positives, even after
+// tightening that prompt rule: the model set needsRefinement on an
+// ordinary task ("Order cake from local bakery"), a safety instruction
+// with no choice in it at all ("Wait at least 18-24 hours after final dive
+// before boarding return flight"), and others that share nothing but NOT
+// being an actual fork. An earlier version of this tried excluding known
+// task-verb prefixes, but that is an exclude-list against unbounded
+// English phrasing - it let through anything that didn't happen to start
+// with one of a fixed set of verbs, exactly how "Wait..." slipped through.
+// A genuine open decision, per the user's own framing, is always
+// structurally a Yes/No or a pick between named options - so require
+// actual positive evidence of that shape instead: real decision_options,
+// or the title's own "X or Y" phrasing. No signal, no surfaced decision -
+// most events should end up with zero, which is the correct default.
 function looksLikeAGenuineOpenDecision(title: string, options: string[] | undefined): boolean {
   if (options && options.length >= 2) return true;
   if (/\bor\b/i.test(title)) return true;
-  return !ORDINARY_TASK_VERB.test(title.trim());
+  return false;
 }
 
 /**
