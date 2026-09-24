@@ -607,19 +607,27 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             right now. */}
         {overdueItems.length > 0 && (
           <div className="space-y-2">
-            {/* Was a solid rose-600 pill with a thick, hover-escalating
-                rose-ringed card border - live feedback called it "a big 3D
-                stripe," too visually loud next to the rest of the app's
-                grey/quiet default. Still visually distinct from a plain
-                section heading (this is the one status worth calling out),
-                just with the same restrained tint used for other
-                attention-but-not-alarm states elsewhere (e.g. the
-                milestone card's amber "due soon" badge). */}
-            <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
-              <Clock className="w-3.5 h-3.5" />
-              Overdue ({overdueItems.length})
-            </span>
-            <div className="rounded-xl bg-white border border-rose-200 shadow-2xs divide-y divide-slate-100 transition-all hover:border-rose-300">
+            {/* Structural format: a plain uppercase label + a hairline rule
+                extending to a neutral count pill, instead of the label
+                itself being a solid/filled colored pill - the severity
+                color (rose, per our own overdue-vs-due-soon rule, unchanged)
+                now shows on the pill text and the card's left-edge accent
+                below, not as a big colored block that dominates the section
+                header. Less visual weight, same signal. */}
+            <div className="flex items-center gap-2 px-1">
+              <span className="inline-flex items-center gap-1.5 text-rose-700 text-xs font-bold uppercase tracking-wide shrink-0">
+                <Clock className="w-3.5 h-3.5" />
+                Overdue
+              </span>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-mono font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full shrink-0">
+                {overdueItems.length} action{overdueItems.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            {/* Left-edge accent instead of a full colored border - same
+                border-l-4 language EventRow already uses elsewhere on this
+                page for status color, applied here to the container. */}
+            <div className="rounded-xl bg-white border border-slate-200/90 border-l-4 border-l-rose-400 shadow-2xs divide-y divide-slate-100">
               {overdueItems.map((item) => (
                 <FlatMilestoneRow
                   key={item.milestoneId}
@@ -640,7 +648,13 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             differently-styled sections. */}
         {thisWeekBucket && (
           <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">This week</h3>
+            <div className="flex items-center gap-2 px-1">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 shrink-0">This week</h3>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full shrink-0">
+                {thisWeekBucket.items.length} item{thisWeekBucket.items.length === 1 ? '' : 's'}
+              </span>
+            </div>
             <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
               {thisWeekBucket.items.map((item) => (
                 <FlatMilestoneRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} onToggleMilestoneStatus={onToggleMilestoneStatus} />
@@ -665,7 +679,13 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             more to-dos, and stays out of the way until opened. */}
         {futureBuckets.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1">Looking ahead</h3>
+            <div className="flex items-center gap-2 px-1">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 shrink-0">Looking ahead</h3>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full shrink-0">
+                {futureBuckets.reduce((sum, b) => sum + b.items.length, 0)} items
+              </span>
+            </div>
             <div className="space-y-2">
               {futureBuckets.map((bucket) => (
                 <WeekBucketCard
@@ -686,10 +706,16 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
         {/* Already Ahead */}
         {alreadyAhead.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 px-1 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Already ahead</span>
-            </h3>
+            <div className="flex items-center gap-2 px-1">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-1.5 shrink-0">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Already ahead</span>
+              </h3>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                {alreadyAhead.length}
+              </span>
+            </div>
             <div className="space-y-2">
               {alreadyAhead.map(({ event, status }) => (
                 <EventRow key={event.id} event={event} status={status} currentReferenceDate={currentReferenceDate} onSelectEvent={onSelectEvent} compact />

@@ -192,8 +192,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   onClick={() => setShowOnlyNew((v) => !v)}
                   className={`font-bold flex items-center gap-1 cursor-pointer px-2.5 py-1 rounded-lg border transition-all ${
                     showOnlyNew
-                      ? 'bg-amber-400 border-amber-500 text-amber-950'
-                      : 'bg-amber-100/80 border-amber-200 text-amber-800 hover:bg-amber-100'
+                      ? 'bg-sky-500 border-sky-600 text-white'
+                      : 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
                   }`}
                   title={showOnlyNew ? 'Showing only newly added events' : 'Show only newly added events'}
                 >

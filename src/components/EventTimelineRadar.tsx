@@ -1267,11 +1267,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </div>
         </div>
 
-        {/* Mini Progress Completion Bar */}
+        {/* Progress: percentage as its own prominent number (not just
+            buried in "N of M"), a full-width bar, then completion count and
+            the plan-level switcher sharing one caption row - previously the
+            switcher sat on its own line below with an info icon + Change
+            link, competing for attention right under the bar instead of
+            reading as this row's own secondary detail. */}
         <div className="space-y-1 pt-0.5">
           <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Preparation Completion</span>
-            <span className="font-mono text-slate-700 font-bold">{completedCount} of {totalCount} completed</span>
+            <span className="uppercase tracking-wider">Preparation</span>
+            <span className="font-mono text-slate-900 font-bold text-sm">
+              {totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%
+            </span>
           </div>
           <div className="w-full h-1.5 bg-sky-100 rounded-full overflow-hidden border border-sky-200/40">
             <div
@@ -1279,13 +1286,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
             />
           </div>
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="text-[11px] font-mono text-slate-500 font-medium">{completedCount} of {totalCount} completed</span>
+            <PreparationLevelSwitcher
+              level={activeEvent.preparationLevel || 'balanced'}
+              onChangeLevel={handleChangePreparationLevel}
+              isBusy={isPreparationLevelBusy}
+            />
+          </div>
         </div>
-
-        <PreparationLevelSwitcher
-          level={activeEvent.preparationLevel || 'balanced'}
-          onChangeLevel={handleChangePreparationLevel}
-          isBusy={isPreparationLevelBusy}
-        />
       </div>
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}
@@ -1632,8 +1641,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {overdueItems.length > 0 && (
               <React.Fragment>
                 <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
-                  <span className="text-[11px] font-black uppercase tracking-wide text-rose-600">Overdue</span>
-                  <span className="text-[11px] font-bold text-slate-300">{overdueItems.length}</span>
+                  <span className="text-[11px] font-black uppercase tracking-wide text-rose-600 shrink-0">Overdue</span>
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] font-mono font-bold text-rose-800 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full shrink-0">
+                    {overdueItems.length}
+                  </span>
                 </div>
                 {overdueItems.map((ms) => renderMilestoneCard(ms))}
               </React.Fragment>
@@ -1645,8 +1657,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {thisWeekBucket && (
               <React.Fragment>
                 <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
-                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">This week</span>
-                  <span className="text-[11px] font-bold text-slate-300">{thisWeekBucket.items.length}</span>
+                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400 shrink-0">This week</span>
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full shrink-0">
+                    {thisWeekBucket.items.length}
+                  </span>
                 </div>
                 {thisWeekBucket.items.map((item) => {
                   const ms = milestonesById.get(item.milestoneId);
@@ -1663,8 +1678,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {futureItems.length > 0 && (
               <React.Fragment>
                 <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
-                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Looking ahead</span>
-                  <span className="text-[11px] font-bold text-slate-300">{futureItems.length}</span>
+                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400 shrink-0">Looking ahead</span>
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full shrink-0">
+                    {futureItems.length}
+                  </span>
                 </div>
                 <div className="space-y-1">
                   {futureItems.map((ms) => renderCompactFutureRow(ms))}
@@ -1676,8 +1694,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {doneMilestones.length > 0 && (
               <React.Fragment>
                 <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
-                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Done</span>
-                  <span className="text-[11px] font-bold text-slate-300">{doneMilestones.length}</span>
+                  <span className="text-[11px] font-black uppercase tracking-wide text-slate-400 shrink-0">Done</span>
+                  <div className="flex-1 h-px bg-slate-200" />
+                  <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full shrink-0">
+                    {doneMilestones.length}
+                  </span>
                 </div>
                 {doneMilestones.map((ms) => renderMilestoneCard(ms))}
               </React.Fragment>
