@@ -292,7 +292,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       setDraftEvent(updatedEvent);
       setDraftBrief(addition ? { ...brief, additions: [...(brief.additions || []), addition.text] } : brief);
       appendDraftMessage('agent', data.focusText || data.replyText || 'Here is your plan.', {
-        additionText: data.additionText,
+        // The server fell back to its built-in templates (Gemini missing or
+        // failing): say so, instead of template text that suggests the
+        // message was understood.
+        additionText: data.usedAi === false
+          ? "The AI planner isn't available right now, so this is a basic template plan - details you add may not change it yet."
+          : data.additionText,
         associatedEventId: updatedEvent.id,
         generatedMilestones: updatedEvent.milestones,
       });

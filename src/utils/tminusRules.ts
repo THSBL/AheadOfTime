@@ -232,7 +232,7 @@ export function formatDestinationName(dest: string): string {
 export function parseNaturalDateRange(
   text: string,
   referenceDateISO: string = new Date().toISOString()
-): { startDate: string; endDate?: string; matchedText?: string } | null {
+): { startDate: string; endDate?: string; matchedText?: string; alternatives?: string[] } | null {
   if (!text) return null;
   const raw = text.trim();
   const baseRef = new Date(referenceDateISO);
@@ -253,14 +253,6 @@ export function parseNaturalDateRange(
     return { startDate: isoRangeMatch[1], endDate: isoRangeMatch[2], matchedText: isoRangeMatch[0] };
   }
 
-  // 1b. Relative day/weekend phrasing - live-reported gap: "this weekend"
-  // matched none of the month/day patterns below, fell through to the
-  // model's own guess, and landed on an arbitrary date. Only the handful
-  // of highest-frequency phrases are covered here (today, tomorrow, this/
-  // next weekend) - "this/next <weekday>" is intentionally not attempted
-  // yet, since "next Friday" is genuinely ambiguous (the nearest Friday,
-  // or the one after) without more real usage to calibrate against - same
-  // tunable-not-exhaustive status as this file's other heuristics.
   const toISODate = (d: Date): string =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0).toISOString().substring(0, 10);
   const addDays = (d: Date, days: number): Date => {
@@ -268,27 +260,51 @@ export function parseNaturalDateRange(
     copy.setDate(copy.getDate() + days);
     return copy;
   };
-  if (/\btomorrow\b/i.test(raw)) {
-    return { startDate: toISODate(addDays(todayMidnight, 1)), matchedText: 'tomorrow' };
-  }
-  if (/\btoday\b|\btonight\b/i.test(raw)) {
-    return { startDate: toISODate(todayMidnight), matchedText: raw.match(/\btoday\b|\btonight\b/i)![0] };
-  }
-  const nextWeekendMatch = raw.match(/\bnext\s+weekend\b/i);
-  const thisWeekendMatch = !nextWeekendMatch && raw.match(/\b(?:this\s+)?weekend\b/i);
-  if (nextWeekendMatch || thisWeekendMatch) {
-    const todayDow = todayMidnight.getDay(); // 0=Sun ... 6=Sat
-    const daysUntilSaturday = (6 - todayDow + 7) % 7;
-    if (nextWeekendMatch) {
-      const start = addDays(todayMidnight, daysUntilSaturday + 7);
-      return { startDate: toISODate(start), endDate: toISODate(addDays(start, 1)), matchedText: nextWeekendMatch[0] };
+
+  // 1b. Relative phrasing (today, tomorrow, weekend, weekdays). Only used
+  // when the text holds no explicit date: checked first, "weekend" in
+  // "Weekend trip to Paris 23 to 25 October" won over the real dates.
+  const parseRelative = (): { startDate: string; endDate?: string; matchedText?: string; alternatives?: string[] } | null => {
+    if (/\btomorrow\b/i.test(raw)) {
+      return { startDate: toISODate(addDays(todayMidnight, 1)), matchedText: 'tomorrow' };
     }
-    // "this weekend" said during the weekend itself means the rest of it,
-    // not next week's - Saturday and Sunday both resolve to "today".
-    const start = todayDow === 0 || todayDow === 6 ? todayMidnight : addDays(todayMidnight, daysUntilSaturday);
-    const end = todayDow === 0 ? start : addDays(start, 1);
-    return { startDate: toISODate(start), endDate: toISODate(end), matchedText: thisWeekendMatch![0] };
-  }
+    if (/\btoday\b|\btonight\b/i.test(raw)) {
+      return { startDate: toISODate(todayMidnight), matchedText: raw.match(/\btoday\b|\btonight\b/i)![0] };
+    }
+    const nextWeekendMatch = raw.match(/\bnext\s+weekend\b/i);
+    const thisWeekendMatch = !nextWeekendMatch && raw.match(/\b(?:this\s+)?weekend\b/i);
+    if (nextWeekendMatch || thisWeekendMatch) {
+      const todayDow = todayMidnight.getDay(); // 0=Sun ... 6=Sat
+      const daysUntilSaturday = (6 - todayDow + 7) % 7;
+      if (nextWeekendMatch) {
+        const start = addDays(todayMidnight, daysUntilSaturday + 7);
+        return { startDate: toISODate(start), endDate: toISODate(addDays(start, 1)), matchedText: nextWeekendMatch[0] };
+      }
+      // "this weekend" said during the weekend itself means the rest of it,
+      // not next week's - Saturday and Sunday both resolve to "today".
+      const start = todayDow === 0 || todayDow === 6 ? todayMidnight : addDays(todayMidnight, daysUntilSaturday);
+      const end = todayDow === 0 ? start : addDays(start, 1);
+      return { startDate: toISODate(start), endDate: toISODate(end), matchedText: thisWeekendMatch![0] };
+    }
+    // Weekdays. "this/on <weekday>" (or a bare weekday) = the coming one.
+    // "next <weekday>" is genuinely ambiguous (the coming one, or the one a
+    // week later), so both are returned as `alternatives` and the creation
+    // flow asks which one is meant; startDate is the nearer one.
+    const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const weekdayMatch = raw.match(/\b(?:(this|next|coming|on)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i);
+    if (weekdayMatch) {
+      const target = WEEKDAYS.indexOf(weekdayMatch[2].toLowerCase());
+      let days = (target - todayMidnight.getDay() + 7) % 7;
+      const qualifier = (weekdayMatch[1] || '').toLowerCase();
+      if (days === 0 && qualifier !== 'this') days = 7;
+      const nearer = toISODate(addDays(todayMidnight, days));
+      if (qualifier === 'next') {
+        return { startDate: nearer, matchedText: weekdayMatch[0], alternatives: [nearer, toISODate(addDays(todayMidnight, days + 7))] };
+      }
+      return { startDate: nearer, matchedText: weekdayMatch[0] };
+    }
+    return null;
+  };
 
   // Month dictionary supporting English, Dutch, German, French
   const monthMap: Record<string, number> = {
@@ -410,7 +426,7 @@ export function parseNaturalDateRange(
     return { startDate: s.toISOString().substring(0, 10), matchedText: matchD2[0] };
   }
 
-  return null;
+  return parseRelative();
 }
 
 /**

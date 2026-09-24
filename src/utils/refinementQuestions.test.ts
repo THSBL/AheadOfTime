@@ -9,6 +9,7 @@ import {
   isAwayFromHomeEvent,
   buildTripRefinementQuestions,
   detectTravelDocumentNeeds,
+  buildAmbiguousDateQuestion,
   MAX_REFINEMENT_QUESTIONS,
 } from './refinementQuestions';
 import { RefinementQuestion } from '../types';
@@ -55,7 +56,8 @@ describe('buildFallbackMessageQuestions', () => {
   it('asks "when" only if there is no date', () => {
     expect(buildFallbackMessageQuestions('Divetrip to Egypt', REF).map((q) => q.id)).toEqual(['when']);
     expect(buildFallbackMessageQuestions('Divetrip to Egypt 12 November', REF)).toEqual([]);
-    expect(buildFallbackMessageQuestions('Dinner next Friday', REF)).toEqual([]);
+    expect(buildFallbackMessageQuestions('Dinner this Friday', REF)).toEqual([]);
+    expect(buildFallbackMessageQuestions('Dinner next Friday', REF).map((q) => q.id)).toEqual(['which_date']);
   });
 });
 
@@ -160,5 +162,19 @@ describe('travel documents are asked, never guessed', () => {
     const gemini: RefinementQuestion[] = [{ id: 'visa', question: 'Do you need a visa for Egypt?', options: [], source: 'message' }];
     expect(mergeRefinementQuestions(gemini, docs).map((q) => q.id)).toEqual(['visa']);
     expect(mergeRefinementQuestions([], docs).map((q) => q.id)).toEqual(['travel_documents']);
+  });
+});
+
+describe('ambiguous dates are asked, not guessed', () => {
+  it('asks which Saturday for "next saturday", with both dates', () => {
+    const q = buildAmbiguousDateQuestion('Dinner party next saturday', REF);
+    expect(q?.question).toBe('Which Saturday do you mean?');
+    expect(q?.options).toEqual(['Sat 26 Sept', 'Sat 3 Oct']);
+    expect(buildFallbackMessageQuestions('Dinner party next saturday', REF).map((x) => x.id)).toEqual(['which_date']);
+  });
+
+  it('does not ask for an unambiguous date', () => {
+    expect(buildAmbiguousDateQuestion('Drinks this saturday', REF)).toBeNull();
+    expect(buildAmbiguousDateQuestion('Dinner on 3 October', REF)).toBeNull();
   });
 });

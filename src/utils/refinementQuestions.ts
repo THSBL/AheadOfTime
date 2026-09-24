@@ -65,11 +65,31 @@ export function buildTripRefinementQuestions(message: string): RefinementQuestio
 }
 
 /**
+ * "Next Saturday" can mean the coming Saturday or the one after - asked,
+ * with both real dates as options, instead of guessed. Asked whether or not
+ * Gemini is available (see askRefinementQuestions).
+ */
+export function buildAmbiguousDateQuestion(message: string, currentReferenceDate: string): RefinementQuestion | null {
+  const parsed = parseNaturalDateRange(message, currentReferenceDate);
+  if (!parsed?.alternatives || parsed.alternatives.length < 2) return null;
+  const label = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const day = (parsed.matchedText || '').replace(/^\s*next\s+/i, '');
+  return {
+    id: 'which_date',
+    question: `Which ${day.charAt(0).toUpperCase()}${day.slice(1).toLowerCase()} do you mean?`,
+    options: parsed.alternatives.map(label),
+    source: 'message',
+  };
+}
+
+/**
  * Minimal where/when fallback for when Gemini is unavailable, so the
  * refinement step still covers the basics instead of silently vanishing.
  */
 export function buildFallbackMessageQuestions(message: string, currentReferenceDate: string): RefinementQuestion[] {
   const questions: RefinementQuestion[] = [];
+  const ambiguous = buildAmbiguousDateQuestion(message, currentReferenceDate);
+  if (ambiguous) return [ambiguous];
   const hasDate = Boolean(parseNaturalDateRange(message, currentReferenceDate)) || RELATIVE_DATE.test(message) || /\b\d{4}-\d{2}-\d{2}\b/.test(message);
   if (!hasDate) {
     questions.push({
@@ -83,6 +103,7 @@ export function buildFallbackMessageQuestions(message: string, currentReferenceD
 }
 
 const PET_QUESTION = /\b(pet|dog|cat)\b/i;
+const DATE_QUESTION = /\b(when|which (day|date|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i;
 const DOCUMENTS_QUESTION = /\b(visa|passport|travel documents?|entry)\b/i;
 const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
 
@@ -93,7 +114,7 @@ const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
 export function mergeRefinementQuestions(messageQuestions: RefinementQuestion[], profileQuestions: RefinementQuestion[]): RefinementQuestion[] {
   const merged = [...messageQuestions];
   for (const pq of profileQuestions) {
-    const topic = pq.id === 'pet_care' ? PET_QUESTION : pq.id === 'kids' ? KIDS_QUESTION : pq.id === 'travel_documents' ? DOCUMENTS_QUESTION : null;
+    const topic = pq.id === 'pet_care' ? PET_QUESTION : pq.id === 'kids' ? KIDS_QUESTION : pq.id === 'travel_documents' ? DOCUMENTS_QUESTION : pq.id === 'which_date' ? DATE_QUESTION : null;
     const alreadyCovered = merged.some((q) => q.id === pq.id || (topic && topic.test(q.question)));
     if (!alreadyCovered) merged.push(pq);
   }

@@ -1075,3 +1075,26 @@ describe('generateICSContent / formatMessagingSummary - respect isActive (archit
     expect(summary).not.toContain('Hidden Task');
   });
 });
+
+describe('parseNaturalDateRange - explicit dates first, weekdays', () => {
+  // Thursday 24 September 2026
+  const REF_THU = '2026-09-24T10:00:00.000Z';
+
+  it('prefers an explicit date over a relative word in the same message', () => {
+    // Regression: "Weekend" won and the trip landed on this weekend.
+    expect(parseNaturalDateRange('Weekend trip to Paris 23 to 25 October', REF_THU)?.startDate).toBe('2026-10-23');
+    expect(parseNaturalDateRange('Dinner next saturday\n- Which Saturday do you mean? Sat 3 Oct', REF_THU)?.startDate).toBe('2026-10-03');
+  });
+
+  it('resolves this / on / bare weekdays to the coming one', () => {
+    expect(parseNaturalDateRange('Drinks this saturday', REF_THU)?.startDate).toBe('2026-09-26');
+    expect(parseNaturalDateRange('Dentist on Monday', REF_THU)?.startDate).toBe('2026-09-28');
+    expect(parseNaturalDateRange('Book club Thursday', REF_THU)?.startDate).toBe('2026-10-01');
+    expect(parseNaturalDateRange('Book club this Thursday', REF_THU)?.startDate).toBe('2026-09-24');
+  });
+
+  it('flags "next <weekday>" as ambiguous with both candidate dates', () => {
+    const r = parseNaturalDateRange('Dinner party next saturday', REF_THU);
+    expect(r?.alternatives).toEqual(['2026-09-26', '2026-10-03']);
+  });
+});
