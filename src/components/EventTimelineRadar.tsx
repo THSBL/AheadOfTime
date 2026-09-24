@@ -651,12 +651,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // One combined count for the "N suggestions from us" toggle: the AI's own
   // one-off proactive follow-up plus every still-open decision.
   const suggestionCount = (pendingSuggestion ? 1 : 0) + (activeEvent.outstandingGaps?.length || 0);
-  // The correction box itself stays hidden until there's something to act
-  // on - live feedback was that it appeared permanently even with nothing
-  // outstanding, adding clutter. A live suggestion overrides the collapsed
-  // state (surfaced automatically, not hidden behind an extra click); the
-  // user can still open it manually any time via the collapsed pill.
-  const isCorrectionBoxExpanded = isCorrectionBoxOpen || suggestionCount > 0;
+  // Always starts collapsed, even when a suggestion is waiting - live
+  // feedback was that auto-opening the moment a suggestion existed still
+  // felt like the box "popped open on its own." The collapsed pill's own
+  // label below surfaces the count instead, so the suggestion is still
+  // discoverable without the box expanding itself.
+  const isCorrectionBoxExpanded = isCorrectionBoxOpen;
   const macroCount = totalCount - microCount;
 
   const displayedMilestones = rawMilestones.filter((ms) => {
@@ -1322,13 +1322,14 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             Type it instead of hand-editing each task - this goes through
             the same conversational engine and quality guardrails as chat
             or Telegram, targeting this specific event. Collapsed to a
-            single pill by default - live feedback was that the full box
-            (heading, input, send button) sat there permanently even with
-            nothing to act on. A live suggestion (the AI's own proactive
-            follow-up, or any still-open decision from architecture reset
-            Phase 8) overrides the collapsed state automatically, since
-            that's exactly the moment this box has something worth
-            showing. */}
+            single pill by default, always - live feedback was that the
+            full box (heading, input, send button) sat there permanently
+            even with nothing to act on, and later that auto-opening it the
+            moment a suggestion existed still felt like it "popped open on
+            its own." The collapsed pill's own chevron signals it expands,
+            and its label picks up the suggestion count when there is one,
+            so a live suggestion is still visible without the box actually
+            opening until tapped. */}
         {onUpdateEvent && !isCorrectionBoxExpanded && (
           <button
             type="button"
@@ -1336,7 +1337,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             className="w-full flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 uppercase tracking-wider px-1 py-1 cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-            <span>Want to add or change something?</span>
+            <span className="flex-1 text-left">
+              {suggestionCount > 0
+                ? `${suggestionCount} suggestion${suggestionCount > 1 ? 's' : ''} from us`
+                : 'Want to add or change something?'}
+            </span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           </button>
         )}
         {onUpdateEvent && isCorrectionBoxExpanded && (
@@ -1346,18 +1352,14 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                 <span>Want to add or change something?</span>
               </div>
-              {/* Only closable when nothing is actually outstanding -
-                  otherwise this would just reopen itself immediately. */}
-              {suggestionCount === 0 && (
-                <button
-                  type="button"
-                  onClick={() => setIsCorrectionBoxOpen(false)}
-                  aria-label="Hide"
-                  className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsCorrectionBoxOpen(false)}
+                aria-label="Hide"
+                className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <input

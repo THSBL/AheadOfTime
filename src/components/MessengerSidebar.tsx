@@ -9,7 +9,6 @@ import {
   Plane,
   Music,
   CalendarDays,
-  AlertTriangle,
   Trash2,
   CheckSquare,
   Square,
@@ -112,7 +111,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col items-center h-full bg-[#182A42] border border-[#0f1c30] rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
+      <div className="flex flex-col items-center h-full bg-sky-900 border border-sky-950/60 rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -138,7 +137,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     // Timeline & Tasks panel, closer to a reference design. Header and list
     // now share one continuous dark surface instead of a lighter header
     // block sitting above a differently-tinted list body.
-    <div className="flex flex-col h-full bg-[#182A42] border border-[#0f1c30] rounded-3xl overflow-hidden shadow-xs">
+    <div className="flex flex-col h-full bg-sky-900 border border-sky-950/60 rounded-3xl overflow-hidden shadow-xs">
 
       {/* Sidebar Header */}
       <div className="p-3.5 sm:p-4 border-b border-white/10 space-y-3">
@@ -250,7 +249,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const displayTitle = getCleanEventTitle(evt.title, evt.category, evt.context);
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
 
-            const isUnrefined = evt.needsRefinement === true && !evt.refinedAt && (!evt.context || Object.keys(evt.context).length === 0);
             const isNewlyAdded = isNewlyAddedEvent(evt);
 
             // Month section header - only when the month actually changes
@@ -321,14 +319,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     </div>
                   </div>
 
-                  {(isUnrefined || evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
+                  {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
-                      {isUnrefined && (
-                        <span className="inline-flex items-center gap-1 text-slate-400 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-                          <span>Needs review</span>
-                        </span>
-                      )}
                       {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-200 bg-white/10 px-1.5 py-0.2 rounded-md">
                           <Repeat className="w-2.5 h-2.5 text-sky-300" />
