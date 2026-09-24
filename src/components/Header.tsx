@@ -481,9 +481,23 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              {/* Account Dropdown */}
+              {/* Mobile backdrop, same convention as the horizon popover
+                  above - tapping outside the panel closes it reliably. */}
               {isAccountDropdownOpen && currentUser && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-4 z-50 text-slate-800 space-y-3 animate-in fade-in zoom-in-95 duration-100">
+                <div
+                  className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 sm:hidden"
+                  onClick={() => setIsAccountDropdownOpen(false)}
+                />
+              )}
+
+              {/* Account Dropdown - fixed with side insets on mobile (like
+                  the horizon popover above) instead of `absolute right-0`,
+                  which live-reported overflowed off the right edge of a
+                  narrow phone screen since a 288px-wide panel anchored to
+                  this button's right edge has nowhere to go but off-screen
+                  when the button itself sits near the viewport's edge. */}
+              {isAccountDropdownOpen && currentUser && (
+                <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72 max-h-[85vh] overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-200 p-4 z-50 text-slate-800 space-y-3 animate-in fade-in zoom-in-95 duration-100">
                   <div className="flex items-start gap-3 border-b border-slate-100 pb-3">
                     <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm shrink-0">
                       {currentUser.name ? currentUser.name[0] : currentUser.email[0]}

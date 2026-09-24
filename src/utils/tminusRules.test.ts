@@ -166,6 +166,32 @@ describe('parseNaturalDateRange', () => {
     const result = parseNaturalDateRange('March 20 2027', REF_DATE_ISO);
     expect(result?.startDate).toBe('2027-03-20');
   });
+
+  it('parses "tomorrow" and "today" relative to the reference date', () => {
+    // REF_DATE_ISO is a Tuesday (2026-09-01).
+    expect(parseNaturalDateRange('dentist tomorrow', REF_DATE_ISO)?.startDate).toBe('2026-09-02');
+    expect(parseNaturalDateRange('lunch today', REF_DATE_ISO)?.startDate).toBe('2026-09-01');
+  });
+
+  it('parses "this weekend" as the upcoming Saturday-Sunday', () => {
+    // Regression test, live-reported: "this weekend" matched none of the
+    // month/day patterns and fell through entirely, leaving the caller to
+    // fall back to the model's own (wrong) guess.
+    const result = parseNaturalDateRange('This weekend', REF_DATE_ISO);
+    expect(result).toMatchObject({ startDate: '2026-09-05', endDate: '2026-09-06' });
+  });
+
+  it('parses "next weekend" as the Saturday-Sunday after that', () => {
+    const result = parseNaturalDateRange('next weekend', REF_DATE_ISO);
+    expect(result).toMatchObject({ startDate: '2026-09-12', endDate: '2026-09-13' });
+  });
+
+  it('resolves "this weekend" to itself when said on a Saturday or Sunday', () => {
+    const saturday = '2026-09-05T12:00:00.000Z';
+    const sunday = '2026-09-06T12:00:00.000Z';
+    expect(parseNaturalDateRange('this weekend', saturday)).toMatchObject({ startDate: '2026-09-05', endDate: '2026-09-06' });
+    expect(parseNaturalDateRange('this weekend', sunday)).toMatchObject({ startDate: '2026-09-06', endDate: '2026-09-06' });
+  });
 });
 
 describe('decomposeComplexTripIntent', () => {

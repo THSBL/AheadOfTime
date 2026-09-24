@@ -107,7 +107,21 @@ function deriveSignals(input: AssessmentInput, userResponsibility: UserResponsib
   const hasExternalDependencies = Boolean(input.location) || Boolean(input.context?.destination) ||
     /\b(book|booking|booked|venue|vendor|caterer|photographer|dj|flight|hotel|airbnb|reservation|rsvp|deposit)\b/.test(text);
 
-  const requiresDocuments = /\b(passport|visa|esta|licen[cs]e|permit|contract|terms|paperwork|renew|cancel|downgrade|upgrade|plan change|billing|agreement|form|application)\b/.test(text);
+  // A free trial ending is "cancel" in the most literal sense (one tap,
+  // no paperwork) - live-reported that real subscription-trial messages
+  // ("free trial ends Friday, need to cancel before I get charged") kept
+  // scoring Balanced instead of the Essentials the doc's own worked
+  // example calls for, purely because "cancel" is also the right word for
+  // a genuine contract/plan change. Only exclude "cancel" specifically
+  // (not the heavier paperwork words) when the text is unambiguously
+  // about a trial and not also a contract/plan change - a trial mentioned
+  // alongside real contract language still counts.
+  const isPlainTrialCancellation =
+    /\b(free trial|trial period|trial ends?|trial ending)\b/.test(text) &&
+    !/\b(contract|agreement|downgrade|upgrade|plan change)\b/.test(text);
+  const requiresDocuments = isPlainTrialCancellation
+    ? /\b(passport|visa|esta|licen[cs]e|permit|contract|terms|paperwork|renew|downgrade|upgrade|plan change|billing|agreement|form|application)\b/.test(text)
+    : /\b(passport|visa|esta|licen[cs]e|permit|contract|terms|paperwork|renew|cancel|downgrade|upgrade|plan change|billing|agreement|form|application)\b/.test(text);
 
   const groupCoordinationRequired =
     /\b(group|friends|family|guests?|attendees?|everyone|team|players|tournament|party|headcount|coordinate|coordinating)\b/.test(text) ||
@@ -198,6 +212,12 @@ export class AOTPreparationAssessment implements PreparationAssessor {
       // sufficiency threshold is about when to STOP asking, not a gate on
       // producing a plan at all.
       requiredBeforePlanning: false,
+      // Live-reported: this question rendered as free text only, forcing
+      // the user to type an answer to what's actually a 3-way multiple
+      // choice - every other InformationGap with concrete options already
+      // renders as tappable chips (see deriveOutstandingGaps/the Open
+      // Decisions banner), this one just never had any.
+      options: ["I'm organizing it", "I'm helping out", "Just taking part"],
     }];
   }
 

@@ -6,6 +6,7 @@ import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 import { signEventDeepLink } from './deepLinkToken.js';
 import { logQualityEvent, checkAndLogRapidCorrection } from './qualityStore.js';
 import { pushEventToGoogleInBackground, isAutoPushEnabledForUser } from './googleBackgroundPush.js';
+import { formatDisplayDate } from '../src/utils/tminusRules.js';
 
 export class TelegramWebhookHandler {
   // Deduplication cache: stores update_id -> timestamp (ms)
@@ -268,7 +269,7 @@ export class TelegramWebhookHandler {
           const deepLinkAuth = signEventDeepLink(ev.id);
           const authQuery = deepLinkAuth ? `&dlt=${deepLinkAuth.token}&dlte=${deepLinkAuth.expiresAt}` : '';
           const refineUrl = `${appBaseUrl}/?event_id=${encodeURIComponent(ev.id)}&action=refine${authQuery}`;
-          return `• *${ev.title}* (${ev.eventDate})\n  [Refine in App](${refineUrl})`;
+          return `• *${ev.title}* (${formatDisplayDate(ev.eventDate)})\n  [Refine in App](${refineUrl})`;
         }),
       ].join('\n\n');
 
@@ -309,8 +310,16 @@ export class TelegramWebhookHandler {
         // or had a chance to correct anything - live-reported as "the bot
         // adds it to your calendar without verification." The push now
         // happens only once the user taps "Looks Good" (see the
-        // CONFIRM_DEFAULT handler below), same as every other user.
-        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl);
+        // CONFIRM_DEFAULT handler below). Still looked up here (not just
+        // there) so the prompt itself only shows one calendar-related
+        // button - "Looks Good" alone when the bot can push automatically,
+        // "Push to Calendar" alone when it can't - instead of live-reported
+        // confusion from showing both together always.
+        const session = await TelegramSessionStore.getOrCreateSession(chatId);
+        const autoPush = await isAutoPushEnabledForUser(session.webUserId);
+        await TelegramService.sendRefinementPrompt(chatId, agentResult.createdEvent, appBaseUrl, undefined, {
+          autoPushingToGoogle: autoPush,
+        });
         // Pure logging, fire-and-forget - gives checkAndLogRapidCorrection
         // something to compare a later correction against.
         logQualityEvent({
@@ -468,32 +477,7 @@ export class TelegramWebhookHandler {
       await TelegramService.answerCallbackQuery(callbackId, '✅ Confirmed');
 
       if (chatId) {
-        // Was "We will ping you as milestones approach" - no reminder
-        // scheduler exists anywhere in this codebase, so that was a false
-        // promise. The real next step is pushing to Google Calendar/Tasks
-        // from the app, which is where reminders actually come from.
-        // The button (rather than the previous bare URL in the text) uses
-        // the same signed deep link as sendRefinementPrompt, so it works
-        // immediately even if the browser's Google session has expired.
-        await TelegramService.sendMessage(
-          chatId,
-          `✅ Prep checklist confirmed for *${event?.title || 'your event'}*.`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: '📅 Push to Calendar',
-                    url: buildEventDeepLink(eventId, appBaseUrl, 'push'),
-                  },
-                ],
-              ],
-            },
-          }
-        );
-
-        // Background Sync users' push to Google Calendar/Tasks now happens
+        // Background Sync users' push to Google Calendar/Tasks happens
         // here, gated behind this explicit "Looks Good" tap, instead of
         // firing the instant the event was created (before the user had
         // seen the checklist at all) - live-reported as a real gap: the
@@ -501,6 +485,37 @@ export class TelegramWebhookHandler {
         // catch a wrong date or detail.
         const session = await TelegramSessionStore.getOrCreateSession(chatId);
         const autoPush = await isAutoPushEnabledForUser(session.webUserId);
+
+        // Was "We will ping you as milestones approach" - no reminder
+        // scheduler exists anywhere in this codebase, so that was a false
+        // promise. A "Push to Calendar" button here used to show
+        // unconditionally, even for Background Sync users about to get an
+        // automatic push seconds later - live-reported as two competing
+        // calendar actions with no clear relationship. Now it's the same
+        // one-button-per-user rule sendRefinementPrompt uses: only shown
+        // when the bot itself can't push on this user's behalf.
+        await TelegramService.sendMessage(
+          chatId,
+          `✅ Prep checklist confirmed for *${event?.title || 'your event'}*.`,
+          {
+            parse_mode: 'Markdown',
+            ...(autoPush
+              ? {}
+              : {
+                  reply_markup: {
+                    inline_keyboard: [
+                      [
+                        {
+                          text: '📅 Push to Calendar',
+                          url: buildEventDeepLink(eventId, appBaseUrl, 'push'),
+                        },
+                      ],
+                    ],
+                  },
+                }),
+          }
+        );
+
         if (autoPush) await this.pushToGoogleAndReport(chatId, eventId);
       }
       return;

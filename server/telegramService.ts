@@ -1,5 +1,6 @@
 import { CalendarEvent, TMinusMilestone } from '../src/types.js';
 import { signEventDeepLink } from './deepLinkToken.js';
+import { formatDisplayDate } from '../src/utils/tminusRules.js';
 
 export interface TelegramSendMessageOptions {
   parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML';
@@ -198,7 +199,8 @@ export class TelegramService {
     chatId: number | string,
     event: CalendarEvent,
     appBaseUrl: string,
-    customText?: string
+    customText?: string,
+    options: { autoPushingToGoogle?: boolean } = {}
   ): Promise<{ ok: boolean; result?: any }> {
     // Signed so tapping this link works whether or not the browser has a
     // live Google session - a user chatting with the bot right now
@@ -220,7 +222,7 @@ export class TelegramService {
     if (!text) {
       const milestoneLines = (event.milestones || [])
         .slice(0, 5)
-        .map((m: TMinusMilestone) => `📌 *${m.calculatedDate}* — ${m.title}`)
+        .map((m: TMinusMilestone) => `📌 *${formatDisplayDate(m.calculatedDate)}* — ${m.title}`)
         .join('\n');
 
       const gapsWithOptions = (event.outstandingGaps || []).filter((g) => g.options && g.options.length > 0);
@@ -239,7 +241,7 @@ export class TelegramService {
       // calendar write used to happen before the user had seen this
       // checklist at all.
       text = [
-        `*${event.title}*${event.eventDate ? ` — ${event.eventDate}` : ''}`,
+        `*${event.title}*${event.eventDate ? ` — ${formatDisplayDate(event.eventDate)}` : ''}`,
         event.location ? `📍 ${event.location}` : null,
         '',
         `Here's your prep checklist, saved to your account:`,
@@ -247,7 +249,9 @@ export class TelegramService {
         gapLine ? '' : null,
         gapLine,
         '',
-        `Not on your calendar yet - tap Looks Good below (or Push to Calendar) once it's right. Anything off? Tap Refine in Chat and tell me.`,
+        options.autoPushingToGoogle
+          ? `Not on your calendar yet - tap Looks Good below once it's right, and I'll add it. Anything off? Tap Refine in Chat and tell me.`
+          : `Not on your calendar yet - tap Push to Calendar below once it's right. Anything off? Tap Refine in Chat and tell me.`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -270,6 +274,16 @@ export class TelegramService {
         }))
       );
 
+    // Was always shown alongside "Looks Good," live-reported as confusing -
+    // two calendar-ish actions with no clear relationship. Now there's
+    // exactly one path per user: Background Sync users just tap "Looks
+    // Good" and the bot pushes it for them (CONFIRM_DEFAULT below); anyone
+    // else needs the app link, since there's no server-side Google session
+    // to push with on their behalf.
+    const pushToCalRow = options.autoPushingToGoogle
+      ? []
+      : [[{ text: '📅 Push to Calendar', url: pushToCalDeepLink }]];
+
     return this.sendMessage(chatId, text, {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -280,12 +294,7 @@ export class TelegramService {
               url: refineDeepLink,
             },
           ],
-          [
-            {
-              text: '📅 Push to Calendar',
-              url: pushToCalDeepLink,
-            },
-          ],
+          ...pushToCalRow,
           ...gapRows,
           [
             {

@@ -97,8 +97,15 @@ export function formatDisplayDate(isoString: string, includeTime: boolean = fals
       options.hour = 'numeric';
       options.minute = '2-digit';
     }
-    
-    return d.toLocaleDateString(undefined, options);
+
+    // Pinned to 'en-GB' (day before month, e.g. "Thu, 1 Oct") rather than
+    // `undefined` (the runtime's ambient locale) - live-reported request
+    // for European date order. `undefined` also made this genuinely
+    // inconsistent by environment: a browser's own locale for the web UI,
+    // but always US month-first order server-side (Node's default ICU
+    // locale), regardless of where the user actually is - Telegram
+    // messages always rendered dates the US way no matter what.
+    return d.toLocaleDateString('en-GB', options);
   } catch {
     return isoString;
   }
@@ -244,6 +251,43 @@ export function parseNaturalDateRange(
   const isoRangeMatch = raw.match(/\b([0-9]{4}-[0-9]{2}-[0-9]{2})\s+(?:to|-)\s+([0-9]{4}-[0-9]{2}-[0-9]{2})\b/i);
   if (isoRangeMatch) {
     return { startDate: isoRangeMatch[1], endDate: isoRangeMatch[2], matchedText: isoRangeMatch[0] };
+  }
+
+  // 1b. Relative day/weekend phrasing - live-reported gap: "this weekend"
+  // matched none of the month/day patterns below, fell through to the
+  // model's own guess, and landed on an arbitrary date. Only the handful
+  // of highest-frequency phrases are covered here (today, tomorrow, this/
+  // next weekend) - "this/next <weekday>" is intentionally not attempted
+  // yet, since "next Friday" is genuinely ambiguous (the nearest Friday,
+  // or the one after) without more real usage to calibrate against - same
+  // tunable-not-exhaustive status as this file's other heuristics.
+  const toISODate = (d: Date): string =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0).toISOString().substring(0, 10);
+  const addDays = (d: Date, days: number): Date => {
+    const copy = new Date(d);
+    copy.setDate(copy.getDate() + days);
+    return copy;
+  };
+  if (/\btomorrow\b/i.test(raw)) {
+    return { startDate: toISODate(addDays(todayMidnight, 1)), matchedText: 'tomorrow' };
+  }
+  if (/\btoday\b|\btonight\b/i.test(raw)) {
+    return { startDate: toISODate(todayMidnight), matchedText: raw.match(/\btoday\b|\btonight\b/i)![0] };
+  }
+  const nextWeekendMatch = raw.match(/\bnext\s+weekend\b/i);
+  const thisWeekendMatch = !nextWeekendMatch && raw.match(/\b(?:this\s+)?weekend\b/i);
+  if (nextWeekendMatch || thisWeekendMatch) {
+    const todayDow = todayMidnight.getDay(); // 0=Sun ... 6=Sat
+    const daysUntilSaturday = (6 - todayDow + 7) % 7;
+    if (nextWeekendMatch) {
+      const start = addDays(todayMidnight, daysUntilSaturday + 7);
+      return { startDate: toISODate(start), endDate: toISODate(addDays(start, 1)), matchedText: nextWeekendMatch[0] };
+    }
+    // "this weekend" said during the weekend itself means the rest of it,
+    // not next week's - Saturday and Sunday both resolve to "today".
+    const start = todayDow === 0 || todayDow === 6 ? todayMidnight : addDays(todayMidnight, daysUntilSaturday);
+    const end = todayDow === 0 ? start : addDays(start, 1);
+    return { startDate: toISODate(start), endDate: toISODate(end), matchedText: thisWeekendMatch![0] };
   }
 
   // Month dictionary supporting English, Dutch, German, French
@@ -2183,8 +2227,20 @@ export function decomposeComplexTripIntent(
   let endDateStr = '';
 
   const parsedRange = parseNaturalDateRange(message, referenceDateISO);
+  // A bare "(this/next) weekend" resolves to a real Saturday-Sunday range
+  // now (parseNaturalDateRange fix for live-reported "this weekend" not
+  // being recognized at all) - but that inferred window isn't the "genuine
+  // multi-day date range" this multi-day check exists to require. Without
+  // this exclusion, "Weekend BBQ with the neighbors" would satisfy
+  // hasMultiDayRange purely because "weekend" itself now parses to two
+  // days, re-triggering exactly the false-positive trip decomposition the
+  // surrounding comment already describes fixing.
+  const isImplicitWeekendRange = /^(?:this\s+|next\s+)?weekend$/i.test(parsedRange?.matchedText || '');
   const hasMultiDayRange = Boolean(
-    parsedRange?.startDate && parsedRange?.endDate && parsedRange.endDate !== parsedRange.startDate
+    parsedRange?.startDate &&
+    parsedRange?.endDate &&
+    parsedRange.endDate !== parsedRange.startDate &&
+    !isImplicitWeekendRange
   );
 
   const isTripIntent = hasStrongTripSignal || (hasSoftTripWord && hasMultiDayRange);

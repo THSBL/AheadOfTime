@@ -79,6 +79,29 @@ describe('assessPreparationLevel - subscription (role rarely matters here, never
     });
     expect(result.level).toBe('balanced');
   });
+
+  it('a realistically-worded trial cancellation still scores Essentials', () => {
+    // Regression test, live-reported: the bare fixture phrase above always
+    // passed, but how a trial cancellation actually gets typed ("free
+    // trial ends Friday, need to cancel before I get charged") includes
+    // the word "cancel" - which also flags a genuine contract change - and
+    // was pushing every real trial-cancellation message to Balanced.
+    const result = assessor.assessPreparationLevel({
+      category: 'subscription',
+      title: 'Gym free trial',
+      rawText: 'My gym free trial ends Friday, need to cancel before I get charged.',
+    });
+    expect(result.level).toBe('essentials');
+  });
+
+  it('"cancel" still counts as real paperwork when paired with contract language', () => {
+    const result = assessor.assessPreparationLevel({
+      category: 'subscription',
+      title: 'Cancel gym contract',
+      rawText: 'Need to cancel my gym contract before the renewal date.',
+    });
+    expect(result.level).toBe('balanced');
+  });
 });
 
 describe('assessPreparationLevel - never a category-to-level lookup table', () => {

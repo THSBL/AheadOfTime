@@ -607,15 +607,19 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             right now. */}
         {overdueItems.length > 0 && (
           <div className="space-y-2">
-            {/* A solid pill, not plain colored text like the other section
-                headers - overdue is the one status urgent enough to
-                justify breaking that pattern for real contrast (white text
-                needs a solid fill behind it to stay legible). */}
-            <span className="inline-flex items-center gap-1.5 bg-rose-600 text-white text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
+            {/* Was a solid rose-600 pill with a thick, hover-escalating
+                rose-ringed card border - live feedback called it "a big 3D
+                stripe," too visually loud next to the rest of the app's
+                grey/quiet default. Still visually distinct from a plain
+                section heading (this is the one status worth calling out),
+                just with the same restrained tint used for other
+                attention-but-not-alarm states elsewhere (e.g. the
+                milestone card's amber "due soon" badge). */}
+            <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
               <Clock className="w-3.5 h-3.5" />
               Overdue ({overdueItems.length})
             </span>
-            <div className="rounded-xl bg-white border-2 border-rose-300 shadow-2xs divide-y divide-slate-100 transition-all hover:border-rose-400 hover:ring-4 hover:ring-rose-100">
+            <div className="rounded-xl bg-white border border-rose-200 shadow-2xs divide-y divide-slate-100 transition-all hover:border-rose-300">
               {overdueItems.map((item) => (
                 <FlatMilestoneRow
                   key={item.milestoneId}

@@ -150,7 +150,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [pendingSuggestion, setPendingSuggestion] = useState<IntakeQuestion | null>(null);
   // Collapsed by default - a user happy with the already-balanced plan
   // should see one compact box, not every open question forced on them.
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isCorrectionBoxOpen, setIsCorrectionBoxOpen] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
 
@@ -651,6 +651,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // One combined count for the "N suggestions from us" toggle: the AI's own
   // one-off proactive follow-up plus every still-open decision.
   const suggestionCount = (pendingSuggestion ? 1 : 0) + (activeEvent.outstandingGaps?.length || 0);
+  // The correction box itself stays hidden until there's something to act
+  // on - live feedback was that it appeared permanently even with nothing
+  // outstanding, adding clutter. A live suggestion overrides the collapsed
+  // state (surfaced automatically, not hidden behind an extra click); the
+  // user can still open it manually any time via the collapsed pill.
+  const isCorrectionBoxExpanded = isCorrectionBoxOpen || suggestionCount > 0;
   const macroCount = totalCount - microCount;
 
   const displayedMilestones = rawMilestones.filter((ms) => {
@@ -890,11 +896,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                             e.stopPropagation();
                             handleToggleDeliverable(ms, deliv.deliverable_id);
                           }}
-                          className="flex items-center gap-2 py-0.5 cursor-pointer group/deliv"
+                          className="flex items-start gap-2 py-0.5 cursor-pointer group/deliv"
                         >
                           <button
                             type="button"
-                            className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                            className={`w-3.5 h-3.5 mt-0.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                               isDelivDone
                                 ? 'bg-[#182A42] text-white'
                                 : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
@@ -903,7 +909,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                           >
                             <Check className="w-2 h-2 stroke-[3]" />
                           </button>
-                          <span className={`text-[11px] sm:text-xs truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
+                          <span className={`text-[11px] sm:text-xs leading-snug break-words ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
                             {deliv.title}
                           </span>
                         </div>
@@ -1054,11 +1060,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         e.stopPropagation();
                         handleToggleDeliverable(ms, deliv.deliverable_id);
                       }}
-                      className="flex items-center gap-2 py-0.5 cursor-pointer group/deliv"
+                      className="flex items-start gap-2 py-0.5 cursor-pointer group/deliv"
                     >
                       <button
                         type="button"
-                        className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                        className={`w-3.5 h-3.5 mt-0.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                           isDelivDone
                             ? 'bg-[#182A42] text-white'
                             : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
@@ -1067,7 +1073,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       >
                         <Check className="w-2 h-2 stroke-[3]" />
                       </button>
-                      <span className={`text-[11px] truncate ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
+                      <span className={`text-[11px] leading-snug break-words ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
                         {deliv.title}
                       </span>
                     </div>
@@ -1301,18 +1307,43 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         {/* Freeform correction box: spotted something wrong or missing?
             Type it instead of hand-editing each task - this goes through
             the same conversational engine and quality guardrails as chat
-            or Telegram, targeting this specific event. Its own one-off
-            proactive follow-up (pendingSuggestion) and every still-open
-            decision (outstandingGaps, architecture reset Phase 8) are
-            folded into one collapsible "N suggestions from us" toggle
-            below it, collapsed by default - previously two separate
-            always-visible boxes, which crowded the page even when the
-            user was happy with the already-balanced plan. */}
-        {onUpdateEvent && (
+            or Telegram, targeting this specific event. Collapsed to a
+            single pill by default - live feedback was that the full box
+            (heading, input, send button) sat there permanently even with
+            nothing to act on. A live suggestion (the AI's own proactive
+            follow-up, or any still-open decision from architecture reset
+            Phase 8) overrides the collapsed state automatically, since
+            that's exactly the moment this box has something worth
+            showing. */}
+        {onUpdateEvent && !isCorrectionBoxExpanded && (
+          <button
+            type="button"
+            onClick={() => setIsCorrectionBoxOpen(true)}
+            className="w-full flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 uppercase tracking-wider px-1 py-1 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+            <span>Want to add or change something?</span>
+          </button>
+        )}
+        {onUpdateEvent && isCorrectionBoxExpanded && (
           <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3 shadow-2xs space-y-2">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-              <span>Want to add or change something?</span>
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                <span>Want to add or change something?</span>
+              </div>
+              {/* Only closable when nothing is actually outstanding -
+                  otherwise this would just reopen itself immediately. */}
+              {suggestionCount === 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsCorrectionBoxOpen(false)}
+                  aria-label="Hide"
+                  className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1364,18 +1395,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             )}
             {!isSendingCorrection && suggestionCount > 0 && (
               <div className="pt-1 border-t border-amber-100/80">
-                <button
-                  type="button"
-                  onClick={() => setShowSuggestions((v) => !v)}
-                  aria-expanded={showSuggestions}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer"
-                >
+                {/* No longer its own nested collapse/expand toggle - the
+                    outer box's own visibility already means "there's
+                    something to show," so a second click to reveal it was
+                    a redundant extra step. */}
+                <div className="w-full flex items-center gap-1.5 py-1 text-[11px] font-bold text-slate-700">
                   <HelpCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{suggestionCount} suggestion{suggestionCount > 1 ? 's' : ''} from us</span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSuggestions ? 'rotate-180' : ''}`} />
-                </button>
+                </div>
 
-                {showSuggestions && (
                   <div className="mt-1 space-y-3">
                     {pendingSuggestion && (
                       <div className="space-y-1.5">
@@ -1423,7 +1451,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                       </div>
                     ))}
                   </div>
-                )}
               </div>
             )}
           </div>

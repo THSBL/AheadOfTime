@@ -5,6 +5,7 @@ import {
   WhatsAppEventSessionState 
 } from '../src/types/whatsapp.js';
 import { TMinusMilestone } from '../src/types.js';
+import { formatDisplayDate } from '../src/utils/tminusRules.js';
 
 export class WhatsAppService {
   /**
@@ -235,7 +236,7 @@ export class WhatsAppService {
                    m.tag?.toLowerCase().includes('transport') ? '🚗' :
                    m.tag?.toLowerCase().includes('gift') ? '🎁' :
                    m.tag?.toLowerCase().includes('packing') ? '🧳' : '📌';
-      lines.push(`${icon} *${m.tMinusLabel}* (${m.calculatedDate}): ${m.title}`);
+      lines.push(`${icon} *${m.tMinusLabel}* (${formatDisplayDate(m.calculatedDate)}): ${m.title}`);
     });
 
     lines.push('');
