@@ -298,8 +298,13 @@ export const Header: React.FC<HeaderProps> = ({
                       the calendar, so don't claim daily/background syncing here. */}
                   <div className="p-2.5 bg-sky-50/90 border border-sky-200/90 rounded-xl text-xs text-sky-950 flex items-start gap-2">
                     <Clock className="w-4 h-4 text-sky-700 shrink-0 mt-0.5" />
-                    <div className="leading-snug text-[11px]">
-                      Tasks you tick off sync with Google Tasks <strong className="text-sky-950">about every 15 minutes while the app is open</strong>. New calendar events are picked up when you scan your agenda, or once a day on Telegram if you turned on Background Sync in Settings.
+                    <div className="leading-snug text-[11px] space-y-1">
+                      <p>Tasks you tick off sync with Google Tasks <strong className="text-sky-950">about every 15 minutes</strong> while the app is open.</p>
+                      <p className="font-semibold text-sky-900">New calendar events are picked up when you:</p>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        <li>Scan your agenda</li>
+                        <li>Message Telegram, once a day, if Background Sync is on in Settings</li>
+                      </ul>
                     </div>
                   </div>
 
@@ -419,6 +424,24 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">New Event</span>
             </button>
 
+            {/* Feedback - always visible regardless of Google sign-in
+                status, since the feedback form itself works signed out
+                (only the CSAT rating flow needs a Google session, and it
+                degrades to the general report form on its own). Living
+                only inside the account dropdown below would make it
+                unreachable for anyone who hasn't connected Google
+                Calendar. */}
+            <button
+              type="button"
+              onClick={() => navigate('/feedback')}
+              id="btn-header-feedback"
+              className="hidden sm:flex bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-300 text-xs font-semibold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
+              title="Share feedback or report an issue"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
+              <span>Feedback</span>
+            </button>
+
             {/* Account & Privacy Isolation Capsule */}
             <div ref={accountDropdownRef} className="relative shrink-0">
               {currentUser ? (
@@ -508,19 +531,6 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>Sync &amp; Tasks Settings</span>
                       </button>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAccountDropdownOpen(false);
-                        navigate('/feedback');
-                      }}
-                      id="btn-open-feedback"
-                      className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Beta Feedback</span>
-                    </button>
 
                     {onSignOut && (
                       <button

@@ -266,8 +266,16 @@ export function parseNaturalDateRange(
 
   // Pattern A: "from 15 to 21 oktober" or "15 to 21 October" or "15 - 21 oct 2026"
   // or a tightly-written "15-21 oktober" with no spaces around the hyphen.
+  // Every day-digit group below carries a `(?!\d)` guard - without it, a
+  // month directly followed by a bare 4-digit year and no day at all (e.g.
+  // "March 2027", the tail end of "1st of March 2027" once "1st of" fails
+  // to match anything) lets the day group swallow the year's first 1-2
+  // digits as a fake day, live-confirmed producing "2027-03-20" out of
+  // "1st of March 2027". The guard rejects a "day" immediately followed by
+  // another digit, since a real day is always followed by a space, comma,
+  // ordinal suffix, or the end of the string - never another digit.
   const patternA = new RegExp(
-    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchA = raw.match(patternA);
@@ -289,7 +297,7 @@ export function parseNaturalDateRange(
 
   // Pattern B: "from 15 oktober to 21 oktober" or "15 oct to 21 nov"
   const patternB = new RegExp(
-    `(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchB = raw.match(patternB);
@@ -312,7 +320,7 @@ export function parseNaturalDateRange(
   // Pattern C: "October 15 to 21" or "Oct 15 - Oct 21" or a tightly-written
   // "Oct 14-18" with no spaces around the hyphen.
   const patternC = new RegExp(
-    `(?:from\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(?:(${monthRegexPart})\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(?:(${monthRegexPart})\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchC = raw.match(patternC);
@@ -332,8 +340,13 @@ export function parseNaturalDateRange(
     };
   }
 
-  // Pattern D: Single date like "on 15 oktober" or "15 October" or "October 15"
-  const patternD1 = new RegExp(`(?:on\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`, 'i');
+  // Pattern D: Single date like "on 15 oktober", "15 October", "October 15",
+  // "1st of March 2027", or "on the 1st of March 2027" - the optional "the"
+  // and "of" here are what "1st of March 2027" needs to match as day=1 at
+  // all; without them, "1st of" matched nothing, and D2 below was left to
+  // wrongly parse the trailing "March 2027" on its own (see the `(?!\d)`
+  // comment above patternA for why that used to produce the wrong date).
+  const patternD1 = new RegExp(`(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthRegexPart})(?:,?\\s*(\\d{4}))?`, 'i');
   const matchD1 = raw.match(patternD1);
   if (matchD1) {
     const day = parseInt(matchD1[1], 10);
@@ -343,7 +356,7 @@ export function parseNaturalDateRange(
     return { startDate: s.toISOString().substring(0, 10), matchedText: matchD1[0] };
   }
 
-  const patternD2 = new RegExp(`(?:on\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
+  const patternD2 = new RegExp(`(?:on\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
   const matchD2 = raw.match(patternD2);
   if (matchD2) {
     const month = monthMap[matchD2[1].toLowerCase()] ?? 9;

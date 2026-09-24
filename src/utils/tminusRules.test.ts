@@ -142,6 +142,30 @@ describe('parseNaturalDateRange', () => {
     const result = parseNaturalDateRange('Oct 14-18', REF_DATE_ISO);
     expect(result).toMatchObject({ startDate: '2026-10-14', endDate: '2026-10-18' });
   });
+
+  it('parses "<day> of <Month> <year>" instead of mistaking the year for the day', () => {
+    // Regression test, live-reported: "1st of March 2027" came back as
+    // 2027-03-20. The day-then-month pattern didn't recognize "of" at all,
+    // so "1st of" matched nothing; the month-then-day fallback pattern then
+    // matched "March 2027" on its own and (with no day present) let its
+    // day group swallow the year's leading "20" as a fake day.
+    const result = parseNaturalDateRange('1st of March 2027', REF_DATE_ISO);
+    expect(result?.startDate).toBe('2027-03-01');
+  });
+
+  it('parses "on the <day> of <Month> <year>"', () => {
+    const result = parseNaturalDateRange('on the 1st of March 2027', REF_DATE_ISO);
+    expect(result?.startDate).toBe('2027-03-01');
+  });
+
+  it('does not mistake a bare "<Month> <year>" (no day at all) for a date', () => {
+    expect(parseNaturalDateRange('March 2027', REF_DATE_ISO)).toBeNull();
+  });
+
+  it('still parses "<Month> <day> <year>" when the day is a real 2-digit day', () => {
+    const result = parseNaturalDateRange('March 20 2027', REF_DATE_ISO);
+    expect(result?.startDate).toBe('2027-03-20');
+  });
 });
 
 describe('decomposeComplexTripIntent', () => {
