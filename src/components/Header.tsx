@@ -509,6 +509,19 @@ export const Header: React.FC<HeaderProps> = ({
                       </button>
                     )}
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAccountDropdownOpen(false);
+                        navigate('/feedback');
+                      }}
+                      id="btn-open-feedback"
+                      className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Beta Feedback</span>
+                    </button>
+
                     {onSignOut && (
                       <button
                         type="button"

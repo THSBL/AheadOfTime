@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
@@ -25,6 +26,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   // The demo video is still being produced - the button exists so the layout
   // is final, and says so instead of opening a browser alert() or a dead link.
   const [showDemoNotice, setShowDemoNotice] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <div className="relative z-10 min-h-screen w-full bg-[#182A42] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#182A42] selection:text-white">
@@ -48,6 +50,19 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 <span>Go to Dashboard</span>
               </button>
             )}
+
+            <a
+              href="/features"
+              onClick={(e) => {
+                e.preventDefault();
+                trackButtonClick('Features', 'landing_header');
+                navigate('/features');
+              }}
+              className="bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-xl transition-all cursor-pointer hidden sm:flex items-center gap-1.5"
+            >
+              <Sparkles className="w-4 h-4 text-slate-500" />
+              <span>Features</span>
+            </a>
 
             <a
               href="/privacy"
