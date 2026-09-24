@@ -48,6 +48,7 @@ import {
   buildProfileRefinementQuestions,
   buildTripRefinementQuestions,
   buildAmbiguousDateQuestion,
+  buildWhenQuestion,
   buildFallbackMessageQuestions,
   mergeRefinementQuestions,
   describePlanningProfile,
@@ -235,8 +236,9 @@ export async function generateContentFast(
 
 const CLARIFY_SYSTEM_INSTRUCTION = `You help a calendar-prep app ask the user a few quick refinement questions BEFORE it builds a backward-planning preparation timeline for the event they just described. All answers are sent back together with the original description in one single planning call, so the questions only have to fill the gaps that would change the plan.
 
-Mostly this is the basics - where, when and what - asked ONLY for what the description leaves open:
-- When: the date or date range, unless already given. An unambiguous relative date ("this Friday", "tomorrow", "in two weeks") counts as given; "next <weekday>" is ambiguous (the coming one or the one after), so ask which, with both concrete dates as options.
+Mostly this is the basics - what and where, and the key decisions - asked ONLY for what the description leaves open:
+- When: do NOT ask about the date - the app always asks it itself (with date pickers) when the description has none.
+- What: what the event actually is must be clear. If the description is too vague to plan (e.g. "Saturday thing", "the event"), ask what it is.
 - Where: destination/venue, if it matters for the prep and isn't given.
 - What: the one or two key decisions that change what gets prepared (e.g. for a dive trip: certified yet or doing a course, own gear or renting; for a birthday: organising it or attending, gift or not).
 For a trip abroad, ask whether a visa or passport renewal is needed - never assume either way; requirements depend on nationality and destination.
@@ -313,8 +315,10 @@ export async function askRefinementQuestions(params: {
     return { needsClarification: false, questions: [] };
   }
   const ambiguousDate = buildAmbiguousDateQuestion(params.message, params.currentReferenceDate);
+  const whenQuestion = ambiguousDate ? null : buildWhenQuestion(params.message, params.currentReferenceDate);
   const guaranteedQuestions = [
     ...(ambiguousDate ? [ambiguousDate] : []),
+    ...(whenQuestion ? [whenQuestion] : []),
     ...buildTripRefinementQuestions(params.message),
     ...buildProfileRefinementQuestions(params.message, params.userProfile),
   ];

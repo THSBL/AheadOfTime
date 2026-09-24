@@ -83,27 +83,37 @@ export function buildAmbiguousDateQuestion(message: string, currentReferenceDate
 }
 
 /**
+ * "When" must always be known before planning, so it is never left to
+ * Gemini's judgement: a message with no date at all always gets this
+ * question, first, with date pickers (a start and end date for a trip).
+ * Found live: "divetrip to egypt" got three good Gemini questions but none
+ * about the date, and the plan was anchored on an invented weekend.
+ */
+export function buildWhenQuestion(message: string, currentReferenceDate: string): RefinementQuestion | null {
+  if (!message?.trim() || parseNaturalDateRange(message, currentReferenceDate)) return null;
+  const isTrip = isAwayFromHomeEvent(message);
+  return {
+    id: 'when',
+    question: isTrip ? 'When do you go, and when are you back?' : 'When is it?',
+    options: [],
+    source: 'message',
+    kind: isTrip ? 'dateRange' : 'date',
+  };
+}
+
+/**
  * Minimal where/when fallback for when Gemini is unavailable, so the
  * refinement step still covers the basics instead of silently vanishing.
  */
 export function buildFallbackMessageQuestions(message: string, currentReferenceDate: string): RefinementQuestion[] {
-  const questions: RefinementQuestion[] = [];
   const ambiguous = buildAmbiguousDateQuestion(message, currentReferenceDate);
   if (ambiguous) return [ambiguous];
-  const hasDate = Boolean(parseNaturalDateRange(message, currentReferenceDate)) || RELATIVE_DATE.test(message) || /\b\d{4}-\d{2}-\d{2}\b/.test(message);
-  if (!hasDate) {
-    questions.push({
-      id: 'when',
-      question: 'When is it?',
-      options: [],
-      source: 'message',
-    });
-  }
-  return questions;
+  const when = buildWhenQuestion(message, currentReferenceDate);
+  return when ? [when] : [];
 }
 
 const PET_QUESTION = /\b(pet|dog|cat)\b/i;
-const DATE_QUESTION = /\b(when|which (day|date|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i;
+const DATE_QUESTION = /\b(when|what dates?|which dates?|which (day|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|travel dates?)\b/i;
 const DOCUMENTS_QUESTION = /\b(visa|passport|travel documents?|entry)\b/i;
 const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
 
@@ -112,8 +122,14 @@ const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
  * (profile, travel documents) it didn't already cover, capped so the step stays quick to answer.
  */
 export function mergeRefinementQuestions(messageQuestions: RefinementQuestion[], profileQuestions: RefinementQuestion[]): RefinementQuestion[] {
-  const merged = [...messageQuestions];
-  for (const pq of profileQuestions) {
+  // The app's own date question (pickers, or "which Saturday") replaces any
+  // date question Gemini asked in its own words, and always comes first.
+  const appDateQuestions = profileQuestions.filter((q) => q.id === 'when' || q.id === 'which_date');
+  const merged = [
+    ...appDateQuestions,
+    ...messageQuestions.filter((q) => appDateQuestions.length === 0 || !DATE_QUESTION.test(q.question)),
+  ];
+  for (const pq of profileQuestions.filter((q) => !appDateQuestions.includes(q))) {
     const topic = pq.id === 'pet_care' ? PET_QUESTION : pq.id === 'kids' ? KIDS_QUESTION : pq.id === 'travel_documents' ? DOCUMENTS_QUESTION : pq.id === 'which_date' ? DATE_QUESTION : null;
     const alreadyCovered = merged.some((q) => q.id === pq.id || (topic && topic.test(q.question)));
     if (!alreadyCovered) merged.push(pq);

@@ -214,6 +214,19 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   // Non-null only while the refinement questions are waiting for answers.
   const [refinementQuestions, setRefinementQuestions] = useState<RefinementQuestion[] | null>(null);
   const [refinementAnswers, setRefinementAnswers] = useState<Record<string, string>>({});
+  // Date-picker values for 'date' / 'dateRange' questions. The composed
+  // answer ("2026-11-12 to 2026-11-19") is mirrored into refinementAnswers,
+  // so an exact date reaches the planner instead of free text it may misread.
+  const [dateAnswers, setDateAnswers] = useState<Record<string, { start: string; end: string }>>({});
+  const setDateAnswer = (questionId: string, part: 'start' | 'end', value: string) => {
+    setDateAnswers((prev) => {
+      const current = { start: '', end: '', ...prev[questionId], [part]: value };
+      if (part === 'start' && current.end && current.end < value) current.end = value;
+      const composed = current.start && current.end && current.end !== current.start ? `${current.start} to ${current.end}` : current.start;
+      setRefinementAnswers((answers) => ({ ...answers, [questionId]: composed }));
+      return { ...prev, [questionId]: current };
+    });
+  };
   // Marker after the newest message. Scrolled into view (the page scrolls,
   // not an inner box); its scroll-margin keeps it clear of the sticky reply
   // bar.
@@ -246,6 +259,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setDraftBrief(null);
     setRefinementQuestions(null);
     setRefinementAnswers({});
+    setDateAnswers({});
     draftRequestInFlight.current = false;
     draftGeneration.current += 1;
   };
@@ -344,6 +358,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
     if (questions.length > 0) {
       setRefinementAnswers({});
+      setDateAnswers({});
       setRefinementQuestions(questions);
       appendDraftMessage('agent', questions.length === 1 ? 'One quick question so the plan fits:' : 'A few quick questions so the plan fits:');
       setIsDraftLoading(false);
@@ -367,7 +382,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     if (extraNote?.trim()) answers.push({ question: 'Also:', answer: extraNote.trim() });
     const brief: ConversationBriefInput = { ...draftBrief, answers };
     setRefinementQuestions(null);
-    appendDraftMessage('user', answers.length > 0 ? answers.map((a) => a.answer).join(' · ') : 'Skip the questions');
+    // Picked dates go to the planner as exact ISO dates, but read as
+    // "Thu, 12 Nov" in the user's own bubble.
+    const readable = (text: string) => text.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (iso) => formatDisplayDate(iso));
+    appendDraftMessage('user', answers.length > 0 ? answers.map((a) => readable(a.answer)).join(' · ') : 'Skip the questions');
     requestDraftPlan(brief);
   };
 
@@ -818,7 +836,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               <div className="ml-9 bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs">
                 {refinementQuestions.map((q) => {
                   const answer = refinementAnswers[q.id] || '';
-                  const typedAnswer = q.options.includes(answer) ? '' : answer;
+                  const isDateQuestion = q.kind === 'date' || q.kind === 'dateRange';
+                  const picked = dateAnswers[q.id];
+                  const typedAnswer = q.options.includes(answer) || (isDateQuestion && picked?.start) ? '' : answer;
+                  const today = currentReferenceDate.slice(0, 10);
                   return (
                     <div key={q.id} className="space-y-1.5">
                       <p className="text-xs font-bold text-slate-800">{q.question}</p>
@@ -841,11 +862,41 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                           ))}
                         </div>
                       )}
+                      {isDateQuestion && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="date"
+                            aria-label={q.kind === 'dateRange' ? 'Start date' : 'Date'}
+                            min={today}
+                            value={picked?.start || ''}
+                            onChange={(e) => setDateAnswer(q.id, 'start', e.target.value)}
+                            className="bg-slate-50 text-slate-900 text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400"
+                          />
+                          {q.kind === 'dateRange' && (
+                            <>
+                              <span className="text-xs text-slate-400">to</span>
+                              <input
+                                type="date"
+                                aria-label="End date"
+                                min={picked?.start || today}
+                                value={picked?.end || ''}
+                                onChange={(e) => setDateAnswer(q.id, 'end', e.target.value)}
+                                className="bg-slate-50 text-slate-900 text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400"
+                              />
+                            </>
+                          )}
+                        </div>
+                      )}
                       <input
                         type="text"
                         value={typedAnswer}
-                        onChange={(e) => setRefinementAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                        placeholder={q.options.length > 0 ? 'Or type your own answer' : 'Type your answer'}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Typing replaces any picked dates.
+                          if (isDateQuestion) setDateAnswers((prev) => ({ ...prev, [q.id]: { start: '', end: '' } }));
+                          setRefinementAnswers((prev) => ({ ...prev, [q.id]: value }));
+                        }}
+                        placeholder={isDateQuestion ? 'Or describe it, e.g. mid November' : q.options.length > 0 ? 'Or type your own answer' : 'Type your answer'}
                         className="w-full bg-slate-50 text-slate-900 text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400"
                       />
                     </div>

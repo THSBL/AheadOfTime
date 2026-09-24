@@ -10,6 +10,7 @@ import {
   buildTripRefinementQuestions,
   detectTravelDocumentNeeds,
   buildAmbiguousDateQuestion,
+  buildWhenQuestion,
   MAX_REFINEMENT_QUESTIONS,
 } from './refinementQuestions';
 import { RefinementQuestion } from '../types';
@@ -176,5 +177,27 @@ describe('ambiguous dates are asked, not guessed', () => {
   it('does not ask for an unambiguous date', () => {
     expect(buildAmbiguousDateQuestion('Drinks this saturday', REF)).toBeNull();
     expect(buildAmbiguousDateQuestion('Dinner on 3 October', REF)).toBeNull();
+  });
+});
+
+describe('"when" is always asked when no date is given', () => {
+  it('asks with a date range for a trip, a single date otherwise', () => {
+    expect(buildWhenQuestion('divetrip to egypt', REF)).toMatchObject({ id: 'when', kind: 'dateRange' });
+    expect(buildWhenQuestion('Dinner party with friends', REF)).toMatchObject({ id: 'when', kind: 'date' });
+    expect(buildWhenQuestion('Divetrip to Egypt 12-19 November', REF)).toBeNull();
+  });
+
+  it('replaces a date question Gemini asked itself, and goes first', () => {
+    const when = buildWhenQuestion('divetrip to egypt', REF)!;
+    const gemini: RefinementQuestion[] = [
+      { id: 'course', question: 'Are you certified or taking a course?', options: ['Certified', 'Course'], source: 'message' },
+      { id: 'dates', question: 'What dates are you travelling?', options: [], source: 'message' },
+    ];
+    expect(mergeRefinementQuestions(gemini, [when]).map((q) => q.id)).toEqual(['when', 'course']);
+  });
+
+  it('a picked ISO range is read back as the event dates', () => {
+    const brief = composeConversationBrief({ originalMessage: 'divetrip to egypt', answers: [{ question: 'When do you go, and when are you back?', answer: '2026-11-12 to 2026-11-19' }] });
+    expect(buildWhenQuestion(brief, REF)).toBeNull();
   });
 });

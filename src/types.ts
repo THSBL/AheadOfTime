@@ -446,6 +446,9 @@ export interface RefinementQuestion {
   // 'profile' = asked because of the user's onboarding profile (e.g. they
   // have a pet), not because the message itself left something open.
   source: 'message' | 'profile';
+  // 'date' / 'dateRange' render date pickers (the answer becomes an exact
+  // ISO date or "start to end" range); a free-text answer is still allowed.
+  kind?: 'choice' | 'date' | 'dateRange';
 }
 
 export interface OnboardingProfile {
