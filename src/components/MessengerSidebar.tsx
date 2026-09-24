@@ -270,9 +270,13 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             return (
               <React.Fragment key={evt.id}>
               {showMonthHeader && (
-                <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 first:pt-2">
-                  {monthLabel}
-                </p>
+                // Hairline before and after the month, same device as the
+                // section headers in Timeline & Tasks, so months stand out.
+                <div className="flex items-center gap-2 px-4 pt-3 pb-1 first:pt-2">
+                  <div className="w-3 h-px bg-slate-500/50 shrink-0" />
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">{monthLabel}</p>
+                  <div className="flex-1 h-px bg-slate-500/50" />
+                </div>
               )}
               <div
                 onClick={() => onSelectEvent(evt.id)}

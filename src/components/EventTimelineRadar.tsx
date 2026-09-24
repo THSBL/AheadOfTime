@@ -748,266 +748,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     .sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate));
   const doneMilestones = displayedMilestones.filter((ms) => ms.status === 'completed' || ms.status === 'skipped');
 
-  // Extracted so the same rich card (sub-tasks, category badge, per-item
-  // Refine, edit/delete) can be reused across every section below - Overdue,
-  // This week, and each nested week/topic level under Looking ahead -
-  // without duplicating this ~200-line block per section.
-  const renderMilestoneCard = (ms: TMinusMilestone) => {
-    const isCompleted = ms.status === 'completed';
-    const isSkipped = ms.status === 'skipped';
-    const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
-    const isOverdue = !isCompleted && !isSkipped && msCountdown.isOverdue;
-    // Was a separate hard-coded `diffDays <= 3` check, inconsistent
-    // with getCountdownStatus's own `isSoon` (fires at <= 5 days,
-    // "Tomorrow", "Due today"). Use the shared flag so there's one
-    // definition of "urgent soon" instead of two disagreeing ones.
-    const isUrgentSoon = !isOverdue && !isCompleted && !isSkipped && msCountdown.isSoon;
-    const isDeliverable = ms.kind === 'deliverable';
-    const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
-    const isExpanded = expandedMilestoneIds.has(ms.id);
-    const isReservation = ms.category === 'booking' || ms.category === 'tickets';
-    const isPurchase = ms.category === 'shopping' || ms.category === 'gift';
-    const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
-
-    return (
-      <div
-        key={ms.id}
-        className={`group p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all w-full ${
-          isSkipped
-            ? 'bg-slate-50/60 border-slate-200 text-slate-400 opacity-70'
-            : isCompleted
-            ? 'bg-slate-50/90 border-slate-200 text-slate-400'
-            // One signal per fact: overdue already shows on the due-pill
-            // below, so the card itself carries a single left-border
-            // accent rather than repeating rose across bg/border/ring
-            // too - matches the same single-accent pattern already used
-            // for the deliverable/has-deliverables states below.
-            : isOverdue
-            ? 'bg-white border-slate-200/90 hover:border-rose-300 text-slate-800 shadow-xs border-l-4 border-l-rose-500'
-            : isDeliverable
-            ? 'bg-white border-slate-200/90 hover:border-[#182A42]/50 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]'
-            : hasDeliverables
-            ? 'bg-white border-slate-200/90 hover:border-[#182A42]/40 text-slate-800 shadow-xs border-l-4 border-l-[#182A42]/70'
-            : 'bg-white/80 border-slate-200/80 hover:border-slate-300 text-slate-700 shadow-2xs'
-        }`}
-      >
-        {/* Actions sit inline with the checkbox/date row at the top of the
-            card on every breakpoint now - previously a separate full-width
-            row below all content on mobile (flex-col), which wasted a lot
-            of vertical space just to right-align two icons. */}
-        <div className="flex items-start justify-between gap-2 sm:gap-3 w-full">
-        {/* Checkbox & Task Information */}
-        <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0 w-full">
-          <button
-            onClick={() => !isSkipped && handleMilestoneClick(activeEvent.id, ms)}
-            disabled={isSkipped}
-            className={`w-5 h-5 rounded-md mt-0.5 flex items-center justify-center transition-all shrink-0 ${
-              isSkipped
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : isCompleted
-                ? 'bg-aot-sage text-[#182A42] shadow-2xs cursor-pointer'
-                // Checkbox encodes completion state only - overdue/
-                // deliverable are already shown via the card's left-
-                // border accent and the due-pill, so this doesn't
-                // need its own copy of either signal.
-                : 'border-2 border-slate-300 hover:border-[#182A42] text-transparent cursor-pointer'
-            }`}
-            title={isSkipped ? 'Skipped - removed in Google Tasks' : isCompleted ? 'Mark as pending' : 'Mark as completed'}
-          >
-            {isSkipped ? <X className="w-3 h-3 stroke-[3]" /> : <Check className="w-3 h-3 stroke-[3]" />}
-          </button>
-
-          <div className="space-y-1 min-w-0 flex-1 w-full">
-            {/* Title leads, with its due-in status label right beside it -
-                previously the status/badge row sat above the title, so on a
-                narrow screen the title (the actually useful part) read
-                second. The overdue label is a neutral dark badge now
-                instead of red - urgency is still legible without an
-                alarming color, matching the rest of the app's grey/quiet
-                default. */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
-                isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
-              }`}>
-                {ms.title}
-              </h4>
-              {!isCompleted && !isSkipped && (
-                <span
-                  className={`text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 inline-flex items-center gap-1 ${
-                    isOverdue
-                      ? 'text-slate-800 bg-slate-200 border-slate-300'
-                      : isUrgentSoon
-                      ? 'text-amber-900 bg-amber-100 border-amber-300'
-                      : 'text-slate-600 bg-slate-100 border-slate-200'
-                  }`}
-                  title={ms.tMinusLabel}
-                >
-                  {isOverdue && <AlertTriangle className="w-2.5 h-2.5 shrink-0" />}
-                  <span>{msCountdown.label}</span>
-                </span>
-              )}
-            </div>
-
-            {/* The actual calendar date - desktop only, secondary to the
-                title+status line above it. Mobile relies on the due-in
-                countdown label instead ("Overdue by 8 days" / "In 7 days")
-                so the card doesn't carry two overlapping ways to say when
-                this is due on a narrow screen. */}
-            <div className="hidden sm:block text-xs font-semibold text-slate-500">
-              {formatDisplayDate(ms.calculatedDate)}
-            </div>
-
-            {/* Type label and other status badges */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {/* Category is static context, not a time-sensitive
-                  signal - one neutral badge shape for all three,
-                  differentiated by icon rather than a competing hue
-                  per category (color stays reserved for urgency and
-                  completion state elsewhere on this card). */}
-              {isReservation && (
-                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
-                  <CalendarCheck className="w-2.5 h-2.5" />
-                  <span>Reservation</span>
-                </span>
-              )}
-
-              {isPurchase && (
-                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
-                  <ShoppingBag className="w-2.5 h-2.5" />
-                  <span>Purchase</span>
-                </span>
-              )}
-
-              {!isReservation && !isPurchase && ms.category === 'logistics' && (
-                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0">
-                  Logistics
-                </span>
-              )}
-
-              {isSkipped && (
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md shrink-0 inline-flex items-center gap-1">
-                  <X className="w-2.5 h-2.5" />
-                  <span>Skipped - removed in Google Tasks</span>
-                </span>
-              )}
-
-              {/* Refine Button for Deliverables needing more details */}
-              {(ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRefiningDeliverable(ms);
-                  }}
-                  className="text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
-                  title="Refine specifics for this deliverable"
-                >
-                  <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                  <span>Refine</span>
-                </button>
-              )}
-
-              {ms.tMinusLabel === 'T-Day' && (
-                <span className="text-[10px] font-bold text-white bg-[#182A42] px-2 py-0.5 rounded-md shrink-0 shadow-2xs inline-flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />
-                  <span>Main Event</span>
-                </span>
-              )}
-            </div>
-
-            {/* Task Description */}
-            {ms.description && (
-              <p className="text-[11px] sm:text-xs font-medium leading-relaxed break-words text-slate-500">
-                {ms.description}
-              </p>
-            )}
-
-            {/* Sub-tasks - collapsed by default. Google Calendar/Tasks only
-                ever shows the milestone, never these, so they're kept
-                deliberately lightweight and secondary rather than a second
-                tier of full task cards. */}
-            {hasDeliverables && (
-              <div className="pt-0.5">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleMilestoneExpanded(ms.id);
-                  }}
-                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-                >
-                  <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                  <span>{completedDelivCount}/{ms.deliverables!.length} sub-tasks</span>
-                </button>
-
-                {isExpanded && (
-                  <div className="mt-1.5 pl-4 space-y-1">
-                    {ms.deliverables!.map((deliv) => {
-                      const isDelivDone = deliv.is_completed;
-                      return (
-                        <div
-                          key={deliv.deliverable_id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleDeliverable(ms, deliv.deliverable_id);
-                          }}
-                          className="flex items-start gap-2 py-0.5 cursor-pointer group/deliv"
-                        >
-                          <button
-                            type="button"
-                            className={`w-3.5 h-3.5 mt-0.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 ${
-                              isDelivDone
-                                ? 'bg-[#182A42] text-white'
-                                : 'border border-slate-300 group-hover/deliv:border-[#182A42] text-transparent'
-                            }`}
-                            title={isDelivDone ? 'Mark sub-task as pending' : 'Mark sub-task as complete'}
-                          >
-                            <Check className="w-2 h-2 stroke-[3]" />
-                          </button>
-                          <span className={`text-[11px] sm:text-xs leading-snug break-words ${isDelivDone ? 'line-through text-slate-400' : 'text-slate-600'}`}>
-                            {deliv.title}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Actions (Edit & Delete) - always inline with the date/checkbox
-            row at the top now, quiet by default on desktop (hover to
-            reveal) but always visible on mobile since hover doesn't apply
-            on touch. */}
-        <div className="flex items-center gap-1 opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
-          <button
-            onClick={() => setEditingMilestone(ms)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-sky-50 transition-all cursor-pointer"
-            title="Edit task date, topic, or description"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => handleDeleteTask(ms.id)}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-            title="Delete this task"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Lighter-weight than renderMilestoneCard (no left-border accent, no
-  // category badges) so Looking ahead still reads as "smaller & further
-  // away" next to Overdue/This week - but clickable to unfold sub-tasks or
+  // One compact row per task (no left-border accent, no category badges) -
+  // clickable to unfold sub-tasks or
   // a description when there's more to a title than fits on one line (e.g.
   // "Budget & expenses" alone doesn't say what that actually covers).
-  const renderCompactFutureRow = (ms: TMinusMilestone) => {
+  // Also used for Overdue / This week / Done (they were full cards with a
+  // coloured left border, badge, date line, category tag and sub-task line
+  // each - too much competing for attention). `tone` only changes the
+  // countdown label's colour: rose for overdue, darker for this week.
+  const renderCompactFutureRow = (ms: TMinusMilestone, tone: 'overdue' | 'week' | 'future' = 'future') => {
     const isCompleted = ms.status === 'completed';
     const isSkipped = ms.status === 'skipped';
     const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
@@ -1034,7 +783,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         }`}
       >
         <div
-          className={`flex items-center gap-2 px-2.5 py-1.5 ${isExpandable ? 'cursor-pointer' : ''}`}
+          className={`flex items-start sm:items-center gap-2 px-2.5 py-1.5 ${isExpandable ? 'cursor-pointer' : ''}`}
           onClick={() => isExpandable && toggleMilestoneExpanded(ms.id)}
         >
           <button
@@ -1055,20 +804,42 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {isSkipped ? <X className="w-2.5 h-2.5 stroke-[3]" /> : <Check className="w-2.5 h-2.5 stroke-[3]" />}
           </button>
 
-          <span className={`text-xs font-semibold truncate flex-1 min-w-0 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-            {ms.title}
-          </span>
-
-          {!isCompleted && !isSkipped && (
-            <span className="text-[10px] font-bold text-slate-400 shrink-0">{msCountdown.label}</span>
-          )}
-
-          {/* Exact calendar date - desktop only, de-emphasized behind the
-              title and "in x days" label, same convention as the main
-              milestone card. */}
-          <span className="hidden sm:inline text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
-            {formatDisplayDate(ms.calculatedDate)}
-          </span>
+          {/* Phones: the title gets the full width (up to two lines) with
+              Refine and the countdown on a small line below - on one line
+              they squeezed the title down to a few characters. Desktop
+              keeps everything on one row. */}
+          <div className="flex-1 min-w-0 sm:flex sm:items-center sm:gap-2">
+            <span className={`block text-xs font-semibold leading-snug line-clamp-2 sm:line-clamp-none sm:truncate sm:flex-1 sm:min-w-0 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+              {ms.title}
+            </span>
+            <div className="flex items-center gap-2 mt-0.5 sm:mt-0 shrink-0 empty:hidden">
+              {!isCompleted && !isSkipped && (ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRefiningDeliverable(ms);
+                  }}
+                  className="text-[10px] font-bold text-amber-800 hover:text-amber-950 flex items-center gap-0.5 transition-all cursor-pointer shrink-0"
+                  title="Refine specifics for this task"
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span>Refine</span>
+                </button>
+              )}
+              {!isCompleted && !isSkipped && (
+                <span className={`text-[10px] font-bold shrink-0 ${
+                  tone === 'overdue' ? 'text-rose-600' : tone === 'week' ? 'text-slate-600' : 'text-slate-400'
+                }`}>{msCountdown.label}</span>
+              )}
+              {/* Exact calendar date - desktop only, de-emphasized behind the
+                  title and "in x days" label, same convention as the main
+                  milestone card. */}
+              <span className="hidden sm:inline text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
+                {formatDisplayDate(ms.calculatedDate)}
+              </span>
+            </div>
+          </div>
 
           {isExpandable && (
             <ChevronRight className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
@@ -1709,7 +1480,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     {overdueItems.length}
                   </span>
                 </div>
-                {overdueItems.map((ms) => renderMilestoneCard(ms))}
+                <div className="rounded-xl bg-white border border-rose-200/80 shadow-2xs divide-y divide-slate-100">
+                  {overdueItems.map((ms) => renderCompactFutureRow(ms, 'overdue'))}
+                </div>
               </React.Fragment>
             )}
 
@@ -1725,10 +1498,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     {thisWeekBucket.items.length}
                   </span>
                 </div>
-                {thisWeekBucket.items.map((item) => {
-                  const ms = milestonesById.get(item.milestoneId);
-                  return ms ? renderMilestoneCard(ms) : null;
-                })}
+                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
+                  {thisWeekBucket.items.map((item) => {
+                    const ms = milestonesById.get(item.milestoneId);
+                    return ms ? renderCompactFutureRow(ms, 'week') : null;
+                  })}
+                </div>
               </React.Fragment>
             )}
 
@@ -1752,7 +1527,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               </React.Fragment>
             )}
 
-            {/* Done - unchanged from before. */}
+            {/* Done - same compact rows (struck through). */}
             {doneMilestones.length > 0 && (
               <React.Fragment>
                 <div className="flex items-center gap-2 px-1 pt-1 first:pt-0">
@@ -1762,7 +1537,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     {doneMilestones.length}
                   </span>
                 </div>
-                {doneMilestones.map((ms) => renderMilestoneCard(ms))}
+                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
+                  {doneMilestones.map((ms) => renderCompactFutureRow(ms))}
+                </div>
               </React.Fragment>
             )}
           </>
