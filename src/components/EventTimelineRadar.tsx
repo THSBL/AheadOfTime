@@ -965,12 +965,17 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     return (
       <div
         key={ms.id}
-        className={`group rounded-lg border transition-all ${
+        // Was its own individually-rounded, bordered card with a gap
+        // before the next one - live feedback wanted "less separate
+        // elements creating disturbance." Now a flat row inside the
+        // shared container (see the "Looking ahead" call site), styled
+        // only by its own text color and a hover tint.
+        className={`group transition-all ${
           isSkipped
-            ? 'bg-slate-50/50 border-slate-200 text-slate-400 opacity-70'
+            ? 'text-slate-400 opacity-70'
             : isCompleted
-            ? 'bg-slate-50/70 border-slate-200 text-slate-400'
-            : 'bg-white/80 border-slate-200/70 hover:border-slate-300 text-slate-700'
+            ? 'text-slate-400'
+            : 'text-slate-700 hover:bg-slate-50/80'
         }`}
       >
         <div
@@ -1684,7 +1689,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     {futureItems.length}
                   </span>
                 </div>
-                <div className="space-y-1">
+                <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
                   {futureItems.map((ms) => renderCompactFutureRow(ms))}
                 </div>
               </React.Fragment>

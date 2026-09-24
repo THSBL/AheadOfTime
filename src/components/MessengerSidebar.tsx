@@ -112,19 +112,19 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col items-center h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
+      <div className="flex flex-col items-center h-full bg-[#182A42] border border-[#0f1c30] rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="w-8 h-8 rounded-xl bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 border border-sky-200/80 shadow-xs flex items-center justify-center cursor-pointer transition-all"
+          className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white shadow-xs flex items-center justify-center cursor-pointer transition-all"
           title="Expand event list"
         >
           <PanelLeftOpen className="w-4 h-4" />
         </button>
-        <div className="w-8 h-8 rounded-xl bg-sky-100/80 border border-sky-200 flex items-center justify-center">
-          <CalendarDays className="w-4 h-4 text-sky-900" />
+        <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
+          <CalendarDays className="w-4 h-4 text-sky-300" />
         </div>
-        <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-950 font-mono font-bold border border-sky-200">
+        <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-white/10 text-sky-200 font-mono font-bold">
           {events.length}
         </span>
       </div>
@@ -132,16 +132,22 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full milky-glass border border-sky-200/80 rounded-3xl overflow-hidden shadow-xs">
-      
+    // Solid dark navy for the whole panel (was a light "milky-glass" sky
+    // tint) - live feedback wanted the Active Events sidebar to read as a
+    // genuinely distinct, quieter "browsing" zone next to the white
+    // Timeline & Tasks panel, closer to a reference design. Header and list
+    // now share one continuous dark surface instead of a lighter header
+    // block sitting above a differently-tinted list body.
+    <div className="flex flex-col h-full bg-[#182A42] border border-[#0f1c30] rounded-3xl overflow-hidden shadow-xs">
+
       {/* Sidebar Header */}
-      <div className="p-3.5 sm:p-4 bg-white/60 border-b border-sky-100/90 backdrop-blur-md space-y-3">
+      <div className="p-3.5 sm:p-4 border-b border-white/10 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-sky-100/80 border border-sky-200 flex items-center justify-center">
-              <CalendarDays className="w-4 h-4 text-sky-900" />
+            <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
+              <CalendarDays className="w-4 h-4 text-sky-300" />
             </div>
-            <h3 className="text-sm font-bold text-slate-900">
+            <h3 className="text-sm font-bold text-white">
               Active Events
             </h3>
           </div>
@@ -151,7 +157,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               <button
                 type="button"
                 onClick={onToggleCollapse}
-                className="hidden lg:flex p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 border border-sky-200/80 shadow-xs items-center justify-center cursor-pointer transition-all"
+                className="hidden lg:flex p-2 rounded-full bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white shadow-xs items-center justify-center cursor-pointer transition-all"
                 title="Collapse event list"
               >
                 <PanelLeftClose className="w-4 h-4" />
@@ -162,13 +168,13 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
         {/* Search bar pill */}
         <div className="relative">
-          <Search className="w-4 h-4 text-sky-500 absolute left-3.5 top-2.5" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search events..."
-            className="w-full bg-white/95 text-slate-800 text-xs sm:text-sm pl-9 pr-4 py-2 rounded-full border border-sky-200/90 focus:outline-none focus:border-slate-900 focus:bg-white placeholder:text-slate-400 shadow-xs"
+            className="w-full bg-white/10 text-white text-xs sm:text-sm pl-9 pr-4 py-2 rounded-full border border-white/10 focus:outline-none focus:border-white/30 focus:bg-white/15 placeholder:text-slate-400"
           />
         </div>
 
@@ -181,19 +187,19 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={allFilteredSelected ? onDeselectAllEvents : onSelectAllEvents}
-                className="text-sky-700 hover:text-sky-950 font-bold flex items-center gap-1 cursor-pointer bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200/80"
+                className="text-sky-200 hover:text-white font-bold flex items-center gap-1 cursor-pointer bg-white/10 hover:bg-white/15 px-2.5 py-1 rounded-lg"
               >
-                {allFilteredSelected ? <CheckSquare className="w-3.5 h-3.5 text-sky-700" /> : <Square className="w-3.5 h-3.5 text-sky-500" />}
+                {allFilteredSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                 <span>{allFilteredSelected ? 'Deselect All' : 'Select All'}</span>
               </button>
               {newlyAddedCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowOnlyNew((v) => !v)}
-                  className={`font-bold flex items-center gap-1 cursor-pointer px-2.5 py-1 rounded-lg border transition-all ${
+                  className={`font-bold flex items-center gap-1 cursor-pointer px-2.5 py-1 rounded-lg transition-all ${
                     showOnlyNew
-                      ? 'bg-sky-500 border-sky-600 text-white'
-                      : 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                      ? 'bg-sky-400 text-[#182A42]'
+                      : 'bg-white/10 text-sky-200 hover:bg-white/15'
                   }`}
                   title={showOnlyNew ? 'Showing only newly added events' : 'Show only newly added events'}
                 >
@@ -217,19 +223,18 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         )}
       </div>
 
-      {/* A visibly blue backdrop (not the near-invisible sky-50/20 this used
-          to be) gives this whole panel clear separation from the white
-          Timeline & Tasks panel next to it - a quiet, receded "browsing"
-          zone versus the white "working" zone you land in after clicking
-          an event. Event cards stay white so they read as distinct items
-          floating on that blue field. */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-sky-100/70">
+      {/* Flat list on the same dark navy surface, divided by hairlines,
+          instead of each event being its own separate white bordered/
+          shadowed card with gaps between them - live feedback called the
+          separate-card treatment "disturbance." Only the selected row gets
+          a visible outline now; everything else is plain rows. */}
+      <div className="flex-1 overflow-y-auto py-1">
         {filteredEvents.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs sm:text-sm flex flex-col items-center justify-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-400">
+            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-slate-300">
               <Calendar className="w-5 h-5" />
             </div>
-            <p className="font-bold text-slate-700">No active events</p>
+            <p className="font-bold text-slate-300">No active events</p>
             <p className="text-xs text-slate-400 max-w-[200px]">Create an event or sync your Google Calendar to see your preparation runways.</p>
           </div>
         ) : (
@@ -261,27 +266,23 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             return (
               <React.Fragment key={evt.id}>
               {showMonthHeader && (
-                <p className="px-1 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 first:pt-0">
+                <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 first:pt-2">
                   {monthLabel}
                 </p>
               )}
               <div
                 onClick={() => onSelectEvent(evt.id)}
-                className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-2.5 relative group ${
+                className={`mx-2 px-3 py-3 rounded-xl transition-all cursor-pointer flex items-start gap-2.5 relative group border ${
                   isSelected
-                    ? 'bg-white border-2 border-slate-900 shadow-sm'
-                    : isNewlyAdded
-                    // Was amber - stood out against the old near-invisible
-                    // backdrop, but competed with the new, genuinely blue
-                    // sidebar field. A lighter tint of the same blue reads
-                    // as "part of this panel, just brighter" instead of a
-                    // second, unrelated accent color.
-                    ? 'bg-sky-50 border border-sky-200 hover:border-sky-300 hover:shadow-xs shadow-2xs'
-                    : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
+                    // The one row that gets a visible outline - everything
+                    // else is a flat row, so the current selection reads as
+                    // the exception, not one card among many identical ones.
+                    ? 'bg-white/10 border-white/25'
+                    : 'border-transparent hover:bg-white/5'
                 }`}
               >
                 {/* Checkbox for Bulk Deletion */}
-                <div 
+                <div
                   className="shrink-0 mt-0.5"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -289,25 +290,32 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     type="checkbox"
                     checked={isCheckedForBulk}
                     onChange={() => onToggleSelectEvent(evt.id)}
-                    className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-900 cursor-pointer"
+                    className="w-4 h-4 rounded border-white/30 bg-white/10 text-sky-400 focus:ring-sky-400 cursor-pointer"
                     title="Select event for bulk deletion"
                   />
                 </div>
 
                 {/* Category Icon */}
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs mt-0.5 bg-slate-100 border border-slate-200 text-slate-700">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 bg-white/10">
                   {getCategoryIcon(evt.category)}
                 </div>
 
                 {/* Event Details */}
                 <div className="flex-1 min-w-0 space-y-1">
-                  {/* Top Row: Title + Countdown / Unrefined Badge */}
+                  {/* Top Row: Title + Countdown / Unrefined Badge. The
+                      newly-added highlight is a small dot next to the
+                      title now, not a background fill - a flat row has
+                      nowhere for a colored background to sit without
+                      looking like a stray card again. */}
                   <div className="flex items-start justify-between gap-1.5">
-                    <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${isSelected ? 'text-slate-950 font-black' : 'text-slate-900'}`}>
-                      {displayTitle}
+                    <h4 className="text-xs sm:text-sm font-bold truncate leading-tight text-white flex items-center gap-1.5">
+                      {isNewlyAdded && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" title="Newly added" />
+                      )}
+                      <span className="truncate">{displayTitle}</span>
                     </h4>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md">
+                      <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-sky-200 bg-white/10 px-1.5 py-0.5 rounded-md">
                         {countdown.label}
                       </span>
                     </div>
@@ -316,14 +324,14 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   {(isUnrefined || evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
                       {isUnrefined && (
-                        <span className="inline-flex items-center gap-1 text-slate-500 font-medium">
+                        <span className="inline-flex items-center gap-1 text-slate-400 font-medium">
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
                           <span>Needs review</span>
                         </span>
                       )}
                       {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-900 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded-md">
-                          <Repeat className="w-2.5 h-2.5 text-sky-700" />
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-200 bg-white/10 px-1.5 py-0.2 rounded-md">
+                          <Repeat className="w-2.5 h-2.5 text-sky-300" />
                           <span>{evt.recurrence?.recurrencePatternText || evt.context?.recurrencePatternText || 'Recurring'}</span>
                         </span>
                       )}
@@ -332,9 +340,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
                   {/* Bottom Row: Next Preparation Task */}
                   {nextTask && (
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate flex items-center gap-1 pt-0.5 border-t border-slate-100">
-                      <span className="text-slate-400 font-bold">•</span>
-                      <span className="truncate">Next: <span className="text-slate-700 font-semibold">{nextTask.title}</span></span>
+                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate flex items-center gap-1 pt-0.5">
+                      <span className="text-slate-500 font-bold">•</span>
+                      <span className="truncate">Next: <span className="text-slate-300 font-semibold">{nextTask.title}</span></span>
                     </p>
                   )}
                 </div>
