@@ -111,7 +111,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col items-center h-full bg-sky-900 border border-sky-950/60 rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
+      <div className="flex flex-col items-center h-full bg-sky-700 border border-sky-800 rounded-3xl overflow-hidden shadow-xs py-3.5 gap-3 w-14">
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -131,13 +131,15 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   }
 
   return (
-    // Solid dark navy for the whole panel (was a light "milky-glass" sky
-    // tint) - live feedback wanted the Active Events sidebar to read as a
-    // genuinely distinct, quieter "browsing" zone next to the white
-    // Timeline & Tasks panel, closer to a reference design. Header and list
-    // now share one continuous dark surface instead of a lighter header
-    // block sitting above a differently-tinted list body.
-    <div className="flex flex-col h-full bg-sky-900 border border-sky-950/60 rounded-3xl overflow-hidden shadow-xs">
+    // A genuinely blue panel for the whole sidebar (was a light "milky-
+    // glass" sky tint, then briefly sky-900 - too close in darkness to the
+    // page's own navy background to read as distinct at a glance). sky-700
+    // is a clearly lighter, more saturated blue than both the page navy and
+    // the earlier sky-900 attempt, while still reading as a quieter
+    // "browsing" zone next to the white Timeline & Tasks panel. Header and
+    // list share one continuous surface instead of a differently-tinted
+    // header block.
+    <div className="flex flex-col h-full bg-sky-700 border border-sky-800 rounded-3xl overflow-hidden shadow-xs">
 
       {/* Sidebar Header */}
       <div className="p-3.5 sm:p-4 border-b border-white/10 space-y-3">
