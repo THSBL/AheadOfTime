@@ -466,3 +466,43 @@ describe('fallback planning uses the onboarding profile', () => {
     expect(hasPetTask(run("Maya's birthday dinner on 2026-10-23"))).toBe(false);
   });
 });
+
+describe('answering the role question keeps the right help level', () => {
+  const ROLE_Q = "Who's actually responsible for this - are you the one organizing it, helping out, or just taking part?";
+  const baseTrip = () => processWithDeterministicRules({
+    message: 'Divetrip to Egypt 12 to 19 November', refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z',
+  }).event;
+
+  it('reads the answer, not the options listed in the question', () => {
+    const answered = processWithDeterministicRules({
+      message: `${ROLE_Q} I'm organizing it`, refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z', existingEvent: baseTrip(),
+    }).event;
+    expect(answered.preparationLevel).not.toBe('essentials');
+    expect(answered.context?.userResponsibility).toBe('primary_organizer');
+  });
+
+  it('remembers the answer on a later, unrelated change', () => {
+    const answered = processWithDeterministicRules({
+      message: `${ROLE_Q} I'm organizing it`, refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z', existingEvent: baseTrip(),
+    }).event;
+    const later = processWithDeterministicRules({
+      message: 'We also need travel insurance', refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z', existingEvent: answered,
+    }).event;
+    expect(later.preparationLevel).toBe(answered.preparationLevel);
+    expect(later.preparationLevel).not.toBe('essentials');
+    expect(later.context?.userResponsibility).toBe('primary_organizer');
+    expect(later.preparationLevelReasons?.join(' ')).toMatch(/organizing/i);
+    expect(later.outstandingGaps?.some((g) => g.key === 'user_responsibility') ?? false).toBe(false);
+  });
+});
+
+describe('travel documents in the fallback planner', () => {
+  it('adds a visa task for "Visa needed" and none when not asked', () => {
+    const run = (message: string) => processWithDeterministicRules({ message, refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z' }).event;
+    const withVisa = run('Divetrip to Egypt\n\nDetails:\n- When is it? 12 to 19 November\n- Travel documents: anything to arrange? Visa needed');
+    expect(withVisa.milestones.some((m) => /visa/i.test(m.title))).toBe(true);
+    expect(withVisa.milestones.some((m) => /esta/i.test(m.title))).toBe(false);
+    const without = run('Divetrip to Egypt\n\nDetails:\n- When is it? 12 to 19 November\n- Travel documents: anything to arrange? All sorted / not needed');
+    expect(without.milestones.some((m) => /visa|passport|esta/i.test(m.title))).toBe(false);
+  });
+});

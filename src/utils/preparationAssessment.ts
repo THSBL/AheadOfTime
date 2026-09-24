@@ -68,8 +68,32 @@ const INDEPENDENT_RE = /\b(on (his|her|their|my) own|by (him|her|them|my)self|in
 const PRIMARY_ORGANIZER_RE = /\b(i'?m organi[sz]ing|i am organi[sz]ing|i'?m running|i'?m hosting|i'?m planning|i'?m in charge of|as the organi[sz]er|my responsibility to organi[sz]e)\b/i;
 const CO_RESPONSIBLE_RE = /\b(i'?m taking|i'?ll be taking|driving (him|her|them)|i'?m helping|co-?organi[sz]ing|helping (out )?with|responsible for (my|our) (kid|child|son|daughter))\b/i;
 
+// Questions we asked are not things the user said. A message can carry
+// the question it answers ("...helping out, or just taking part? I'm
+// organizing it"), and reading the question's own options as a statement
+// turned "I'm organizing it" into "just taking part" (Basic help).
+function stripQuestions(text: string): string {
+  return text.replace(/[^.!?\n]*\?/g, ' ');
+}
+
 function textBlob(input: AssessmentInput): string {
-  return `${input.title || ''} ${input.rawText || ''} ${input.context?.customNote || ''}`;
+  return stripQuestions(`${input.title || ''} ${input.rawText || ''} ${input.context?.customNote || ''}`);
+}
+
+const STORED_RESPONSIBILITIES = new Set<UserResponsibility>(['independent', 'primary_organizer', 'co_responsible']);
+
+/**
+ * The user's role as stated in this text (question text ignored), or null.
+ * The caller stores it on the event's context as `userResponsibility`, so
+ * the answer keeps counting on later turns instead of only the turn it
+ * was given in.
+ */
+export function detectStatedResponsibility(text: string): UserResponsibility | null {
+  const statement = stripQuestions(text || '');
+  if (INDEPENDENT_RE.test(statement)) return 'independent';
+  if (PRIMARY_ORGANIZER_RE.test(statement)) return 'primary_organizer';
+  if (CO_RESPONSIBLE_RE.test(statement)) return 'co_responsible';
+  return null;
 }
 
 interface RoleInference {
@@ -91,6 +115,10 @@ function inferUserResponsibility(input: AssessmentInput): RoleInference {
   if (INDEPENDENT_RE.test(text)) return { responsibility: 'independent', wasExplicit: true };
   if (PRIMARY_ORGANIZER_RE.test(text)) return { responsibility: 'primary_organizer', wasExplicit: true };
   if (CO_RESPONSIBLE_RE.test(text)) return { responsibility: 'co_responsible', wasExplicit: true };
+  const stored = input.context?.userResponsibility;
+  if (typeof stored === 'string' && STORED_RESPONSIBILITIES.has(stored as UserResponsibility)) {
+    return { responsibility: stored as UserResponsibility, wasExplicit: true };
+  }
 
   const categoryAsksRole = Boolean(input.category) && CATEGORIES_WHERE_ROLE_MATTERS.has(input.category as EventCategory);
   if (categoryAsksRole) return { responsibility: 'unknown', wasExplicit: false };

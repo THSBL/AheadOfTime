@@ -7,6 +7,8 @@ import {
   describePlanningProfile,
   sanitizePlanningProfile,
   isAwayFromHomeEvent,
+  buildTripRefinementQuestions,
+  detectTravelDocumentNeeds,
   MAX_REFINEMENT_QUESTIONS,
 } from './refinementQuestions';
 import { RefinementQuestion } from '../types';
@@ -123,5 +125,40 @@ describe('profile helpers', () => {
     expect(sanitizePlanningProfile({ hasPet: true, familyStructure: 'couple' })).toEqual({ hasPet: true, familyStructure: 'couple' });
     expect(sanitizePlanningProfile(null)).toBeUndefined();
     expect(sanitizePlanningProfile({})).toBeUndefined();
+  });
+});
+
+describe('travel documents are asked, never guessed', () => {
+  it('asks about travel documents for a trip to a named place', () => {
+    expect(buildTripRefinementQuestions('Divetrip to Egypt').map((q) => q.id)).toEqual(['travel_documents']);
+    expect(buildTripRefinementQuestions('Flying abroad for a wedding').map((q) => q.id)).toEqual(['travel_documents']);
+  });
+
+  it('does not ask when documents were already mentioned, or for a local event', () => {
+    expect(buildTripRefinementQuestions('Divetrip to Egypt, visa already sorted')).toEqual([]);
+    expect(buildTripRefinementQuestions('Birthday dinner at home')).toEqual([]);
+    expect(buildTripRefinementQuestions('Camping this weekend')).toEqual([]);
+  });
+
+  it('reads the chosen answer, ignoring the question text', () => {
+    const q = 'Travel documents: anything to arrange?';
+    expect(detectTravelDocumentNeeds(`${q} Visa needed`)).toEqual({ needVisa: true });
+    expect(detectTravelDocumentNeeds(`${q} Passport renewal needed`)).toEqual({ needPassportRenewal: true });
+    expect(detectTravelDocumentNeeds(`${q} Visa and passport renewal`)).toEqual({ needVisa: true, needPassportRenewal: true });
+    expect(detectTravelDocumentNeeds(`${q} All sorted / not needed`)).toEqual({});
+    expect(detectTravelDocumentNeeds('Do you need a visa? No visa needed')).toEqual({});
+  });
+
+  it('reads free text too', () => {
+    expect(detectTravelDocumentNeeds('I also need a visa')).toEqual({ needVisa: true });
+    expect(detectTravelDocumentNeeds("We don't need a visa, both of us have one")).toEqual({});
+    expect(detectTravelDocumentNeeds('My passport expires in December')).toEqual({ needPassportRenewal: true });
+  });
+
+  it('keeps the guaranteed documents question unless Gemini already asked it', () => {
+    const docs = buildTripRefinementQuestions('Divetrip to Egypt');
+    const gemini: RefinementQuestion[] = [{ id: 'visa', question: 'Do you need a visa for Egypt?', options: [], source: 'message' }];
+    expect(mergeRefinementQuestions(gemini, docs).map((q) => q.id)).toEqual(['visa']);
+    expect(mergeRefinementQuestions([], docs).map((q) => q.id)).toEqual(['travel_documents']);
   });
 });

@@ -49,8 +49,16 @@ export function deepRefineEventLocally(event: CalendarEvent): TMinusMilestone[] 
   }
   // 2. Trips, Travel, Vacation, Flights, Camping
   else if (text.match(/\b(flight|trip|vacation|holiday|travel|hotel|airbnb|campsite|camping|resort|getaway|barcelona|paris|tokyo|london|rome|hawaii)\b/)) {
-    add('T-60d', -60 * 24 * 60, 'Passport validity & entry requirement check', 'booking', 
-      'Verify passport has 6+ months validity remaining and review destination visa/e-visa requirements.');
+    // Travel documents only when the user said they need them - never
+    // guessed from the destination (the creation flow asks about them).
+    if (event.context?.needPassportRenewal === true || event.context?.needPassportRenewal === 'true') {
+      add('T-60d', -60 * 24 * 60, 'Passport renewal submitted', 'booking',
+        'Renewals can take several weeks - submit early so the new passport arrives well before departure.');
+    }
+    if (event.context?.needVisa === true || event.context?.needVisa === 'true') {
+      add('T-45d', -45 * 24 * 60, 'Visa / entry authorization arranged', 'booking',
+        'Apply for the visa or entry authorization for this destination and save the approval to your phone.');
+    }
     add('T-30d', -30 * 24 * 60, 'Lock flights, train tickets & accommodations', 'booking', 
       'Securing transportation and lodging 4 weeks early avoids steep last-minute surge pricing and limited room choices.');
     add('T-21d', -21 * 24 * 60, 'Book guided tours & landmark tickets', 'booking', 

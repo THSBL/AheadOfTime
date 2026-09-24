@@ -26,7 +26,7 @@ import {
   formatTMinusLabel
 } from "../src/utils/tminusRules.js";
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
-import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment, deriveOutstandingGaps } from "../src/utils/preparationAssessment.js";
+import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment, deriveOutstandingGaps, detectStatedResponsibility } from "../src/utils/preparationAssessment.js";
 import {
   mergePlanningContext,
   computePlanningContextVersion,
@@ -44,9 +44,11 @@ import {
 import { logQualityEvent } from "./qualityStore.js";
 import {
   buildProfileRefinementQuestions,
+  buildTripRefinementQuestions,
   buildFallbackMessageQuestions,
   mergeRefinementQuestions,
   describePlanningProfile,
+  detectTravelDocumentNeeds,
 } from "../src/utils/refinementQuestions.js";
 
 /**
@@ -228,6 +230,7 @@ Mostly this is the basics - where, when and what - asked ONLY for what the descr
 - When: the date or date range, unless already given (relative phrasing like "next Friday" counts as given).
 - Where: destination/venue, if it matters for the prep and isn't given.
 - What: the one or two key decisions that change what gets prepared (e.g. for a dive trip: certified yet or doing a course, own gear or renting; for a birthday: organising it or attending, gift or not).
+For a trip abroad, ask whether a visa or passport renewal is needed - never assume either way; requirements depend on nationality and destination.
 Also use the userProfile facts: if the profile says they have a pet or kids and the event takes them away from home, ask who looks after them - unless the description already covers it.
 
 Rules:
@@ -300,7 +303,10 @@ export async function askRefinementQuestions(params: {
   if (!params.message?.trim()) {
     return { needsClarification: false, questions: [] };
   }
-  const profileQuestions = buildProfileRefinementQuestions(params.message, params.userProfile);
+  const guaranteedQuestions = [
+    ...buildTripRefinementQuestions(params.message),
+    ...buildProfileRefinementQuestions(params.message, params.userProfile),
+  ];
   let messageQuestions: RefinementQuestion[] | null = null;
 
   if (process.env.GEMINI_API_KEY) {
@@ -335,9 +341,21 @@ export async function askRefinementQuestions(params: {
 
   const questions = mergeRefinementQuestions(
     messageQuestions ?? buildFallbackMessageQuestions(params.message, params.currentReferenceDate),
-    profileQuestions
+    guaranteedQuestions
   );
   return { needsClarification: questions.length > 0, questions };
+}
+
+/**
+ * Facts the user stated this turn that must outlive the turn: their role
+ * (so the help level doesn't drift back on the next change) and visa /
+ * passport needs (only ever added when stated, never guessed).
+ */
+function applyStatedFacts(context: Record<string, any>, message: string, isLevelExpansion?: boolean) {
+  if (isLevelExpansion || !message?.trim()) return;
+  const responsibility = detectStatedResponsibility(message);
+  if (responsibility) context.userResponsibility = responsibility;
+  Object.assign(context, detectTravelDocumentNeeds(message));
 }
 
 /**
@@ -551,6 +569,7 @@ FULL CONVERSATION CONTEXT:
 - If conversationSoFar is present, it holds everything the user already told us about THIS event (their first description, their answers to our questions, earlier additions). userInput is only their newest addition on top of it. Plan the whole event from conversationSoFar + userInput together - the newest addition refines this same event, it is never a new, separate event (e.g. userInput "yes, I need a visa" on a dive trip to Egypt adds visa prep to that dive trip; it does not become a plan about visas).
 - If userProfile is present, tailor the plan to it (e.g. someone with a pet who travels needs pet care arranged; a family with kids may need childcare), unless the conversation says it's already covered or not needed.
 - Never ask again about anything answered in conversationSoFar.
+- Travel documents: add a visa, entry-authorization or passport-renewal milestone ONLY when the user said they need one. Never guess them from the destination or the user's home country, and never add an ESTA unless the trip is to the US and the user said they need it.
 
 Focus and Addition format (plain language only - never "runway", "Track A/B", "macro/micro", or other internal planning vocabulary):
 FOCUS: <1 clear sentence stating event created or timeline scheduled>
@@ -1003,6 +1022,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   if (params.userProfile?.homeZipOrLocation) {
     mergedContext.homeZipOrLocation = params.userProfile.homeZipOrLocation;
   }
+  applyStatedFacts(mergedContext, params.message, params.isLevelExpansion);
 
   if (params.intakeAnswer) {
     mergedContext[params.intakeAnswer.parameterKey] = params.intakeAnswer.answerValue;
@@ -1400,11 +1420,12 @@ export function processWithDeterministicRules(params: {
         deliverableType: m.deliverableType,
       };
     });
-    const tripContext = {
+    const tripContext: Record<string, any> = {
       ...extractContextFromMessage(params.message, params.existingEvent?.context),
       archetype: macro.type,
       ...(params.userProfile?.homeZipOrLocation ? { homeZipOrLocation: params.userProfile.homeZipOrLocation } : {}),
     };
+    applyStatedFacts(tripContext, params.message, params.isLevelExpansion);
     // No existingEvent reaches this branch (see the condition above), so
     // every key here is this turn's own extraction - all user_stated.
     const tripPlanningContext = resolvePlanningContext(
@@ -1526,6 +1547,7 @@ export function processWithDeterministicRules(params: {
   }
   // The profile says there's a pet: the travel rules add pet-care prep
   // unless the user said the pet is coming along.
+  applyStatedFacts(context, params.message, params.isLevelExpansion);
   if (params.userProfile?.hasPet && context.hasPet === undefined && !/pet comes along/i.test(params.message || '')) {
     context.hasPet = true;
   }

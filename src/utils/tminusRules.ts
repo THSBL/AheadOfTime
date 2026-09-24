@@ -713,7 +713,7 @@ export function generateHeuristicMilestones(
       addMilestone('T-30d', -30 * 24 * 60, 'Confirm attendance & RSVP to organiser', 'booking', 'Confirm participation and secure room share with trip organiser', undefined, 'deliverable');
       addMilestone('T-21d', -21 * 24 * 60, 'Transfer deposit / shared cost share to organiser', 'booking', 'Pay share for lodging and group activity bookings', undefined, 'deliverable');
       addMilestone('T-21d', -21 * 24 * 60, 'Book personal travel / flights & coordinate arrival', 'booking', 'Book transport to match group arrival window', undefined, 'deliverable', true, ['Direct Flight', 'Train / Rail Ticket', 'Carpool with Group', 'Self Driving']);
-      addMilestone('T-14d', -14 * 24 * 60, 'Check passport validity & travel insurance', 'prep', 'Verify 6-month passport validity and medical/travel coverage', undefined, 'milestone');
+      addMilestone('T-14d', -14 * 24 * 60, 'Check travel insurance', 'prep', 'Confirm medical/travel coverage for the trip', undefined, 'milestone');
       addMilestone('T-7d', -7 * 24 * 60, 'Check weekend theme dress code & activity gear', 'prep', 'Coordinate group outfits or prepare specific activity footwear', undefined, 'milestone');
       addMilestone('T-3d', -3 * 24 * 60, 'Trip packing essentials & roaming eSIM', 'prep', 'Pack weather attire, toiletries, chargers, and activate data roaming', undefined, 'milestone');
       addMilestone('T-1d', -1 * 24 * 60, 'Online check-in & boarding pass download', 'logistics', 'Check in 24h prior and confirm meeting point with group chat', undefined, 'milestone');
@@ -981,21 +981,29 @@ export function generateHeuristicMilestones(
       /\b(stag|bachelor|bachelorette|hen)\b/i.test(context.theme || '') ||
       event.macroEvent?.archetype === 'Stag Party / Bachelor Trip');
 
-    // For international travel or overseas destination (e.g. Brooklyn NY, international flight)
-    const isInternational = /passport|visa|esta|international|flight|overseas|brooklyn|ny\b|usa|us\b|america|paris|london|tokyo|dublin/i.test(`${event.title} ${event.location || ''} ${context.customNote || ''} ${context.destination || ''}`);
+    // Only used as evidence that travel bookings are involved (below). Word
+    // boundaries matter: the old "ny\b"/"us\b" matched "any"/"with us".
+    const isInternational = /\b(passport|visa|esta|international|flights?|overseas|brooklyn|usa|america|paris|london|tokyo|dublin)\b/i.test(`${event.title} ${event.location || ''} ${context.customNote || ''} ${context.destination || ''}`);
 
-    if (context.needPassportRenewal === true || context.needPassportRenewal === 'true' || isInternational) {
-      addMilestone('T-60d', -60 * 24 * 60, 'Passport validity & renewal check', 'booking', 'Verify passport has 6+ months validity remaining and initiate renewal if expiring soon', undefined, 'milestone');
+    // Travel documents are never guessed from the destination or home
+    // country (that produced a US ESTA task for a dive trip to Egypt).
+    // They're added only when the user said so - the creation flow asks
+    // about them up front (see refinementQuestions.ts).
+    if (context.needPassportRenewal === true || context.needPassportRenewal === 'true') {
+      addMilestone('T-60d', -60 * 24 * 60, 'Passport renewal submitted', 'booking', 'Renewals can take several weeks - submit early so the new passport arrives well before departure', undefined, 'milestone');
     }
     if (context.hasPet === true || context.hasPet === 'true' || /dog|cat|pet|sitter|kennel/i.test(event.title || '') || /dog|cat|pet|sitter/i.test(context.customNote || '')) {
       addMilestone('T-45d', -45 * 24 * 60, 'Book dog sitter / pet boarding', 'booking', 'Book pet sitter or kennel boarding 4-6 weeks in advance before holiday slots fill up', undefined, 'deliverable');
       addMilestone('T-14d', -14 * 24 * 60, 'Pet vaccination check & sitter meet-and-greet', 'prep', 'Verify kennel cough/rabies vaccine records and confirm entry keys with sitter', undefined, 'milestone');
     }
-    const isDestUS = /usa|us\b|america|brooklyn|ny\b|new york|california|miami|orlando|san francisco|chicago/i.test(`${event.title} ${event.location || ''} ${context.destination || ''} ${context.customNote || ''}`);
-    const isNonUSCitizenOrInternational = isInternational || isDestUS || /belgium|be\b|europe|uk|france|germany|netherlands|spain|italy/i.test(`${context.homeLocation || ''} ${context.homeZipOrLocation || ''} ${context.country || ''}`);
+    const isDestUS = /\b(usa|america|brooklyn|new york|california|miami|orlando|san francisco|chicago)\b/i.test(`${event.title} ${event.location || ''} ${context.destination || ''} ${context.customNote || ''}`);
 
-    if (context.needVisa === true || context.needVisa === 'true' || isNonUSCitizenOrInternational) {
-      addMilestone('T-45d', -45 * 24 * 60, 'US Entry ESTA (Electronic System for Travel Authorization)', 'booking', 'Mandatory entry authorization for non-US citizens (e.g. Belgian / EU passports) traveling to the US. Submit at least 72 hours prior to departure', undefined, 'deliverable');
+    if (context.needVisa === true || context.needVisa === 'true') {
+      if (isDestUS) {
+        addMilestone('T-45d', -45 * 24 * 60, 'US Entry ESTA (Electronic System for Travel Authorization)', 'booking', 'Entry authorization for travel to the US. Submit at least 72 hours prior to departure', undefined, 'deliverable');
+      } else {
+        addMilestone('T-45d', -45 * 24 * 60, 'Visa / entry authorization arranged', 'booking', 'Apply for the visa or entry authorization for this destination and save the approval to your phone', undefined, 'deliverable');
+      }
     }
 
     // Whether this event actually involves booking travel (flights, a hotel,
@@ -2608,7 +2616,7 @@ export function decomposeComplexTripIntent(
       kind: 'milestone',
       needsRefinement: false,
       applicableRoles: ['guest'],
-      description: 'Pack personal gear, passport with 6+ months validity, and download offline maps.',
+      description: 'Pack personal gear, travel documents, and download offline maps.',
     });
 
     milestones.push({

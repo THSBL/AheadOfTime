@@ -43,6 +43,27 @@ export function buildProfileRefinementQuestions(message: string, profile?: Plann
   return questions;
 }
 
+const NAMED_PLACE = /\b(to|in) [A-Z][a-z]+/;
+const ABROAD = /\b(abroad|overseas|international|flight|fly|flying)\b/i;
+const MENTIONS_DOCUMENTS = /\b(visa|passport|esta|entry (permit|authori[sz]ation))\b/i;
+
+/**
+ * Visa / passport needs depend on nationality and destination, which we
+ * can't reliably know - so for a trip somewhere we ask instead of guessing
+ * (the planner adds these tasks only for a "needed" answer). Asked
+ * whether or not Gemini is available or remembers to ask it.
+ */
+export function buildTripRefinementQuestions(message: string): RefinementQuestion[] {
+  if (!message?.trim() || !isAwayFromHomeEvent(message) || MENTIONS_DOCUMENTS.test(message)) return [];
+  if (!NAMED_PLACE.test(message) && !ABROAD.test(message)) return [];
+  return [{
+    id: 'travel_documents',
+    question: 'Travel documents: anything to arrange?',
+    options: ['Visa needed', 'Passport renewal needed', 'Visa and passport renewal', 'All sorted / not needed'],
+    source: 'message',
+  }];
+}
+
 /**
  * Minimal where/when fallback for when Gemini is unavailable, so the
  * refinement step still covers the basics instead of silently vanishing.
@@ -62,16 +83,17 @@ export function buildFallbackMessageQuestions(message: string, currentReferenceD
 }
 
 const PET_QUESTION = /\b(pet|dog|cat)\b/i;
+const DOCUMENTS_QUESTION = /\b(visa|passport|travel documents?|entry)\b/i;
 const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
 
 /**
- * Gemini's message-based questions first, then any profile question it
- * didn't already cover, capped so the step stays quick to answer.
+ * Gemini's message-based questions first, then any guaranteed question
+ * (profile, travel documents) it didn't already cover, capped so the step stays quick to answer.
  */
 export function mergeRefinementQuestions(messageQuestions: RefinementQuestion[], profileQuestions: RefinementQuestion[]): RefinementQuestion[] {
   const merged = [...messageQuestions];
   for (const pq of profileQuestions) {
-    const topic = pq.id === 'pet_care' ? PET_QUESTION : pq.id === 'kids' ? KIDS_QUESTION : null;
+    const topic = pq.id === 'pet_care' ? PET_QUESTION : pq.id === 'kids' ? KIDS_QUESTION : pq.id === 'travel_documents' ? DOCUMENTS_QUESTION : null;
     const alreadyCovered = merged.some((q) => q.id === pq.id || (topic && topic.test(q.question)));
     if (!alreadyCovered) merged.push(pq);
   }
@@ -141,4 +163,23 @@ export function sanitizePlanningProfile(raw: unknown): PlanningUserProfile | und
   if (typeof r.hasPet === 'boolean') profile.hasPet = r.hasPet;
   if (r.familyStructure === 'single' || r.familyStructure === 'couple' || r.familyStructure === 'family_with_kids') profile.familyStructure = r.familyStructure;
   return Object.keys(profile).length > 0 ? profile : undefined;
+}
+
+const NEEDS_VISA = /\b(visa needed|visa required|need (a |to get a |to arrange a |to apply for a )?visa|visa and passport)\b/i;
+const NO_VISA = /\b(no visa|visa (is )?not (needed|required)|don'?t need (a )?visa)\b/i;
+const NEEDS_PASSPORT = /\b(passport renewal|renew (my |our )?passports?|passports? (expires|expired|needs? renewing)|new passports?)\b/i;
+const NO_PASSPORT = /\b(no passport renewal|passport renewal (is )?not (needed|required)|passports? (is |are )?(still )?(valid|fine|ok))\b/i;
+
+/**
+ * Visa / passport needs the user actually stated (an answer to the travel
+ * documents question, or free text like "I also need a visa"). Never
+ * guessed from the destination - the planner only adds these tasks when
+ * the user said so. Question text is ignored.
+ */
+export function detectTravelDocumentNeeds(text: string): { needVisa?: true; needPassportRenewal?: true } {
+  const statement = (text || '').replace(/[^.!?\n]*\?/g, ' ');
+  const needs: { needVisa?: true; needPassportRenewal?: true } = {};
+  if (NEEDS_VISA.test(statement) && !NO_VISA.test(statement)) needs.needVisa = true;
+  if (NEEDS_PASSPORT.test(statement) && !NO_PASSPORT.test(statement)) needs.needPassportRenewal = true;
+  return needs;
 }

@@ -358,14 +358,39 @@ describe('generateHeuristicMilestones', () => {
     expect(milestones.some((m) => /dog sitter|pet boarding/i.test(m.title))).toBe(true);
   });
 
-  it('adds a passport-check milestone for international destinations', () => {
-    const milestones = generateHeuristicMilestones(
-      { category: 'travel_trip', title: 'Trip to Paris', context: {} },
-      'evt-test-3',
+  it('never guesses travel documents from the destination or home country', () => {
+    // Regression: a dive trip to Egypt got a "US Entry ESTA" task (home
+    // country Belgium) and every "international" trip got a passport check.
+    // These are asked as follow-up questions instead.
+    for (const title of ['Trip to Paris', 'Divetrip to Egypt', 'Flight to New York']) {
+      const milestones = generateHeuristicMilestones(
+        { category: 'travel_trip', title, context: { homeZipOrLocation: 'Ghent, Belgium' } },
+        'evt-test-3',
+        '2026-10-15',
+        '19:00'
+      );
+      expect(milestones.some((m) => /passport|visa|esta/i.test(m.title))).toBe(false);
+    }
+  });
+
+  it('adds visa and passport tasks only when the user said they need them', () => {
+    const egypt = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Divetrip to Egypt', context: { needVisa: true, needPassportRenewal: true } },
+      'evt-test-3b',
       '2026-10-15',
       '19:00'
     );
-    expect(milestones.some((m) => /passport/i.test(m.title))).toBe(true);
+    expect(egypt.some((m) => /visa \/ entry authorization/i.test(m.title))).toBe(true);
+    expect(egypt.some((m) => /passport renewal/i.test(m.title))).toBe(true);
+    expect(egypt.some((m) => /esta/i.test(m.title))).toBe(false);
+
+    const us = generateHeuristicMilestones(
+      { category: 'travel_trip', title: 'Trip to New York', context: { needVisa: true } },
+      'evt-test-3c',
+      '2026-10-15',
+      '19:00'
+    );
+    expect(us.some((m) => /esta/i.test(m.title))).toBe(true);
   });
 
   it('does not assume flights/hotel for a travel_trip event with no travel-mode evidence (e.g. a local event mis-tagged travel_trip)', () => {
