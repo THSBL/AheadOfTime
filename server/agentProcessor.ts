@@ -192,12 +192,18 @@ export const TRANSCRIBE_MODELS = [
 export async function generateContentFast(
   requestConfig: (modelName: string) => any,
   modelsToTry: string[] = DEFAULT_FAST_MODELS,
-  timeoutMs: number = 10000
+  // One number for every model, or one per model (e.g. a generous limit for
+  // the main model and a shorter one for the lite fallback, so both still
+  // fit inside the serverless function's own maxDuration).
+  timeoutMsPerModel: number | number[] = 10000
 ): Promise<{ text: string; usedModel: string }> {
   const ai = getGeminiClient();
   let lastError: any = null;
 
-  for (const modelName of modelsToTry) {
+  for (const [modelIndex, modelName] of modelsToTry.entries()) {
+    const timeoutMs = Array.isArray(timeoutMsPerModel)
+      ? timeoutMsPerModel[Math.min(modelIndex, timeoutMsPerModel.length - 1)]
+      : timeoutMsPerModel;
     try {
       const config = requestConfig(modelName);
 
@@ -330,7 +336,8 @@ export async function askRefinementQuestions(params: {
           },
         }),
         DEFAULT_FAST_MODELS,
-        6000
+        // Live: gemini-3.6-flash regularly took 7-9s; both fit in api/agent's 30s maxDuration.
+        [9000, 5000]
       );
       let rawText = response.text || '{}';
       if (rawText.startsWith('```json')) {
@@ -867,13 +874,12 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
       },
     }),
     DEFAULT_FAST_MODELS,
-    // Was 12000ms per model (worst-case ~24s across the 2-model sequence) -
-    // gemini-3.6-flash typically answers in 1-3s even with the added
-    // target-resolution/slot_key/proactive-suggestion reasoning, so this
-    // ceiling only ever matters for a genuinely hung request. Tightened so a
-    // real failure surfaces (and falls back) in a few seconds, not 24, per
-    // "the free form always has to trigger the AI in a timely manner."
-    7000
+    // Was a flat 7000ms per model, on the assumption gemini-3.6-flash
+    // answers in 1-3s. Production metrics showed a ~9s p95 for this prompt,
+    // and logs showed "timeout after 7000ms" - so most plans fell back to
+    // the templates even with a working key. 18s for the main model, 9s for
+    // the lite fallback: 27s worst case, inside api/agent's 30s maxDuration.
+    [18000, 9000]
   );
 
   let rawText = response.text || "{}";
