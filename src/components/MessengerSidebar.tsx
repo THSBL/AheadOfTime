@@ -217,8 +217,13 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         )}
       </div>
 
-      {/* Events List (Plain Milky White Items with Light Blue and Red Accent Borders) */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-sky-50/20">
+      {/* A visibly blue backdrop (not the near-invisible sky-50/20 this used
+          to be) gives this whole panel clear separation from the white
+          Timeline & Tasks panel next to it - a quiet, receded "browsing"
+          zone versus the white "working" zone you land in after clicking
+          an event. Event cards stay white so they read as distinct items
+          floating on that blue field. */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-sky-100/70">
         {filteredEvents.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs sm:text-sm flex flex-col items-center justify-center gap-2">
             <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-400">
@@ -266,7 +271,12 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   isSelected
                     ? 'bg-white border-2 border-slate-900 shadow-sm'
                     : isNewlyAdded
-                    ? 'bg-amber-50 border border-amber-200 hover:border-amber-300 hover:shadow-xs shadow-2xs'
+                    // Was amber - stood out against the old near-invisible
+                    // backdrop, but competed with the new, genuinely blue
+                    // sidebar field. A lighter tint of the same blue reads
+                    // as "part of this panel, just brighter" instead of a
+                    // second, unrelated accent color.
+                    ? 'bg-sky-50 border border-sky-200 hover:border-sky-300 hover:shadow-xs shadow-2xs'
                     : 'bg-white/95 border border-slate-200/80 hover:border-slate-300 hover:shadow-xs shadow-2xs'
                 }`}
               >
