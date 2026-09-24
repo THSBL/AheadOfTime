@@ -282,6 +282,17 @@ export async function processWithGemini(params: {
   batchAnswers?: { parameterKey: string; answerValue: string }[];
   activeEvents: CalendarEvent[];
   userProfile?: { homeZipOrLocation?: string };
+  // True only for the app's own synthetic "expand this into a full X
+  // preparation plan" message (EventTimelineRadar.tsx's preparation-level
+  // upgrade) - never a real user message. Live-reported: that instruction
+  // text got folded into context.customNote like any genuine free-text
+  // correction, and tminusRules.ts's travel_trip handler echoes customNote
+  // verbatim into a milestone ("Travel prep: <note>"), so the plan ended
+  // up with a task literally titled after the internal instruction. This
+  // flag skips the specific handling that treats the message as "the user
+  // mentioned something new" - the level-expansion prompt still reaches
+  // Gemini normally, it just never gets folded into stored context.
+  isLevelExpansion?: boolean;
 }): Promise<ProcessAgentResponsePayload> {
   const prepLevel = resolveEffectivePreparationLevel(params.existingEvent, params.message);
   // Architecture reset Phase 7 - locked facts from EARLIER turns (plus any
@@ -1000,7 +1011,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     // through intakeAnswer/batchAnswers, not plain text) can't spuriously
     // inject unrelated category-default tasks, only a message that
     // plausibly asked for something concrete does.
-    if (!params.intakeAnswer && !params.batchAnswers && params.message?.trim()) {
+    if (!params.intakeAnswer && !params.batchAnswers && !params.isLevelExpansion && params.message?.trim()) {
       const NOISE_WORDS = new Set([
         'also', 'need', 'needs', 'while', 'away', 'book', 'booked', 'booking',
         'confirm', 'confirmed', 'and', 'the', 'for', 'with', 'this', 'that',
@@ -1135,6 +1146,9 @@ export function processWithDeterministicRules(params: {
   batchAnswers?: { parameterKey: string; answerValue: string }[];
   transcribedVoiceText?: string;
   userProfile?: { homeZipOrLocation?: string };
+  // See processWithGemini's own doc comment - true only for the app's
+  // synthetic preparation-level-expansion message, never real user text.
+  isLevelExpansion?: boolean;
 }): ProcessAgentResponsePayload {
   const msgLower = (params.message || "").toLowerCase();
   const eventId = params.existingEvent?.id || `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -1310,7 +1324,11 @@ export function processWithDeterministicRules(params: {
   // trip/date signal of its own) only reaches category-specific detection
   // (pet sitter, venue signals, etc.) via customNote - fold it in here so
   // "we also need a dog sitter" on an already-created trip is actually seen.
-  if (params.existingEvent && params.message?.trim()) {
+  // Skipped for a preparation-level expansion: that message is an internal
+  // instruction, not something the user said, and tminusRules.ts's
+  // travel_trip handler echoes customNote verbatim into a milestone title
+  // - live-reported as a task literally titled after the instruction text.
+  if (params.existingEvent && !params.isLevelExpansion && params.message?.trim()) {
     context.customNote = [context.customNote, params.message.trim()].filter(Boolean).join('. ');
   }
   title = getCleanEventTitle(title, category, context);

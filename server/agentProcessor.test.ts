@@ -221,6 +221,35 @@ describe('processWithDeterministicRules - preparation level (architecture reset 
     expect(result.event.preparationLevel).toBeDefined();
     expect(result.event.milestones.every((m) => m.tier === result.event.preparationLevel)).toBe(true);
   });
+
+  it('a level-expansion request never leaks its own instruction text into a milestone', () => {
+    // Regression test, live-reported: clicking "Extensive plan" produced a
+    // milestone literally titled "Travel prep: Expand this into a full
+    // extensive preparation plan, given my actual responsibility for this
+    // event." The synthetic expansion message was being folded into
+    // context.customNote like any real free-text correction, and
+    // tminusRules.ts's travel_trip handler echoes customNote verbatim into
+    // a milestone title.
+    const created = processWithDeterministicRules({
+      message: 'Business trip to Hungary on 2026-11-01',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+    });
+    expect(created.event.category).toBe('travel_trip');
+
+    const expanded = processWithDeterministicRules({
+      message: 'Expand this into a full extensive preparation plan, given my actual responsibility for this event.',
+      refDateStr: REF_DATE_STR,
+      refDateISO: REF_DATE_ISO,
+      existingEvent: created.event,
+      isLevelExpansion: true,
+    });
+
+    const leaked = expanded.event.milestones.some(
+      (m) => m.title.includes('Expand this into a full') || m.description?.includes('Expand this into a full')
+    );
+    expect(leaked).toBe(false);
+  });
 });
 
 describe('processWithDeterministicRules - planning context & locked facts (architecture reset Phase 7)', () => {

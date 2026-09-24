@@ -93,7 +93,8 @@ async function handleProcess(req: any, res: any) {
       targetEventId,
       intakeAnswer,
       batchAnswers,
-      userProfile
+      userProfile,
+      isLevelExpansion
     } = payload;
 
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date("2026-09-01T03:20:00-07:00");
@@ -163,6 +164,7 @@ async function handleProcess(req: any, res: any) {
           batchAnswers,
           activeEvents,
           userProfile,
+          isLevelExpansion,
         });
         if (transcribedVoiceText) {
           result.transcribedText = transcribedVoiceText;
@@ -188,7 +190,8 @@ async function handleProcess(req: any, res: any) {
           intakeAnswer,
           batchAnswers,
           transcribedVoiceText,
-          userProfile
+          userProfile,
+          isLevelExpansion,
         });
         result.usedAi = false;
       }
@@ -201,7 +204,8 @@ async function handleProcess(req: any, res: any) {
         intakeAnswer,
         batchAnswers,
         transcribedVoiceText,
-        userProfile
+        userProfile,
+        isLevelExpansion,
       });
       result.usedAi = false;
     }

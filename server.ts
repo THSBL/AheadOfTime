@@ -666,7 +666,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
       targetEventId,
       intakeAnswer,
       batchAnswers,
-      userProfile
+      userProfile,
+      isLevelExpansion
     } = payload;
 
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date("2026-09-01T03:20:00-07:00");
@@ -737,6 +738,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
           batchAnswers,
           activeEvents,
           userProfile,
+          isLevelExpansion,
         });
         if (transcribedVoiceText) {
           result.transcribedText = transcribedVoiceText;
@@ -760,7 +762,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
           intakeAnswer,
           batchAnswers,
           transcribedVoiceText,
-          userProfile
+          userProfile,
+          isLevelExpansion,
         });
         result.usedAi = false;
       }
@@ -773,7 +776,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         intakeAnswer,
         batchAnswers,
         transcribedVoiceText,
-        userProfile
+        userProfile,
+        isLevelExpansion,
       });
       result.usedAi = false;
     }

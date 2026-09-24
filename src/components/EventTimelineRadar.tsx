@@ -355,6 +355,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           currentReferenceDate,
           activeEvents: [updatedEvent],
           targetEventId: updatedEvent.id,
+          // Tells the server this instruction is the app's own, not
+          // something the user typed - live-reported bug: without this,
+          // the instruction text got folded into stored context and
+          // echoed back verbatim as a milestone title ("Travel prep:
+          // Expand this into a full extensive preparation plan...").
+          isLevelExpansion: true,
         }),
       });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);

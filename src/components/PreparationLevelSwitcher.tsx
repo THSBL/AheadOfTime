@@ -8,10 +8,14 @@ interface PreparationLevelSwitcherProps {
   isBusy?: boolean;
 }
 
+// "Essentials/Balanced/Extensive plan" read too much like a paid pricing
+// tier - "Help" makes clear this is about how much assistance AOT gives,
+// not a subscription level. Internal PreparationLevel values ('essentials'
+// | 'balanced' | 'extensive') are unchanged - this is display text only.
 const LEVEL_LABEL: Record<PreparationLevel, string> = {
-  essentials: 'Essentials',
-  balanced: 'Balanced',
-  extensive: 'Extensive',
+  essentials: 'Basic Help',
+  balanced: 'Balanced Help',
+  extensive: 'Extensive Help',
 };
 
 const LEVEL_TAGLINE: Record<PreparationLevel, string> = {
@@ -45,7 +49,7 @@ export const PreparationLevelSwitcher: React.FC<PreparationLevelSwitcherProps> =
       <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200/70">
           <Layers className="w-3 h-3 text-indigo-500 shrink-0" />
-          <span>{LEVEL_LABEL[level]} plan</span>
+          <span>{LEVEL_LABEL[level]}</span>
         </div>
         <button
           type="button"

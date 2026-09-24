@@ -331,6 +331,11 @@ export interface ProcessAgentInputPayload {
   userProfile?: {
     homeZipOrLocation?: string;
   };
+  // True only for the app's own synthetic "expand this into a full X
+  // preparation plan" message (a preparation-level upgrade), never a real
+  // user message - see processWithGemini's doc comment in agentProcessor.ts
+  // for why this needs to be flagged explicitly.
+  isLevelExpansion?: boolean;
 }
 
 export interface ProcessAgentResponsePayload {
