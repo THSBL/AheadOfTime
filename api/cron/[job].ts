@@ -6,7 +6,7 @@ import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 // /api/cron/agenda-scan - the paths vercel.json's crons entries point at).
 // Vercel's Hobby plan caps a deployment at 12 serverless functions and this
 // project is already at 11, so a new job goes in here rather than in a new
-// api/cron/*.ts file (same consolidation as api/auth/google/index.ts).
+// api/cron/*.ts file (same consolidation as api/auth/[...path].ts).
 export default async function handler(req: any, res: any) {
   const job = String(req.query?.job || '');
   if (job === 'weekly-report') return handleWeeklyReport(req, res);
