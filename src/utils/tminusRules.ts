@@ -977,8 +977,8 @@ export function generateHeuristicMilestones(
       context.isBusinessTrip === true ||
       event.macroEvent?.archetype === 'Business Trip';
 
-    const isStagOrGroupParty = !isBusinessTrip && (/stag|bachelor|bachelorette|hen|party/i.test(event.title || '') || 
-      /stag|bachelor|bachelorette|hen/i.test(context.theme || '') ||
+    const isStagOrGroupParty = !isBusinessTrip && (/\b(stag|bachelor|bachelorette|hen|party)\b/i.test(event.title || '') || 
+      /\b(stag|bachelor|bachelorette|hen)\b/i.test(context.theme || '') ||
       event.macroEvent?.archetype === 'Stag Party / Bachelor Trip');
 
     // For international travel or overseas destination (e.g. Brooklyn NY, international flight)
@@ -2213,7 +2213,7 @@ export function decomposeComplexTripIntent(
   // nothing to do with what was actually typed. Only trust them when the
   // message also contains a genuine multi-day date range.
   const hasStrongTripSignal =
-    /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?|\btrip\b|\bvacation\b/i.test(message) ||
+    /\b(stag|bachelor|bachelorette|hen)\b|\btrip\b|\bvacation\b/i.test(message) ||
     /^(going|flying|traveling|travelling|heading)\s+to\s+/i.test(message) ||
     /from\s+.*?to\s+/i.test(message) ||
     /day\s*\d+|2nd\s*day|second\s*day|3rd\s*day|third\s*day/i.test(message);
@@ -2282,10 +2282,13 @@ export function decomposeComplexTripIntent(
   // Determine Archetype & Macro Title
   let archetype = 'Trip';
   let macroTitle = 'Group Trip Horizon';
-  if (/stag\s*(party|do)?|bachelor/i.test(message)) {
+  // Word boundaries matter: without them "hen" matched inside "When"/"then"
+  // (turning a dive trip into a hen party) and "bachelor" matched inside
+  // "bachelorette".
+  if (/\b(stag|bachelor)\b/i.test(message)) {
     archetype = 'Stag Party / Bachelor Trip';
     macroTitle = 'Stag Party Weekend';
-  } else if (/hen\s*(party|do)?|bachelorette/i.test(message)) {
+  } else if (/\b(hen|bachelorette)\b/i.test(message)) {
     archetype = 'Bachelorette / Hen Party';
     macroTitle = 'Bachelorette Weekend Getaway';
   } else if (/conference|summit/i.test(message)) {
@@ -2307,7 +2310,7 @@ export function decomposeComplexTripIntent(
   const monthStopWords =
     'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
   const destMatch = message.match(
-    new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z\\s]{2,20}?)(?:\\s+(?:from|with|for|on|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|$)`)
+    new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z ]{2,20}?)(?:\\s+(?:from|with|for|on|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|[ \\t]*\\n|$)`)
   );
   const destination = destMatch ? destMatch[1].trim() : undefined;
   if (destination) {
@@ -2398,7 +2401,7 @@ export function decomposeComplexTripIntent(
   // (e.g. "surprise holiday with my girlfriend" is not a group trip).
   // Guest/co-organiser roles are only ever detected from explicit language
   // implying other people are involved, so they also count as a group.
-  const isStagOrHenTrip = /stag\s*(party|do)?|bachelor|bachelorette|hen\s*(party|do)?/i.test(message);
+  const isStagOrHenTrip = /\b(stag|bachelor|bachelorette|hen)\b/i.test(message);
   const hasExplicitGroupSignal =
     /\b(friends|colleagues|coworkers|the guys|the girls|the gang|everyone|whole group|our group|team)\b/i.test(message) ||
     /\d+\s*(?:of us|people|friends|guests)\b/i.test(message) ||

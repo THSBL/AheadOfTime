@@ -74,6 +74,12 @@ const EVENT_DETAIL_CATEGORY_LABELS: Partial<Record<CalendarEvent['category'], st
   custom: 'General Event',
 };
 
+// The first follow-up still waiting for an answer - answered ones stay on
+// the event only as history, so they're never offered again.
+function firstOpenQuestion(questions?: IntakeQuestion[]): IntakeQuestion | null {
+  return (questions || []).find((q) => !q.answered && (q.options || []).length > 0) || null;
+}
+
 function getCorrectionPlaceholder(event: CalendarEvent | null | undefined, pendingSuggestion: IntakeQuestion | null): string {
   if (pendingSuggestion) {
     return `Answer above, or type your own take on: "${pendingSuggestion.question}"`;
@@ -148,6 +154,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // message that vanishes the moment you reply to it.
   const [correctionExchanges, setCorrectionExchanges] = useState<{ text: string; isUser: boolean }[]>([]);
   const [pendingSuggestion, setPendingSuggestion] = useState<IntakeQuestion | null>(null);
+  // Open decisions already answered here. Hidden right away so the same
+  // chip can't be tapped again (and "added" again) while - or after - the
+  // planner works it in.
+  const [answeredGapKeys, setAnsweredGapKeys] = useState<Set<string>>(new Set());
+  const correctionInFlight = React.useRef(false);
   // Collapsed by default - a user happy with the already-balanced plan
   // should see one compact box, not every open question forced on them.
   const [isCorrectionBoxOpen, setIsCorrectionBoxOpen] = useState(false);
@@ -255,21 +266,37 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // detail, irrelevant task) by typing it as plain text instead of editing
   // milestones one at a time. Routes through the same conversational engine
   // and quality guardrails as chat/Telegram, targeting this specific event.
-  const handleSendCorrection = async (overrideText?: string) => {
+  // `answer` is set when a suggestion chip was tapped: the question it
+  // answers goes along with it, so the planner knows what a bare "Yes" or
+  // "Home dinner" refers to (sent alone, it often added nothing).
+  const handleSendCorrection = async (
+    overrideText?: string,
+    answer?: { question: string; intakeAnswer?: { questionId: string; parameterKey: string; answerValue: string }; gapKey?: string }
+  ) => {
     const text = (overrideText ?? correctionInput).trim();
-    if (!text || !activeEvent || isSendingCorrection || !onUpdateEvent) return;
+    if (!text || !activeEvent || isSendingCorrection || correctionInFlight.current || !onUpdateEvent) return;
+    correctionInFlight.current = true;
     setIsSendingCorrection(true);
     setPendingSuggestion(null);
+    if (answer?.gapKey) {
+      const gapKey = answer.gapKey;
+      setAnsweredGapKeys((prev) => new Set(prev).add(gapKey));
+    }
     setCorrectionExchanges((prev) => [...prev, { text, isUser: true }]);
     try {
       const res = await fetch('/api/agent/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text,
+          message: answer ? `${answer.question} ${text}` : text,
           currentReferenceDate,
           activeEvents: [activeEvent],
           targetEventId: activeEvent.id,
+          // This box always refines the event it sits on - without this,
+          // the model could answer "NEW" and the reply came back under a
+          // fresh id that onUpdateEvent (update-by-id) silently discarded.
+          lockToTargetEvent: true,
+          ...(answer?.intakeAnswer ? { intakeAnswer: answer.intakeAnswer } : {}),
         }),
       });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -281,23 +308,34 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         // with everything reset to pending - silently erasing checked-off
         // progress the user never asked to redo.
         onUpdateEvent({
+          ...activeEvent,
           ...data.event,
+          id: activeEvent.id,
           milestones: preserveCompletedMilestones(activeEvent.milestones || [], data.event.milestones || [], activeEvent.title),
         });
       }
       const replyText = data.focusText || data.replyText || "Updated based on what you told me.";
       setCorrectionReply(replyText);
       setCorrectionExchanges((prev) => [...prev, { text: replyText, isUser: false }]);
-      // The one proactive, specific follow-up the planning engine found for
-      // this turn (if any) - rendered as clickable chips below.
-      const suggestion: IntakeQuestion | undefined = data.event?.intakeQuestions?.[0];
-      setPendingSuggestion(suggestion || null);
+      // The next proactive follow-up the planning engine found (if any) -
+      // rendered as clickable chips below. Answered ones are skipped.
+      setPendingSuggestion(firstOpenQuestion(data.event?.intakeQuestions));
       setCorrectionInput('');
     } catch (e) {
       console.warn('Text correction notice:', e);
       const failureText = "Couldn't process that just now - please try again.";
       setCorrectionReply(failureText);
       setCorrectionExchanges((prev) => [...prev, { text: failureText, isUser: false }]);
+      // Nothing was applied - offer the same choices again.
+      setPendingSuggestion(firstOpenQuestion(activeEvent.intakeQuestions));
+      if (answer?.gapKey) {
+        const gapKey = answer.gapKey;
+        setAnsweredGapKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(gapKey);
+          return next;
+        });
+      }
       // Best-effort relay into the same quality-signal log the server
       // writes to - the browser can't reach Postgres directly. Never
       // awaited: a logging failure must not affect this UI flow.
@@ -312,12 +350,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         }),
       }).catch(() => {});
     } finally {
+      correctionInFlight.current = false;
       setIsSendingCorrection(false);
     }
   };
 
-  const handleAnswerSuggestion = (optionLabel: string) => {
-    handleSendCorrection(optionLabel);
+  const handleAnswerSuggestion = (question: IntakeQuestion, option: { label: string; value: string }) => {
+    handleSendCorrection(option.label, {
+      question: question.question,
+      intakeAnswer: { questionId: question.id, parameterKey: question.parameterKey, answerValue: option.value },
+    });
   };
 
   /**
@@ -396,9 +438,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       // very first one, returned when ChatConsole created this event) -
       // previously reset to null unconditionally, so a follow-up question
       // from creation was silently dropped the moment you landed here.
-      setPendingSuggestion(activeEvent.intakeQuestions?.[0] || null);
+      setPendingSuggestion(firstOpenQuestion(activeEvent.intakeQuestions));
     }
   }, [activeEvent?.id, activeEvent?.status]);
+
+  // Keyed on the event only: a status change after an answer must not bring
+  // an answered decision back.
+  React.useEffect(() => {
+    setAnsweredGapKeys(new Set());
+  }, [activeEvent?.id]);
 
   const handleSaveClarification = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -656,7 +704,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const microCount = rawMilestones.filter((m) => m.scope === 'micro').length;
   // One combined count for the "N suggestions from us" toggle: the AI's own
   // one-off proactive follow-up plus every still-open decision.
-  const suggestionCount = (pendingSuggestion ? 1 : 0) + (activeEvent.outstandingGaps?.length || 0);
+  const openGaps = (activeEvent.outstandingGaps || []).filter((gap) => !answeredGapKeys.has(gap.key));
+  const suggestionCount = (pendingSuggestion ? 1 : 0) + openGaps.length;
   // Always starts collapsed, even when a suggestion is waiting - live
   // feedback was that auto-opening the moment a suggestion existed still
   // felt like the box "popped open on its own." The collapsed pill's own
@@ -1435,7 +1484,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                             <button
                               key={opt.value}
                               type="button"
-                              onClick={() => handleAnswerSuggestion(opt.label)}
+                              onClick={() => handleAnswerSuggestion(pendingSuggestion, opt)}
                               className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 transition-all cursor-pointer"
                             >
                               {opt.label}
@@ -1451,7 +1500,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                         unanswered forever. Folded into this one collapsible
                         panel (rather than its own always-visible banner) so
                         a user happy with the plan sees one compact box. */}
-                    {(activeEvent.outstandingGaps || []).map((gap) => (
+                    {openGaps.map((gap) => (
                       <div key={gap.key} className="space-y-1.5">
                         <p className="text-[11px] font-bold text-slate-700">{gap.question}</p>
                         {gap.options && gap.options.length > 0 ? (
@@ -1460,7 +1509,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                               <button
                                 key={opt}
                                 type="button"
-                                onClick={() => handleSendCorrection(opt)}
+                                onClick={() => handleSendCorrection(opt, { question: gap.question, gapKey: gap.key })}
                                 className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 transition-all cursor-pointer"
                               >
                                 {opt}

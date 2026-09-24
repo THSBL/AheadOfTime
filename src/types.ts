@@ -306,12 +306,6 @@ export interface AgentMessage {
   isVoiceMemo?: boolean;
   voiceAudioUrl?: string;
   voiceDurationSeconds?: number;
-  // Architecture reset Phase C - a pre-creation clarifying question from
-  // /api/agent/clarify (askClarifyingQuestion), asked before any event or
-  // plan exists yet. Deliberately a plain string list, not IntakeQuestion
-  // (which needs an id/parameterKey tied to an already-created event) -
-  // this is a lighter-weight, event-less question/answer pair.
-  clarifyOptions?: string[];
 }
 
 export interface ProcessAgentInputPayload {
@@ -334,9 +328,19 @@ export interface ProcessAgentInputPayload {
   // location for international-destination / travel-distance detection in
   // tminusRules.ts). Only the fields the planner actually consumes belong
   // here - not the full profile.
-  userProfile?: {
-    homeZipOrLocation?: string;
-  };
+  userProfile?: PlanningUserProfile;
+  // Everything the user already told us in this creation conversation
+  // (first message, answers to the refinement questions, earlier
+  // additions), so a follow-up turn is planned against the whole brief
+  // rather than the newest message alone. See composeConversationBrief.
+  conversationBrief?: string;
+  // Set by callers that are, by construction, refining one specific event
+  // (the Timeline & Tasks correction box, the New Event conversation after
+  // its plan exists): targetEventId is then always the event refined, and
+  // the model's own "NEW"/other-event routing is ignored. Without it, a
+  // "NEW" answer produced an event with a fresh id that the caller's
+  // update-by-id silently discarded.
+  lockToTargetEvent?: boolean;
   // True only for the app's own synthetic "expand this into a full X
   // preparation plan" message (a preparation-level upgrade), never a real
   // user message - see processWithGemini's doc comment in agentProcessor.ts
@@ -423,6 +427,26 @@ export type CalendarTypeScope = 'personal' | 'mixed' | 'business';
 // Questionnaire & UI display labels
 export type FamilyStatus = 'Single' | 'Couple' | 'Family with kids' | 'Couple with kids';
 export type CalendarType = 'Personal' | 'Mixed (Personal & Work)' | 'Business' | 'Personal only' | 'Business only';
+
+// The slice of OnboardingProfile the planner uses: home location for
+// travel-distance detection, plus household facts (pet, kids) that decide
+// which refinement questions get asked and what the plan must cover.
+export interface PlanningUserProfile {
+  homeZipOrLocation?: string;
+  hasPet?: boolean;
+  familyStructure?: FamilyStructure;
+}
+
+// A pre-plan question from /api/agent/clarify. Options are quick picks;
+// the user can always type their own answer instead, or skip it.
+export interface RefinementQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  // 'profile' = asked because of the user's onboarding profile (e.g. they
+  // have a pet), not because the message itself left something open.
+  source: 'message' | 'profile';
+}
 
 export interface OnboardingProfile {
   ageRange?: AgeRange;

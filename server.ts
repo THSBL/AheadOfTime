@@ -25,8 +25,9 @@ import {
   TRANSCRIBE_MODELS,
   processWithGemini,
   processWithDeterministicRules,
-  askClarifyingQuestion,
+  askRefinementQuestions,
 } from "./server/agentProcessor";
+import { sanitizePlanningProfile } from "./src/utils/refinementQuestions";
 import { WhatsAppWebhookHandler } from "./server/whatsappWebhookHandler";
 import { WhatsAppSessionStore } from "./server/whatsappStore";
 import { WhatsAppService } from "./server/whatsappService";
@@ -663,18 +664,18 @@ Output ONLY the raw JSON object.`;
 // this never blocks event creation).
 app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { message, currentReferenceDate } = req.body || {};
+    const { message, currentReferenceDate, userProfile } = req.body || {};
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: "Message is required." });
       return;
     }
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date();
     const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
-    const result = await askClarifyingQuestion({ message, currentReferenceDate: refDateISO });
+    const result = await askRefinementQuestions({ message, currentReferenceDate: refDateISO, userProfile: sanitizePlanningProfile(userProfile) });
     res.json(result);
   } catch (error: any) {
     console.error("Error in /api/agent/clarify:", error);
-    res.json({ needsClarification: false });
+    res.json({ needsClarification: false, questions: [] });
   }
 });
 
@@ -691,9 +692,12 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
       targetEventId,
       intakeAnswer,
       batchAnswers,
-      userProfile,
+      userProfile: rawUserProfile,
+      conversationBrief,
+      lockToTargetEvent,
       isLevelExpansion
     } = payload;
+    const userProfile = sanitizePlanningProfile(rawUserProfile);
 
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date("2026-09-01T03:20:00-07:00");
     const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
@@ -763,6 +767,8 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
           batchAnswers,
           activeEvents,
           userProfile,
+          conversationBrief: typeof conversationBrief === 'string' ? conversationBrief.slice(0, 6000) : undefined,
+          lockToTargetEvent: lockToTargetEvent === true,
           isLevelExpansion,
         });
         if (transcribedVoiceText) {

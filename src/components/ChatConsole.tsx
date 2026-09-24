@@ -31,7 +31,8 @@ import {
   RotateCcw,
   Loader2,
 } from 'lucide-react';
-import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset, OnboardingProfile, IntakeQuestion, IntakeOption } from '../types';
+import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset, OnboardingProfile, PlanningUserProfile, RefinementQuestion } from '../types';
+import { composeConversationBrief, ConversationBriefInput } from '../utils/refinementQuestions';
 import {
   getVisiblePresets,
   getCategorizedPresets,
@@ -193,192 +194,196 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const [newPartyItemInput, setNewPartyItemInput] = useState('');
   const [customNote, setCustomNote] = useState('');
 
-  // Conversational creation flow (architecture reset Phase C): a running
-  // thread, held entirely local to this component and never touching the
-  // app's real `events` state until the user explicitly taps "Create
-  // event." Deliberately a separate array from the parent's own
-  // `messages` prop (which logs already-committed events' history) so an
-  // abandoned draft never pollutes that log, and so this component can
-  // freely reset it on "Start over" without needing a prop back to the
-  // parent for that.
+  // Conversational creation flow. Held entirely local to this component
+  // and never touching the app's real `events` until the user taps "Create
+  // event". The order is fixed:
+  //   1. first message -> /api/agent/clarify returns refinement questions
+  //      (where/when/what, plus profile-based ones such as pet care)
+  //   2. the answers + the first message go to the planner as ONE prompt
+  //   3. the plan is shown as a summary card
+  //   4. anything the user adds is planned against the WHOLE brief (first
+  //      message + answers + earlier additions + profile), refining this
+  //      same draft - an answer or addition is never planned on its own
+  //   5. "Create event" saves it, landing on Timeline & Tasks where it
+  //      can be pushed to Google Calendar.
   const [draftConversation, setDraftConversation] = useState<AgentMessage[]>([]);
   const [draftEvent, setDraftEvent] = useState<CalendarEvent | null>(null);
   const [isDraftLoading, setIsDraftLoading] = useState(false);
   const [draftReplyInput, setDraftReplyInput] = useState('');
-  // Set only while waiting on the user's answer to a pre-creation
-  // clarifying question (see askClarifyingQuestion/handleInitialDraftMessage
-  // below) - holds the original message so the eventual full-generation
-  // call gets ONE combined prompt (original + answer) instead of the
-  // original being discarded once a question was asked about it.
-  const [pendingClarification, setPendingClarification] = useState<{ originalMessage: string } | null>(null);
+  const [draftBrief, setDraftBrief] = useState<ConversationBriefInput | null>(null);
+  // Non-null only while the refinement questions are waiting for answers.
+  const [refinementQuestions, setRefinementQuestions] = useState<RefinementQuestion[] | null>(null);
+  const [refinementAnswers, setRefinementAnswers] = useState<Record<string, string>>({});
   const draftScrollRef = useRef<HTMLDivElement>(null);
+  // Guards against a second submit (double tap) while a request is in
+  // flight - state alone updates too late to stop it.
+  const draftRequestInFlight = useRef(false);
+  // Bumped by "Start over", so a reply that arrives afterwards is ignored
+  // instead of reviving the abandoned draft.
+  const draftGeneration = useRef(0);
+
+  const planningProfile: PlanningUserProfile = {
+    homeZipOrLocation: onboardingProfile?.homeZipOrLocation,
+    hasPet: onboardingProfile?.hasPet,
+    familyStructure: onboardingProfile?.family_structure,
+  };
 
   useEffect(() => {
     draftScrollRef.current?.scrollTo({ top: draftScrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [draftConversation, isDraftLoading]);
+  }, [draftConversation, isDraftLoading, refinementQuestions]);
 
   const resetDraftConversation = () => {
     setDraftConversation([]);
     setDraftEvent(null);
     setDraftReplyInput('');
     setIsDraftLoading(false);
-    setPendingClarification(null);
+    setDraftBrief(null);
+    setRefinementQuestions(null);
+    setRefinementAnswers({});
+    draftRequestInFlight.current = false;
+    draftGeneration.current += 1;
   };
 
-  // Runs the actual plan-generation call - shared by "no clarification was
-  // needed" (called with the original message) and "clarification just got
-  // answered" (called with the original message + the answer combined into
-  // one prompt, per the explicit design: ask Gemini what to ask first, then
-  // feed it the full combined prompt in one generation call, rather than
-  // creating a thin plan and patching it - live-tested that patching
-  // produced visibly generic results ("Calendar Event" / "Event Framework
-  // Established") compared to generating from full context in one pass).
-  // Also reused for ordinary follow-ups once a draftEvent already exists
-  // (targetEventId then correctly routes it as a refinement, not a
-  // duplicate creation).
-  const sendDraftTurn = async (
-    userBubbleText: string | null,
-    extraBody: Record<string, unknown>
-  ) => {
-    if (userBubbleText !== null) {
-      const userMsg: AgentMessage = {
-        id: `usr-draft-${Date.now()}`,
-        sender: 'user',
-        text: userBubbleText,
-        timestamp: new Date().toISOString(),
-      };
-      setDraftConversation((prev) => [...prev, userMsg]);
-    }
+  const appendDraftMessage = (sender: 'user' | 'agent', text: string, extra: Partial<AgentMessage> = {}) => {
+    setDraftConversation((prev) => [
+      ...prev,
+      { id: `${sender}-draft-${Date.now()}-${prev.length}`, sender, text, timestamp: new Date().toISOString(), ...extra },
+    ]);
+  };
+
+  // Steps 2 and 4. `addition` is set only when refining an existing draft;
+  // the brief passed in is always everything said BEFORE that addition.
+  const requestDraftPlan = async (brief: ConversationBriefInput, addition?: { text: string; event: CalendarEvent }) => {
+    if (draftRequestInFlight.current) return;
+    draftRequestInFlight.current = true;
+    const generation = draftGeneration.current;
     setIsDraftLoading(true);
     try {
+      const body = addition
+        ? {
+            message: addition.text,
+            conversationBrief: composeConversationBrief(brief),
+            activeEvents: [addition.event],
+            targetEventId: addition.event.id,
+            lockToTargetEvent: true,
+          }
+        : {
+            message: composeConversationBrief(brief),
+            // A brand-new event: never let the planner route this into
+            // one of the user's existing events.
+            activeEvents: [],
+          };
       const response = await fetch('/api/agent/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentReferenceDate,
-          activeEvents: events,
-          targetEventId: draftEvent?.id,
-          userProfile: { homeZipOrLocation: onboardingProfile?.homeZipOrLocation },
-          ...extraBody,
-        }),
+        body: JSON.stringify({ currentReferenceDate, userProfile: planningProfile, ...body }),
       });
       if (!response.ok) throw new Error(`Server returned status ${response.status}`);
       const data = await response.json();
-      const updatedEvent: CalendarEvent = data.event;
+      if (generation !== draftGeneration.current) return;
+      if (!data?.event) throw new Error('No plan returned');
+      const updatedEvent: CalendarEvent = addition ? { ...data.event, id: addition.event.id } : data.event;
       setDraftEvent(updatedEvent);
-      const agentMsg: AgentMessage = {
-        id: `agt-draft-${Date.now()}`,
-        sender: 'agent',
-        text: data.replyText,
-        focusText: data.focusText,
+      setDraftBrief(addition ? { ...brief, additions: [...(brief.additions || []), addition.text] } : brief);
+      appendDraftMessage('agent', data.focusText || data.replyText || 'Here is your plan.', {
         additionText: data.additionText,
-        timestamp: new Date().toISOString(),
-        mode: data.mode,
         associatedEventId: updatedEvent.id,
-        intakeQuestions: updatedEvent.intakeQuestions,
         generatedMilestones: updatedEvent.milestones,
-      };
-      setDraftConversation((prev) => [...prev, agentMsg]);
+      });
     } catch (err) {
-      console.warn('Draft conversation turn failed:', err);
-      const failureMsg: AgentMessage = {
-        id: `agt-draft-error-${Date.now()}`,
-        sender: 'agent',
-        text: "Couldn't process that just now - please try again.",
-        timestamp: new Date().toISOString(),
-      };
-      setDraftConversation((prev) => [...prev, failureMsg]);
+      if (generation !== draftGeneration.current) return;
+      console.warn('Draft plan request failed:', err);
+      appendDraftMessage('agent', "Couldn't process that just now - please try again.");
     } finally {
-      setIsDraftLoading(false);
+      if (generation === draftGeneration.current) {
+        draftRequestInFlight.current = false;
+        setIsDraftLoading(false);
+      }
     }
   };
 
-  // The very first message in a fresh conversation: check with Gemini
-  // whether one clarifying question is worth asking BEFORE generating
-  // anything, rather than always generating a full (possibly under-
-  // specified) plan immediately. A failed/slow check just falls through to
-  // generating straight away - this pre-check must never block creation.
+  // Step 1. A failed check just goes straight to planning - it must never
+  // block creation.
   const handleInitialDraftMessage = async (text: string) => {
-    const userMsg: AgentMessage = {
-      id: `usr-draft-${Date.now()}`,
-      sender: 'user',
-      text,
-      timestamp: new Date().toISOString(),
-    };
-    setDraftConversation([userMsg]);
+    if (draftRequestInFlight.current) return;
+    draftRequestInFlight.current = true;
+    const generation = draftGeneration.current;
+    setDraftConversation([]);
+    appendDraftMessage('user', text);
     setIsDraftLoading(true);
+    const brief: ConversationBriefInput = { originalMessage: text, answers: [], additions: [] };
+    setDraftBrief(brief);
 
-    let needsClarification = false;
+    let questions: RefinementQuestion[] = [];
     try {
       const res = await fetch('/api/agent/clarify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, currentReferenceDate }),
+        body: JSON.stringify({ message: text, currentReferenceDate, userProfile: planningProfile }),
       });
       const data = await res.json();
-      if (data?.needsClarification && data.question && Array.isArray(data.options) && data.options.length >= 2) {
-        needsClarification = true;
-        setPendingClarification({ originalMessage: text });
-        const agentMsg: AgentMessage = {
-          id: `agt-clarify-${Date.now()}`,
-          sender: 'agent',
-          text: data.question,
-          timestamp: new Date().toISOString(),
-          clarifyOptions: data.options,
-        };
-        setDraftConversation((prev) => [...prev, agentMsg]);
-        setIsDraftLoading(false);
+      if (Array.isArray(data?.questions)) {
+        questions = data.questions.filter((q: RefinementQuestion) => q && typeof q.question === 'string' && q.question.trim());
       }
     } catch (err) {
-      console.warn('Clarify check failed, proceeding straight to plan generation:', err);
+      console.warn('Refinement questions failed, planning straight away:', err);
     }
+    if (generation !== draftGeneration.current) return;
+    draftRequestInFlight.current = false;
 
-    if (!needsClarification) {
-      // No bubble to add here - the user's message is already shown above,
-      // and sendDraftTurn's own loading state picks up where this left off.
-      await sendDraftTurn(null, { message: text });
+    if (questions.length > 0) {
+      setRefinementAnswers({});
+      setRefinementQuestions(questions);
+      appendDraftMessage('agent', questions.length === 1 ? 'One quick question so the plan fits:' : 'A few quick questions so the plan fits:');
+      setIsDraftLoading(false);
+      return;
     }
+    await requestDraftPlan(brief);
+  };
+
+  const handleSelectRefinementOption = (questionId: string, option: string) => {
+    setRefinementAnswers((prev) => ({ ...prev, [questionId]: prev[questionId] === option ? '' : option }));
+  };
+
+  // Step 2: every answer (skipped ones simply left out) goes into one
+  // prompt together with the first message. `extraNote` is anything typed
+  // in the reply bar while the questions were open.
+  const handleSubmitRefinementAnswers = (extraNote?: string) => {
+    if (!draftBrief || !refinementQuestions || draftRequestInFlight.current) return;
+    const answers = refinementQuestions
+      .map((q) => ({ question: q.question, answer: (refinementAnswers[q.id] || '').trim() }))
+      .filter((a) => a.answer);
+    if (extraNote?.trim()) answers.push({ question: 'Also:', answer: extraNote.trim() });
+    const brief: ConversationBriefInput = { ...draftBrief, answers };
+    setRefinementQuestions(null);
+    appendDraftMessage('user', answers.length > 0 ? answers.map((a) => a.answer).join(' · ') : 'Skip the questions');
+    requestDraftPlan(brief);
   };
 
   const handleDraftFreeformSubmit = (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || isDraftLoading) return;
+    if (!trimmed || isDraftLoading || draftRequestInFlight.current) return;
 
-    if (pendingClarification) {
-      const combined = `${pendingClarification.originalMessage}. ${trimmed}`;
-      setPendingClarification(null);
-      sendDraftTurn(trimmed, { message: combined });
-      return;
-    }
-
-    if (draftConversation.length === 0) {
+    if (draftConversation.length === 0 || !draftBrief) {
       handleInitialDraftMessage(trimmed);
       return;
     }
-
-    sendDraftTurn(trimmed, { message: trimmed });
-  };
-
-  const handleClarifyOptionSelect = (originalMessage: string, option: string) => {
-    if (isDraftLoading) return;
-    setPendingClarification(null);
-    sendDraftTurn(option, { message: `${originalMessage}. ${option}` });
-  };
-
-  const handleDraftIntakeOptionSelect = (question: IntakeQuestion, option: IntakeOption) => {
-    if (isDraftLoading) return;
-    sendDraftTurn(option.label, {
-      message: `Intake selection: ${question.parameterKey} = ${option.value}`,
-      intakeAnswer: {
-        questionId: question.id,
-        parameterKey: question.parameterKey,
-        answerValue: option.value,
-      },
-    });
+    if (refinementQuestions) {
+      handleSubmitRefinementAnswers(trimmed);
+      return;
+    }
+    appendDraftMessage('user', trimmed);
+    if (draftEvent) {
+      // Step 4: refine this same draft against everything said so far.
+      requestDraftPlan(draftBrief, { text: trimmed, event: draftEvent });
+    } else {
+      // The first plan failed - try again with the new detail folded in.
+      requestDraftPlan({ ...draftBrief, additions: [...(draftBrief.additions || []), trimmed] });
+    }
   };
 
   const handleCreateDraftEvent = () => {
-    if (!draftEvent || !onSaveEvent) return;
+    if (!draftEvent || !onSaveEvent || isDraftLoading) return;
     onSaveEvent(draftEvent);
     resetDraftConversation();
   };
@@ -723,10 +728,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
           <div ref={draftScrollRef} className="flex-1 overflow-y-auto min-h-0 space-y-4 pb-2">
             {draftConversation.map((msg, idx) => {
-              const isLast = idx === draftConversation.length - 1;
               const isUser = msg.sender === 'user';
-              const unansweredQuestion = msg.intakeQuestions?.find((q) => !q.answered && q.options && q.options.length > 0);
-              const showPlan = isLast && draftEvent && (msg.generatedMilestones?.length || 0) > 0;
+              // The summary card follows the latest plan reply only.
+              const isLatestPlanReply = Boolean(
+                draftEvent && !isUser && msg.associatedEventId &&
+                !draftConversation.slice(idx + 1).some((m) => m.associatedEventId)
+              );
 
               return (
                 <div key={msg.id} className="space-y-2">
@@ -737,66 +744,22 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                       </div>
                     )}
                     <div
-                      className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                      className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed space-y-1 ${
                         isUser
                           ? 'bg-[#182A42] text-white rounded-br-md'
                           : 'bg-white border border-slate-200/90 text-slate-800 rounded-bl-md shadow-2xs'
                       }`}
                     >
-                      {msg.focusText || msg.text}
+                      <p>{msg.focusText || msg.text}</p>
+                      {!isUser && msg.additionText && (
+                        <p className="text-slate-500">{msg.additionText}</p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Clickable options for the pre-creation clarifying
-                      question (askClarifyingQuestion, asked before any plan
-                      exists) - free text in the input bar below always
-                      still works too, and gets combined with the original
-                      message the same way a clicked option does. */}
-                  {isLast && pendingClarification && msg.clarifyOptions && msg.clarifyOptions.length > 0 && (
-                    <div className="pl-9 flex flex-wrap gap-1.5">
-                      {msg.clarifyOptions.map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => handleClarifyOptionSelect(pendingClarification.originalMessage, opt)}
-                          disabled={isDraftLoading}
-                          className="text-xs font-bold px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Clickable options for the AI's own post-creation
-                      clarifying question - free text always still works
-                      too, via the input bar below. */}
-                  {isLast && unansweredQuestion && (
-                    <div className="pl-9 flex flex-wrap gap-1.5">
-                      {unansweredQuestion.options!.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleDraftIntakeOptionSelect(unansweredQuestion, opt)}
-                          disabled={isDraftLoading}
-                          className="text-xs font-bold px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Accept/reject preview card - the plan is real and
-                      computed, but stays out of the real event list until
-                      "Create event" is tapped. Shown once the model has
-                      produced milestones; a still-open intake question
-                      (above) can render alongside it rather than blocking
-                      it, since this app's planning engine doesn't
-                      currently withhold a first-pass plan until every
-                      detail is confirmed - refining after seeing the plan
-                      is how that gets resolved instead. */}
-                  {showPlan && draftEvent && (
+                  {/* Summary of the plan so far - nothing is saved until
+                      "Create event" is tapped. */}
+                  {isLatestPlanReply && draftEvent && (
                     <div className="ml-9 bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
                       <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
                         {getEventTopicLabel(draftEvent.category, draftEvent.context)}
@@ -808,7 +771,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                         {draftEvent.endDate && draftEvent.endDate !== draftEvent.eventDate ? ` – ${formatDisplayDate(draftEvent.endDate)}` : ''}
                       </p>
                       <div className="space-y-1 pt-1 border-t border-emerald-200/70">
-                        {(draftEvent.milestones || []).slice(0, 6).map((m) => (
+                        {(draftEvent.milestones || []).map((m) => (
                           <div key={m.id} className="flex items-center justify-between gap-2 text-[11px]">
                             <span className="text-slate-700 truncate">{m.title}</span>
                             <span className="text-slate-400 font-mono shrink-0">{formatDisplayDate(m.calculatedDate)}</span>
@@ -816,14 +779,15 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                         ))}
                       </div>
                       <div className="flex items-center justify-between gap-2 pt-1.5">
-                        <span className="text-[11px] text-slate-500">Ask for changes in the chat</span>
+                        <span className="text-[11px] text-slate-500">Anything to add? Type it below.</span>
                         <button
                           type="button"
                           onClick={handleCreateDraftEvent}
-                          className="shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs"
+                          disabled={isDraftLoading}
+                          className="shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Check className="w-3.5 h-3.5" />
-                          <span>Create event</span>
+                          <span>Looks good, create event</span>
                         </button>
                       </div>
                     </div>
@@ -831,6 +795,59 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 </div>
               );
             })}
+
+            {/* Refinement questions: all asked at once, answered by tapping
+                an option or typing, and sent together with the first
+                message in one planning call. Every question is optional. */}
+            {refinementQuestions && !isDraftLoading && (
+              <div className="ml-9 bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs">
+                {refinementQuestions.map((q) => {
+                  const answer = refinementAnswers[q.id] || '';
+                  const typedAnswer = q.options.includes(answer) ? '' : answer;
+                  return (
+                    <div key={q.id} className="space-y-1.5">
+                      <p className="text-xs font-bold text-slate-800">{q.question}</p>
+                      {q.options.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {q.options.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => handleSelectRefinementOption(q.id, opt)}
+                              aria-pressed={answer === opt}
+                              className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all cursor-pointer active:scale-95 ${
+                                answer === opt
+                                  ? 'bg-[#182A42] text-white border-[#182A42]'
+                                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        value={typedAnswer}
+                        onChange={(e) => setRefinementAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                        placeholder={q.options.length > 0 ? 'Or type your own answer' : 'Type your answer'}
+                        className="w-full bg-slate-50 text-slate-900 text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400"
+                      />
+                    </div>
+                  );
+                })}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSubmitRefinementAnswers()}
+                    className="text-xs font-bold px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{(Object.values(refinementAnswers) as string[]).some((a) => a.trim()) ? 'Build my plan' : 'Skip and build my plan'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {isDraftLoading && (
               <div className="flex justify-start">
@@ -863,7 +880,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               type="text"
               value={draftReplyInput}
               onChange={(e) => setDraftReplyInput(e.target.value)}
-              placeholder="Type your answer..."
+              placeholder={refinementQuestions ? 'Anything else to add?' : draftEvent ? 'Add or change something...' : 'Type your answer...'}
               disabled={isDraftLoading}
               className="flex-1 bg-white text-slate-900 text-sm px-4 py-2.5 rounded-full border border-slate-200/90 shadow-2xs focus:outline-none focus:border-slate-400 disabled:opacity-60"
             />

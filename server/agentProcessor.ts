@@ -12,6 +12,8 @@ import {
   PreparationLevel,
   PlanningContextEntry,
   ContextProvenance,
+  PlanningUserProfile,
+  RefinementQuestion,
 } from "../src/types.js";
 import {
   calculateOffsetDate,
@@ -40,6 +42,12 @@ import {
   buildLockedFactsBlock,
 } from "./planningPipeline.js";
 import { logQualityEvent } from "./qualityStore.js";
+import {
+  buildProfileRefinementQuestions,
+  buildFallbackMessageQuestions,
+  mergeRefinementQuestions,
+  describePlanningProfile,
+} from "../src/utils/refinementQuestions.js";
 
 /**
  * Architecture reset Phase 6 - computed once per request, shared by both
@@ -214,90 +222,177 @@ export async function generateContentFast(
   throw lastError || new Error("All fast Gemini models timed out or were unavailable.");
 }
 
-const CLARIFY_SYSTEM_INSTRUCTION = `You help a calendar-prep app decide whether ONE quick clarifying question is worth asking before it builds a full backward-planning preparation timeline for an event the user just described.
+const CLARIFY_SYSTEM_INSTRUCTION = `You help a calendar-prep app ask the user a few quick refinement questions BEFORE it builds a backward-planning preparation timeline for the event they just described. All answers are sent back together with the original description in one single planning call, so the questions only have to fill the gaps that would change the plan.
 
-Ask sparingly - only for a genuinely high-value, plan-changing ambiguity (a missing date when "this weekend"/relative phrasing wasn't used, who's actually responsible for organizing it, or a key decision like gift/venue/format that would meaningfully change what gets planned). Don't ask just to ask, and don't ask about minor details a reasonable default can cover (exact guest count, precise time of day, etc.) - if the description is already clear enough to build a good first-pass plan, say no clarification is needed.
+Mostly this is the basics - where, when and what - asked ONLY for what the description leaves open:
+- When: the date or date range, unless already given (relative phrasing like "next Friday" counts as given).
+- Where: destination/venue, if it matters for the prep and isn't given.
+- What: the one or two key decisions that change what gets prepared (e.g. for a dive trip: certified yet or doing a course, own gear or renting; for a birthday: organising it or attending, gift or not).
+Also use the userProfile facts: if the profile says they have a pet or kids and the event takes them away from home, ask who looks after them - unless the description already covers it.
 
-When you do ask, the question must be answerable with a short pick from 2-4 concrete options you provide - never an open-ended "tell me more."
+Rules:
+- 1 to 4 questions, each short and specific to THIS event - never generic ("tell me more", "any other details?").
+- Every question stays about the event the user described; never drift into a separate topic.
+- Give 2-4 short concrete options per question when the answer is a choice. For a free-form answer (e.g. an exact date) an empty options list is fine.
+- Don't ask what a sensible default covers (exact guest count, exact time of day).
+- If the description already has everything needed for a good plan, return an empty questions list.
 
-Respond with JSON only: { "needsClarification": boolean, "question": string (only if needsClarification), "options": string[] of 2-4 short concrete choices (only if needsClarification) }`;
+Respond with JSON only: { "questions": [ { "id": short snake_case id, "question": string, "options": string[] } ] }`;
 
 const CLARIFY_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    needsClarification: { type: Type.BOOLEAN },
-    question: { type: Type.STRING },
-    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+    questions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          question: { type: Type.STRING },
+          options: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ['id', 'question'],
+      },
+    },
   },
-  required: ['needsClarification'],
+  required: ['questions'],
 };
 
-export interface ClarifyingQuestionResult {
+export interface RefinementQuestionsResult {
   needsClarification: boolean;
-  question?: string;
-  options?: string[];
+  questions: RefinementQuestion[];
+}
+
+function sanitizeMessageQuestions(raw: unknown): RefinementQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((q: any) => q && typeof q.question === 'string' && q.question.trim())
+    .map((q: any, idx: number) => ({
+      id: typeof q.id === 'string' && q.id.trim() ? q.id.trim().slice(0, 40) : `q${idx + 1}`,
+      question: q.question.trim().slice(0, 200),
+      options: Array.isArray(q.options)
+        ? q.options.filter((o: unknown) => typeof o === 'string' && o.trim()).map((o: string) => o.trim().slice(0, 60)).slice(0, 4)
+        : [],
+      source: 'message' as const,
+    }))
+    // A single option isn't a choice - keep it free-form instead.
+    .map((q) => (q.options.length === 1 ? { ...q, options: [] } : q));
 }
 
 /**
- * Architecture reset Phase C - a small, fast, separate Gemini call that
- * decides ONLY whether a clarifying question is worth asking, without
- * generating any plan yet. Deliberately not folded into processWithGemini
- * (whose own prompt requires a non-empty "runway" on every single turn,
- * by design - see its own system instruction) - this is the step that
- * runs BEFORE that, so the eventual full-generation call can be given one
- * combined, complete prompt (the user's original message plus their
- * answer) instead of creating a thin plan and patching it, which
- * live-tested visibly worse ("Calendar Event" / "Event Framework
- * Established" - a generic title and milestone - compared to generating
- * from the full context in one pass).
+ * Step 1 of the creation conversation: the questions to ask BEFORE any
+ * plan exists. Combines Gemini's questions about the message itself
+ * (mostly where/when/what) with deterministic questions from the user's
+ * onboarding profile (a pet or kids left at home during a trip). The
+ * answers are later folded into ONE full-context generation prompt (see
+ * composeConversationBrief) - they are never sent to the planner on their
+ * own, which is what used to produce a fresh plan about "visa input"
+ * instead of the dive trip it was asked for.
+ *
+ * Never blocks creation: with no API key or on any Gemini error it falls
+ * back to the profile questions plus a basic "when" check.
  */
-export async function askClarifyingQuestion(params: {
+export async function askRefinementQuestions(params: {
   message: string;
   currentReferenceDate: string;
-}): Promise<ClarifyingQuestionResult> {
-  if (!process.env.GEMINI_API_KEY || !params.message?.trim()) {
-    return { needsClarification: false };
+  userProfile?: PlanningUserProfile | null;
+}): Promise<RefinementQuestionsResult> {
+  if (!params.message?.trim()) {
+    return { needsClarification: false, questions: [] };
   }
-  try {
-    const response = await generateContentFast(
-      () => ({
-        contents: [{ text: JSON.stringify({ eventDescription: params.message, referenceDate: params.currentReferenceDate }) }],
-        config: {
-          systemInstruction: CLARIFY_SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          responseSchema: CLARIFY_SCHEMA,
-        },
-      }),
-      DEFAULT_FAST_MODELS,
-      6000
-    );
-    let rawText = response.text || '{}';
-    if (rawText.startsWith('```json')) {
-      rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (rawText.startsWith('```')) {
-      rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  const profileQuestions = buildProfileRefinementQuestions(params.message, params.userProfile);
+  let messageQuestions: RefinementQuestion[] | null = null;
+
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const response = await generateContentFast(
+        () => ({
+          contents: [{ text: JSON.stringify({
+            eventDescription: params.message,
+            referenceDate: params.currentReferenceDate,
+            userProfile: describePlanningProfile(params.userProfile) || null,
+          }) }],
+          config: {
+            systemInstruction: CLARIFY_SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            responseSchema: CLARIFY_SCHEMA,
+          },
+        }),
+        DEFAULT_FAST_MODELS,
+        6000
+      );
+      let rawText = response.text || '{}';
+      if (rawText.startsWith('```json')) {
+        rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (rawText.startsWith('```')) {
+        rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      messageQuestions = sanitizeMessageQuestions(JSON.parse(rawText)?.questions);
+    } catch (err: any) {
+      console.warn('Refinement-question notice, using fallback questions:', err?.message || err);
     }
-    const parsed = JSON.parse(rawText);
-    if (
-      parsed?.needsClarification &&
-      typeof parsed.question === 'string' &&
-      Array.isArray(parsed.options) &&
-      parsed.options.filter((o: unknown) => typeof o === 'string' && o.trim()).length >= 2
-    ) {
-      return {
-        needsClarification: true,
-        question: parsed.question,
-        options: parsed.options.filter((o: unknown) => typeof o === 'string' && o.trim()).slice(0, 4),
-      };
-    }
-    return { needsClarification: false };
-  } catch (err: any) {
-    // Never blocks event creation - a failed/slow clarify check just means
-    // the app proceeds straight to full generation, same as if Gemini had
-    // said no clarification was needed.
-    console.warn('Clarifying-question check notice, proceeding straight to plan generation:', err?.message || err);
-    return { needsClarification: false };
   }
+
+  const questions = mergeRefinementQuestions(
+    messageQuestions ?? buildFallbackMessageQuestions(params.message, params.currentReferenceDate),
+    profileQuestions
+  );
+  return { needsClarification: questions.length > 0, questions };
+}
+
+/**
+ * The model isn't reliably aware of which follow-ups it already asked, so
+ * the same question (same parameterKey or same wording) could come back
+ * on every turn and be answered again and again. Anything the user already
+ * answered on this event - or is answering right now - is filtered out.
+ */
+export function dropAlreadyAnsweredQuestions<T extends { question?: string; parameterKey?: string }>(
+  questions: T[],
+  existingEvent?: CalendarEvent,
+  answeringParameterKey?: string
+): T[] {
+  const answeredKeys = new Set<string>();
+  const answeredTexts = new Set<string>();
+  if (answeringParameterKey) answeredKeys.add(answeringParameterKey);
+  for (const q of existingEvent?.intakeQuestions || []) {
+    if (!q.answered) continue;
+    if (q.parameterKey) answeredKeys.add(q.parameterKey);
+    if (q.question) answeredTexts.add(q.question.trim().toLowerCase());
+  }
+  for (const [key, entry] of Object.entries(existingEvent?.planningContext || {})) {
+    if (entry?.provenance === 'user_decision') answeredKeys.add(key);
+  }
+  return questions.filter((q) => {
+    if (q.parameterKey && answeredKeys.has(q.parameterKey)) return false;
+    if (q.question && answeredTexts.has(q.question.trim().toLowerCase())) return false;
+    return true;
+  });
+}
+
+/**
+ * Keeps the record of which follow-ups were already answered on the event
+ * (plus the one being answered this turn), so the next turn's
+ * dropAlreadyAnsweredQuestions can see them. Previously each turn replaced
+ * intakeQuestions wholesale, losing that history - an answered question
+ * could simply be asked again. Answered entries go first; UIs pick the
+ * first UNanswered one.
+ */
+export function withAnsweredQuestionHistory(
+  newQuestions: IntakeQuestion[],
+  existingEvent?: CalendarEvent,
+  intakeAnswer?: { questionId: string; parameterKey: string; answerValue: string }
+): IntakeQuestion[] {
+  const history: IntakeQuestion[] = [];
+  for (const q of existingEvent?.intakeQuestions || []) {
+    const isBeingAnswered = Boolean(intakeAnswer && (q.id === intakeAnswer.questionId || q.parameterKey === intakeAnswer.parameterKey));
+    if (isBeingAnswered) {
+      history.push({ ...q, answered: true, selectedAnswer: intakeAnswer!.answerValue });
+    } else if (q.answered) {
+      history.push(q);
+    }
+  }
+  const historyKeys = new Set(history.map((q) => q.parameterKey));
+  return [...history, ...newQuestions.filter((q) => !historyKeys.has(q.parameterKey))];
 }
 
 // Helper function to reliably parse preset tags and user requirements from message
@@ -367,7 +462,13 @@ export async function processWithGemini(params: {
   intakeAnswer?: { questionId: string; parameterKey: string; answerValue: string };
   batchAnswers?: { parameterKey: string; answerValue: string }[];
   activeEvents: CalendarEvent[];
-  userProfile?: { homeZipOrLocation?: string };
+  userProfile?: PlanningUserProfile;
+  // Everything the user already said in this creation conversation (see
+  // composeConversationBrief). When present, `message` is only the newest
+  // addition on top of it.
+  conversationBrief?: string;
+  // See ProcessAgentInputPayload.lockToTargetEvent.
+  lockToTargetEvent?: boolean;
   // True only for the app's own synthetic "expand this into a full X
   // preparation plan" message (EventTimelineRadar.tsx's preparation-level
   // upgrade) - never a real user message. Live-reported: that instruction
@@ -446,6 +547,11 @@ OUTPUT MODES:
 
 intakeQuestions is also where the one proactive follow-up from the rule above belongs, REGARDLESS of which mode you pick - a RESOLVE_MILESTONES turn can still carry exactly one intakeQuestions entry proposing the next specific thing worth asking about.
 
+FULL CONVERSATION CONTEXT:
+- If conversationSoFar is present, it holds everything the user already told us about THIS event (their first description, their answers to our questions, earlier additions). userInput is only their newest addition on top of it. Plan the whole event from conversationSoFar + userInput together - the newest addition refines this same event, it is never a new, separate event (e.g. userInput "yes, I need a visa" on a dive trip to Egypt adds visa prep to that dive trip; it does not become a plan about visas).
+- If userProfile is present, tailor the plan to it (e.g. someone with a pet who travels needs pet care arranged; a family with kids may need childcare), unless the conversation says it's already covered or not needed.
+- Never ask again about anything answered in conversationSoFar.
+
 Focus and Addition format (plain language only - never "runway", "Track A/B", "macro/micro", or other internal planning vocabulary):
 FOCUS: <1 clear sentence stating event created or timeline scheduled>
 ADDITION: <1-2 questions, clarification or proposed tailored options>`;
@@ -453,8 +559,11 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   const currentlyOpenEventId = params.existingEvent?.id;
   const candidateEvents = buildCandidateEventIndex(params.activeEvents, currentlyOpenEventId);
 
+  const profileSummary = describePlanningProfile(params.userProfile);
   const userPrompt = JSON.stringify({
     userInput: params.message,
+    ...(params.conversationBrief?.trim() ? { conversationSoFar: params.conversationBrief.trim() } : {}),
+    ...(profileSummary ? { userProfile: profileSummary } : {}),
     currentlyOpenEventId: currentlyOpenEventId || null,
     // Lightweight index (id/title/category/dates only, no milestones) of the
     // user's other active events, so a message that clearly names a
@@ -779,7 +888,9 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     currentlyOpenEventId: params.existingEvent?.id,
     activeEventsById,
   });
-  const existingEvent = targetResolution.existingEvent;
+  const existingEvent = params.lockToTargetEvent && params.existingEvent
+    ? params.existingEvent
+    : targetResolution.existingEvent;
   // The model only ever sees FULL milestone detail (existingTargetEvent,
   // built below from params.existingEvent) for the one event it was given
   // as a hint before this call ran - if it switched onto a different real
@@ -937,7 +1048,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   // turn. Accepted regardless of mode/payload shape; capped at 2 either way.
   let intakeQuestions: IntakeQuestion[] = [];
   if (Array.isArray(parsed.intakeQuestions) && parsed.intakeQuestions.length > 0) {
-    intakeQuestions = parsed.intakeQuestions.slice(0, 2).map((q: any, idx: number) => ({
+    intakeQuestions = dropAlreadyAnsweredQuestions(parsed.intakeQuestions, existingEvent, params.intakeAnswer?.parameterKey).slice(0, 2).map((q: any, idx: number) => ({
       id: `q-${eventId}-${idx + 1}-${Date.now() % 10000}`,
       question: q.question,
       parameterKey: q.parameterKey,
@@ -1199,7 +1310,10 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     context: mergedContext,
     planningContext: planningContextResolution.context,
     planningContextVersion: planningContextResolution.version,
-    intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
+    intakeQuestions: (() => {
+      const all = withAnsweredQuestionHistory(intakeQuestions, existingEvent, params.intakeAnswer);
+      return all.length > 0 ? all : undefined;
+    })(),
     outstandingGaps: outstandingGaps.length > 0 ? outstandingGaps : undefined,
     milestones,
     watchpoint: parsed.watchpoint || undefined,
@@ -1231,7 +1345,7 @@ export function processWithDeterministicRules(params: {
   intakeAnswer?: { questionId: string; parameterKey: string; answerValue: string };
   batchAnswers?: { parameterKey: string; answerValue: string }[];
   transcribedVoiceText?: string;
-  userProfile?: { homeZipOrLocation?: string };
+  userProfile?: PlanningUserProfile;
   // See processWithGemini's own doc comment - true only for the app's
   // synthetic preparation-level-expansion message, never real user text.
   isLevelExpansion?: boolean;
@@ -1381,7 +1495,11 @@ export function processWithDeterministicRules(params: {
       eventDate = naturalRange.startDate;
     }
     if (!title && rawMsg) {
-      let firstSentence = rawMsg.split('.')[0].split('\n')[0].trim();
+      // First LINE of the original text - rawMsg has its newlines collapsed,
+      // so a multi-line brief (first message + "Details:" answers) would
+      // otherwise become one over-long "sentence" and lose its title.
+      const firstLine = (params.message || '').replace(/\[[a-zA-Z0-9_-]+:\s*[^\]]+\]/g, '').trim().split('\n')[0];
+      let firstSentence = firstLine.split('.')[0].replace(/\s+/g, ' ').trim();
       firstSentence = firstSentence.replace(/\s+in\s+[A-Z][a-zA-Z\s,]+$/i, '').trim();
       if (naturalRange?.matchedText) {
         firstSentence = firstSentence.replace(naturalRange.matchedText, '').replace(/\s+(on|from)\s*$/i, '').trim();
@@ -1405,6 +1523,11 @@ export function processWithDeterministicRules(params: {
   const explicitStatedKeys = new Set(Object.keys(context));
   if (params.userProfile?.homeZipOrLocation) {
     context.homeZipOrLocation = params.userProfile.homeZipOrLocation;
+  }
+  // The profile says there's a pet: the travel rules add pet-care prep
+  // unless the user said the pet is coming along.
+  if (params.userProfile?.hasPet && context.hasPet === undefined && !/pet comes along/i.test(params.message || '')) {
+    context.hasPet = true;
   }
   // A plain-text correction on an existing event (no [note:] tag, no fresh
   // trip/date signal of its own) only reaches category-specific detection
@@ -1675,7 +1798,10 @@ export function processWithDeterministicRules(params: {
     context,
     planningContext: planningContextResolution.context,
     planningContextVersion: planningContextResolution.version,
-    intakeQuestions: intakeQuestions.length > 0 ? intakeQuestions : undefined,
+    intakeQuestions: (() => {
+      const all = withAnsweredQuestionHistory(dropAlreadyAnsweredQuestions(intakeQuestions, params.existingEvent, params.intakeAnswer?.parameterKey), params.existingEvent, params.intakeAnswer);
+      return all.length > 0 ? all : undefined;
+    })(),
     outstandingGaps: outstandingGaps.length > 0 ? outstandingGaps : undefined,
     milestones,
     watchpoint,

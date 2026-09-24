@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractContextFromMessage, processWithDeterministicRules, askClarifyingQuestion } from './agentProcessor';
+import { extractContextFromMessage, processWithDeterministicRules, askRefinementQuestions, dropAlreadyAnsweredQuestions, withAnsweredQuestionHistory } from './agentProcessor';
 
 const REF_DATE_ISO = '2026-09-01T12:00:00.000Z';
 const REF_DATE_STR = '2026-09-01';
@@ -356,27 +356,113 @@ describe('processWithDeterministicRules - planning context & locked facts (archi
   });
 });
 
-describe('askClarifyingQuestion (architecture reset Phase C)', () => {
-  it('never blocks event creation - resolves to no-clarification when GEMINI_API_KEY is unset', async () => {
-    // vitest runs with no .env loaded, same as this whole test file already
-    // relies on for every processWithDeterministicRules test above (none of
-    // them mock Gemini) - this is the real "Gemini unavailable" contract,
-    // not a simulated one.
+describe('askRefinementQuestions (creation conversation step 1)', () => {
+  const withoutGemini = async <T,>(fn: () => Promise<T>): Promise<T> => {
     const originalKey = process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY;
     try {
-      const result = await askClarifyingQuestion({
-        message: 'Dinner party with friends',
-        currentReferenceDate: REF_DATE_ISO,
-      });
-      expect(result).toEqual({ needsClarification: false });
+      return await fn();
     } finally {
       if (originalKey !== undefined) process.env.GEMINI_API_KEY = originalKey;
     }
+  };
+
+  it('never blocks creation - with no GEMINI_API_KEY and a dated message it asks nothing', async () => {
+    const result = await withoutGemini(() => askRefinementQuestions({
+      message: 'Dinner party with friends on 23 October',
+      currentReferenceDate: REF_DATE_ISO,
+    }));
+    expect(result).toEqual({ needsClarification: false, questions: [] });
   });
 
-  it('resolves to no-clarification for an empty message without calling Gemini at all', async () => {
-    const result = await askClarifyingQuestion({ message: '', currentReferenceDate: REF_DATE_ISO });
-    expect(result).toEqual({ needsClarification: false });
+  it('falls back to asking "when" if Gemini is unavailable and no date was given', async () => {
+    const result = await withoutGemini(() => askRefinementQuestions({
+      message: 'Dinner party with friends',
+      currentReferenceDate: REF_DATE_ISO,
+    }));
+    expect(result.questions.map((q) => q.id)).toEqual(['when']);
+  });
+
+  it('adds the profile question (pet care) for a trip even without Gemini', async () => {
+    const result = await withoutGemini(() => askRefinementQuestions({
+      message: 'Divetrip to Egypt next month',
+      currentReferenceDate: REF_DATE_ISO,
+      userProfile: { hasPet: true },
+    }));
+    expect(result.needsClarification).toBe(true);
+    expect(result.questions.some((q) => q.id === 'pet_care' && q.source === 'profile')).toBe(true);
+  });
+
+  it('resolves to no questions for an empty message', async () => {
+    const result = await askRefinementQuestions({ message: '', currentReferenceDate: REF_DATE_ISO });
+    expect(result).toEqual({ needsClarification: false, questions: [] });
+  });
+});
+
+describe('follow-up question de-duplication', () => {
+  const baseEvent: any = {
+    id: 'evt-1',
+    title: 'Egypt Dive Trip',
+    intakeQuestions: [
+      { id: 'q1', question: 'Do you need a visa?', parameterKey: 'needVisa', answered: true, selectedAnswer: 'yes' },
+      { id: 'q2', question: 'Renting dive gear?', parameterKey: 'gear', answered: false },
+    ],
+    planningContext: { transportType: { value: 'flight', provenance: 'user_decision', updatedAt: '' } },
+  };
+
+  it('drops questions already answered by key, by wording, or by this turn\'s answer', () => {
+    const kept = dropAlreadyAnsweredQuestions(
+      [
+        { question: 'Need a visa?', parameterKey: 'needVisa' },
+        { question: 'do you need a visa?', parameterKey: 'visa2' },
+        { question: 'How are you getting there?', parameterKey: 'transportType' },
+        { question: 'Renting dive gear?', parameterKey: 'gear' },
+        { question: 'Travel insurance sorted?', parameterKey: 'insurance' },
+      ],
+      baseEvent,
+      'gear'
+    );
+    expect(kept.map((q) => q.parameterKey)).toEqual(['insurance']);
+  });
+
+  it('keeps answered history and marks the question answered this turn', () => {
+    const result = withAnsweredQuestionHistory(
+      [{ id: 'q3', question: 'Travel insurance sorted?', parameterKey: 'insurance', answered: false }],
+      baseEvent,
+      { questionId: 'q2', parameterKey: 'gear', answerValue: 'rent' }
+    );
+    expect(result.map((q) => [q.parameterKey, q.answered])).toEqual([
+      ['needVisa', true],
+      ['gear', true],
+      ['insurance', false],
+    ]);
+    expect(result.find((q) => q.parameterKey === 'gear')?.selectedAnswer).toBe('rent');
+  });
+});
+
+describe('fallback planning from a composed conversation brief', () => {
+  const brief = 'Divetrip to Egypt\n\nDetails:\n- When is it? 12 to 19 November\n- Who looks after your pet while you’re away? Pet sitter';
+
+  it('keeps the real title and date instead of a generic or hen-party title', () => {
+    const result = processWithDeterministicRules({ message: brief, refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z' });
+    expect(result.event.title).toBe('Divetrip to Egypt');
+    expect(result.event.category).toBe('travel_trip');
+    expect(result.event.eventDate).toBe('2026-11-12');
+  });
+});
+
+describe('fallback planning uses the onboarding profile', () => {
+  const run = (message: string) => processWithDeterministicRules({
+    message, refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z', userProfile: { hasPet: true },
+  });
+  const hasPetTask = (r: ReturnType<typeof run>) => r.event.milestones.some((m) => /pet|dog/i.test(m.title));
+
+  it('adds pet care to a trip when the user has a pet', () => {
+    expect(hasPetTask(run('Divetrip to Egypt\n\nDetails:\n- When is it? 12 to 19 November'))).toBe(true);
+  });
+
+  it('skips pet care when the pet comes along, and for a non-trip event', () => {
+    expect(hasPetTask(run('Divetrip to Egypt\n\nDetails:\n- Who looks after your pet? Pet comes along'))).toBe(false);
+    expect(hasPetTask(run("Maya's birthday dinner on 2026-10-23"))).toBe(false);
   });
 });

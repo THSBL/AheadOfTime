@@ -1436,10 +1436,13 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Intake selection: ${paramKey} = ${optionValue}`,
+          // The question travels with the answer so the planner knows what
+          // it refers to, and the answer always refines this event.
+          message: question ? `${question.question} ${optionLabel}` : `Intake selection: ${paramKey} = ${optionValue}`,
           currentReferenceDate,
           activeEvents: events,
           targetEventId: eventId,
+          lockToTargetEvent: true,
           intakeAnswer: {
             questionId,
             parameterKey: paramKey,

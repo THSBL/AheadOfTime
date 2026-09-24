@@ -195,6 +195,20 @@ describe('parseNaturalDateRange', () => {
 });
 
 describe('decomposeComplexTripIntent', () => {
+  it('does not read "hen"/"stag" inside other words as a hen or stag party', () => {
+    // Regression: /hen/ matched "When", turning a dive trip into a
+    // "Bachelorette Weekend Getaway"; "bachelor" matched "bachelorette".
+    const dive = decomposeComplexTripIntent('Trip to Egypt on 12 November - when we land, then diving on stage 2', REF_DATE_ISO);
+    expect(dive?.macro_event.title).toBe('Trip to Egypt');
+    const hen = decomposeComplexTripIntent('Bachelorette trip to Lisbon on October 15th', REF_DATE_ISO);
+    expect(hen?.macro_event.title).toContain('Bachelorette');
+  });
+
+  it('stops the destination at a line break', () => {
+    const result = decomposeComplexTripIntent('Trip to Egypt\nDetails: 12 to 19 November', REF_DATE_ISO);
+    expect(result?.macro_event.title).toBe('Trip to Egypt');
+  });
+
   it('recognizes conversational "Going to <place>" phrasing as trip intent', () => {
     // Regression test: isTripIntent previously only matched literal
     // keywords like "trip"/"vacation"/"getaway", so a message starting
