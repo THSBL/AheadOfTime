@@ -681,10 +681,10 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
       <div className="relative z-30 space-y-2">
         <form
           onSubmit={handleFreeformSubmit}
-          className={`relative isolate z-30 flex items-end gap-2 p-3 sm:p-4 transition-all duration-300 ${
+          className={`relative isolate z-30 flex items-end gap-2 p-3 sm:p-4 rounded-2xl sm:rounded-3xl transition-all duration-300 ${
             isInputFocused
-              ? 'bg-white rounded-[28px] border-2 border-slate-900 ring-4 ring-sky-100 shadow-md'
-              : 'bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm'
+              ? 'bg-white border-2 border-slate-400 ring-4 ring-slate-100 shadow-md'
+              : 'bg-white border border-slate-200/90 shadow-sm'
           }`}
         >
           <div className="flex-1 relative">

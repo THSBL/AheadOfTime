@@ -25,7 +25,7 @@ export interface DeletedEventSummary {
   title: string;
   eventDate: string;
   deletedAt: string;
-  milestoneCount: number;
+  milestoneTitles: string[];
 }
 
 const stateKey = (userId: string) => `aot_event_sync_v1_${userId}`;

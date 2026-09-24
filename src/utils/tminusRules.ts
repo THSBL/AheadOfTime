@@ -612,13 +612,15 @@ export function generateHeuristicMilestones(
     let finalLabel = label;
     let finalDesc = description;
 
-    // If milestone falls in the past relative to the planning time, clamp to planning date (Today) as an Immediate Action
+    // If milestone falls in the past relative to the planning time, clamp to planning date (Today) as an Immediate Action.
+    // tMinusLabel ('Immediate') already carries this signal for the UI to
+    // badge - no need to also prefix the description with bracketed text.
     if (calcDateObj.getTime() < refDate.getTime()) {
       const todayClamped = new Date(refDate);
       todayClamped.setHours(9, 0, 0, 0);
       finalDate = todayClamped.toISOString();
       finalLabel = 'Immediate';
-      finalDesc = description ? `[Immediate Priority] ${description}` : '[Immediate Priority] Preparation checkpoint';
+      finalDesc = description || 'Preparation checkpoint';
     }
 
     milestones.push({

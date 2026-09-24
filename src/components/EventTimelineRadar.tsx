@@ -757,22 +757,24 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </button>
 
           <div className="space-y-1 min-w-0 flex-1 w-full">
-            {/* Line 1: the actual calendar date - desktop only. Mobile
-                relies on the due-in countdown pill in the row below
-                instead ("Overdue by 8 days" / "In 7 days") so the card
-                doesn't carry two overlapping ways to say when this is due
-                on a narrow screen. */}
-            <div className="hidden sm:block text-sm font-bold text-slate-700">
-              {formatDisplayDate(ms.calculatedDate)}
-            </div>
-
-            {/* Line 2: due-in countdown, type label, and status badges */}
+            {/* Title leads, with its due-in status label right beside it -
+                previously the status/badge row sat above the title, so on a
+                narrow screen the title (the actually useful part) read
+                second. The overdue label is a neutral dark badge now
+                instead of red - urgency is still legible without an
+                alarming color, matching the rest of the app's grey/quiet
+                default. */}
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
+                isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
+              }`}>
+                {ms.title}
+              </h4>
               {!isCompleted && !isSkipped && (
                 <span
                   className={`text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 inline-flex items-center gap-1 ${
                     isOverdue
-                      ? 'text-rose-800 bg-rose-100 border-rose-300'
+                      ? 'text-slate-800 bg-slate-200 border-slate-300'
                       : isUrgentSoon
                       ? 'text-amber-900 bg-amber-100 border-amber-300'
                       : 'text-slate-600 bg-slate-100 border-slate-200'
@@ -783,7 +785,19 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   <span>{msCountdown.label}</span>
                 </span>
               )}
+            </div>
 
+            {/* The actual calendar date - desktop only, secondary to the
+                title+status line above it. Mobile relies on the due-in
+                countdown label instead ("Overdue by 8 days" / "In 7 days")
+                so the card doesn't carry two overlapping ways to say when
+                this is due on a narrow screen. */}
+            <div className="hidden sm:block text-xs font-semibold text-slate-500">
+              {formatDisplayDate(ms.calculatedDate)}
+            </div>
+
+            {/* Type label and other status badges */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {/* Category is static context, not a time-sensitive
                   signal - one neutral badge shape for all three,
                   differentiated by icon rather than a competing hue
@@ -839,16 +853,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 </span>
               )}
             </div>
-
-            {/* Task Title */}
-            {/* Overdue/deliverable already carry their own signal
-                (left-border accent, due-pill, category badge) - the
-                title only needs to distinguish completed from active. */}
-            <h4 className={`text-xs sm:text-sm font-bold leading-snug break-words ${
-              isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
-            }`}>
-              {ms.title}
-            </h4>
 
             {/* Task Description */}
             {ms.description && (
@@ -985,10 +989,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             {isSkipped ? <X className="w-2.5 h-2.5 stroke-[3]" /> : <Check className="w-2.5 h-2.5 stroke-[3]" />}
           </button>
 
-          <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
-            {formatDisplayDate(ms.calculatedDate)}
-          </span>
-
           <span className={`text-xs font-semibold truncate flex-1 min-w-0 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
             {ms.title}
           </span>
@@ -996,6 +996,13 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           {!isCompleted && !isSkipped && (
             <span className="text-[10px] font-bold text-slate-400 shrink-0">{msCountdown.label}</span>
           )}
+
+          {/* Exact calendar date - desktop only, de-emphasized behind the
+              title and "in x days" label, same convention as the main
+              milestone card. */}
+          <span className="hidden sm:inline text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
+            {formatDisplayDate(ms.calculatedDate)}
+          </span>
 
           {isExpandable && (
             <ChevronRight className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
@@ -1270,8 +1277,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
         <PreparationLevelSwitcher
           level={activeEvent.preparationLevel || 'balanced'}
-          reasons={activeEvent.preparationLevelReasons || []}
-          setBy={activeEvent.preparationLevelSetBy}
           onChangeLevel={handleChangePreparationLevel}
           isBusy={isPreparationLevelBusy}
         />

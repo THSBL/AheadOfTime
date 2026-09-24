@@ -4,8 +4,6 @@ import type { PreparationLevel } from '../types';
 
 interface PreparationLevelSwitcherProps {
   level: PreparationLevel;
-  reasons: string[];
-  setBy?: 'aot' | 'user';
   onChangeLevel: (newLevel: PreparationLevel) => void;
   isBusy?: boolean;
 }
@@ -29,15 +27,13 @@ const LEVELS: PreparationLevel[] = ['essentials', 'balanced', 'extensive'];
  * user override it - architecture reset Phase 6. Collapsed by default
  * (just the current level + a one-line summary), matching the same
  * progressive-disclosure pattern BackgroundSyncPanel.tsx already uses: an
- * info icon reveals AOT's own reasons, a "Change" link reveals the 3-way
- * picker. Once the user picks a level, it's sticky - see
+ * info icon reveals what this level actually covers, a "Change" link
+ * reveals the 3-way picker. Once the user picks a level, it's sticky - see
  * preparationAssessment.ts's isExplicit handling - so this never gets
  * silently overridden again, only re-suggested.
  */
 export const PreparationLevelSwitcher: React.FC<PreparationLevelSwitcherProps> = ({
   level,
-  reasons,
-  setBy,
   onChangeLevel,
   isBusy = false,
 }) => {
@@ -74,10 +70,8 @@ export const PreparationLevelSwitcher: React.FC<PreparationLevelSwitcherProps> =
       </div>
 
       {showInfo && (
-        <p className="mt-1.5 text-[11px] text-slate-600 leading-relaxed max-w-md">
-          <span className="font-semibold text-slate-700">{LEVEL_TAGLINE[level]}</span>{' '}
-          {reasons.length > 0 ? reasons.join(' ') : 'Based on your role in this event and what it actually requires.'}
-          {setBy === 'user' && ' You set this level yourself, so it stays until you change it.'}
+        <p className="mt-1.5 text-[11px] font-semibold text-slate-700 leading-relaxed max-w-md">
+          {LEVEL_TAGLINE[level]}
         </p>
       )}
 

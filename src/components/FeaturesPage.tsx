@@ -61,7 +61,7 @@ export const FeaturesPage: React.FC = () => {
             Backward Planning Built For Real Life
           </h1>
           <p className="text-slate-400 text-sm sm:text-lg leading-relaxed">
-            Ahead Of Time reverse-engineers your upcoming events into structured T-Minus milestones. Never get caught off-guard by sold-out venues, custom gift lead times, or last-minute grocery runs.
+            Ahead Of Time turns any event into a simple countdown of what to do and when. Never get caught off guard by sold-out venues, gift-shopping deadlines, or last-minute grocery runs.
           </p>
         </div>
 
@@ -71,9 +71,9 @@ export const FeaturesPage: React.FC = () => {
             <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
               <Clock className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold text-white">T-Minus Reverse Timelines</h3>
+            <h3 className="text-lg font-bold text-white">A Countdown That Plans Itself</h3>
             <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-              Calculates exact lead times backwards from your event date. Automatically triggers reminders for T-30d bookings, T-14d gifts, and T-1d prep.
+              Works backwards from your event date to figure out exactly when to book, buy, and prep - no spreadsheets required.
             </p>
           </div>
 
@@ -91,54 +91,46 @@ export const FeaturesPage: React.FC = () => {
             <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
               <Zap className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold text-white">Smart Heuristic Intelligence</h3>
+            <h3 className="text-lg font-bold text-white">Knows What You'll Need</h3>
             <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-              Analyzes event context like birthday gifts, private karaoke booths, travel visa lead times, or bakery reservation cutoff dates automatically.
+              Understands what your event actually needs - gifts, costumes, travel documents, bakery orders - and builds the right plan automatically.
             </p>
           </div>
         </div>
 
-        {/* Detailed Section */}
+        {/* Detailed Section - three steps, mirroring the three-stripe shield
+            on the sign-in/returning-user screens: tell us, we plan, you're
+            set. */}
         <div className="bg-slate-800/40 border border-slate-800 rounded-3xl p-8 space-y-8">
-          <h2 className="text-2xl font-bold text-white text-center">Complete Event Prep Workflow</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm">
-                1
+          <h2 className="text-2xl font-bold text-white text-center">How It Works</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                <Sparkles className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="font-semibold text-white text-sm">Import or Tell the Agent</h4>
-                <p className="text-xs text-slate-400 mt-1">Connect your calendar or dictate your upcoming plans in plain English or voice memo.</p>
+                <h4 className="font-semibold text-white text-sm">Tell Us What's Coming</h4>
+                <p className="text-xs text-slate-400 mt-1">Type it, say it, or connect your calendar - however's easiest for you.</p>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm">
-                2
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                <Calendar className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="font-semibold text-white text-sm">Answer Key Parameter Questions</h4>
-                <p className="text-xs text-slate-400 mt-1">Select gift plans, costume theme, or dining plans via multiple-choice intake chips.</p>
+                <h4 className="font-semibold text-white text-sm">We Build Your Plan</h4>
+                <p className="text-xs text-slate-400 mt-1">We line up every gift, booking, and task, and only ask if something's still unclear.</p>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm">
-                3
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="font-semibold text-white text-sm">Review Timeline Radar</h4>
-                <p className="text-xs text-slate-400 mt-1">Visualize lead times across an interactive timeline radar with countdown badges.</p>
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm">
-                4
-              </div>
-              <div>
-                <h4 className="font-semibold text-white text-sm">Export & Sync Tasks</h4>
-                <p className="text-xs text-slate-400 mt-1">Export as ICS calendar files or sync directly to Google Tasks with one click.</p>
+                <h4 className="font-semibold text-white text-sm">Stay Ahead, Automatically</h4>
+                <p className="text-xs text-slate-400 mt-1">Everything syncs to Google Calendar and Tasks, ready right when you need it.</p>
               </div>
             </div>
           </div>

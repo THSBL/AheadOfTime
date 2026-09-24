@@ -1704,6 +1704,18 @@ function App() {
     setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
   };
 
+  // Every "New Event" entry point (Header, sidebar, the tab itself) lands
+  // on the same rich chat/presets creation flow - previously Header's and
+  // the sidebar's own buttons instead routed to /events/new, opening the
+  // separate, much more basic EventCreationWizard modal. One canonical
+  // "New Event" experience now, not two competing ones.
+  const handleOpenNewEventFlow = () => {
+    setSelectedEventId(null);
+    setActiveTab('chat');
+    setFocusMode('welcome');
+    setMobileDashboardView('detail');
+  };
+
   // Custom milestone modal open
   const handleOpenAddCustomMilestone = (eventId: string) => {
     const target = events.find((e) => e.id === eventId);
@@ -1862,9 +1874,7 @@ function App() {
               currentReferenceDate={currentReferenceDate}
               onReferenceDateChange={(newDate) => setCurrentReferenceDate(newDate)}
               onResetData={handleResetData}
-              onOpenNewEventModal={() => {
-                navigate('/events/new');
-              }}
+              onOpenNewEventModal={handleOpenNewEventFlow}
               onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
               onOpenGoogleCalendarSync={() => navigate('/settings/credentials')}
               onOpenOnboarding={() => navigate('/settings/profile')}
@@ -1943,12 +1953,7 @@ function App() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedEventId(null);
-                    setActiveTab('chat');
-                    setFocusMode('welcome');
-                    setMobileDashboardView('detail');
-                  }}
+                  onClick={handleOpenNewEventFlow}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                     activeTab === 'chat'
                       ? 'bg-[#182A42] text-white shadow-xs'
@@ -1991,10 +1996,6 @@ function App() {
                   setMobileDashboardView('detail');
                   navigate(`/events/${id}`);
                 }}
-                onOpenNewEventModal={() => {
-                  navigate('/events/new');
-                }}
-                onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                 currentReferenceDate={currentReferenceDate}
                 selectedEventIds={selectedBulkEventIds}
                 onToggleSelectEvent={handleToggleSelectEvent}
@@ -2030,11 +2031,7 @@ function App() {
                     navigate(`/events/${id}`);
                   }}
                   onToggleMilestoneStatus={handleToggleMilestoneStatus}
-                  onOpenNewEventModal={() => {
-                    setSelectedEventId(null);
-                    setActiveTab('chat');
-                    setFocusMode('welcome');
-                  }}
+                  onOpenNewEventModal={handleOpenNewEventFlow}
                   onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
                   onUpdateMilestone={handleUpdateMilestone}
                 />

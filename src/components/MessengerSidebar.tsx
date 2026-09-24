@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import {
   Calendar,
-  Plus,
   Search,
   CheckCircle2,
   Clock,
   Home,
   Cake,
   Plane,
-  Sparkles,
   Music,
   CalendarDays,
   AlertTriangle,
@@ -41,8 +39,6 @@ interface MessengerSidebarProps {
   events: CalendarEvent[];
   selectedEventId: string | null;
   onSelectEvent: (eventId: string) => void;
-  onOpenNewEventModal: () => void;
-  onOpenScanAgenda?: () => void;
   currentReferenceDate: string;
   selectedEventIds: string[];
   onToggleSelectEvent: (eventId: string) => void;
@@ -57,8 +53,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   events,
   selectedEventId,
   onSelectEvent,
-  onOpenNewEventModal,
-  onOpenScanAgenda,
   currentReferenceDate,
   selectedEventIds,
   onToggleSelectEvent,
@@ -150,30 +144,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             <h3 className="text-sm font-bold text-slate-900">
               Active Events
             </h3>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-950 font-mono font-bold border border-sky-200">
-              {events.length}
-            </span>
           </div>
 
           <div className="flex items-center gap-1.5">
-            {onOpenScanAgenda && (
-              <button
-                onClick={onOpenScanAgenda}
-                className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer border border-slate-200 shadow-xs flex items-center gap-1.5 text-xs font-bold active:scale-95"
-                title="Scan for existing events in your agenda"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <span className="hidden sm:inline">Scan agenda</span>
-                <span className="sm:hidden">Scan</span>
-              </button>
-            )}
-            <button
-              onClick={onOpenNewEventModal}
-              className="p-2 rounded-full bg-white/90 hover:bg-sky-50 text-slate-700 hover:text-slate-950 transition-all cursor-pointer border border-sky-200/80 shadow-xs active:scale-95 flex items-center justify-center"
-              title="Add new event using presets or assistant"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-            </button>
             {onToggleCollapse && (
               <button
                 type="button"
