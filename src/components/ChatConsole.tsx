@@ -214,7 +214,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   // Non-null only while the refinement questions are waiting for answers.
   const [refinementQuestions, setRefinementQuestions] = useState<RefinementQuestion[] | null>(null);
   const [refinementAnswers, setRefinementAnswers] = useState<Record<string, string>>({});
-  const draftScrollRef = useRef<HTMLDivElement>(null);
+  // Marker after the newest message. Scrolled into view (the page scrolls,
+  // not an inner box); its scroll-margin keeps it clear of the sticky reply
+  // bar.
+  const draftEndRef = useRef<HTMLDivElement>(null);
+  const scrollDraftToLatest = () => {
+    requestAnimationFrame(() => draftEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+  };
   // Guards against a second submit (double tap) while a request is in
   // flight - state alone updates too late to stop it.
   const draftRequestInFlight = useRef(false);
@@ -229,7 +235,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   };
 
   useEffect(() => {
-    draftScrollRef.current?.scrollTo({ top: draftScrollRef.current.scrollHeight, behavior: 'smooth' });
+    if (draftConversation.length > 0) scrollDraftToLatest();
   }, [draftConversation, isDraftLoading, refinementQuestions]);
 
   const resetDraftConversation = () => {
@@ -703,7 +709,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   );
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-transparent overflow-y-auto min-h-0 transition-all duration-300 pr-1">
+    // No inner scroll box: it clipped the focused input's outer ring on the
+    // left, and the page itself scrolls now (see App.tsx).
+    <div className="flex-1 flex flex-col bg-transparent transition-all duration-300">
 
       {/* 0. CONVERSATIONAL CREATION THREAD (architecture reset Phase C) -
           takes over the whole panel the moment the user sends a first
@@ -713,7 +721,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           Nothing here touches the real event list until "Create event" is
           tapped (handleCreateDraftEvent, via the existing onSaveEvent). */}
       {draftConversation.length > 0 && (
-        <div className="flex-1 flex flex-col h-full min-h-0 animate-in fade-in duration-300">
+        <div className="w-full max-w-3xl mx-auto flex flex-col animate-in fade-in duration-300">
           <div className="flex items-center justify-between pb-3 shrink-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">New event</span>
             <button
@@ -726,7 +734,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             </button>
           </div>
 
-          <div ref={draftScrollRef} className="flex-1 overflow-y-auto min-h-0 space-y-4 pb-2">
+          <div className="space-y-4 pb-2">
             {draftConversation.map((msg, idx) => {
               const isUser = msg.sender === 'user';
               // The summary card follows the latest plan reply only.
@@ -746,7 +754,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                     <div
                       className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed space-y-1 ${
                         isUser
-                          ? 'bg-[#182A42] text-white rounded-br-md'
+                          // Lighter than the page background (#182A42), which
+                          // made the user's own bubble invisible.
+                          ? 'bg-[#34507A] text-white rounded-br-md'
                           : 'bg-white border border-slate-200/90 text-slate-800 rounded-bl-md shadow-2xs'
                       }`}
                     >
@@ -760,7 +770,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                   {/* Summary of the plan so far - nothing is saved until
                       "Create event" is tapped. */}
                   {isLatestPlanReply && draftEvent && (
-                    <div className="ml-9 bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                    <div className="ml-9 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
                       <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
                         {getEventTopicLabel(draftEvent.category, draftEvent.context)}
                       </span>
@@ -860,6 +870,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 </div>
               </div>
             )}
+            <div ref={draftEndRef} className="scroll-mb-24" aria-hidden="true" />
           </div>
 
           {/* Persistent reply bar - the same one input keeps the whole
@@ -874,12 +885,18 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               setDraftReplyInput('');
               handleDraftFreeformSubmit(text);
             }}
-            className="shrink-0 pt-3 flex items-center gap-2"
+            // Sits right under the conversation; sticks to the bottom of the
+            // screen (and above the mobile keyboard) once the thread is
+            // taller than the screen.
+            className="sticky bottom-0 z-10 bg-[#182A42] pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-2"
           >
             <input
               type="text"
               value={draftReplyInput}
               onChange={(e) => setDraftReplyInput(e.target.value)}
+              // Once the mobile keyboard has opened (and the page resized),
+              // bring the latest message back into view above the input.
+              onFocus={() => setTimeout(scrollDraftToLatest, 300)}
               placeholder={refinementQuestions ? 'Anything else to add?' : draftEvent ? 'Add or change something...' : 'Type your answer...'}
               disabled={isDraftLoading}
               className="flex-1 bg-white text-slate-900 text-sm px-4 py-2.5 rounded-full border border-slate-200/90 shadow-2xs focus:outline-none focus:border-slate-400 disabled:opacity-60"

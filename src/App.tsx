@@ -1870,7 +1870,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#182A42] text-slate-800 flex flex-col font-sans selection:bg-[#182A42] selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#182A42] text-slate-800 flex flex-col font-sans selection:bg-[#182A42] selection:text-white relative overflow-x-clip">
       
       {/* Milky Glass Header */}
       <div className="relative z-20">
@@ -1902,7 +1902,11 @@ function App() {
           <AgendaFindingsBanner onReview={() => setIsScanAgendaModalOpen(true)} />
 
           {/* Main Dashboard Layout (Master-Detail on Mobile, 2-Column on Desktop) */}
-          <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 overflow-hidden relative z-10 animate-in fade-in duration-700">
+          {/* content-start: rows keep their own height instead of sharing out the
+              spare screen height as gaps. overflow-x-clip (not overflow-hidden):
+              hidden makes <main> a scroll container, which stops the chat's
+              sticky reply bar from sticking to the screen. */}
+          <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 content-start gap-4 lg:gap-5 overflow-x-clip relative z-10 animate-in fade-in duration-700">
 
             {/* Workspace Navigation Bar - always visible (both mobile screen
                 states, both desktop columns), not just when the workspace
@@ -2020,7 +2024,14 @@ function App() {
                 : isEventSidebarCollapsed
                 ? 'lg:col-span-11'
                 : 'lg:col-span-7 xl:col-span-8'
-            } h-[calc(100vh-140px)] flex-col w-full`}>
+            } ${
+              // The chat grows with its content and scrolls with the page
+              // (its reply bar is sticky), instead of a fixed-height box:
+              // that box started ~150px down but was sized 100vh-140px, so
+              // it always overflowed the screen and parked the reply bar
+              // partly off-screen, far below a short conversation.
+              activeTab === 'chat' ? '' : 'h-[calc(100vh-140px)]'
+            } flex-col w-full`}>
 
               {/* Workspace Content */}
               {activeTab === 'feed' ? (
@@ -2080,7 +2091,7 @@ function App() {
                   onTriggerGoogleSync={() => runGoogleTaskSync(false, true)}
                 />
               ) : (
-                <div className="flex-1 min-h-0 h-full overflow-y-auto">
+                <div className="flex-1">
                   <ChatConsole
                     messages={messages}
                     onSendMessage={handleSendMessage}
