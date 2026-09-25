@@ -18,6 +18,7 @@ import { listPendingFindings, dismissAllFindings } from '../../../server/agendaF
 import { isEmailConfigured } from '../../../server/emailService.js';
 import { getGoogleClientId } from '../../../server/googleClientId.js';
 import { sendTestUpdate } from '../../../server/sendTestUpdate.js';
+import { handleCalendarPush, handleCalendarEvents } from '../../../server/googleCalendarServerApi.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -191,6 +192,19 @@ export default async function handler(req: any, res: any) {
 
   if (action === 'authorize') {
     return handleAuthorize(req, res);
+  }
+  // Push to Cal / Scan agenda through the stored Background Sync grant.
+  if (action === 'calendar-push' || action === 'calendar-events') {
+    const verified = await verifyRequestUser(req);
+    if (!verified) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const userId = await findOrCreateUserByEmail(verified.email);
+    const result =
+      action === 'calendar-push'
+        ? await handleCalendarPush(userId, req.method, req.body)
+        : await handleCalendarEvents(userId, req.method, req.query);
+    return res.status(result.status).json(result.body);
   }
   if (action === 'status') {
     return handleStatus(req, res);

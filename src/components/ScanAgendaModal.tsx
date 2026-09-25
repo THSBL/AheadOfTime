@@ -33,6 +33,7 @@ import { detectEventCategory, formatDisplayDate, getCleanEventTitle } from '../u
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { normalizeProfile } from '../data/samplePresets';
 import { getCurrentUser, loadUserEvents, setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
+import { isServerCalendarLinked, scanAgendaViaServer, ServerCalendarUnavailable } from '../services/serverCalendar';
 
 /**
  * Robust check to determine if a Google Calendar item is already tracked in the dashboard.
@@ -145,7 +146,20 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   }, [initialScanMonths]);
 
   const token = getStoredAccessToken();
-  const connected = Boolean(token && !isTokenExpired());
+  // Background Sync linked: the server reads the calendar with the stored
+  // Google grant, so the scan works without a live browser token.
+  const [serverLinked, setServerLinked] = useState<boolean>(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    isServerCalendarLinked().then((linked) => {
+      if (!cancelled) setServerLinked(linked);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+  const connected = Boolean(token && !isTokenExpired()) || serverLinked;
 
   const handleScanAgenda = async (monthsOverride?: number) => {
     setIsLoading(true);
@@ -155,42 +169,61 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       setScanMonths(monthsOverride);
     }
     try {
-      const activeToken = getStoredAccessToken();
-      if (!activeToken || isTokenExpired()) {
-        setErrorMsg('Google Calendar session is not active. Please connect your Google account.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 1. Fetch profile
-      const prof = await fetchPrimaryCalendarProfile(activeToken);
-      setProfile(prof);
-      // Same cross-account gap fixed in GoogleCalendarSync/
-      // GoogleCalendarIntegrationCard: this modal only updated its OWN
-      // local profile state, never the app-wide identity - scanning while
-      // signed into a DIFFERENT Google account than App.tsx's cached
-      // currentUser meant found events could get merged/persisted under
-      // the wrong account entirely. setGlobalCurrentUser dispatches
-      // aot_account_switched, which App.tsx listens for to reload events
-      // strictly scoped to this profile's own email before any scan
-      // results get merged in.
-      if (prof?.id) {
-        const userEmail = prof.id.toLowerCase().trim();
-        const user: AuthUser = {
-          id: userEmail,
-          email: userEmail,
-          name: prof.summary || prof.id,
-          timeZone: prof.timeZone,
-          provider: 'google',
-          connectedAt: new Date().toISOString(),
-        };
-        setGlobalCurrentUser(user);
-      }
-
-      // 2. Fetch upcoming events
       const minDate = new Date(currentReferenceDate).toISOString();
       const maxDate = new Date(new Date(currentReferenceDate).getTime() + monthsToUse * 30 * 24 * 60 * 60 * 1000).toISOString();
-      const items = await fetchGoogleCalendarEvents(activeToken, 150, minDate, maxDate);
+
+      // Server first (Background Sync grant): the signed-in app account is
+      // already the identity there, so no account switch is needed.
+      let serverScan: Awaited<ReturnType<typeof scanAgendaViaServer>> | null = null;
+      if (serverLinked) {
+        try {
+          serverScan = await scanAgendaViaServer(minDate, maxDate, 150);
+        } catch (err) {
+          if (!(err instanceof ServerCalendarUnavailable)) throw err;
+          setServerLinked(false);
+        }
+      }
+
+      let items: GoogleCalendarEventItem[];
+      if (serverScan) {
+        setProfile(serverScan.profile);
+        items = serverScan.items;
+      } else {
+        const activeToken = getStoredAccessToken();
+        if (!activeToken || isTokenExpired()) {
+          setErrorMsg('Google Calendar session is not active. Please connect your Google account.');
+          setIsLoading(false);
+          return;
+        }
+
+        // 1. Fetch profile
+        const prof = await fetchPrimaryCalendarProfile(activeToken);
+        setProfile(prof);
+        // Same cross-account gap fixed in GoogleCalendarSync/
+        // GoogleCalendarIntegrationCard: this modal only updated its OWN
+        // local profile state, never the app-wide identity - scanning while
+        // signed into a DIFFERENT Google account than App.tsx's cached
+        // currentUser meant found events could get merged/persisted under
+        // the wrong account entirely. setGlobalCurrentUser dispatches
+        // aot_account_switched, which App.tsx listens for to reload events
+        // strictly scoped to this profile's own email before any scan
+        // results get merged in.
+        if (prof?.id) {
+          const userEmail = prof.id.toLowerCase().trim();
+          const user: AuthUser = {
+            id: userEmail,
+            email: userEmail,
+            name: prof.summary || prof.id,
+            timeZone: prof.timeZone,
+            provider: 'google',
+            connectedAt: new Date().toISOString(),
+          };
+          setGlobalCurrentUser(user);
+        }
+
+        // 2. Fetch upcoming events
+        items = await fetchGoogleCalendarEvents(activeToken, 150, minDate, maxDate);
+      }
 
       // 3. Evaluate each event with T-Minus rules and deduplicate against existing dashboard events
       let currentDashboardEvents = existingEvents;

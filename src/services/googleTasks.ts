@@ -3,7 +3,7 @@
  * Handles creating, listing, and managing Google Tasks that appear in Google Calendar
  */
 
-import { CalendarEvent, TMinusMilestone } from '../types';
+import { CalendarEvent, TMinusMilestone } from '../types.js';
 
 export interface GoogleTaskItem {
   id: string;

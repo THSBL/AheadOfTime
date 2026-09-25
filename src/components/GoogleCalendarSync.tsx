@@ -38,6 +38,7 @@ import {
   MilestoneSyncFormat
 } from '../services/googleCalendar';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from '../services/googleTasks';
+import { isServerCalendarLinked, pushEventViaServer, ServerCalendarUnavailable } from '../services/serverCalendar';
 import { formatDisplayDate } from '../utils/tminusRules';
 import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
@@ -62,6 +63,9 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
 }) => {
   const events = propEvents || existingEvents || [];
   const [accessToken, setAccessToken] = useState<string | null>(getStoredAccessToken());
+  // Background Sync linked: pushes run on the server with the stored Google
+  // grant, so no browser token (or sign-in popup) is needed.
+  const [serverLinked, setServerLinked] = useState<boolean>(false);
   const [calendarProfile, setCalendarProfile] = useState<GoogleCalendarProfile | null>(() => {
     const saved = sessionStorage.getItem('gcal_profile');
     return saved ? JSON.parse(saved) : null;
@@ -169,6 +173,29 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
     setSelectedBatchIds([]);
   };
 
+  const pushTimeZone = (): string =>
+    calendarProfile?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam';
+
+  // Server first (Background Sync grant); the browser's own Google token
+  // only when the server can't act for this account.
+  const pushOneEvent = async (ev: CalendarEvent, timeZone: string): Promise<SyncResult> => {
+    if (serverLinked) {
+      try {
+        return await pushEventViaServer(ev, timeZone, milestoneSyncFormat);
+      } catch (err) {
+        if (!(err instanceof ServerCalendarUnavailable)) throw err;
+        setServerLinked(false);
+      }
+    }
+    let token = accessToken;
+    if (!token || isTokenExpired()) {
+      const res = await requestGoogleCalendarToken(DEFAULT_CLIENT_ID);
+      token = res.accessToken;
+      setAccessToken(token);
+    }
+    return syncEventToGoogleCalendar(token, ev, timeZone, { milestoneFormat: milestoneSyncFormat });
+  };
+
   const handleBatchPushToCalendar = async () => {
     const eventsToPush = events.filter(e => selectedBatchIds.includes(e.id));
     if (eventsToPush.length === 0) return;
@@ -184,25 +211,13 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
     setBatchSuccessResult(null);
 
     try {
-      let token = accessToken;
-      if (!token || isTokenExpired()) {
-        const res = await requestGoogleCalendarToken(DEFAULT_CLIENT_ID);
-        token = res.accessToken;
-        setAccessToken(token);
-      }
-
-      const timeZone = calendarProfile?.timeZone || 'Europe/Amsterdam';
+      const timeZone = pushTimeZone();
       let updatedEventsList = [...events];
       let totalTasksPushed = 0;
       let lastLink = '';
 
       for (const ev of eventsToPush) {
-        const result: SyncResult = await syncEventToGoogleCalendar(
-          token,
-          ev,
-          timeZone,
-          { milestoneFormat: milestoneSyncFormat }
-        );
+        const result: SyncResult = await pushOneEvent(ev, timeZone);
         totalTasksPushed += result.totalTasksPushed;
         if (result.mainEventLink) {
           lastLink = result.mainEventLink;
@@ -234,6 +249,16 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
       setIsBatchSyncing(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    isServerCalendarLinked().then((linked) => {
+      if (!cancelled) setServerLinked(linked);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const token = getStoredAccessToken();
@@ -328,20 +353,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
     setSyncSuccessResult(null);
 
     try {
-      let token = accessToken;
-      if (!token || isTokenExpired()) {
-        const res = await requestGoogleCalendarToken(DEFAULT_CLIENT_ID);
-        token = res.accessToken;
-        setAccessToken(token);
-      }
-
-      const timeZone = calendarProfile?.timeZone || 'Europe/Amsterdam';
-      const result: SyncResult = await syncEventToGoogleCalendar(
-        token,
-        activeEvent,
-        timeZone,
-        { milestoneFormat: milestoneSyncFormat }
-      );
+      const result: SyncResult = await pushOneEvent(activeEvent, pushTimeZone());
 
       if (result.updatedEvent && onUpdateEvent) {
         onUpdateEvent(result.updatedEvent);
@@ -499,11 +511,11 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
         {/* Connected Account Bar */}
         <div className="p-3.5 bg-sky-50/40 rounded-2xl border border-sky-100 flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${accessToken ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'}`} />
+            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${accessToken || serverLinked ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'}`} />
             <div className="truncate">
               <span className="text-slate-500 font-medium">Calendar Account: </span>
               <strong className="text-slate-800 font-semibold truncate">
-                {calendarProfile?.id || (accessToken ? 'Connected (Primary Calendar)' : 'Not Connected')}
+                {calendarProfile?.id || (accessToken ? 'Connected (Primary Calendar)' : serverLinked ? 'Connected via Background Sync' : 'Not Connected')}
               </strong>
             </div>
           </div>

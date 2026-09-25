@@ -45,6 +45,7 @@ import { parseCalendarVote } from "./src/utils/calendarPoll";
 import { handleProfileApi } from "./server/userProfileStore";
 import { handleSessionApi } from "./server/sessionRoutes";
 import { verifyRequestUser } from "./server/requestAuth";
+import { handleCalendarPush, handleCalendarEvents } from "./server/googleCalendarServerApi";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
   exchangeAuthorizationCode,
@@ -1548,6 +1549,21 @@ app.put("/api/auth/google/status", async (req: Request, res: Response) => {
   }
   await setNotifyPrefs(userId, next);
   res.json({ ok: true, prefs: next });
+});
+
+// Push to Cal / Scan agenda through the Background Sync grant (twins of
+// api/auth/google/index.ts's action=calendar-push / calendar-events).
+app.all(["/api/auth/google/calendar-push", "/api/auth/google/calendar-events"], async (req: Request, res: Response) => {
+  const verified = await verifyRequestUser(req);
+  if (!verified) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  const userId = await findOrCreateUserByEmail(verified.email);
+  const result = req.path.endsWith("calendar-push")
+    ? await handleCalendarPush(userId, req.method, req.body)
+    : await handleCalendarEvents(userId, req.method, req.query);
+  res.status(result.status).json(result.body);
 });
 
 // In-app fallback notice for new calendar events the daily scan found that no

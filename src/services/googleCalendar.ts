@@ -1,5 +1,5 @@
-import { CalendarEvent, TMinusMilestone } from '../types';
-import { createGoogleTask, deleteGoogleTask, fetchGoogleTasks, updateGoogleTaskStatus, GoogleTaskItem } from './googleTasks';
+import { CalendarEvent, TMinusMilestone } from '../types.js';
+import { createGoogleTask, deleteGoogleTask, fetchGoogleTasks, updateGoogleTaskStatus, GoogleTaskItem } from './googleTasks.js';
 import { extractDateOnly, formatStartEndDateTime, formatMilestoneCalendarTitle } from '../utils/googleSyncFormat.js';
 // Re-exported so existing importers of these helpers keep working; the implementations
 // live in utils/googleSyncFormat.ts so the server's background push can share them.

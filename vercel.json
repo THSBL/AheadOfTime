@@ -29,6 +29,14 @@
       "destination": "/api/auth/google?action=findings"
     },
     {
+      "source": "/api/auth/google/calendar-push",
+      "destination": "/api/auth/google?action=calendar-push"
+    },
+    {
+      "source": "/api/auth/google/calendar-events",
+      "destination": "/api/auth/google?action=calendar-events"
+    },
+    {
       "source": "/api/auth/session",
       "destination": "/api/auth/google?action=session"
     },
