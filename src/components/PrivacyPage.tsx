@@ -85,7 +85,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 font-medium">
             <span className="flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
-              Last updated: September 4, 2026
+              Last updated: September 25, 2026
             </span>
             <span>&bull;</span>
             <span>App: Ahead Of Time (https://aheadoftime.app)</span>
@@ -306,6 +306,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 <li><strong>Token Security:</strong> OAuth access tokens are held in short-lived client-side session storage on your device and are never written to permanent public storage.</li>
                 <li><strong>Encryption in Transit:</strong> All communications between your browser, our API endpoints, and Google API servers are encrypted using modern Transport Layer Security (TLS/HTTPS).</li>
                 <li><strong>Retention:</strong> When you are signed in, the events and prep tasks you create or import are stored in your account on our servers so they stay in sync across your devices, and a copy is kept in your browser&rsquo;s LocalStorage. A deleted event is kept for 30 days so you can restore it from Settings, then permanently removed. If you turn on Background Sync, an encrypted Google refresh token is also stored until you turn it off. Clearing browser data removes only the local copy.</li>
+                <li><strong>Calendar preference question:</strong> If you answer &ldquo;Which calendar do you use?&rdquo;, we store your answer with a random identifier kept in your browser (not your name), to decide which calendars to support next. If you leave your email address to be told when your calendar is supported, we use it only for that notification, never for marketing, and delete it on request.</li>
               </ul>
             </div>
           </section>
