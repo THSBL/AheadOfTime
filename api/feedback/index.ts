@@ -1,6 +1,8 @@
 import { extractBearerToken, verifyGoogleAccessToken, isAdminEmail } from '../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
 import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from '../../server/feedbackStore.js';
+import { recordCalendarVote, summarizeCalendarVotes } from '../../server/calendarPollStore.js';
+import { parseCalendarVote } from '../../src/utils/calendarPoll.js';
 
 // Consolidated Vercel function for /api/feedback/eligibility (GET) and
 // /api/feedback/submit (POST) - two files, same auth, cleanly split by
@@ -11,7 +13,33 @@ import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from '../.
 // stays under that cap as routes are added over time (see
 // api/telegram/[...path].ts for the same pattern applied earlier).
 // Logic below is ported verbatim from the two files this replaces.
+// "Which calendar do you use?" (landing page, onboarding, feedback page).
+// Anonymous on purpose - landing-page visitors aren't signed in - so it is
+// handled before the sign-in check below; a signed-in user's id is attached
+// when a valid token happens to be present.
+async function handleCalendarPoll(req: any, res: any) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+  const parsed = parseCalendarVote(req.body);
+  if ('error' in parsed) {
+    return res.status(400).json({ ok: false, error: parsed.error });
+  }
+  try {
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
+    await recordCalendarVote(parsed.vote, userId);
+    return res.status(200).json({ ok: true });
+  } catch (err: any) {
+    console.error('calendar poll error:', err);
+    return res.status(500).json({ ok: false, error: 'Could not save your answer.' });
+  }
+}
+
 export default async function handler(req: any, res: any) {
+  if (req.query?.action === 'calendar-poll') {
+    return handleCalendarPoll(req, res);
+  }
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -23,7 +51,12 @@ export default async function handler(req: any, res: any) {
     }
     try {
       const rows = await listRecentFeedback(200);
-      return res.status(200).json({ ok: true, rows });
+      // Never lets a poll problem hide the feedback list itself.
+      const calendarPoll = await summarizeCalendarVotes().catch((err) => {
+        console.error('calendar poll summary error:', err);
+        return null;
+      });
+      return res.status(200).json({ ok: true, rows, calendarPoll });
     } catch (err: any) {
       console.error('feedback admin-list error:', err);
       return res.status(500).json({ ok: false, error: err?.message || 'Failed to load feedback' });

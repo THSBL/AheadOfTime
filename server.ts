@@ -40,6 +40,8 @@ import { verifyEventDeepLink } from "./server/deepLinkToken";
 import { TelegramService } from "./server/telegramService";
 import { logQualityEvent, QualitySignalType } from "./server/qualityStore";
 import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from "./server/feedbackStore";
+import { recordCalendarVote, summarizeCalendarVotes } from "./server/calendarPollStore";
+import { parseCalendarVote } from "./src/utils/calendarPoll";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
   exchangeAuthorizationCode,
@@ -1305,6 +1307,24 @@ app.delete("/api/telegram/event/:id", async (req: Request, res: Response) => {
   res.json({ ok: true, deleted });
 });
 
+// Local-dev twin of api/feedback/index.ts's anonymous calendar poll.
+app.post("/api/feedback/calendar-poll", async (req: Request, res: Response) => {
+  const parsed = parseCalendarVote(req.body);
+  if ("error" in parsed) {
+    res.status(400).json({ ok: false, error: parsed.error });
+    return;
+  }
+  try {
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
+    await recordCalendarVote(parsed.vote, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("calendar poll error:", err);
+    res.status(500).json({ ok: false, error: "Could not save your answer." });
+  }
+});
+
 app.get("/api/feedback/admin-list", async (req: Request, res: Response) => {
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));
   if (!verified) {
@@ -1317,7 +1337,11 @@ app.get("/api/feedback/admin-list", async (req: Request, res: Response) => {
   }
   try {
     const rows = await listRecentFeedback(200);
-    res.json({ ok: true, rows });
+    const calendarPoll = await summarizeCalendarVotes().catch((err) => {
+      console.error("calendar poll summary error:", err);
+      return null;
+    });
+    res.json({ ok: true, rows, calendarPoll });
   } catch (err: any) {
     console.error("feedback admin-list error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Failed to load feedback" });

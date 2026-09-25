@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CalendarPreferencePoll } from './CalendarPreferencePoll';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { Logo } from './Logo';
@@ -231,6 +232,17 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Demand research for calendars beyond Google - sits right under
+            the "Syncs with Google Calendar" card it relates to. */}
+        <div className="mt-8 max-w-2xl mx-auto bg-[#22344a] border border-white/10 rounded-3xl p-5 sm:p-6 shadow-md shadow-slate-900/20">
+          <CalendarPreferencePoll
+            source="landing"
+            variant="dark"
+            intro="Ahead Of Time syncs with Google Calendar today. Tell us which one you use, so we know what to support next."
+            offerNotifyEmail
+          />
         </div>
       </div>
       {/* Bottom Closing Banner - a lighter navy + border so it still reads as

@@ -13,6 +13,10 @@
       "destination": "/api/feedback?action=admin-list"
     },
     {
+      "source": "/api/feedback/calendar-poll",
+      "destination": "/api/feedback?action=calendar-poll"
+    },
+    {
       "source": "/api/presets/calibrate-offsets",
       "destination": "/api/presets?action=calibrate-offsets"
     },

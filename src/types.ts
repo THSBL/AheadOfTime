@@ -465,6 +465,10 @@ export interface OnboardingProfile {
   // without the user having to mention a pet by name every time.
   hasPet?: boolean;
 
+  // Answer to "Which calendar do you use day to day?" (demand research for
+  // calendars beyond Google - see src/utils/calendarPoll.ts).
+  primaryCalendar?: 'google' | 'outlook' | 'apple' | 'other';
+
   // Display & legacy backwards compatibility
   familyStatus?: FamilyStatus;
   calendarType?: CalendarType;

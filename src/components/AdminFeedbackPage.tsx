@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { CALENDAR_CHOICES, CALENDAR_CHOICE_LABELS } from '../utils/calendarPoll';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Loader2, Star } from 'lucide-react';
 import { usePageMeta } from '../utils/usePageMeta';
@@ -20,11 +21,74 @@ interface FeedbackRow {
 // server/googleAuthVerify.ts's isAdminEmail), not "nobody knows the URL."
 // Reach it by navigating here directly while signed in with an admin
 // Google account.
+interface CalendarPollSummary {
+  bySource: Record<string, Record<string, number>>;
+  totalByCalendar: Record<string, number>;
+  notifyByCalendar: Record<string, number>;
+  recentOther: string[];
+}
+
+// "Which calendar do you use?" results (landing page, onboarding, feedback).
+// Totals count each visitor once (their latest answer anywhere).
+const CalendarPollResults: React.FC<{ summary: CalendarPollSummary }> = ({ summary }) => {
+  const total = CALENDAR_CHOICES.reduce((n, c) => n + (summary.totalByCalendar[c] || 0), 0);
+  const sources = ['landing', 'onboarding', 'feedback'];
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-extrabold text-slate-900">Which calendar do you use?</h2>
+        <span className="text-xs text-slate-500">{total} {total === 1 ? 'person' : 'people'}</span>
+      </div>
+      {total === 0 ? (
+        <p className="text-xs text-slate-500">No answers yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="font-semibold py-1 pr-3">Calendar</th>
+                <th className="font-semibold py-1 pr-3 text-right">People</th>
+                <th className="font-semibold py-1 pr-3 text-right">Share</th>
+                {sources.map((s) => (
+                  <th key={s} className="font-semibold py-1 pr-3 text-right capitalize">{s}</th>
+                ))}
+                <th className="font-semibold py-1 text-right">Left email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CALENDAR_CHOICES.map((c) => {
+                const n = summary.totalByCalendar[c] || 0;
+                return (
+                  <tr key={c} className="border-t border-slate-100 text-slate-800">
+                    <td className="py-1.5 pr-3 font-semibold">{CALENDAR_CHOICE_LABELS[c]}</td>
+                    <td className="py-1.5 pr-3 text-right font-mono">{n}</td>
+                    <td className="py-1.5 pr-3 text-right font-mono">{total ? Math.round((n / total) * 100) : 0}%</td>
+                    {sources.map((s) => (
+                      <td key={s} className="py-1.5 pr-3 text-right font-mono text-slate-500">{summary.bySource[s]?.[c] || 0}</td>
+                    ))}
+                    <td className="py-1.5 text-right font-mono text-slate-500">{c === 'google' ? '–' : summary.notifyByCalendar[c] || 0}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {summary.recentOther.length > 0 && (
+        <p className="text-xs text-slate-500">
+          <span className="font-semibold text-slate-700">"Something else" answers:</span> {summary.recentOther.join(' · ')}
+        </p>
+      )}
+    </section>
+  );
+};
+
 export const AdminFeedbackPage: React.FC = () => {
   const navigate = useNavigate();
   usePageMeta('Feedback Inbox - Ahead Of Time', 'Admin-only view of submitted feedback.');
 
   const [rows, setRows] = useState<FeedbackRow[] | null>(null);
+  const [calendarPoll, setCalendarPoll] = useState<CalendarPollSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -41,6 +105,7 @@ export const AdminFeedbackPage: React.FC = () => {
           return;
         }
         setRows(data.rows);
+        setCalendarPoll(data.calendarPoll || null);
       } catch (err: any) {
         setError(err?.message || 'Network error.');
       } finally {
@@ -106,6 +171,8 @@ export const AdminFeedbackPage: React.FC = () => {
 
       <main className="flex-1 max-w-4xl mx-auto px-4 py-8 w-full space-y-4">
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Feedback Inbox</h1>
+
+        {calendarPoll && <CalendarPollResults summary={calendarPoll} />}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-slate-400">

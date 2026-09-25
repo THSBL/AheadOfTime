@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { CalendarPreferencePoll } from './CalendarPreferencePoll';
+import type { CalendarChoice } from '../utils/calendarPoll';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -56,6 +58,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   });
   const [homeZipOrLocation, setHomeZipOrLocation] = useState<string>(initialProfile?.homeZipOrLocation || '');
   const [hasPet, setHasPet] = useState<boolean>(initialProfile?.hasPet ?? false);
+  const [primaryCalendar, setPrimaryCalendar] = useState<CalendarChoice | undefined>(initialProfile?.primaryCalendar);
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
@@ -86,6 +89,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       calendar_type,
       homeZipOrLocation: homeZipOrLocation.trim(),
       hasPet,
+      primaryCalendar,
       familyStatus,
       calendarType,
       privacyConsentAccepted: true,
@@ -305,6 +309,23 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               <p className="text-[11px] text-slate-500 leading-normal">
                 So trips can include prep milestones like booking a pet sitter or boarding.
               </p>
+            </div>
+
+            {/* Which calendar - demand research for calendars beyond Google.
+                Saves on its own; never blocks finishing onboarding. */}
+            <div className="space-y-2 pt-1 border-t border-slate-100">
+              <CalendarPreferencePoll
+                source="onboarding"
+                formLabel
+                question="Which calendar do you use day to day?"
+                intro="Sync works with Google Calendar today. Your answer helps us decide what to add next."
+                onAnswered={setPrimaryCalendar}
+              />
+              {primaryCalendar && primaryCalendar !== 'google' && (
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  You can still use Ahead Of Time: plans live in the app, and every event can be downloaded as an .ics file for your own calendar.
+                </p>
+              )}
             </div>
 
           </div>

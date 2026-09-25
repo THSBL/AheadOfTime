@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Send, Star, MessageSquare, Loader2 } from 'lucide-react';
 import { usePageMeta } from '../utils/usePageMeta';
 import { getStoredAccessToken } from '../services/googleAuth';
+import { CalendarPreferencePoll } from './CalendarPreferencePoll';
 
 interface Eligibility {
   csatEligible: boolean;
@@ -253,6 +254,14 @@ export const FeedbackPage: React.FC = () => {
             </div>
           </div>
         )}
+        {/* One extra question, separate from the rating/feedback form so it
+            never gets in the way of either. */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs">
+          <CalendarPreferencePoll
+            source="feedback"
+            intro="Ahead Of Time syncs with Google Calendar today. Which calendar would you most like it to work with?"
+          />
+        </div>
       </main>
     </div>
   );
