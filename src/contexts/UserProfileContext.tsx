@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserOnboardingProfile, saveUserOnboardingProfile } from '../services/accountManager';
+import { fetchServerProfile, pushServerProfile } from '../services/profileSync';
 
 interface UserProfileContextValue {
   profile: OnboardingProfile | null;
@@ -22,21 +23,44 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     loadUserOnboardingProfile(getCurrentUser()?.id)
   );
 
+  // The server copy (per account) wins when it exists - the browser copy
+  // can be missing (new device) or stale. With no server copy yet, the
+  // browser's answers are uploaded, e.g. onboarding done before sign-in.
+  const syncWithServer = useCallback(async (userId: string | null | undefined) => {
+    if (!userId) return;
+    const server = await fetchServerProfile();
+    if (!server.ok || getCurrentUser()?.id !== userId) return;
+    if (server.profile) {
+      saveUserOnboardingProfile(server.profile, userId);
+      setProfile(server.profile);
+    } else {
+      const local = loadUserOnboardingProfile(userId);
+      if (local) void pushServerProfile(local);
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncWithServer(getCurrentUser()?.id);
+  }, [syncWithServer]);
+
   useEffect(() => {
     const handleAccountSwitched = (e: Event) => {
       const detailUser = (e as CustomEvent)?.detail?.user;
       const nextUser = detailUser !== undefined ? detailUser : getCurrentUser();
       setProfile(loadUserOnboardingProfile(nextUser?.id));
+      void syncWithServer(nextUser?.id);
     };
 
     window.addEventListener('aot_account_switched', handleAccountSwitched as EventListener);
     return () => {
       window.removeEventListener('aot_account_switched', handleAccountSwitched as EventListener);
     };
-  }, []);
+  }, [syncWithServer]);
 
   const saveProfile = useCallback((nextProfile: OnboardingProfile) => {
     saveUserOnboardingProfile(nextProfile, getCurrentUser()?.id);
+    // Best-effort server copy; the browser copy above already took effect.
+    void pushServerProfile(nextProfile);
     // Update context state immediately so callers see the change without
     // waiting for the aot_account_switched event to round-trip.
     setProfile(nextProfile);

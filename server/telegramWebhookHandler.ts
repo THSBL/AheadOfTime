@@ -8,6 +8,7 @@ import { logQualityEvent, checkAndLogRapidCorrection } from './qualityStore.js';
 import { pushEventToGoogleInBackground, isAutoPushEnabledForUser } from './googleBackgroundPush.js';
 import { formatDisplayDate } from '../src/utils/tminusRules.js';
 import { askRefinementQuestions } from './agentProcessor.js';
+import { getUserProfile } from './userProfileStore.js';
 import { composeConversationBrief } from '../src/utils/refinementQuestions.js';
 import type { PendingTelegramRefinement } from './telegramStore.js';
 
@@ -328,7 +329,17 @@ export class TelegramWebhookHandler {
       // (Gemini classifies), when the agent is mid-way through its own
       // clarifying question, and when Gemini is unavailable.
       if (!options.forceNewEvent && !(await TelegramSessionStore.getPendingClarification(chatId))) {
-        const refinement = await askRefinementQuestions({ message: rawText, currentReferenceDate: new Date().toISOString() });
+        // The linked account's onboarding profile (pet, kids, home area)
+        // adds its own questions, same as on the web.
+        const session = await TelegramSessionStore.getOrCreateSession(chatId);
+        const profile = session.webUserId ? await getUserProfile(session.webUserId).catch(() => null) : null;
+        const refinement = await askRefinementQuestions({
+          message: rawText,
+          currentReferenceDate: new Date().toISOString(),
+          userProfile: profile
+            ? { hasPet: profile.hasPet, familyStructure: profile.family_structure, homeZipOrLocation: profile.homeZipOrLocation }
+            : null,
+        });
         if (refinement.isNewEventPlan && refinement.questions.length > 0) {
           const pending: PendingTelegramRefinement = {
             originalMessage: rawText,

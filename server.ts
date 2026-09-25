@@ -42,6 +42,7 @@ import { logQualityEvent, QualitySignalType } from "./server/qualityStore";
 import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from "./server/feedbackStore";
 import { recordCalendarVote, summarizeCalendarVotes } from "./server/calendarPollStore";
 import { parseCalendarVote } from "./src/utils/calendarPoll";
+import { handleProfileApi } from "./server/userProfileStore";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
   exchangeAuthorizationCode,
@@ -1259,6 +1260,15 @@ app.all("/api/telegram/events", async (req: Request, res: Response) => {
     body: req.body,
     email: verified?.email ?? null,
   });
+  res.setHeader("Cache-Control", "no-store");
+  res.status(result.status).json(result.json);
+});
+
+// Local-dev twin of the /api/telegram/profile route in api/telegram/[...path].ts.
+app.all("/api/telegram/profile", async (req: Request, res: Response) => {
+  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
+  const result = await handleProfileApi({ method: req.method, body: req.body, userId });
   res.setHeader("Cache-Control", "no-store");
   res.status(result.status).json(result.json);
 });

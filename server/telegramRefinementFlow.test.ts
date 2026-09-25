@@ -46,9 +46,11 @@ vi.mock('./geminiCalendarAgent.js', () => ({
   },
 }));
 vi.mock('./googleBackgroundPush.js', () => ({ pushEventToGoogleInBackground: vi.fn(), isAutoPushEnabledForUser: vi.fn(async () => false) }));
+vi.mock('./userProfileStore.js', () => ({ getUserProfile: vi.fn(async () => ({ hasPet: true })) }));
 vi.mock('./qualityStore.js', () => ({ logQualityEvent: vi.fn(async () => {}), checkAndLogRapidCorrection: vi.fn() }));
 
 import { TelegramWebhookHandler } from './telegramWebhookHandler';
+import { askRefinementQuestions } from './agentProcessor.js';
 const H = TelegramWebhookHandler as any;
 const say = (text: string) => H.handleIncomingMessage({ chat: { id: 1 }, text, from: { id: 1 } }, 'https://aheadoftime.app');
 const tap = (data: string) => H.handleCallbackQuery({ id: 'cb', data, message: { chat: { id: 1 } } }, 'https://aheadoftime.app');
@@ -75,6 +77,8 @@ describe('Telegram: questions first, then one plan (same order as the web chat)'
       'Trip to mallorca\n\nDetails:\n- When do you go, and when are you back? 23 to 29 October\n- Travel documents: anything to arrange? Visa needed'
     );
     expect(state.sent.at(-1)).toEqual({ plan: 'Trip to Mallorca' });
+    // The linked account's stored profile reaches the question step.
+    expect((askRefinementQuestions as any).mock.calls[0][0].userProfile).toMatchObject({ hasPet: true });
   });
 
   it('skip leaves the answer out, and a tap on an old question is ignored', async () => {

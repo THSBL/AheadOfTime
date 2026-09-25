@@ -3,6 +3,8 @@ import { TelegramWebhookHandler } from '../../server/telegramWebhookHandler.js';
 import { TelegramService } from '../../server/telegramService.js';
 import { TelegramSessionStore } from '../../server/telegramStore.js';
 import { handleEventsApi } from '../../server/eventsApi.js';
+import { handleProfileApi } from '../../server/userProfileStore.js';
+import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
 import { extractBearerToken, verifyGoogleAccessToken } from '../../server/googleAuthVerify.js';
 
 // Consolidated Vercel catch-all for everything under /api/telegram/*.
@@ -247,6 +249,17 @@ export default async function handler(req: any, res: any) {
       email: verified?.email ?? null,
     });
     // Per-user data that changes constantly: never let a cache answer it.
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(result.status).json(result.json);
+  }
+
+  // --- /api/telegram/profile (GET / PUT the signed-in user's onboarding
+  // profile). Lives here next to /events - one segment, same sign-in check,
+  // no extra serverless function. ---
+  if (route === 'profile') {
+    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
+    const result = await handleProfileApi({ method: req.method, body: req.body, userId });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(result.status).json(result.json);
   }

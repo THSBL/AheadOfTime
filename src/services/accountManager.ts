@@ -212,9 +212,16 @@ export function loadUserOnboardingProfile(userId?: string | null): OnboardingPro
     const scopedSaved = localStorage.getItem(scopedKey);
     if (scopedSaved) return JSON.parse(scopedSaved);
 
-    if (normId === 'guest') {
-      const legacy = localStorage.getItem('onboarding_profile');
-      if (legacy) return JSON.parse(legacy);
+    // Onboarding usually happens BEFORE Google sign-in, so its answers land
+    // under the guest key (and the legacy unscoped one). A signed-in user
+    // with nothing under their own key used to see the defaults in
+    // Settings; pick those answers up and move them to the account key.
+    const fromBeforeSignIn =
+      localStorage.getItem(getUserStorageKey('onboarding_profile', 'guest')) ||
+      localStorage.getItem('onboarding_profile');
+    if (fromBeforeSignIn) {
+      if (normId !== 'guest') localStorage.setItem(scopedKey, fromBeforeSignIn);
+      return JSON.parse(fromBeforeSignIn);
     }
     return null;
   } catch {

@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   calendar_scope    TEXT,
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Filled by server/userProfileStore.ts (which also adds these at runtime):
+-- the full onboarding profile follows the account across sign-in and devices.
+ALTER TABLE user_profiles
+  ADD COLUMN IF NOT EXISTS age_range        TEXT,
+  ADD COLUMN IF NOT EXISTS has_pet          BOOLEAN,
+  ADD COLUMN IF NOT EXISTS primary_calendar TEXT,     -- 'google' | 'outlook' | 'apple' | 'other'
+  ADD COLUMN IF NOT EXISTS profile          JSONB;    -- the complete sanitized profile
 
 -- Any channel a user has connected: Telegram, WhatsApp, future ones.
 -- Replaces TelegramSessionStore's in-memory/file session map.

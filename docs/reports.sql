@@ -87,8 +87,9 @@ UNION ALL
 SELECT 'linked_' || channel, COUNT(DISTINCT user_id)
 FROM integration_accounts WHERE is_linked GROUP BY channel;
 
--- Not reportable yet: onboarding answers (household type, pets, home area,
--- the onboarding calendar answer on the profile) are kept only in the
--- user's browser - the user_profiles table exists but nothing writes it.
--- The onboarding calendar answer IS in calendar_preference_votes (query 8b,
--- source = 'onboarding').
+-- 10. Onboarding profile mix (stored per account from this release on;
+--     answers given before it exist only in each user's browser until they
+--     next open the app signed in, when they're uploaded automatically)
+SELECT family_structure, has_pet, primary_calendar, COUNT(*) AS users
+FROM user_profiles
+GROUP BY 1, 2, 3 ORDER BY 4 DESC;
