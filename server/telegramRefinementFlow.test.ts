@@ -96,3 +96,17 @@ describe('Telegram: questions first, then one plan (same order as the web chat)'
     expect(state.plannedWith).toEqual([{ text: "What's on tomorrow?", options: { forceNewEvent: undefined } }]);
   });
 });
+
+describe('Telegram: after Looks Good without Background Sync', () => {
+  it('offers the one-time fix instead of only "open the app"', async () => {
+    const { TelegramSessionStore } = await import('./telegramStore.js');
+    (TelegramSessionStore as any).getEvent = vi.fn(async () => ({ id: 'evt1', title: 'Trip to Mallorca' }));
+    (TelegramSessionStore as any).markEventConfirmed = vi.fn(async () => {});
+    state.sent = [];
+    await tap('CONFIRM_DEFAULT:evt1');
+    const msg = state.sent.at(-1);
+    expect(msg.text).toContain('turn on Background Sync once');
+    expect(msg.opts.reply_markup.inline_keyboard.map((r: any[]) => r[0].text)).toEqual(['📅 Add this one via the app', '⚡ Add plans automatically from now on']);
+    expect(msg.opts.reply_markup.inline_keyboard[1][0].url).toBe('https://aheadoftime.app/settings/credentials?setup=background_sync');
+  });
+});

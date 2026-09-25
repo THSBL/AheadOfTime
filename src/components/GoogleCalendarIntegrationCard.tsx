@@ -99,6 +99,25 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     checkBackgroundSyncStatus();
   }, [isConnected, accessToken]);
 
+  // Arriving from Telegram's "Add plans automatically" button
+  // (?setup=background_sync): bring this card into view and say what the
+  // one remaining step is.
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('setup') !== 'background_sync') return;
+    setBackgroundSyncNotice(
+      isConnected
+        ? 'Turn on Background Sync below: plans you confirm with "Looks Good" in Telegram are then added to your Google Calendar automatically.'
+        : 'Connect Google Calendar first, then turn on Background Sync: plans you confirm with "Looks Good" in Telegram are then added to your calendar automatically.'
+    );
+    setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    params.delete('setup');
+    const newSearch = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${newSearch ? `?${newSearch}` : ''}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reflects the redirect back from /api/auth/google/callback after the
   // consent screen round trip.
   useEffect(() => {
@@ -313,7 +332,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   };
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-200 space-y-5">
+    <div ref={cardRef} className="scroll-mt-20 bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-200 space-y-5">
       {/* Card Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-start gap-3.5">
@@ -353,6 +372,17 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           )}
         </div>
       </div>
+
+      {/* The Telegram setup hint also needs to show before Google is
+          connected (the connected state has its own notice spot below). */}
+      {!isConnected && backgroundSyncNotice && (
+        <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-xs text-slate-700 flex items-start gap-2 animate-in fade-in duration-200">
+          <span className="flex-1">{backgroundSyncNotice}</span>
+          <button type="button" onClick={() => setBackgroundSyncNotice(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Body State */}
       {isConnected ? (

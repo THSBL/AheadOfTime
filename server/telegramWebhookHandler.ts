@@ -214,7 +214,7 @@ export class TelegramWebhookHandler {
         `• _"Alex 30th birthday dinner Oct 24 at 8pm"_`,
         `• _"Conference presentation next Thursday at 2pm"_`,
         ``,
-        `I'll ask a quick follow-up question if something important is missing, then save your prep checklist here - open the app to push it to Google Calendar/Tasks.`,
+        `I'll ask a few quick questions first, then save your prep checklist. With Background Sync on (Settings in the app), tapping Looks Good also adds it to your Google Calendar/Tasks.`,
         ``,
         `*Commands*:`,
         `• /events — View your active events and checklists`,
@@ -262,11 +262,13 @@ export class TelegramWebhookHandler {
     if (text === '/status') {
       const events = await TelegramSessionStore.getRecentEventsForChat(chatId);
       const isLinked = Boolean(session.isLinked);
+      const autoAdd = await isAutoPushEnabledForUser(session.webUserId);
       const statusText = [
         `*System Status*:`,
         `• *Bot*: Online & Connected`,
         `• *Chat ID*: \`${chatId}\``,
         `• *Account Link*: ${isLinked ? `✅ Paired (${session.webUserEmail || session.webUserId || 'Active'})` : `⚠️ Unlinked — [Pair at ${appBaseUrl}/settings/credentials](${appBaseUrl}/settings/credentials)`}`,
+        `• *Auto-add to Google Calendar*: ${autoAdd ? '✅ On - Looks Good adds your plan' : `❌ Off — [turn on Background Sync](${appBaseUrl}/settings/credentials?setup=background_sync)`}`,
         `• *User*: ${session.firstName || session.username || 'User'}`,
         `• *Tracked Events*: ${events.length} active in session`,
         `• *Webapp URL*: ${appBaseUrl}`,
@@ -617,27 +619,37 @@ export class TelegramWebhookHandler {
         // calendar actions with no clear relationship. Now it's the same
         // one-button-per-user rule sendRefinementPrompt uses: only shown
         // when the bot itself can't push on this user's behalf.
-        await TelegramService.sendMessage(
-          chatId,
-          `✅ Prep checklist confirmed for *${event?.title || 'your event'}*.`,
-          {
-            parse_mode: 'Markdown',
-            ...(autoPush
-              ? {}
-              : {
-                  reply_markup: {
-                    inline_keyboard: [
-                      [
-                        {
-                          text: '📅 Push to Calendar',
-                          url: buildEventDeepLink(eventId, appBaseUrl, 'push'),
-                        },
-                      ],
-                    ],
-                  },
-                }),
-          }
-        );
+        // Without Background Sync the bot has no permission to write to the
+        // calendar itself. Instead of only "open the app" every time, offer
+        // the one-time fix: turn it on once (or link the account first) and
+        // every later "Looks Good" adds the plan automatically.
+        const title = `✅ Prep checklist confirmed for *${event?.title || 'your event'}*.`;
+        if (autoPush) {
+          await TelegramService.sendMessage(chatId, title, { parse_mode: 'Markdown' });
+        } else if (!session.webUserId) {
+          await TelegramService.sendMessage(
+            chatId,
+            `${title}\n\nTo add plans to your Google Calendar straight from here, link this chat to your Ahead Of Time account and turn on Background Sync.`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: { inline_keyboard: [[{ text: '🔗 Link my account', url: `${appBaseUrl}/settings/credentials` }]] },
+            }
+          );
+        } else {
+          await TelegramService.sendMessage(
+            chatId,
+            `${title}\n\nIt's not on your calendar yet: add this one via the app, or turn on Background Sync once and I'll add every plan you confirm here automatically.`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '📅 Add this one via the app', url: buildEventDeepLink(eventId, appBaseUrl, 'push') }],
+                  [{ text: '⚡ Add plans automatically from now on', url: `${appBaseUrl}/settings/credentials?setup=background_sync` }],
+                ],
+              },
+            }
+          );
+        }
 
         if (autoPush) await this.pushToGoogleAndReport(chatId, eventId);
       }
