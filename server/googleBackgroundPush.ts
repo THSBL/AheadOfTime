@@ -110,9 +110,14 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
   try {
     await ensureBackgroundSyncSchema();
 
+    // Callers pass the public id (the web app's client_id, e.g. 'evt_...'),
+    // while events.id is a uuid: resolve it once and use the uuid below.
+    const eventUuid = await TelegramSessionStore.resolveEventUuid(eventId);
+    if (!eventUuid) return skipped();
+
     const owner = await query<{ user_id: string; timezone: string | null }>(
       `SELECT e.user_id, u.timezone FROM events e JOIN users u ON u.id = e.user_id WHERE e.id = $1`,
-      [eventId]
+      [eventUuid]
     );
     if (owner.length === 0) return skipped();
 
@@ -133,7 +138,7 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
         const main = await createMainCalendarEvent(accessToken, event, timeZone);
         await query(
           `UPDATE events SET google_event_id = $2, google_event_link = $3, synced_to_google_at = now(), updated_at = now() WHERE id = $1`,
-          [eventId, main.id, main.htmlLink || null]
+          [eventUuid, main.id, main.htmlLink || null]
         );
         result.createdCalendarEvent = true;
       } catch (err: any) {
@@ -153,14 +158,18 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
       for (let j = 0; j < batch.length; j++) {
         const taskId = ids[j];
         if (!taskId) continue;
-        await query(`UPDATE milestones SET google_task_id = $2 WHERE id = $1`, [batch[j].id, taskId]);
+        // Milestone ids are public too (client_id, else the uuid as text).
+        await query(
+          `UPDATE milestones SET google_task_id = $2 WHERE event_id = $3 AND (id::text = $1 OR client_id = $1)`,
+          [batch[j].id, taskId, eventUuid]
+        );
         result.tasksCreated++;
       }
     }
 
     if (result.tasksCreated > 0) {
       // updated_at too: other devices' incremental pulls only see changed rows.
-      await query(`UPDATE events SET synced_to_google_at = now(), updated_at = now() WHERE id = $1`, [eventId]);
+      await query(`UPDATE events SET synced_to_google_at = now(), updated_at = now() WHERE id = $1`, [eventUuid]);
     }
     if (firstError && !result.createdCalendarEvent && result.tasksCreated === 0) {
       return { ...result, status: 'failed', error: firstError };

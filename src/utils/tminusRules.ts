@@ -323,6 +323,10 @@ export function parseNaturalDateRange(
   };
 
   const monthRegexPart = Object.keys(monthMap).sort((a, b) => b.length - a.length).join('|');
+  // A month name must end where the word ends ("4 marathon" is not 4 March),
+  // while the space between day and month is optional below, so a tightly
+  // typed "14DECEMBER", "december14" or "14dec-18dec" still parses.
+  const monthEnd = '(?![a-zà-ÿ])';
 
   // Pattern A: "from 15 to 21 oktober" or "15 to 21 October" or "15 - 21 oct 2026"
   // or a tightly-written "15-21 oktober" with no spaces around the hyphen.
@@ -335,7 +339,7 @@ export function parseNaturalDateRange(
   // another digit, since a real day is always followed by a space, comma,
   // ordinal suffix, or the end of the string - never another digit.
   const patternA = new RegExp(
-    `(?:from\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s*(${monthRegexPart})${monthEnd}(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchA = raw.match(patternA);
@@ -357,7 +361,7 @@ export function parseNaturalDateRange(
 
   // Pattern B: "from 15 oktober to 21 oktober" or "15 oct to 21 nov"
   const patternB = new RegExp(
-    `(?:from\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s*(${monthRegexPart})${monthEnd}(?:\\s+to\\s+|\\s*-\\s*)(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s*(${monthRegexPart})${monthEnd}(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchB = raw.match(patternB);
@@ -380,7 +384,7 @@ export function parseNaturalDateRange(
   // Pattern C: "October 15 to 21" or "Oct 15 - Oct 21" or a tightly-written
   // "Oct 14-18" with no spaces around the hyphen.
   const patternC = new RegExp(
-    `(?:from\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(?:(${monthRegexPart})\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
+    `(?:from\\s+)?(${monthRegexPart})${monthEnd}\\s*(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s+to\\s+|\\s*-\\s*)(?:(${monthRegexPart})${monthEnd}\\s*)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`,
     'i'
   );
   const matchC = raw.match(patternC);
@@ -408,7 +412,7 @@ export function parseNaturalDateRange(
   // comment above patternA for why that used to produce the wrong date).
   // "23 oktober to 29" / "23 october - 29": a range whose end day reuses
   // the start's month (the end date used to be dropped).
-  const patternD1Range = new RegExp(`(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})\\s*(?:to|-|–|until|till|tot|t/m|au|bis)\\s*(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\b(?!\\s*(?:${monthRegexPart}))`, 'i');
+  const patternD1Range = new RegExp(`(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s*(${monthRegexPart})${monthEnd}\\s*(?:to|-|–|until|till|tot|t/m|au|bis)\\s*(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\b(?!\\s*(?:${monthRegexPart}))`, 'i');
   const matchD1Range = raw.match(patternD1Range);
   if (matchD1Range) {
     const startDay = parseInt(matchD1Range[1], 10);
@@ -424,7 +428,7 @@ export function parseNaturalDateRange(
     }
   }
 
-  const patternD1 = new RegExp(`(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthRegexPart})(?:,?\\s*(\\d{4}))?`, 'i');
+  const patternD1 = new RegExp(`(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s*(?:of\\s+)?(${monthRegexPart})${monthEnd}(?:,?\\s*(\\d{4}))?`, 'i');
   const matchD1 = raw.match(patternD1);
   if (matchD1) {
     const day = parseInt(matchD1[1], 10);
@@ -434,7 +438,7 @@ export function parseNaturalDateRange(
     return { startDate: s.toISOString().substring(0, 10), matchedText: matchD1[0] };
   }
 
-  const patternD2 = new RegExp(`(?:on\\s+)?(${monthRegexPart})\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
+  const patternD2 = new RegExp(`(?:on\\s+)?(${monthRegexPart})${monthEnd}\\s*(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'i');
   const matchD2 = raw.match(patternD2);
   if (matchD2) {
     const month = monthMap[matchD2[1].toLowerCase()] ?? 9;

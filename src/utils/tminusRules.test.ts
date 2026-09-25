@@ -1115,3 +1115,22 @@ describe('Telegram-reported trip parsing gaps', () => {
     expect(decomposeComplexTripIntent('Trip to the beach 23 oktober to 29', REF_THU)?.macro_event.title).not.toContain('The');
   });
 });
+
+describe('parseNaturalDateRange - day and month typed without a space', () => {
+  const ref = '2026-09-25';
+  it.each([
+    ['Diving trip 14DECEMBER', '2026-12-14', undefined],
+    ['dinner 14december 2027', '2027-12-14', undefined],
+    ['party december14', '2026-12-14', undefined],
+    ['trip 14-18DECEMBER', '2026-12-14', '2026-12-18'],
+    ['trip 14DEC-18DEC', '2026-12-14', '2026-12-18'],
+  ])('%s', (text, start, end) => {
+    const r = parseNaturalDateRange(text, ref);
+    expect(r?.startDate).toBe(start);
+    expect(r?.endDate).toBe(end);
+  });
+
+  it('does not read a month out of a longer word ("4 marathon" is not 4 March)', () => {
+    expect(parseNaturalDateRange('Chapter 4 marathon training', ref)).toBeNull();
+  });
+});

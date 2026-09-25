@@ -11,7 +11,11 @@ vi.mock('./googleOAuthTokenStore.js', () => ({
   hasBackgroundSyncLinked: () => Promise.resolve(true),
 }));
 vi.mock('./telegramStore.js', () => ({
-  TelegramSessionStore: { getEvent: (...args: unknown[]) => getEventMock(...args) },
+  TelegramSessionStore: {
+    getEvent: (...args: unknown[]) => getEventMock(...args),
+    // Public ids ('evt-1') resolve to the row's uuid, like the real store.
+    resolveEventUuid: async (id: string) => (id === 'missing' ? undefined : 'uuid-1'),
+  },
 }));
 
 import { pushEventToGoogleInBackground } from './googleBackgroundPush';
@@ -68,8 +72,13 @@ describe('pushEventToGoogleInBackground', () => {
     expect(urls.filter((u) => u.includes('tasks/v1'))).toHaveLength(2);
 
     const eventWrite = writes('SET google_event_id')[0];
-    expect(eventWrite[1]).toEqual(['evt-1', 'gcal-1', 'https://cal/link']);
-    expect(writes('SET google_task_id')).toHaveLength(2);
+    expect(eventWrite[1]).toEqual(['uuid-1', 'gcal-1', 'https://cal/link']);
+    // Milestones are matched by their public id (client_id or uuid text), scoped to the event's uuid.
+    const taskWrites = writes('SET google_task_id');
+    expect(taskWrites).toHaveLength(2);
+    expect(String(taskWrites[0][0])).toContain('client_id = $1');
+    expect(taskWrites.map(([, p]) => (p as unknown[])[0]).sort()).toEqual(['m1', 'm2']);
+    expect((taskWrites[0][1] as unknown[])[2]).toBe('uuid-1');
     // Task titles use the shared formatter: task first, event and due date trailing.
     const taskBody = JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).includes('tasks/v1'))![1].body);
     expect(taskBody.title).toBe('Book train · Amsterdam trip · 10/03');
@@ -111,7 +120,7 @@ describe('pushEventToGoogleInBackground', () => {
     const taskBody = JSON.parse(taskUrls[0][1].body);
     expect(taskBody.title).toContain('Book train');
     expect(writes('SET google_task_id')).toHaveLength(1);
-    expect(writes('SET google_task_id')[0][1]).toEqual(['m1', 'task-2']);
+    expect(writes('SET google_task_id')[0][1]).toEqual(['m1', 'task-2', 'uuid-1']);
   });
 
   it('skips silently when the owner never linked Background Sync (or it was revoked)', async () => {
@@ -146,5 +155,11 @@ describe('pushEventToGoogleInBackground', () => {
     );
     const result = await pushEventToGoogleInBackground('evt-1');
     expect(result).toMatchObject({ status: 'pushed', createdCalendarEvent: false, tasksCreated: 2 });
+  });
+
+  it('skips an event id that resolves to nothing', async () => {
+    const result = await pushEventToGoogleInBackground('missing');
+    expect(result.status).toBe('skipped');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
