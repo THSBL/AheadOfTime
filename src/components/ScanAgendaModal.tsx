@@ -33,6 +33,8 @@ import { detectEventCategory, formatDisplayDate, getCleanEventTitle } from '../u
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { normalizeProfile } from '../data/samplePresets';
 import { getCurrentUser, loadUserEvents, setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
+import { groupTripEntries, describeTripEntry } from '../utils/tripGrouping';
+import { completeTasksEvidencedByCalendar } from '../utils/calendarEvidence';
 import { isServerCalendarLinked, scanAgendaViaServer, ServerCalendarUnavailable } from '../services/serverCalendar';
 
 /**
@@ -66,6 +68,8 @@ export function isEventAlreadyInDashboard(
     // 1. Direct googleEventId match
     if (existing.googleEventId && existing.googleEventId === gcalId) return true;
     if (existing.id === `gcal-${gcalId}` || existing.id === gcalId) return true;
+    // Part of a trip imported earlier as one grouped event.
+    if (Array.isArray(existing.context?.calendarEntryIds) && existing.context.calendarEntryIds.includes(gcalId)) return true;
 
     // 2. Normalized Title + Date Match
     const normExisting = normalize(existing.title || '');
@@ -106,6 +110,12 @@ interface ScanAgendaModalProps {
   initialScanMonths?: number;
 }
 
+function shiftDay(date: string, days: number): string {
+  const d = new Date(`${date.slice(0, 10)}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 interface ScannedEventItem extends GoogleCalendarEventItem {
   detectedCategory: EventCategory;
   isRoutine: boolean;
@@ -113,6 +123,8 @@ interface ScannedEventItem extends GoogleCalendarEventItem {
   shouldTrackByDefault: boolean;
   diffDays: number;
   previewMilestones: TMinusMilestone[];
+  /** Set when this row is one trip grouped from several calendar entries (utils/tripGrouping.ts). */
+  tripParts?: GoogleCalendarEventItem[];
 }
 
 export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
@@ -236,7 +248,38 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       const liveDashboardEvents = currentDashboardEvents || [];
 
       const refTime = new Date(currentReferenceDate).getTime();
-      const scannedList: ScannedEventItem[] = (items || []).map((item) => {
+      const { calendar_type: profileCalendar } = normalizeProfile(onboardingProfile);
+      const isRoutineTitle = (title: string) =>
+        (profileCalendar !== 'business' && /standup|1:1|sync|weekly|daily|scrum|catchup|status check|office hours|all hands|retrospective|retro\b/i.test(title)) ||
+        /dentist|cleaning|doctor|vet\b|haircut|dry clean/i.test(title);
+      // One trip in the calendar is often several entries (stays, transfers,
+      // tours); group them so the trip gets one plan instead of one per entry.
+      // Entries already in the app are left out of grouping.
+      const newItems = (items || []).filter((item) => !isEventAlreadyInDashboard(item, liveDashboardEvents));
+      const { trips } = groupTripEntries(newItems, {
+        isTripCategory: (item) => detectEventCategory(item.summary || '', item.description || '') === 'travel_trip',
+        canJoinTrip: (item) => !isRoutineTitle((item.summary || '').toLowerCase()),
+      });
+      const groupedIds = new Set(trips.flatMap((trip) => trip.entries.map((e) => e.id)));
+      const tripItems: (GoogleCalendarEventItem & { tripParts: GoogleCalendarEventItem[] })[] = trips.map((trip) => {
+        const endExclusive = new Date(`${trip.endDate}T12:00:00Z`);
+        endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+        return {
+          id: `trip-${trip.entries[0].id}`,
+          summary: trip.title,
+          description: trip.entries.map(describeTripEntry).join('\n'),
+          location: trip.destination || '',
+          start: { date: trip.startDate },
+          end: { date: endExclusive.toISOString().slice(0, 10) },
+          tripParts: trip.entries,
+        } as GoogleCalendarEventItem & { tripParts: GoogleCalendarEventItem[] };
+      });
+      const rowsToScan: (GoogleCalendarEventItem & { tripParts?: GoogleCalendarEventItem[] })[] = [
+        ...(items || []).filter((item) => !groupedIds.has(item.id)),
+        ...tripItems,
+      ].sort((a, b) => (a.start?.dateTime || a.start?.date || '').localeCompare(b.start?.dateTime || b.start?.date || ''));
+
+      const scannedList: ScannedEventItem[] = rowsToScan.map((item) => {
         const title = item.summary || 'Untitled Event';
         const desc = item.description || '';
         const startDateStr = item.start?.dateTime || item.start?.date || '';
@@ -260,10 +303,10 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         // If couple with kids, prioritize school and youth events
         const isKidsPriority = flagsKids && /school|costume|spirit|rehearsal|recital|tournament|sports|camp|halloween/i.test(lowerTitle);
 
-        const category = detectEventCategory(title, desc);
+        const category = item.tripParts ? 'travel_trip' : detectEventCategory(title, desc);
 
-        // Deduplication against dashboard
-        const alreadyInDashboard = isEventAlreadyInDashboard(item, liveDashboardEvents);
+        // Deduplication against dashboard (a grouped trip's parts were all new)
+        const alreadyInDashboard = item.tripParts ? false : isEventAlreadyInDashboard(item, liveDashboardEvents);
 
         // Create temporary event structure to generate preview milestones using deep domain logic
         const tempEvent: CalendarEvent = {
@@ -453,6 +496,35 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       const eventDateStr = startDateStr ? startDateStr.substring(0, 10) : '';
       const eventTimeStr = startDateStr.includes('T') ? startDateStr.substring(11, 16) : '10:00';
 
+      if (item.tripParts) {
+        const endExclusive = item.end?.date || eventDateStr;
+        const last = new Date(`${endExclusive}T12:00:00Z`);
+        last.setUTCDate(last.getUTCDate() - 1);
+        const firstTimed = item.tripParts.find((p) => p.start?.dateTime);
+        return {
+          id: `gcal-${item.id}`,
+          title: item.summary,
+          eventDate: eventDateStr,
+          endDate: last.toISOString().slice(0, 10),
+          eventTime: firstTimed?.start?.dateTime?.substring(11, 16) || '10:00',
+          category: 'travel_trip',
+          status: 'milestones_active',
+          needsRefinement: true,
+          location: item.location || '',
+          context: {
+            hasPet: onboardingProfile?.hasPet,
+            ...(item.location ? { destination: item.location } : {}),
+            // What the calendar already holds for this trip: the planner
+            // treats these as arranged, and a later scan recognises them.
+            calendarEntries: item.tripParts.map(describeTripEntry),
+            calendarEntryIds: item.tripParts.map((p) => p.id),
+          },
+          milestones: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as CalendarEvent;
+      }
+
       return {
         id: `gcal-${item.id}`,
         title: getCleanEventTitle(item.summary, item.detectedCategory),
@@ -479,7 +551,14 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       const chunk = draftEvents.slice(i, i + IMPORT_CONCURRENCY);
       const chunkResults = await Promise.all(
         chunk.map(async (draft) => {
-          const milestones = await refineImportedEvent(draft);
+          const planned = await refineImportedEvent(draft);
+          // Tasks already due at import that the calendar shows as arranged
+          // (the hotel stay is in it) start out done - trips only.
+          const source = selectedItems.find((item) => `gcal-${item.id}` === draft.id);
+          const evidenceEntries = draft.category === 'travel_trip' && source ? source.tripParts || [source] : [];
+          const milestones = evidenceEntries.length
+            ? completeTasksEvidencedByCalendar(planned, evidenceEntries, draft, [draft.title, draft.location || ''])
+            : planned;
           completedCount += 1;
           setImportProgress({ done: completedCount, total: draftEvents.length });
           return { ...draft, milestones };
@@ -859,8 +938,14 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
                             <p className="text-[11px] text-slate-500 truncate">
                               {startDate ? formatDisplayDate(startDate.substring(0, 10)) : 'No date'}
+                              {item.tripParts && item.end?.date ? ` – ${formatDisplayDate(shiftDay(item.end.date, -1))}` : ''}
                               {item.location ? ` • ${item.location}` : ''}
                             </p>
+                            {item.tripParts && (
+                              <p className="text-[11px] text-slate-500 truncate" title={item.tripParts.map((p) => p.summary).join(' · ')}>
+                                {item.tripParts.length} calendar entries: {item.tripParts.map((p) => p.summary).join(' · ')}
+                              </p>
+                            )}
 
                             {item.previewMilestones.length > 0 && (
                               <div className="text-[10px] text-sky-800 font-medium">

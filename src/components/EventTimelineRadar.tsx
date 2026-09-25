@@ -30,7 +30,8 @@ import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel } from
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
-import { computeOverdueMilestones, computeWeeklyMilestonePreview } from '../utils/readiness';
+import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStart, spreadCatchUpDates } from '../utils/readiness';
+import { CatchUpCard } from './CatchUpCard';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { DeleteEventModal } from './DeleteEventModal';
@@ -741,6 +742,25 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     .map((item) => milestonesById.get(item.milestoneId))
     .filter((ms): ms is TMinusMilestone => Boolean(ms));
   const weeklyPreview = computeWeeklyMilestonePreview(syntheticEvents, currentReferenceDate);
+  // Due before this event was added: a one-time "already done?" check, not
+  // overdue work (see isLateFromStart).
+  const catchUpMilestones = displayedMilestones.filter((ms) => isLateFromStart(ms, activeEvent));
+  const markCatchUpDone = (ids: string[]) => {
+    if (!onUpdateMilestone) return;
+    const completedAt = new Date().toISOString();
+    for (const id of ids) {
+      const ms = milestonesById.get(id);
+      if (ms) onUpdateMilestone(activeEvent.id, { ...ms, status: 'completed', completedAt });
+    }
+  };
+  const planCatchUpRest = (ids: string[]) => {
+    if (!onUpdateMilestone) return;
+    const dates = spreadCatchUpDates(ids.length, activeEvent.eventDate, currentReferenceDate);
+    ids.forEach((id, index) => {
+      const ms = milestonesById.get(id);
+      if (ms) onUpdateMilestone(activeEvent.id, { ...ms, calculatedDate: dates[index] });
+    });
+  };
   const thisWeekBucket = weeklyPreview.find((bucket) => bucket.key === 'week-0');
   // Looking ahead is a flat, always-open scan of everything beyond this
   // week - no week split, no topic clustering - so it's one merged,
@@ -1527,6 +1547,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </div>
         ) : (
           <>
+            {catchUpMilestones.length > 0 && onUpdateMilestone && (
+              <CatchUpCard
+                eventTitle={activeEvent.title}
+                items={catchUpMilestones.map((ms) => ({ milestoneId: ms.id, title: ms.title }))}
+                hideEventTitle
+                onMarkDone={markCatchUpDone}
+                onPlanRest={planCatchUpRest}
+              />
+            )}
+
             {/* Overdue - flat and fully detailed, never folded into a topic,
                 since this is exactly what needs attention right now. */}
             {overdueItems.length > 0 && (

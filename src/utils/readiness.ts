@@ -13,7 +13,7 @@
  * flagged there, not hidden.
  */
 import { CalendarEvent, TMinusMilestone, MilestoneCategory } from '../types';
-import { getCountdownStatus } from './tminusRules';
+import { getCountdownStatus, calculateOffsetDate } from './tminusRules';
 
 export type ActionImportance = 'critical' | 'important' | 'routine';
 
@@ -88,13 +88,53 @@ function actionableMilestones(milestones: TMinusMilestone[] | undefined): TMinus
   return (milestones || []).filter((m) => m.status !== 'skipped' && m.isActive !== false);
 }
 
+/**
+ * "Late from the start": still open, and due before its event was even
+ * added - typical for an event imported (or planned) only weeks ahead,
+ * whose ideal booking dates had already passed. The user never fell behind
+ * on these, and many are already done (the hotel is booked), so they are a
+ * one-time check, not overdue work: they never count as overdue or feed the
+ * "falling behind" banner. Rescheduling one ("still to do") moves it past
+ * that date, after which it is an ordinary task again.
+ */
+export function isLateFromStart(
+  milestone: TMinusMilestone,
+  event: Pick<CalendarEvent, 'createdAt'> & Partial<Pick<CalendarEvent, 'eventDate' | 'eventTime'>>
+): boolean {
+  if (milestone.status === 'completed' || milestone.status === 'skipped' || milestone.isActive === false) return false;
+  const added = (event.createdAt || '').slice(0, 10);
+  const due = (milestone.calculatedDate || '').slice(0, 10);
+  if (!added || !due) return false;
+  if (due < added) return true;
+  // The built-in planner moves a task whose ideal date has passed to the
+  // day it plans ("Immediate") instead of leaving it in the past - still
+  // late from the start, judged by its ideal date (event date minus lead
+  // time). Once rescheduled past that day it's an ordinary task again.
+  return due === added && idealDueDay(milestone, event) < added;
+}
+
+/** Event date minus the task's lead time, as YYYY-MM-DD (its date when the lead time is unknown). */
+function idealDueDay(milestone: TMinusMilestone, event: Partial<Pick<CalendarEvent, 'eventDate' | 'eventTime'>>): string {
+  if (typeof milestone.tMinusOffsetMinutes !== 'number' || !event.eventDate) return (milestone.calculatedDate || '').slice(0, 10);
+  try {
+    return calculateOffsetDate(event.eventDate.slice(0, 10), event.eventTime, milestone.tMinusOffsetMinutes).slice(0, 10);
+  } catch {
+    return (milestone.calculatedDate || '').slice(0, 10);
+  }
+}
+
+/** Open tasks that are on the normal schedule (late-from-start ones excluded). */
+function scheduledOutstanding(event: CalendarEvent): TMinusMilestone[] {
+  return actionableMilestones(event.milestones).filter((m) => m.status !== 'completed' && !isLateFromStart(m, event));
+}
+
 export function computeAheadStatus(event: CalendarEvent, referenceDateISO: string): AheadStatus {
   const actionable = actionableMilestones(event.milestones);
   const totalCount = actionable.length;
   const completedCount = actionable.filter((m) => m.status === 'completed').length;
   const outstanding = actionable.filter((m) => m.status !== 'completed');
 
-  const overdueOutstanding = outstanding.filter((m) => getCountdownStatus(m.calculatedDate, referenceDateISO).isOverdue);
+  const overdueOutstanding = scheduledOutstanding(event).filter((m) => getCountdownStatus(m.calculatedDate, referenceDateISO).isOverdue);
   const overdueCount = overdueOutstanding.length;
   const criticalOutstandingCount = outstanding.filter((m) => inferMilestoneImportance(m) === 'critical').length;
   const overdueCriticalCount = overdueOutstanding.filter((m) => inferMilestoneImportance(m) === 'critical').length;
@@ -261,6 +301,8 @@ export interface SimpleAheadStatus {
   dueSoonCount: number;
   completedCount: number;
   totalCount: number;
+  /** Open tasks that were due before their event was added (see isLateFromStart). */
+  catchUpCount: number;
 }
 
 /** More than this many items to wrap up this week counts as a "Busy week". */
@@ -290,6 +332,7 @@ export function computeSimpleAheadStatus(
   let overdueCount = 0;
   let maxOverdueDays = 0;
   let dueSoonCount = 0;
+  let catchUpCount = 0;
   let completedCount = 0;
   let totalCount = 0;
 
@@ -297,9 +340,9 @@ export function computeSimpleAheadStatus(
     const actionable = actionableMilestones(event.milestones);
     totalCount += actionable.length;
     completedCount += actionable.filter((m) => m.status === 'completed').length;
+    catchUpCount += actionable.filter((m) => isLateFromStart(m, event)).length;
 
-    const outstanding = actionable.filter((m) => m.status !== 'completed');
-    for (const milestone of outstanding) {
+    for (const milestone of scheduledOutstanding(event)) {
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
       if (countdown.isOverdue) {
         overdueCount += 1;
@@ -310,7 +353,7 @@ export function computeSimpleAheadStatus(
     }
   }
 
-  const base = { overdueCount, dueSoonCount, completedCount, totalCount };
+  const base = { overdueCount, dueSoonCount, completedCount, totalCount, catchUpCount };
 
   if (overdueCount >= 3 || maxOverdueDays > 3) {
     return {
@@ -331,6 +374,15 @@ export function computeSimpleAheadStatus(
       // Same amber level/styling; only the wording changes.
       label: wrapUpCount > BUSY_WEEK_THRESHOLD ? 'Busy week' : 'You are almost ahead',
       sub: `${wrapUpCount} item${wrapUpCount === 1 ? '' : 's'} to wrap up this week`,
+    };
+  }
+
+  if (catchUpCount > 0) {
+    return {
+      ...base,
+      level: 'almost_ahead',
+      label: 'A quick check first',
+      sub: `${catchUpCount} task${catchUpCount === 1 ? ' was' : 's were'} due before you added ${catchUpCount === 1 ? 'its event' : 'their events'} - tick off what's done`,
     };
   }
 
@@ -361,7 +413,7 @@ const IMPORTANCE_WEIGHT: Record<ActionImportance, number> = { critical: 0, impor
  * tie-break at equal urgency. Returns null once nothing outstanding remains.
  */
 export function computeNextBestActionForEvent(event: CalendarEvent, referenceDateISO: string): NextBestAction | null {
-  const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
+  const outstanding = scheduledOutstanding(event);
   if (outstanding.length === 0) return null;
 
   const scored = outstanding.map((m) => {
@@ -519,8 +571,7 @@ export function computeOverdueMilestones(events: CalendarEvent[], referenceDateI
   const items: UpcomingMilestoneItem[] = [];
 
   for (const event of events) {
-    const outstanding = actionableMilestones(event.milestones).filter((m) => m.status !== 'completed');
-    for (const milestone of outstanding) {
+    for (const milestone of scheduledOutstanding(event)) {
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
       if (!countdown.isOverdue) continue;
 
@@ -539,6 +590,67 @@ export function computeOverdueMilestones(events: CalendarEvent[], referenceDateI
 
   items.sort((a, b) => a.diffDays - b.diffDays);
   return items;
+}
+
+export interface CatchUpGroup {
+  eventId: string;
+  eventTitle: string;
+  eventDate: string;
+  items: UpcomingMilestoneItem[];
+}
+
+/**
+ * The late-from-start tasks (see isLateFromStart), grouped per event,
+ * soonest event first: the one-time "already done?" check for events that
+ * were added close to their date.
+ */
+export function computeCatchUpGroups(events: CalendarEvent[], referenceDateISO: string): CatchUpGroup[] {
+  const groups: CatchUpGroup[] = [];
+  for (const event of sortEventsByDate(events)) {
+    const late = actionableMilestones(event.milestones).filter((m) => isLateFromStart(m, event));
+    if (late.length === 0) continue;
+    groups.push({
+      eventId: event.id,
+      eventTitle: event.title,
+      eventDate: event.eventDate,
+      items: late.map((milestone) => {
+        const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
+        return {
+          eventId: event.id,
+          eventTitle: event.title,
+          milestoneId: milestone.id,
+          title: milestone.title,
+          dueLabel: countdown.label,
+          diffDays: countdown.diffDays,
+          importance: inferMilestoneImportance(milestone),
+          theme: inferActionTheme(milestone),
+        };
+      }),
+    });
+  }
+  return groups;
+}
+
+function sortEventsByDate(events: CalendarEvent[]): CalendarEvent[] {
+  return [...events].sort((a, b) => (a.eventDate || '').localeCompare(b.eventDate || ''));
+}
+
+/**
+ * New dates (ISO, midday UTC) for tasks the user says are still to do: spread evenly from
+ * tomorrow up to the day before the event (or all tomorrow when the event
+ * is that close), keeping their original order.
+ */
+export function spreadCatchUpDates(count: number, eventDate: string, referenceDateISO: string): string[] {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = new Date(`${referenceDateISO.slice(0, 10)}T12:00:00Z`).getTime() + dayMs;
+  const lastDay = new Date(`${(eventDate || '').slice(0, 10)}T12:00:00Z`).getTime() - dayMs;
+  const span = Number.isFinite(lastDay) ? Math.max(0, Math.floor((lastDay - start) / dayMs)) : 0;
+  return Array.from({ length: count }, (_, i) => {
+    const offset = count <= 1 ? 0 : Math.round((span * i) / (count - 1));
+    // Midday, so "tomorrow" reads as Tomorrow rather than a date-only
+    // midnight a few hours away ("Due today").
+    return new Date(start + offset * dayMs).toISOString();
+  });
 }
 
 export interface WeeklyMilestoneBucket {

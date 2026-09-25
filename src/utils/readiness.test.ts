@@ -469,3 +469,65 @@ describe('computeSimpleAheadStatus', () => {
   });
 });
 
+
+import {
+  isLateFromStart as _isLateFromStart,
+  computeCatchUpGroups as _computeCatchUpGroups,
+  spreadCatchUpDates as _spreadCatchUpDates,
+  computeSimpleAheadStatus as _computeSimpleAheadStatus,
+  computeOverdueMilestones as _computeOverdueMilestones,
+} from './readiness';
+
+describe('late-from-start tasks (imported close to the event)', () => {
+  const ms = (id: string, date: string, status: 'pending' | 'completed' = 'pending') => ({
+    id, eventId: 'e1', title: id, tMinusLabel: 'T-1d', tMinusOffsetMinutes: -1440,
+    calculatedDate: date, category: 'booking', status, deliverables: [],
+  }) as any;
+  // Added 20 Sep for an 10 Oct trip: two tasks were due before it was added.
+  const trip = {
+    id: 'e1', title: 'Guatemala trip', category: 'travel_trip', eventDate: '2026-10-10', status: 'milestones_active',
+    createdAt: '2026-09-20T09:00:00.000Z', updatedAt: '2026-09-20T09:00:00.000Z',
+    milestones: [ms('lodging', '2026-08-30'), ms('flights', '2026-09-01'), ms('insurance', '2026-09-22'), ms('packing', '2026-10-07')],
+  } as any;
+  const today = '2026-09-25T10:00:00.000Z';
+
+  it('flags only open tasks due before the event was added', () => {
+    expect(trip.milestones.map((m: any) => _isLateFromStart(m, trip))).toEqual([true, true, false, false]);
+    expect(_isLateFromStart({ ...trip.milestones[0], status: 'completed' }, trip)).toBe(false);
+  });
+
+  it('keeps them out of overdue and the banner, and offers them as a catch-up group', () => {
+    expect(_computeOverdueMilestones([trip], today).map((i) => i.milestoneId)).toEqual(['insurance']);
+    const status = _computeSimpleAheadStatus([trip], today);
+    expect(status.overdueCount).toBe(1);
+    expect(status.catchUpCount).toBe(2);
+    expect(status.level).not.toBe('behind');
+    const groups = _computeCatchUpGroups([trip], today);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items.map((i) => i.milestoneId)).toEqual(['lodging', 'flights']);
+  });
+
+  it('asks for a quick check when catch-up tasks are all that is left', () => {
+    const onlyLate = { ...trip, milestones: trip.milestones.slice(0, 2) };
+    const status = _computeSimpleAheadStatus([onlyLate], today);
+    expect(status.label).toBe('A quick check first');
+  });
+
+  it('spreads "still to do" tasks from tomorrow to the day before the event', () => {
+    const days = (dates: string[]) => dates.map((d) => d.slice(0, 10));
+    expect(days(_spreadCatchUpDates(3, '2026-10-10', today))).toEqual(['2026-09-26', '2026-10-03', '2026-10-09']);
+    expect(days(_spreadCatchUpDates(2, '2026-09-26', today))).toEqual(['2026-09-26', '2026-09-26']);
+    expect(_spreadCatchUpDates(1, '2026-10-10', today)[0]).toBe('2026-09-26T12:00:00.000Z');
+  });
+});
+
+describe('late-from-start: tasks the built-in planner moved to the day it planned', () => {
+  it('uses the ideal date (event date minus lead time), until the task is rescheduled', () => {
+    const event = { createdAt: '2026-09-25T08:00:00.000Z', eventDate: '2026-10-15', eventTime: '10:00' } as any;
+    const moved = { id: 'x', status: 'pending', calculatedDate: '2026-09-25T07:00:00.000Z', tMinusOffsetMinutes: -30 * 24 * 60 } as any;
+    const onTime = { ...moved, tMinusOffsetMinutes: -24 * 60 * 10, calculatedDate: '2026-10-05T10:00:00.000Z' };
+    expect(_isLateFromStart(moved, event)).toBe(true);
+    expect(_isLateFromStart(onTime, event)).toBe(false);
+    expect(_isLateFromStart({ ...moved, calculatedDate: '2026-09-27' }, event)).toBe(false);
+  });
+});

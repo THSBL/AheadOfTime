@@ -19,7 +19,8 @@ export interface TasksNeedingAttention {
 /**
  * The user's own pending tasks (from the synced event list) that are overdue
  * or due within a week, for events that have not happened yet. Events they
- * deleted, and long-past events, never nag.
+ * deleted, long-past events, and tasks that were already late when their
+ * event was added, never nag.
  */
 export async function listTasksNeedingAttention(userId: string, todayIso: string): Promise<TasksNeedingAttention> {
   await ensureEventSyncSchema();
@@ -34,6 +35,9 @@ export async function listTasksNeedingAttention(userId: string, todayIso: string
         AND m.status = 'pending'
         AND m.kind = 'milestone'
         AND m.calculated_date < ($2::date + $3::int + 1)
+        -- Due before the event was even added: a one-time catch-up check in
+        -- the app (isLateFromStart in src/utils/readiness.ts), not overdue.
+        AND m.calculated_date >= e.created_at::date
       ORDER BY m.calculated_date ASC
       LIMIT $4`,
     [userId, today, WEEK_DAYS, MAX_ROWS]

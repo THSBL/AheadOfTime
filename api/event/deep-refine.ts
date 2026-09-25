@@ -69,7 +69,9 @@ Event Title: "${event.title}"
 Event Date: ${event.eventDate || 'Upcoming'} (Time: ${event.eventTime || '19:00'})
 Event Location: "${event.location || 'None specified'}"
 Event Category: "${event.category || 'custom'}"
-Existing Context: "${JSON.stringify(event.context || {})}"
+Existing Context: "${JSON.stringify(event.context || {})}"${event.endDate ? `\nTrip ends: ${event.endDate}` : ''}${Array.isArray(event.context?.calendarEntries) && event.context.calendarEntries.length
+  ? `\nAlready in the user's calendar for this trip (each one is booked or arranged - do not plan tasks to book or arrange these again; plan what they still need, like documents, gear or getting between them):\n${event.context.calendarEntries.map((line: string) => `- ${line}`).join('\n')}`
+  : ''}
 
 ${SHARED_PLANNING_RULES}
 

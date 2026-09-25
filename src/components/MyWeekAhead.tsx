@@ -7,6 +7,8 @@ import {
   computeSimpleAheadStatus,
   computeOverdueMilestones,
   computeWeeklyMilestonePreview,
+  computeCatchUpGroups,
+  spreadCatchUpDates,
   AheadLevel,
   ActionTheme,
   SimpleAheadLevel,
@@ -16,6 +18,7 @@ import {
   THEME_LABELS,
 } from '../utils/readiness';
 import { ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
+import { CatchUpCard } from './CatchUpCard';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
   bookings_logistics: Plane,
@@ -517,6 +520,28 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
   const simpleStatus = computeSimpleAheadStatus(activeEvents, currentReferenceDate);
   const overdueItems = computeOverdueMilestones(activeEvents, currentReferenceDate);
+  const catchUpGroups = computeCatchUpGroups(activeEvents, currentReferenceDate);
+
+  // "Already done" / "Plan the rest" for a catch-up card (see CatchUpCard).
+  const markCatchUpDone = (eventId: string, milestoneIds: string[]) => {
+    if (!onUpdateMilestone) return;
+    const event = activeEvents.find((e) => e.id === eventId);
+    const completedAt = new Date().toISOString();
+    for (const id of milestoneIds) {
+      const milestone = event?.milestones?.find((m) => m.id === id);
+      if (milestone) onUpdateMilestone(eventId, { ...milestone, status: 'completed', completedAt });
+    }
+  };
+  const planCatchUpRest = (eventId: string, milestoneIds: string[]) => {
+    if (!onUpdateMilestone) return;
+    const event = activeEvents.find((e) => e.id === eventId);
+    if (!event) return;
+    const dates = spreadCatchUpDates(milestoneIds.length, event.eventDate, currentReferenceDate);
+    milestoneIds.forEach((id, index) => {
+      const milestone = event.milestones?.find((m) => m.id === id);
+      if (milestone) onUpdateMilestone(eventId, { ...milestone, calculatedDate: dates[index] });
+    });
+  };
   // "Looking ahead" only looks 4 weeks out - far enough to plan against,
   // not so far it turns into an undifferentiated backlog.
   const weeklyPreview = computeWeeklyMilestonePreview(activeEvents, currentReferenceDate, { weeks: 4 });
@@ -534,12 +559,13 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
     const newDate = new Date(currentReferenceDate);
     newDate.setDate(newDate.getDate() + (target === 'tomorrow' ? 1 : 7));
-    onUpdateMilestone(item.eventId, { ...milestone, calculatedDate: newDate.toISOString().slice(0, 10) });
+    // Midday: a date-only value is midnight UTC, which reads as "Due today" for tomorrow.
+    onUpdateMilestone(item.eventId, { ...milestone, calculatedDate: `${newDate.toISOString().slice(0, 10)}T12:00:00.000Z` });
   };
   // Nothing overdue and nothing due this week - the "focus on now" zone is
   // genuinely empty, so say so instead of leaving a silent gap before
   // "Looking ahead".
-  const isFocusZoneClear = overdueItems.length === 0 && !thisWeekBucket;
+  const isFocusZoneClear = overdueItems.length === 0 && !thisWeekBucket && catchUpGroups.length === 0;
 
   const perEvent = sortEventsUpcomingFirst(activeEvents, currentReferenceDate).map((event) => ({
     event,
@@ -600,6 +626,36 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Catch up - tasks that were due before their event was even
+            added (an agenda imported a few weeks ahead). Not overdue: a
+            one-time "already done?" check per event, so a new user's first
+            view isn't a wall of red. */}
+        {catchUpGroups.length > 0 && onUpdateMilestone && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 px-1">
+              <span className="inline-flex items-center gap-1.5 text-amber-700 text-xs font-bold uppercase tracking-wide shrink-0">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Catch up
+              </span>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                {catchUpGroups.length} event{catchUpGroups.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            {catchUpGroups.map((group) => (
+              <CatchUpCard
+                key={group.eventId}
+                eventTitle={group.eventTitle}
+                eventDate={group.eventDate}
+                items={group.items}
+                onSelectEvent={() => onSelectEvent(group.eventId)}
+                onMarkDone={(ids) => markCatchUpDone(group.eventId, ids)}
+                onPlanRest={(ids) => planCatchUpRest(group.eventId, ids)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Overdue - every overdue milestone, not just the single most
             urgent one, always shown in full detail (never folded into a
