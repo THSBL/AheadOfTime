@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const getValidAccessTokenMock = vi.fn();
+const hasTasksScopeMock = vi.fn();
 vi.mock('./googleOAuthTokenStore.js', () => ({
   getValidAccessToken: (...args: unknown[]) => getValidAccessTokenMock(...args),
+  backgroundSyncHasTasksScope: (...args: unknown[]) => hasTasksScopeMock(...args),
 }));
 
 import { handleCalendarPush, handleCalendarEvents } from './googleCalendarServerApi';
@@ -23,6 +25,7 @@ describe('server Push to Cal / Scan agenda', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     getValidAccessTokenMock.mockResolvedValue('server-token');
+    hasTasksScopeMock.mockResolvedValue(true);
     fetchMock.mockImplementation(async (url: string) => {
       const u = String(url);
       if (u.endsWith('/calendars/primary')) return { ok: true, json: async () => ({ id: 'me@example.com', summary: 'Me', timeZone: 'Europe/Amsterdam' }) };
@@ -66,5 +69,13 @@ describe('server Push to Cal / Scan agenda', () => {
     expect(r.body.items).toHaveLength(1);
     const listUrl = String(fetchMock.mock.calls.find(([u]) => String(u).includes('events?'))![0]);
     expect(listUrl).toContain('maxResults=250');
+  });
+
+  it('falls back to the browser (409) when the grant lacks Google Tasks', async () => {
+    hasTasksScopeMock.mockResolvedValue(false);
+    const r = await handleCalendarPush('u1', 'POST', { event });
+    expect(r.status).toBe(409);
+    expect(r.body.tasksGranted).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

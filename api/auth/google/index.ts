@@ -5,6 +5,7 @@ import { findOrCreateUserByEmail, TelegramSessionStore } from '../../../server/t
 import { signOAuthState } from '../../../server/notifyActionToken.js';
 import {
   hasBackgroundSyncLinked,
+  backgroundSyncHasTasksScope,
   unlinkBackgroundSync,
   isBackgroundSyncConfigured,
   missingBackgroundSyncConfig,
@@ -121,6 +122,7 @@ async function handleStatus(req: any, res: any) {
       telegramLinked: Boolean(telegramSession?.chatId),
       emailConfigured: isEmailConfigured(),
       email: verified.email,
+      tasksGranted: linked ? await backgroundSyncHasTasksScope(userId) : null,
       prefs: linked ? (await getNotifyPrefs(userId)).prefs : null,
       prefsSaved: linked ? (await getNotifyPrefs(userId)).saved : false,
     });

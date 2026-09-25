@@ -3,12 +3,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const queryMock = vi.fn();
 const getValidAccessTokenMock = vi.fn();
 const getEventMock = vi.fn();
+const hasTasksScopeMock = vi.fn();
+const markTasksScopeMissingMock = vi.fn();
 
 vi.mock('./db.js', () => ({ query: (...args: unknown[]) => queryMock(...args) }));
 vi.mock('./googleOAuthTokenStore.js', () => ({
   getValidAccessToken: (...args: unknown[]) => getValidAccessTokenMock(...args),
   ensureBackgroundSyncSchema: () => Promise.resolve(),
   hasBackgroundSyncLinked: () => Promise.resolve(true),
+  backgroundSyncHasTasksScope: (...args: unknown[]) => hasTasksScopeMock(...args),
+  markTasksScopeMissing: (...args: unknown[]) => markTasksScopeMissingMock(...args),
 }));
 vi.mock('./telegramStore.js', () => ({
   TelegramSessionStore: {
@@ -46,6 +50,7 @@ describe('pushEventToGoogleInBackground', () => {
       sql.includes('FROM events e') ? [{ user_id: 'u1', timezone: null }] : []
     );
     getValidAccessTokenMock.mockResolvedValue('tok');
+    hasTasksScopeMock.mockResolvedValue(true);
     getEventMock.mockResolvedValue(makeEvent());
     let n = 0;
     fetchMock.mockImplementation(async (url: string) => {
@@ -161,5 +166,33 @@ describe('pushEventToGoogleInBackground', () => {
     const result = await pushEventToGoogleInBackground('missing');
     expect(result.status).toBe('skipped');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('skips tasks and says why when the grant has no Google Tasks scope', async () => {
+    hasTasksScopeMock.mockResolvedValue(false);
+    const result = await pushEventToGoogleInBackground('evt-1');
+    expect(result).toMatchObject({ status: 'pushed', createdCalendarEvent: true, tasksCreated: 0, tasksScopeMissing: true });
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('tasks/v1'))).toHaveLength(0);
+    expect(markTasksScopeMissingMock).not.toHaveBeenCalled();
+  });
+
+  it('flags and records a Google 403 "insufficient scopes" from the Tasks API', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('calendar/v3')) return { ok: true, json: async () => ({ id: 'gcal-1' }) };
+      return { ok: false, status: 403, json: async () => ({ error: { message: 'Request had insufficient authentication scopes.' } }) };
+    });
+    const result = await pushEventToGoogleInBackground('evt-1');
+    expect(result).toMatchObject({ createdCalendarEvent: true, tasksCreated: 0, tasksScopeMissing: true });
+    expect(markTasksScopeMissingMock).toHaveBeenCalledWith('u1');
+  });
+
+  it('reports the Google error when tasks fail for another reason', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('calendar/v3')) return { ok: true, json: async () => ({ id: 'gcal-1' }) };
+      return { ok: false, status: 403, json: async () => ({ error: { message: 'Google Tasks API has not been used in project 1 before or it is disabled.' } }) };
+    });
+    const result = await pushEventToGoogleInBackground('evt-1');
+    expect(result.tasksScopeMissing).toBeFalsy();
+    expect(result.error).toContain('Google Tasks API has not been used');
   });
 });

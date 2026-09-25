@@ -51,6 +51,8 @@ import {
   exchangeAuthorizationCode,
   storeRefreshToken,
   hasBackgroundSyncLinked,
+  backgroundSyncHasTasksScope,
+  grantIncludesTasks,
   unlinkBackgroundSync,
   isBackgroundSyncConfigured,
   getNotifyPrefs,
@@ -1483,7 +1485,8 @@ app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
       return;
     }
     await storeRefreshToken(userId, exchanged.refreshToken, exchanged.scope);
-    res.redirect(302, `${appOrigin}/settings/credentials?background_sync=connected`);
+    const result = grantIncludesTasks(exchanged.scope) ? "connected" : "partial";
+    res.redirect(302, `${appOrigin}/settings/credentials?background_sync=${result}`);
   } catch (err: any) {
     console.error("Google OAuth callback error:", err);
     res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
@@ -1506,6 +1509,7 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
     telegramLinked: Boolean(telegramSession?.chatId),
     emailConfigured: isEmailConfigured(),
     email: verified.email,
+    tasksGranted: linked ? await backgroundSyncHasTasksScope(userId) : null,
     prefs: linked ? (await getNotifyPrefs(userId)).prefs : null,
     prefsSaved: linked ? (await getNotifyPrefs(userId)).saved : false,
   });

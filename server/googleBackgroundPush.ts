@@ -1,5 +1,11 @@
 import { query } from './db.js';
-import { getValidAccessToken, ensureBackgroundSyncSchema, hasBackgroundSyncLinked } from './googleOAuthTokenStore.js';
+import {
+  getValidAccessToken,
+  ensureBackgroundSyncSchema,
+  hasBackgroundSyncLinked,
+  backgroundSyncHasTasksScope,
+  markTasksScopeMissing,
+} from './googleOAuthTokenStore.js';
 import { TelegramSessionStore } from './telegramStore.js';
 import { extractDateOnly, formatStartEndDateTime, formatMilestoneCalendarTitle } from '../src/utils/googleSyncFormat.js';
 import type { CalendarEvent, TMinusMilestone } from '../src/types.js';
@@ -30,6 +36,8 @@ export interface BackgroundPushResult {
   createdCalendarEvent: boolean;
   tasksCreated: number;
   error?: string;
+  /** Google Tasks access wasn't granted when Background Sync was linked. */
+  tasksScopeMissing?: boolean;
 }
 
 const skipped = (): BackgroundPushResult => ({ status: 'skipped', createdCalendarEvent: false, tasksCreated: 0 });
@@ -74,11 +82,13 @@ async function createMainCalendarEvent(
   return { id: data.id, htmlLink: data.htmlLink };
 }
 
+type TaskInsertResult = { id: string } | { error: string; scopeMissing: boolean };
+
 async function createTaskForMilestone(
   accessToken: string,
   eventTitle: string,
   milestone: TMinusMilestone
-): Promise<string | null> {
+): Promise<TaskInsertResult> {
   const dueDate = extractDateOnly(milestone.calculatedDate);
   const cleanTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
   const checklist =
@@ -101,9 +111,18 @@ async function createTaskForMilestone(
       due: `${dueDate}T00:00:00.000Z`,
     }),
   });
-  if (!res.ok) return null;
   const data = await res.json().catch(() => null);
-  return data?.id ?? null;
+  if (!res.ok || !data?.id) {
+    const message: string = data?.error?.message || `Google Tasks responded ${res.status}`;
+    const reasons = JSON.stringify(data?.error?.details || data?.error?.errors || '');
+    // 403 "insufficient authentication scopes": Tasks wasn't ticked on
+    // Google's consent screen. Other failures (API disabled for the Cloud
+    // project, quota) are logged so they show up in the function logs.
+    const scopeMissing = res.status === 403 && /insufficient.*scope|SCOPE_INSUFFICIENT/i.test(`${message} ${reasons}`);
+    console.warn('Google Tasks insert failed:', res.status, message, reasons);
+    return { error: message, scopeMissing };
+  }
+  return { id: data.id };
 }
 
 export async function pushEventToGoogleInBackground(eventId: string): Promise<BackgroundPushResult> {
@@ -129,6 +148,7 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
     const event = await TelegramSessionStore.getEvent(eventId);
     if (!event) return skipped();
 
+    const tasksAllowed = await backgroundSyncHasTasksScope(owner[0].user_id);
     const timeZone = owner[0].timezone || DEFAULT_TIME_ZONE;
     const result: BackgroundPushResult = { status: 'pushed', createdCalendarEvent: false, tasksCreated: 0 };
     let firstError: string | undefined;
@@ -150,14 +170,31 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
     // reset Phase 6, isActive/hiddenReason) is never auto-pushed either -
     // same rule the browser's manual "Push to Cal" path follows.
     const pending = (event.milestones || []).filter((m) => !m.googleTaskId && m.isActive !== false);
-    for (let i = 0; i < pending.length; i += TASK_CONCURRENCY) {
+    if (pending.length > 0 && !tasksAllowed) {
+      result.tasksScopeMissing = true;
+    }
+    let taskError: string | undefined;
+    let refusedByGoogle = false;
+    for (let i = 0; i < pending.length && !result.tasksScopeMissing; i += TASK_CONCURRENCY) {
       const batch = pending.slice(i, i + TASK_CONCURRENCY);
-      const ids = await Promise.all(
-        batch.map((m) => createTaskForMilestone(accessToken, event.title, m).catch(() => null))
+      const outcomes = await Promise.all(
+        batch.map((m) =>
+          createTaskForMilestone(accessToken, event.title, m).catch(
+            (err: any): TaskInsertResult => ({ error: err?.message || 'Google Tasks request failed', scopeMissing: false })
+          )
+        )
       );
       for (let j = 0; j < batch.length; j++) {
-        const taskId = ids[j];
-        if (!taskId) continue;
+        const outcome = outcomes[j];
+        if ('error' in outcome) {
+          taskError = taskError || outcome.error;
+          if (outcome.scopeMissing) {
+            result.tasksScopeMissing = true;
+            refusedByGoogle = true;
+          }
+          continue;
+        }
+        const taskId = outcome.id;
         // Milestone ids are public too (client_id, else the uuid as text).
         await query(
           `UPDATE milestones SET google_task_id = $2 WHERE event_id = $3 AND (id::text = $1 OR client_id = $1)`,
@@ -171,13 +208,27 @@ export async function pushEventToGoogleInBackground(eventId: string): Promise<Ba
       // updated_at too: other devices' incremental pulls only see changed rows.
       await query(`UPDATE events SET synced_to_google_at = now(), updated_at = now() WHERE id = $1`, [eventUuid]);
     }
+    if (refusedByGoogle) {
+      await markTasksScopeMissing(owner[0].user_id);
+    }
+    console.info('Background push to Google:', {
+      event: eventUuid,
+      milestones: event.milestones?.length ?? 0,
+      pending: pending.length,
+      createdCalendarEvent: result.createdCalendarEvent,
+      tasksCreated: result.tasksCreated,
+      tasksScopeMissing: !!result.tasksScopeMissing,
+      taskError,
+    });
     if (firstError && !result.createdCalendarEvent && result.tasksCreated === 0) {
       return { ...result, status: 'failed', error: firstError };
     }
     if (pending.length > result.tasksCreated) {
       // Some tasks did not go through: still worth reporting what did, and a
       // later refine/retry only has to create the missing ones.
-      result.error = 'Some tasks could not be added to Google Tasks.';
+      result.error = result.tasksScopeMissing
+        ? 'Google Tasks access was not granted.'
+        : `Some tasks could not be added to Google Tasks${taskError ? ` (${taskError})` : ''}.`;
     }
     return result;
   } catch (err: any) {

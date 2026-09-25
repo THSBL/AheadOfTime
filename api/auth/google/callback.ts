@@ -1,6 +1,6 @@
 import { findOrCreateUserByEmail } from '../../../server/telegramStore.js';
 import { verifyOAuthState } from '../../../server/notifyActionToken.js';
-import { exchangeAuthorizationCode, storeRefreshToken } from '../../../server/googleOAuthTokenStore.js';
+import { exchangeAuthorizationCode, storeRefreshToken, grantIncludesTasks } from '../../../server/googleOAuthTokenStore.js';
 
 function getRedirectUri(req: any): string {
   const configured = process.env.APP_URL?.trim();
@@ -51,7 +51,9 @@ export default async function handler(req: any, res: any) {
     }
 
     await storeRefreshToken(userId, exchanged.refreshToken, exchanged.scope);
-    return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=connected`);
+    // Linked either way (Calendar works), but say so when Tasks wasn't ticked.
+    const result = grantIncludesTasks(exchanged.scope) ? 'connected' : 'partial';
+    return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=${result}`);
   } catch (err: any) {
     console.error('Google OAuth callback error:', err);
     return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);

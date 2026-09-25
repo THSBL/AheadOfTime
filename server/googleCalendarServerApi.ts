@@ -1,4 +1,4 @@
-import { getValidAccessToken } from './googleOAuthTokenStore.js';
+import { getValidAccessToken, backgroundSyncHasTasksScope } from './googleOAuthTokenStore.js';
 import {
   syncEventToGoogleCalendar,
   fetchGoogleCalendarEvents,
@@ -69,6 +69,11 @@ export async function handleCalendarPush(userId: string, method: string, body: a
 
   const accessToken = await getValidAccessToken(userId);
   if (!accessToken) return notLinked();
+  // A grant without Google Tasks would push the event but silently drop
+  // every prep task: let the browser's token (which has Tasks) do it instead.
+  if (!(await backgroundSyncHasTasksScope(userId))) {
+    return { status: 409, body: { ok: false, linked: true, tasksGranted: false, error: 'Google Tasks access was not granted for Background Sync.' } };
+  }
 
   const timeZone = isValidTimeZone(body?.timeZone) ? body.timeZone : 'Europe/Amsterdam';
   const milestoneFormat = MILESTONE_FORMATS.includes(body?.milestoneFormat) ? body.milestoneFormat : 'tasks_only';

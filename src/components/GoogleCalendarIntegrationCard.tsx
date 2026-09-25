@@ -72,6 +72,8 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
+  // False when Background Sync was linked without ticking Google Tasks.
+  const [tasksGranted, setTasksGranted] = useState<boolean | null>(null);
 
   const isConnected = Boolean(accessToken && !isTokenExpired());
 
@@ -89,6 +91,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
           setIsTelegramLinked(data.telegramLinked === true);
           setIsEmailAvailable(data.emailConfigured === true);
           setAccountEmail(typeof data.email === 'string' ? data.email : '');
+          setTasksGranted(typeof data.tasksGranted === 'boolean' ? data.tasksGranted : null);
           setNotifyPrefs(data.prefs ?? null);
           setPrefsSaved(data.prefsSaved === true);
         }
@@ -127,12 +130,14 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
 
     const messages: Record<string, string> = {
       connected: 'Background sync connected. Choose when and where you want your update below.',
+      partial: 'Background sync is connected, but Google Tasks wasn\'t ticked on Google\'s screen, so prep tasks can\'t be added. Disconnect and connect again, and tick every box.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
       error: 'Something went wrong connecting background sync - please try again.',
     };
     setBackgroundSyncNotice(messages[result] || null);
-    if (result === 'connected') setIsBackgroundSyncLinked(true);
+    if (result === 'connected' || result === 'partial') setIsBackgroundSyncLinked(true);
+    if (result === 'partial') setTasksGranted(false);
 
     // Clean the query param off the URL so a refresh doesn't re-show the notice.
     params.delete('background_sync');
@@ -447,6 +452,12 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
               onSendTest={handleSendTestUpdate}
               isSendingTest={isSendingTest}
             />
+          )}
+
+          {isBackgroundSyncLinked && tasksGranted === false && !backgroundSyncNotice && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+              Prep tasks can't be added to Google Tasks: that permission wasn't ticked when Background Sync was connected. Disconnect and connect again, and tick every box on Google's screen.
+            </div>
           )}
 
           {backgroundSyncNotice && (

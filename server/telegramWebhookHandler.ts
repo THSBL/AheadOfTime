@@ -471,7 +471,7 @@ export class TelegramWebhookHandler {
    * stays their way in. Awaited by callers (not fire-and-forget): on
    * serverless the work would be cut off once the handler returns.
    */
-  private static async pushToGoogleAndReport(chatId: number | string, eventId: string): Promise<void> {
+  private static async pushToGoogleAndReport(chatId: number | string, eventId: string, appBaseUrl?: string): Promise<void> {
     const result = await pushEventToGoogleInBackground(eventId);
     if (result.status === 'skipped') return;
 
@@ -487,6 +487,17 @@ export class TelegramWebhookHandler {
     if (result.createdCalendarEvent) parts.push('📅 Added to your Google Calendar');
     if (result.tasksCreated > 0) {
       parts.push(`✅ ${result.tasksCreated} prep ${result.tasksCreated === 1 ? 'task' : 'tasks'} added to Google Tasks`);
+    }
+    if (result.tasksScopeMissing) {
+      // Tasks wasn't ticked on Google's consent screen: only relinking fixes it.
+      const base = (appBaseUrl || process.env.APP_URL || 'https://aheadoftime.app').replace(/\/$/, '');
+      parts.push(
+        "⚠️ Your prep tasks weren't added: Google Tasks access wasn't ticked when Auto-add was turned on. Turn Background Sync off and on again in Settings and tick every box on Google's screen."
+      );
+      await TelegramService.sendMessage(chatId, parts.join('\n'), {
+        reply_markup: { inline_keyboard: [[{ text: '⚙️ Fix in Settings', url: `${base}/settings/credentials?setup=background_sync` }]] },
+      });
+      return;
     }
     if (result.error) parts.push(`(${result.error} Open the app and tap Push to Cal to finish.)`);
     if (parts.length > 0) await TelegramService.sendMessage(chatId, parts.join('\n'));
@@ -651,7 +662,7 @@ export class TelegramWebhookHandler {
           );
         }
 
-        if (autoPush) await this.pushToGoogleAndReport(chatId, eventId);
+        if (autoPush) await this.pushToGoogleAndReport(chatId, eventId, appBaseUrl);
       }
       return;
     }

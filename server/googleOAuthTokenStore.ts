@@ -114,6 +114,38 @@ export async function storeRefreshToken(userId: string, refreshToken: string, sc
   );
 }
 
+export const GOOGLE_TASKS_SCOPE = 'https://www.googleapis.com/auth/tasks';
+
+/**
+ * Google's consent screen gives every permission its own checkbox, so a
+ * user can link Background Sync with Calendar ticked and Tasks not: the
+ * event then lands in Calendar while every prep task is refused. An empty
+ * or missing scope (rows stored before scopes were checked) counts as
+ * granted; the Tasks API's own 403 still catches those.
+ */
+export function grantIncludesTasks(scope: string | null | undefined): boolean {
+  if (!scope || !scope.trim()) return true;
+  return scope.split(/\s+/).includes(GOOGLE_TASKS_SCOPE);
+}
+
+/** Whether this user's stored grant allows Google Tasks (true when unknown). */
+export async function backgroundSyncHasTasksScope(userId: string): Promise<boolean> {
+  await ensureBackgroundSyncSchema();
+  const rows = await query<{ scope: string | null }>(
+    `SELECT scope FROM google_oauth_tokens WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId]
+  );
+  return grantIncludesTasks(rows[0]?.scope);
+}
+
+/** Records that Google refused Tasks for this grant, so status and later pushes know. */
+export async function markTasksScopeMissing(userId: string): Promise<void> {
+  await query(
+    `UPDATE google_oauth_tokens SET scope = trim(replace(coalesce(scope, ''), $2, '')) || ' tasks-refused' WHERE user_id = $1`,
+    [userId, GOOGLE_TASKS_SCOPE]
+  ).catch(() => {});
+}
+
 export async function hasBackgroundSyncLinked(userId: string): Promise<boolean> {
   await ensureBackgroundSyncSchema();
   const rows = await query<{ revoked_at: string | null }>(
