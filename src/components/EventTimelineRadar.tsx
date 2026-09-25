@@ -74,6 +74,9 @@ const EVENT_DETAIL_CATEGORY_LABELS: Partial<Record<CalendarEvent['category'], st
   custom: 'General Event',
 };
 
+// Auto-generated milestone descriptions that carry no information.
+const BOILERPLATE_DESCRIPTION = /^(\d+ deliverable\(s\) attached to satisfy checkpoint\.?|milestone state checkpoint gate|overall trip logistics|specific to this part of the trip)$/i;
+
 // The first follow-up still waiting for an answer - answered ones stay on
 // the event only as history, so they're never offered again.
 function firstOpenQuestion(questions?: IntakeQuestion[]): IntakeQuestion | null {
@@ -159,6 +162,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // planner works it in.
   const [answeredGapKeys, setAnsweredGapKeys] = useState<Set<string>>(new Set());
   const correctionInFlight = React.useRef(false);
+  // Overdue rows are open by default; this holds the ones the user closed.
+  const [collapsedOverdueIds, setCollapsedOverdueIds] = useState<Set<string>>(new Set());
   // Collapsed by default - a user happy with the already-balanced plan
   // should see one compact box, not every open question forced on them.
   const [isCorrectionBoxOpen, setIsCorrectionBoxOpen] = useState(false);
@@ -761,9 +766,22 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     const isSkipped = ms.status === 'skipped';
     const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
     const hasDeliverables = Boolean(ms.deliverables && ms.deliverables.length > 0);
-    const hasDescription = Boolean(ms.description && ms.description.trim());
+    // Filler text the planner used to attach ("2 deliverable(s) attached to
+    // satisfy checkpoint.") says nothing - only real descriptions show.
+    const hasDescription = Boolean(ms.description && ms.description.trim() && !BOILERPLATE_DESCRIPTION.test(ms.description.trim()));
     const isExpandable = hasDeliverables || hasDescription;
-    const isExpanded = expandedMilestoneIds.has(ms.id);
+    // Overdue tasks start open: their personalised sub-tasks are what
+    // needs doing now. Other sections start closed.
+    const isExpanded = tone === 'overdue' ? !collapsedOverdueIds.has(ms.id) : expandedMilestoneIds.has(ms.id);
+    const toggleExpanded = () => {
+      if (tone !== 'overdue') return toggleMilestoneExpanded(ms.id);
+      setCollapsedOverdueIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(ms.id)) next.delete(ms.id);
+        else next.add(ms.id);
+        return next;
+      });
+    };
     const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
 
     return (
@@ -784,7 +802,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       >
         <div
           className={`flex items-start sm:items-center gap-2 px-2.5 py-1.5 ${isExpandable ? 'cursor-pointer' : ''}`}
-          onClick={() => isExpandable && toggleMilestoneExpanded(ms.id)}
+          onClick={() => isExpandable && toggleExpanded()}
         >
           <button
             onClick={(e) => {
@@ -841,8 +859,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             </div>
           </div>
 
+          {/* Makes it visible there is more behind a row: the sub-task
+              count plus a clear chevron, instead of a faint arrow only. */}
           {isExpandable && (
-            <ChevronRight className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+            <span
+              className={`flex items-center gap-1 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition-colors ${
+                isExpanded ? 'text-slate-500' : 'text-slate-600 bg-slate-100 group-hover:bg-slate-200/80'
+              }`}
+              aria-label={isExpanded ? 'Hide details' : 'Show details'}
+            >
+              {hasDeliverables && <span className="font-mono">{completedDelivCount}/{ms.deliverables!.length}</span>}
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            </span>
           )}
 
           {/* Edit/delete stay inline with the date/title row, at every
@@ -879,9 +907,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             )}
             {hasDeliverables && (
               <div className="space-y-1">
-                <span className="text-[10px] font-semibold text-slate-400">
-                  {completedDelivCount}/{ms.deliverables!.length} sub-tasks
-                </span>
                 {ms.deliverables!.map((deliv) => {
                   const isDelivDone = deliv.is_completed;
                   return (
@@ -1160,15 +1185,21 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <button
             type="button"
             onClick={() => setIsCorrectionBoxOpen(true)}
-            className="w-full flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 uppercase tracking-wider px-1 py-1 cursor-pointer"
+            // Suggestions waiting get a faint warm tint so they're noticed
+            // without shouting; with none, it stays a plain text row.
+            className={`w-full flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-colors ${
+              suggestionCount > 0
+                ? 'text-amber-900/80 hover:text-amber-950 bg-amber-50/70 hover:bg-amber-50 border border-amber-200/60 rounded-xl px-2.5 py-1.5'
+                : 'text-slate-500 hover:text-slate-800 px-1 py-1'
+            }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+            <Sparkles className={`w-3.5 h-3.5 shrink-0 ${suggestionCount > 0 ? 'text-amber-600' : 'text-sky-600'}`} />
             <span className="flex-1 text-left">
               {suggestionCount > 0
                 ? `${suggestionCount} suggestion${suggestionCount > 1 ? 's' : ''} from us`
                 : 'Want to add or change something?'}
             </span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <ChevronDown className={`w-3.5 h-3.5 shrink-0 ${suggestionCount > 0 ? 'text-amber-700/70' : 'text-slate-400'}`} />
           </button>
         )}
         {onUpdateEvent && isCorrectionBoxExpanded && (

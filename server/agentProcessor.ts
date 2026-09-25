@@ -1163,9 +1163,9 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         calculatedDate: calcDate,
         title: gate.milestone_title,
         slotKey: sanitizeSlotKey(gate.slot_key),
-        description: deliverables.length > 0
-          ? `${deliverables.length} deliverable(s) attached to satisfy checkpoint.`
-          : 'Milestone state checkpoint gate',
+        // No filler description ("2 deliverable(s) attached to satisfy
+        // checkpoint.") - the sub-tasks themselves are the detail.
+        description: undefined,
         category: cat,
         status: (gate.status === 'completed' ? 'completed' : 'pending'),
         kind: 'milestone',
