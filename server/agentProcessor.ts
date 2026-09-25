@@ -1008,8 +1008,18 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   // overrides the model; the creation flow asks the user which one instead.
   const parsedMessageDate = parseNaturalDateRange(params.message, params.currentReferenceDate);
   const explicitMessageDate = parsedMessageDate?.alternatives ? undefined : parsedMessageDate?.startDate;
-  const eventDate = explicitMessageDate || structuredPayload?.macro_event.start_date || parsed.target_date || parsed.eventDate || existingEvent?.eventDate || params.refDateStr;
-  const endDate = structuredPayload?.macro_event.end_date || parsed.macro_event?.end_date || existingEvent?.endDate || undefined;
+  // Gemini often fills macro_event (date, title, destination) and puts the
+  // tasks in runway rather than a separate milestones list. structuredPayload
+  // is only built for the latter, so read macro_event directly as well:
+  // without it the event landed on today, titled "Travel & Vacation Trip",
+  // while its tasks kept the real dates (live-reported).
+  // The model's own macro_event also beats the local trip template's, whose
+  // dates are placeholders (3-4 weeks out) when the message names none.
+  const modelDate = (value: unknown): string | undefined =>
+    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : undefined;
+  const macroEvent = (modelDate(parsed.macro_event?.start_date) ? parsed.macro_event : undefined) || structuredPayload?.macro_event || parsed.macro_event;
+  const eventDate = explicitMessageDate || modelDate(macroEvent?.start_date) || modelDate(parsed.target_date) || modelDate(parsed.eventDate) || existingEvent?.eventDate || params.refDateStr;
+  const endDate = modelDate(macroEvent?.end_date) || existingEvent?.endDate || undefined;
   const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
 
   // A refinement turn's macro_event.title/event_title is often just the
@@ -1021,7 +1031,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   // event already has a real title, keep it - a deliberate rename now
   // belongs to the explicit "Edit Event Details" flow, not to whatever
   // title the model also happens to emit alongside an unrelated correction.
-  let title = existingEvent?.title || structuredPayload?.macro_event.title || parsed.event_title || parsed.eventTitle || 'Upcoming Event';
+  let title = existingEvent?.title || macroEvent?.title || parsed.event_title || parsed.eventTitle || 'Upcoming Event';
   let finalCategory = structuredPayload ? 'travel_trip' : (parsed.category || existingEvent?.category || detectEventCategory(title, params.message));
   // On a fresh trip creation, macro_event.destination is often the ONLY
   // place a real destination lands - existingEvent?.context alone (the
@@ -1031,7 +1041,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   // getCleanEventTitle's own generic-title detection above.
   title = getCleanEventTitle(title, finalCategory, {
     ...(existingEvent?.context || {}),
-    destination: structuredPayload?.macro_event.destination || existingEvent?.context?.destination,
+    destination: macroEvent?.destination || existingEvent?.context?.destination,
   });
 
   const focusText = parsed.focus || (structuredPayload

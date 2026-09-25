@@ -157,6 +157,45 @@ describe('processWithGemini - preserving existing milestones when the model omit
     expect(result.event.eventDate).toBe('2026-12-26');
   });
 
+  it('uses macro_event date, title and destination when the model puts the tasks in runway', async () => {
+    // Live-reported: a NYC business trip landed on today, titled "Travel &
+    // Vacation Trip", while its tasks kept the real dates - macro_event was
+    // only read when a separate milestones list came with it.
+    mockResponseText = JSON.stringify({
+      mode: 'RESOLVE_MILESTONES',
+      target_event_id: 'NEW',
+      category: 'travel_trip',
+      macro_event: { title: 'Business Trip to New York', start_date: '2026-10-19', end_date: '2026-10-23', type: 'Trip', destination: 'New York' },
+      runway: [
+        { milestone_title: 'ESTA Travel Authorization Secured', t_minus_days: 21, target_date: '2026-09-28', status: 'pending', deliverables: [] },
+      ],
+      focus: 'Planned your trip.',
+      addition: '',
+    });
+
+    const result = await processWithGemini({
+      message: 'Business trip to NYC for a presentation',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      activeEvents: [],
+    });
+
+    expect(result.event.eventDate).toBe('2026-10-19');
+    expect(result.event.endDate).toBe('2026-10-23');
+    expect(result.event.title).toBe('Business Trip to New York');
+  });
+
+  it('reads a single picked date from the refinement answers', async () => {
+    mockResponseText = JSON.stringify({ mode: 'CREATE_AND_INTAKE', target_event_id: 'NEW', event_title: 'Trip to New York', focus: 'x', addition: '' });
+    const result = await processWithGemini({
+      message: 'Business trip to NYC\n\nDetails:\n- When do you leave? 2026-10-19',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      activeEvents: [],
+    });
+    expect(result.event.eventDate).toBe('2026-10-19');
+  });
+
   it('trusts a date explicitly named in the raw message over a WRONG target_date the model confidently returns', async () => {
     // Regression test for a real, live-reported bug found right after the
     // fix above shipped: "Plan surprise party 23 october" sometimes got

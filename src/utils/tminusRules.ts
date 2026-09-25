@@ -253,6 +253,16 @@ export function parseNaturalDateRange(
     return { startDate: isoRangeMatch[1], endDate: isoRangeMatch[2], matchedText: isoRangeMatch[0] };
   }
 
+  // A single ISO date, e.g. the chat's date picker answer "2026-10-15".
+  const isoSingleMatch = raw.match(/\b([0-9]{4})-([0-9]{2})-([0-9]{2})\b/);
+  if (isoSingleMatch) {
+    const [, y, m, d] = isoSingleMatch.map(Number);
+    const check = new Date(Date.UTC(y, m - 1, d));
+    if (check.getUTCFullYear() === y && check.getUTCMonth() === m - 1 && check.getUTCDate() === d) {
+      return { startDate: isoSingleMatch[0], matchedText: isoSingleMatch[0] };
+    }
+  }
+
   const toISODate = (d: Date): string =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0).toISOString().substring(0, 10);
   const addDays = (d: Date, days: number): Date => {
