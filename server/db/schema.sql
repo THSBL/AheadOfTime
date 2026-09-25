@@ -283,3 +283,22 @@ ALTER TABLE milestones
   ADD COLUMN IF NOT EXISTS generated_from_context_version TEXT,
   ADD COLUMN IF NOT EXISTS phase                         TEXT;   -- optional UI-grouping label only, no ordering/gating implied
 CREATE INDEX IF NOT EXISTS idx_milestones_event_active ON milestones(event_id) WHERE is_active = true;
+
+-- "Which calendar do you use?" answers (landing page, onboarding, feedback
+-- page) - demand research for calendars beyond Google. One row per random
+-- browser id and source; answering again updates it. notify_email only when
+-- the visitor asked to hear when their calendar is supported.
+-- server/calendarPollStore.ts also creates this at runtime
+-- (ensureCalendarPollSchema).
+CREATE TABLE IF NOT EXISTS calendar_preference_votes (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  visitor_id    TEXT NOT NULL,
+  source        TEXT NOT NULL,           -- 'landing' | 'onboarding' | 'feedback'
+  calendar      TEXT NOT NULL,           -- 'google' | 'outlook' | 'apple' | 'other'
+  other_text    TEXT,
+  notify_email  TEXT,
+  user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (visitor_id, source)
+);
