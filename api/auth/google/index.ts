@@ -1,3 +1,5 @@
+import { verifyRequestUser } from '../../../server/requestAuth.js';
+import { handleSessionApi } from '../../../server/sessionRoutes.js';
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail, TelegramSessionStore } from '../../../server/telegramStore.js';
 import { signOAuthState } from '../../../server/notifyActionToken.js';
@@ -53,7 +55,7 @@ async function handleAuthorize(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
@@ -87,7 +89,7 @@ async function handleAuthorize(req: any, res: any) {
 }
 
 async function handleStatus(req: any, res: any) {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
@@ -157,7 +159,7 @@ async function handleStatus(req: any, res: any) {
  * no Telegram/email message covered. GET lists them, POST dismisses them.
  */
 async function handleFindings(req: any, res: any) {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
@@ -180,6 +182,9 @@ export default async function handler(req: any, res: any) {
   // let a browser or proxy answer these from a cache (a 304 replay of an old
   // "not configured" body would hide the Background Sync card indefinitely).
   res.setHeader('Cache-Control', 'no-store');
+  if (action === 'session') {
+    return handleSessionApi(req, res);
+  }
   if (action === 'findings') {
     return handleFindings(req, res);
   }

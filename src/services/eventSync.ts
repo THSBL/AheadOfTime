@@ -53,13 +53,14 @@ export function saveSyncState(userId: string, state: SyncState): void {
   }
 }
 
-const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
+// With no live Google token, the app session cookie authenticates the call.
+const authHeaders = (token: string | null): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {});
 
 function isChanges(data: any): data is ChangesResponse {
   return Boolean(data?.ok) && Array.isArray(data.events) && typeof data.serverTime === 'string';
 }
 
-export async function pullEventChanges(token: string, since?: string): Promise<ChangesResponse | null> {
+export async function pullEventChanges(token: string | null, since?: string): Promise<ChangesResponse | null> {
   try {
     const url = `/api/telegram/events${since ? `?since=${encodeURIComponent(since)}` : ''}`;
     const res = await fetch(url, { headers: authHeaders(token), cache: 'no-store' });
@@ -71,7 +72,7 @@ export async function pullEventChanges(token: string, since?: string): Promise<C
 }
 
 export async function pushEventChanges(
-  token: string,
+  token: string | null,
   events: CalendarEvent[],
   since?: string
 ): Promise<ChangesResponse | null> {
@@ -89,7 +90,7 @@ export async function pushEventChanges(
   }
 }
 
-export async function fetchDeletedEvents(token: string): Promise<DeletedEventSummary[] | null> {
+export async function fetchDeletedEvents(token: string | null): Promise<DeletedEventSummary[] | null> {
   try {
     const res = await fetch('/api/telegram/events?deleted=1', { headers: authHeaders(token), cache: 'no-store' });
     const data = await res.json();
@@ -99,7 +100,7 @@ export async function fetchDeletedEvents(token: string): Promise<DeletedEventSum
   }
 }
 
-export async function restoreDeletedEvent(token: string, id: string): Promise<boolean> {
+export async function restoreDeletedEvent(token: string | null, id: string): Promise<boolean> {
   try {
     const res = await fetch('/api/telegram/events', {
       method: 'POST',

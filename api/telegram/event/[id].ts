@@ -1,3 +1,4 @@
+import { verifyRequestUser } from '../../../server/requestAuth.js';
 import { TelegramSessionStore } from '../../../server/telegramStore.js';
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
 import { verifyEventDeepLink } from '../../../server/deepLinkToken.js';
@@ -17,7 +18,7 @@ export default async function handler(req: any, res: any) {
     // branch below, a deep-link token (proof you once viewed this event via
     // Telegram) is not enough to permanently remove it. Require a verified
     // Google identity, same as /api/telegram/events.
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     if (!verified) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }
@@ -41,7 +42,7 @@ export default async function handler(req: any, res: any) {
 
   // This endpoint returns real event data, so identity must be verified
   // rather than trusted from a query param - see /api/telegram/events.
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     // No caller identity: never confirm existence of, or return, another user's event.
     return res.status(404).json({ ok: false, error: 'Event not found' });

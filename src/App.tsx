@@ -62,6 +62,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clearGoogleSession, getStoredClientId } from './services/googleAuth';
+import { hasAppSession, checkAppSession, endAppSession } from './services/appSession';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { trackEventCreation, trackMilestoneToggle, trackAccountAction } from './services/analytics';
@@ -222,6 +223,13 @@ function App() {
       // Silently ignore - see comment above.
     });
   };
+
+  // Ask the server once per account whether this browser still has a valid
+  // app session (it outlives closing Chrome and the Google token's one-hour
+  // expiry); the event sync starts as soon as it's confirmed.
+  useEffect(() => {
+    if (currentUser?.id) void checkAppSession();
+  }, [currentUser?.id]);
 
   // Persist events to user-scoped storage whenever events change
   useEffect(() => {
@@ -507,8 +515,11 @@ function App() {
 
     const run = async () => {
       if (cancelled) return;
-      const token = getStoredAccessToken();
-      if (!token || isTokenExpired()) return;
+      // A live Google token, or else the app's own session cookie (which
+      // outlives closing Chrome and the token's one-hour expiry).
+      const liveToken = getStoredAccessToken();
+      const token = liveToken && !isTokenExpired() ? liveToken : null;
+      if (!token && !hasAppSession(currentUser?.id)) return;
       if (inFlight) {
         runAgain = true;
         return;
@@ -562,6 +573,9 @@ function App() {
       void run();
     };
     window.addEventListener('aot_event_restored', onRestored);
+    // Sync as soon as the server confirms the session (e.g. just reopened).
+    const onSessionChanged = () => void run();
+    window.addEventListener('aot_app_session_changed', onSessionChanged);
 
     return () => {
       cancelled = true;
@@ -569,6 +583,7 @@ function App() {
       window.clearInterval(interval);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('aot_event_restored', onRestored);
+      window.removeEventListener('aot_app_session_changed', onSessionChanged);
     };
   }, [currentUser?.id]);
 
@@ -646,6 +661,8 @@ function App() {
     trackAccountAction('logout', currentUser?.id);
     logoutAndClearAccountSession();
     clearGoogleSession();
+    // Sign out on the server too, so the session cookie stops working.
+    void endAppSession();
     setCurrentUser(null);
     setEvents([]);
     setSelectedBulkEventIds([]);

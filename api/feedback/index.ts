@@ -1,3 +1,4 @@
+import { verifyRequestUser } from '../../server/requestAuth.js';
 import { extractBearerToken, verifyGoogleAccessToken, isAdminEmail } from '../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
 import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from '../../server/feedbackStore.js';
@@ -26,7 +27,7 @@ async function handleCalendarPoll(req: any, res: any) {
     return res.status(400).json({ ok: false, error: parsed.error });
   }
   try {
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
     await recordCalendarVote(parsed.vote, userId);
     return res.status(200).json({ ok: true });
@@ -40,7 +41,7 @@ export default async function handler(req: any, res: any) {
   if (req.query?.action === 'calendar-poll') {
     return handleCalendarPoll(req, res);
   }
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }

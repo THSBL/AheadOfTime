@@ -1,5 +1,6 @@
 import type { OnboardingProfile } from '../types';
-import { getStoredAccessToken } from './googleAuth';
+import { getStoredAccessToken, isTokenExpired } from './googleAuth';
+import { canUseAppSession, bearerHeader } from './appSession';
 
 /**
  * Server copy of the onboarding profile (/api/telegram/profile), so it
@@ -7,10 +8,11 @@ import { getStoredAccessToken } from './googleAuth';
  * best-effort: without a sign-in or network the browser copy keeps working.
  */
 export async function fetchServerProfile(): Promise<{ ok: boolean; profile: OnboardingProfile | null }> {
-  const token = getStoredAccessToken();
-  if (!token) return { ok: false, profile: null };
+  const stored = getStoredAccessToken();
+  const token = stored && !isTokenExpired() ? stored : null;
+  if (!token && !(await canUseAppSession())) return { ok: false, profile: null };
   try {
-    const res = await fetch('/api/telegram/profile', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/telegram/profile', { headers: bearerHeader(token) });
     if (!res.ok) return { ok: false, profile: null };
     const data = await res.json();
     return { ok: Boolean(data?.ok), profile: data?.profile || null };
@@ -20,12 +22,13 @@ export async function fetchServerProfile(): Promise<{ ok: boolean; profile: Onbo
 }
 
 export async function pushServerProfile(profile: OnboardingProfile): Promise<boolean> {
-  const token = getStoredAccessToken();
-  if (!token) return false;
+  const stored = getStoredAccessToken();
+  const token = stored && !isTokenExpired() ? stored : null;
+  if (!token && !(await canUseAppSession())) return false;
   try {
     const res = await fetch('/api/telegram/profile', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', ...bearerHeader(token) },
       body: JSON.stringify({ profile }),
     });
     return res.ok;

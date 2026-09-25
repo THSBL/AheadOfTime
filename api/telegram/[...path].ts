@@ -1,3 +1,4 @@
+import { verifyRequestUser } from '../../server/requestAuth.js';
 import type { Request, Response } from 'express';
 import { TelegramWebhookHandler } from '../../server/telegramWebhookHandler.js';
 import { TelegramService } from '../../server/telegramService.js';
@@ -72,7 +73,7 @@ export default async function handler(req: any, res: any) {
     // polling by pairing code or asking "is my account linked" - now has to
     // prove who they are first; a request with no verified Google session
     // gets "not linked", full stop, never a fallback identity.
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     if (!verified) {
       return res.status(200).json({
         ok: true,
@@ -147,7 +148,7 @@ export default async function handler(req: any, res: any) {
         // account, so this requires a verified identity rather than
         // trusting a client-claimed email/userId - otherwise anyone could
         // request a code claiming to be someone else's account.
-        const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+        const verified = await verifyRequestUser(req);
         if (!verified) {
           return res.status(401).json({ ok: false, error: 'Sign in required to generate a pairing code.' });
         }
@@ -182,7 +183,7 @@ export default async function handler(req: any, res: any) {
       try {
         // Same identity leak class as /api/telegram/status - never resolve
         // to a client-supplied or default userId.
-        const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+        const verified = await verifyRequestUser(req);
         if (!verified) {
           return res.status(200).json({ ok: true, linked: false, status: 'unlinked', telegram_linked: false, isLinked: false, session: null });
         }
@@ -200,7 +201,7 @@ export default async function handler(req: any, res: any) {
         // disconnect an arbitrary stranger's Telegram session with no proof
         // of ownership at all. Only ever unlink the verified caller's own
         // linked session.
-        const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+        const verified = await verifyRequestUser(req);
         if (!verified) {
           return res.status(401).json({ ok: false, error: 'Sign in required to unlink Telegram.' });
         }
@@ -241,7 +242,7 @@ export default async function handler(req: any, res: any) {
     // Shared with server.ts (server/eventsApi.ts) so both runtimes behave
     // identically: list/incremental pull (GET), push + restore (POST).
     // Identity is verified, never trusted from a query param.
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     const result = await handleEventsApi({
       method: req.method,
       query: req.query || {},
@@ -257,7 +258,7 @@ export default async function handler(req: any, res: any) {
   // profile). Lives here next to /events - one segment, same sign-in check,
   // no extra serverless function. ---
   if (route === 'profile') {
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
     const result = await handleProfileApi({ method: req.method, body: req.body, userId });
     res.setHeader('Cache-Control', 'no-store');

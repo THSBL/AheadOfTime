@@ -1,3 +1,4 @@
+import { canUseAppSession, bearerHeader } from '../services/appSession';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2,
@@ -100,7 +101,8 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     // there's nothing to check (and nothing to leak), so skip the call
     // entirely rather than let it come back "not linked" every time.
     const accessToken = getStoredAccessToken();
-    if (!accessToken) {
+    // The app session cookie also identifies the user once the Google token is gone.
+    if (!accessToken && !(await canUseAppSession())) {
       setIsLinked(false);
       return false;
     }
@@ -108,7 +110,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     try {
       const codeParam = pairCodeToCheck ? `?code=${encodeURIComponent(pairCodeToCheck)}` : '';
       const res = await fetch(`/api/telegram/status${codeParam}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: bearerHeader(accessToken),
       });
       const data: TelegramStatusResponse = await res.json().catch(() => ({}));
 
@@ -183,7 +185,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
     // exactly why linking silently fell back to an anonymous placeholder
     // even when the user was signed in.
     const accessToken = getStoredAccessToken();
-    if (!accessToken) {
+    if (!accessToken && !(await canUseAppSession())) {
       setIsLinking(false);
       setFeedback({
         type: 'error',
@@ -197,7 +199,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          ...bearerHeader(accessToken),
         },
         body: JSON.stringify({ userId }),
       });

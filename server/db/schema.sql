@@ -309,3 +309,20 @@ CREATE TABLE IF NOT EXISTS calendar_preference_votes (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (visitor_id, source)
 );
+
+-- The app's own login sessions (server/sessionStore.ts, which also creates
+-- this at runtime). Started once with a Google check; the raw token lives
+-- only in an HttpOnly cookie, stored here as a SHA-256 hash. 30 days,
+-- renewed while used; revoked on sign-out.
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email         TEXT NOT NULL,
+  token_hash    TEXT NOT NULL UNIQUE,
+  user_agent    TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at    TIMESTAMPTZ NOT NULL,
+  revoked_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions (user_id);

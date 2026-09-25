@@ -43,6 +43,8 @@ import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from "./se
 import { recordCalendarVote, summarizeCalendarVotes } from "./server/calendarPollStore";
 import { parseCalendarVote } from "./src/utils/calendarPoll";
 import { handleProfileApi } from "./server/userProfileStore";
+import { handleSessionApi } from "./server/sessionRoutes";
+import { verifyRequestUser } from "./server/requestAuth";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
   exchangeAuthorizationCode,
@@ -1052,7 +1054,7 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
   // Reveals a real linked account's username/chatId - never resolve to a
   // client-supplied or default userId. See api/telegram/[...path].ts for
   // the matching Vercel-side fix.
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.json({
       ok: true,
@@ -1135,7 +1137,7 @@ app.post(["/api/telegram/pair-code", "/api/pair-code"], async (req: Request, res
     // so this requires a verified identity rather than a client-claimed
     // email/userId - otherwise anyone could request a code claiming to be
     // someone else's account.
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     if (!verified) {
       res.status(401).json({ ok: false, error: "Sign in required to generate a pairing code." });
       return;
@@ -1167,7 +1169,7 @@ app.post(["/api/telegram/pair-code", "/api/pair-code"], async (req: Request, res
 app.get(["/api/telegram/pair-code", "/api/pairing-status"], async (req: Request, res: Response) => {
   try {
     // Same identity leak class as /api/telegram/status above.
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     if (!verified) {
       res.json({ ok: true, linked: false, status: "unlinked", telegram_linked: false, isLinked: false, session: null });
       return;
@@ -1187,7 +1189,7 @@ app.delete("/api/telegram/pair-code", async (req: Request, res: Response) => {
     // is not a secret a legitimate caller needs to prove ownership with,
     // it's just an ID, so trusting it alone let anyone disconnect an
     // arbitrary stranger's session.
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     if (!verified) {
       res.status(401).json({ ok: false, error: "Sign in required to unlink Telegram." });
       return;
@@ -1253,7 +1255,7 @@ app.all("/api/telegram/events", async (req: Request, res: Response) => {
   // Identity is verified, never trusted from a query param - a
   // client-supplied userId was exactly how the earlier cross-user event
   // exposure bug worked.
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   const result = await handleEventsApi({
     method: req.method,
     query: req.query as Record<string, any>,
@@ -1266,7 +1268,7 @@ app.all("/api/telegram/events", async (req: Request, res: Response) => {
 
 // Local-dev twin of the /api/telegram/profile route in api/telegram/[...path].ts.
 app.all("/api/telegram/profile", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
   const result = await handleProfileApi({ method: req.method, body: req.body, userId });
   res.setHeader("Cache-Control", "no-store");
@@ -1291,7 +1293,7 @@ app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {
   // Scope through the same ownership-filtered query as /api/telegram/events
   // (this route previously called getEvent() directly with no ownership
   // check at all - the same class of bug already fixed in api/telegram/*).
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(404).json({ ok: false, error: "Event not found" });
     return;
@@ -1308,7 +1310,7 @@ app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {
 app.delete("/api/telegram/event/:id", async (req: Request, res: Response) => {
   // Deletion is destructive and ownership-scoped - unlike the GET route
   // above, a deep-link token is not enough to permanently remove an event.
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1325,7 +1327,7 @@ app.post("/api/feedback/calendar-poll", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+    const verified = await verifyRequestUser(req);
     const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
     await recordCalendarVote(parsed.vote, userId);
     res.json({ ok: true });
@@ -1336,7 +1338,7 @@ app.post("/api/feedback/calendar-poll", async (req: Request, res: Response) => {
 });
 
 app.get("/api/feedback/admin-list", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1359,7 +1361,7 @@ app.get("/api/feedback/admin-list", async (req: Request, res: Response) => {
 });
 
 app.get("/api/feedback/eligibility", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1375,7 +1377,7 @@ app.get("/api/feedback/eligibility", async (req: Request, res: Response) => {
 });
 
 app.post("/api/feedback/submit", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1424,8 +1426,11 @@ function getAppOrigin(req: Request): string {
   return (configured || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
 }
 
+// The app's own login session (local-dev twin of the Vercel route).
+app.all("/api/auth/session", (req: Request, res: Response) => handleSessionApi(req, res));
+
 app.get("/api/auth/google/authorize", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1485,7 +1490,7 @@ app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
 });
 
 app.get("/api/auth/google/status", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1506,7 +1511,7 @@ app.get("/api/auth/google/status", async (req: Request, res: Response) => {
 });
 
 app.post("/api/auth/google/status", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1525,7 +1530,7 @@ app.post("/api/auth/google/status", async (req: Request, res: Response) => {
 });
 
 app.put("/api/auth/google/status", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1549,7 +1554,7 @@ app.put("/api/auth/google/status", async (req: Request, res: Response) => {
 // Telegram/email message covered (twin of api/auth/google/index.ts's
 // action=findings).
 app.get("/api/auth/google/findings", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1559,7 +1564,7 @@ app.get("/api/auth/google/findings", async (req: Request, res: Response) => {
 });
 
 app.post("/api/auth/google/findings", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
@@ -1570,7 +1575,7 @@ app.post("/api/auth/google/findings", async (req: Request, res: Response) => {
 });
 
 app.delete("/api/auth/google/status", async (req: Request, res: Response) => {
-  const verified = await verifyGoogleAccessToken(extractBearerToken(req));
+  const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;

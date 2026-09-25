@@ -41,6 +41,11 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void syncWithServer(getCurrentUser()?.id);
+    // Also once the app session is confirmed (the first check may still be
+    // running when this mounts).
+    const onSession = () => void syncWithServer(getCurrentUser()?.id);
+    window.addEventListener('aot_app_session_changed', onSession);
+    return () => window.removeEventListener('aot_app_session_changed', onSession);
   }, [syncWithServer]);
 
   useEffect(() => {

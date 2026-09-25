@@ -95,7 +95,7 @@ Each phase ships on the branch with tests and a preview first, then goes to `mai
 | 3 | Push plans to Outlook | `api/calendar/[...path].ts`; event + milestones to Outlook Calendar, or milestones to To Do; update and delete; "Push to" choice | L |
 | 4 | Read Outlook | Scan agenda and the daily background scan read Outlook (`calendarView`) as well as Google | M |
 | 5 | Background & Telegram | Auto-push and Telegram-created plans go to the user's chosen calendar(s) | M |
-| 6 | *(optional)* Microsoft login | App-owned session token replaces "verify a Google token on every request"; login with Microsoft or Google | L+ (separate plan) |
+| 6 | *(optional)* Microsoft login | The app-owned session now exists (`server/sessionStore.ts`, `/api/auth/session`; every route identifies users via `verifyRequestUser`). Microsoft login only needs a Microsoft sign-in path that calls `createSession`, plus users whose email comes from Microsoft | M |
 | 7 | Hardening | Publisher verification, secret-expiry reminder, reconnect flow after revocation (password change, admin removal), delete Microsoft data on disconnect, privacy-policy update | S–M |
 
 ## 6. Risks and how they're handled

@@ -29,6 +29,10 @@
       "destination": "/api/auth/google?action=findings"
     },
     {
+      "source": "/api/auth/session",
+      "destination": "/api/auth/google?action=session"
+    },
+    {
       "source": "/api/presets/calibrate-offsets",
       "destination": "/api/presets?action=calibrate-offsets"
     },

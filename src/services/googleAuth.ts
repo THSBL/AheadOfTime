@@ -5,6 +5,8 @@
 
 declare const google: any;
 
+import { startAppSession } from './appSession';
+
 export const DEFAULT_CLIENT_ID = '705347156449-npiab082970nc26q27ln55g4ti4tj8i9.apps.googleusercontent.com';
 export const DEFAULT_PROJECT_ID = 'mycalendarsync-507311';
 
@@ -74,6 +76,10 @@ export function setStoredAccessToken(token: string | null, expiresInSeconds?: nu
       sessionStorage.setItem('gcal_access_token', token);
       const lifetime = Number(expiresInSeconds) || 3500;
       sessionStorage.setItem('gcal_token_expires_at', String(Date.now() + lifetime * 1000));
+      // Every fresh Google sign-in also starts (or renews) the app's own
+      // 30-day session, so server calls keep working after this token is
+      // gone - closed browser, or its one-hour expiry.
+      void startAppSession(token);
     } else {
       sessionStorage.removeItem('gcal_access_token');
       sessionStorage.removeItem('gcal_token_expires_at');

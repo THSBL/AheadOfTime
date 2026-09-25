@@ -1,3 +1,4 @@
+import { canUseAppSession, bearerHeader } from '../services/appSession';
 import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarPlus, X } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
@@ -24,10 +25,11 @@ export const AgendaFindingsBanner: React.FC<AgendaFindingsBannerProps> = ({ onRe
   const [findings, setFindings] = useState<AgendaFinding[]>([]);
 
   const load = useCallback(async () => {
-    const token = getStoredAccessToken();
-    if (!token || isTokenExpired()) return;
+    const stored = getStoredAccessToken();
+    const token = stored && !isTokenExpired() ? stored : null;
+    if (!token && !(await canUseAppSession())) return;
     try {
-      const res = await fetch('/api/auth/google/findings', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch('/api/auth/google/findings', { headers: bearerHeader(token) });
       const data = await res.json();
       if (data?.ok && Array.isArray(data.findings)) setFindings(data.findings);
     } catch {
@@ -43,10 +45,11 @@ export const AgendaFindingsBanner: React.FC<AgendaFindingsBannerProps> = ({ onRe
 
   const dismiss = useCallback(async () => {
     setFindings([]);
-    const token = getStoredAccessToken();
-    if (!token) return;
+    const stored = getStoredAccessToken();
+    const token = stored && !isTokenExpired() ? stored : null;
+    if (!token && !(await canUseAppSession())) return;
     try {
-      await fetch('/api/auth/google/findings', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      await fetch('/api/auth/google/findings', { method: 'POST', headers: bearerHeader(token) });
     } catch {
       // Worst case the notice reappears next time.
     }

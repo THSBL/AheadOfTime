@@ -1,3 +1,4 @@
+import { canUseAppSession } from '../services/appSession';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Trash2, Undo2, Loader2, ChevronDown } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
@@ -26,8 +27,9 @@ export const RecentlyDeletedEventsCard: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const load = useCallback(async () => {
-    const token = getStoredAccessToken();
-    if (!token || isTokenExpired()) {
+    const stored = getStoredAccessToken();
+    const token = stored && !isTokenExpired() ? stored : null;
+    if (!token && !(await canUseAppSession())) {
       setItems([]);
       return;
     }
@@ -39,8 +41,9 @@ export const RecentlyDeletedEventsCard: React.FC = () => {
   }, [load]);
 
   const restore = async (item: DeletedEventSummary) => {
-    const token = getStoredAccessToken();
-    if (!token || isTokenExpired()) {
+    const stored = getStoredAccessToken();
+    const token = stored && !isTokenExpired() ? stored : null;
+    if (!token && !(await canUseAppSession())) {
       setNotice('Reconnect Google first, then try again.');
       return;
     }
