@@ -132,8 +132,12 @@ function inferUserResponsibility(input: AssessmentInput): RoleInference {
 function deriveSignals(input: AssessmentInput, userResponsibility: UserResponsibility): PreparationSignals {
   const text = textBlob(input).toLowerCase();
 
+  // A trip always means getting there and staying somewhere, even when the
+  // message names neither ("Business trip to NYC for a presentation" was
+  // live-scored as a self-contained Essentials task).
   const hasExternalDependencies = Boolean(input.location) || Boolean(input.context?.destination) ||
-    /\b(book|booking|booked|venue|vendor|caterer|photographer|dj|flight|hotel|airbnb|reservation|rsvp|deposit)\b/.test(text);
+    input.category === 'travel_trip' ||
+    /\b(book|booking|booked|venue|vendor|caterer|photographer|dj|flight|hotel|airbnb|reservation|rsvp|deposit|trip|travel(?:l?ing)?|abroad|conference)\b/.test(text);
 
   // A free trial ending is "cancel" in the most literal sense (one tap,
   // no paperwork) - live-reported that real subscription-trial messages

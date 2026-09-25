@@ -54,6 +54,7 @@ import {
   describePlanningProfile,
   detectTravelDocumentNeeds,
 } from "../src/utils/refinementQuestions.js";
+import { selectPlannerPromptVariant, buildLeanSystemInstruction, buildLeanResponseSchema, type PlannerPromptVariant } from './planning/leanPlannerPrompt.js';
 
 /**
  * Architecture reset Phase 6 - computed once per request, shared by both
@@ -524,6 +525,9 @@ export async function processWithGemini(params: {
   // mentioned something new" - the level-expansion prompt still reaches
   // Gemini normally, it just never gets folded into stored context.
   isLevelExpansion?: boolean;
+  // Which planning prompt to send; defaults to PLANNER_PROMPT (see
+  // planning/leanPlannerPrompt.ts). Set explicitly by the comparison script.
+  promptVariant?: PlannerPromptVariant;
 }): Promise<ProcessAgentResponsePayload> {
   const prepLevel = resolveEffectivePreparationLevel(params.existingEvent, params.message);
   // Architecture reset Phase 7 - locked facts from EARLIER turns (plus any
@@ -878,14 +882,28 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     required: ["mode", "focus", "addition", "runway"],
   };
 
+  const promptVariant = selectPlannerPromptVariant(params.promptVariant);
+  const plannerStartedAt = Date.now();
   const response = await generateContentFast(
     () => ({
       contents: [{ text: userPrompt }],
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema,
-      },
+      config: promptVariant === 'lean'
+        ? {
+            systemInstruction: buildLeanSystemInstruction({
+              referenceDate: params.refDateStr,
+              referenceDateLabel: params.currentReferenceDate,
+              preparationLevel: prepLevel.level,
+              lockedFactsBlock,
+              hasExistingEvent: Boolean(params.existingEvent),
+            }),
+            responseMimeType: "application/json",
+            responseSchema: buildLeanResponseSchema(Type as unknown as Record<string, string>),
+          }
+        : {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema,
+          },
     }),
     DEFAULT_FAST_MODELS,
     // Was a flat 7000ms per model, on the assumption gemini-3.6-flash
@@ -895,6 +913,9 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     // the lite fallback: 27s worst case, inside api/agent's 30s maxDuration.
     [18000, 9000]
   );
+  // One line per plan: which prompt, which model answered, how long it took
+  // (Vercel logs), so the lean and full prompts can be compared on real use.
+  console.info('Planner call:', { prompt: promptVariant, model: response.usedModel, ms: Date.now() - plannerStartedAt });
 
   let rawText = response.text || "{}";
   if (rawText.startsWith("```json")) {

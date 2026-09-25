@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx server/db/migrate.ts",
-    "graphics:generate": "tsx scripts/generate-marketing-graphics.ts"
+    "graphics:generate": "tsx scripts/generate-marketing-graphics.ts",
+    "compare:prompts": "tsx scripts/compare-planner-prompts.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

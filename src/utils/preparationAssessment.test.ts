@@ -288,3 +288,14 @@ describe('deriveOutstandingGaps (architecture reset Phase 8)', () => {
     expect(gaps.some((g) => g.key === 'post_trip_cooldown')).toBe(false);
   });
 });
+
+describe('assessPreparationLevel - trips are never a self-contained task', () => {
+  it('scores a solo business trip that names no bookings above Essentials', () => {
+    const result = new AOTPreparationAssessment().assessPreparationLevel({
+      title: 'Business Trip to New York',
+      category: 'travel_trip',
+      rawText: 'Business trip to NYC for a presentation',
+    } as AssessmentInput);
+    expect(result.level).not.toBe('essentials');
+  });
+});
