@@ -9,7 +9,7 @@ Status: draft for decision · Branch: `claude/ahead-of-time-deployment-api-7wf5a
 | **App login** | Google Identity Services in the browser. 34 server routes identify the user by verifying that Google access token (`server/googleAuthVerify.ts`). | Microsoft cannot be a *login* without replacing this with an app-owned session. Outlook as an *extra calendar* for a Google-signed-in user needs no login change. |
 | **In-app calendar actions** (Push to Cal, Scan agenda, delete) | Browser calls Google Calendar / Google Tasks directly with the user's access token (`src/services/googleCalendar.ts`, `googleTasks.ts`, `GoogleCalendarSync.tsx`). | Needs an Outlook equivalent. |
 | **Background Sync** (daily agenda scan, auto-push from Telegram) | Server-side OAuth: refresh token stored encrypted in `google_oauth_tokens`, used by the daily cron (`server/backgroundAgendaScan.ts`, `googleBackgroundPush.ts`). | Needs an Outlook refresh token stored the same way. |
-| **Serverless functions** | **10 of 12** (Hobby plan cap) after merging the Google auth routes into `api/auth/[...path].ts` (done, commit `1d3e52a`). | Outlook sign-in fits in the existing auth function: **0 new functions**. |
+| **Serverless functions** | **11 of 12** (Hobby plan cap). A merge of the Google auth routes into one catch-all `api/auth/[...path].ts` (10 of 12) was built in commit `1d3e52a` but **reverted**: a repo comment reports Vercel not routing two-segment paths into a catch-all, and it could not be verified on a preview while preview deploys fail on Neon provisioning. | Redo the merge as Phase 0 once previews work, and verify it there (see Phase 0). |
 
 Google's OAuth project is **MyCalendarSync** (`mycalendarsync-507311`, project number 705347156449). Nothing in this plan changes it.
 
@@ -28,7 +28,7 @@ Google's OAuth project is **MyCalendarSync** (`mycalendarsync-507311`, project n
 - **Scopes (delegated):** `openid email profile offline_access User.Read Calendars.ReadWrite Tasks.ReadWrite`. `offline_access` is what makes Microsoft return a refresh token.
 - **Linking to the user:** reuse `signOAuthState()` / `verifyOAuthState()`. The authorize call requires the verified Google session; the signed `state` ties the Microsoft callback to that user, exactly like Google Background Sync today.
 - **Token rotation:** Microsoft may return a new refresh token on each refresh. Always store the newest one.
-- **Routes** (all in the existing `api/auth/[...path].ts`, add `microsoft` to `server/authRouting.ts`):
+- **Routes** (in the merged `api/auth/[...path].ts` from Phase 0, add `microsoft` to `server/authRouting.ts`):
   - `GET /api/auth/microsoft/authorize` → returns the Microsoft consent URL
   - `GET /api/auth/microsoft/callback` → exchanges the code, stores the refresh token, redirects to Settings
   - `GET|DELETE /api/auth/microsoft/status` → connected? / disconnect (revoke + delete the token)
@@ -89,7 +89,7 @@ Each phase ships on the branch with tests and a preview first, then goes to `mai
 
 | # | Phase | What it delivers | Size |
 |---|---|---|---|
-| 0 | ✅ Function merge | Google auth in one catch-all; 10/12 functions; public URLs unchanged | done |
+| 0 | Function merge (redo) | Google auth in one catch-all; 10/12 functions; public URLs unchanged. Re-apply `1d3e52a`, then on a preview check: `/api/auth/google/status` → 401 JSON (not 404), `/api/auth/google/callback?error=access_denied` → redirect to `/settings/credentials?background_sync=declined`. If two-segment routing fails, use rewrites to one segment instead. | S |
 | 1 | Provider abstraction | `CalendarProvider` interface; Google wrapped as-is; `externalRefs` per provider. No visible change. | M |
 | 2 | Microsoft sign-in | Authorize / callback / status / disconnect; `calendar_connections`; token refresh + rotation; "Connect Outlook" card in Settings with clear errors (declined, work account needs admin approval, expired) | M |
 | 3 | Push plans to Outlook | `api/calendar/[...path].ts`; event + milestones to Outlook Calendar, or milestones to To Do; update and delete; "Push to" choice | L |
