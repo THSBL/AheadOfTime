@@ -1546,7 +1546,7 @@ app.put("/api/auth/google/status", async (req: Request, res: Response) => {
 });
 
 // In-app fallback notice for new calendar events the daily scan found that no
-// Telegram/email message covered (twin of server/googleAuthRoutes.ts's
+// Telegram/email message covered (twin of api/auth/google/index.ts's
 // action=findings).
 app.get("/api/auth/google/findings", async (req: Request, res: Response) => {
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));

@@ -17,6 +17,18 @@
       "destination": "/api/feedback?action=calendar-poll"
     },
     {
+      "source": "/api/auth/google/authorize",
+      "destination": "/api/auth/google?action=authorize"
+    },
+    {
+      "source": "/api/auth/google/status",
+      "destination": "/api/auth/google?action=status"
+    },
+    {
+      "source": "/api/auth/google/findings",
+      "destination": "/api/auth/google?action=findings"
+    },
+    {
       "source": "/api/presets/calibrate-offsets",
       "destination": "/api/presets?action=calibrate-offsets"
     },

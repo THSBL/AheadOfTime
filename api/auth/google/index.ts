@@ -1,14 +1,6 @@
-/**
- * Google sign-in / Background Sync routes, served by the single catch-all
- * function api/auth/[...path].ts (moved here unchanged from the former
- * api/auth/google/index.ts and api/auth/google/callback.ts, which were two
- * of the Hobby plan's 12 serverless functions). Public URLs are unchanged:
- * /api/auth/google/{authorize,status,findings,callback} - including the
- * callback, which is the redirect URI registered in Google Cloud Console.
- */
-import { extractBearerToken, verifyGoogleAccessToken } from './googleAuthVerify.js';
-import { findOrCreateUserByEmail, TelegramSessionStore } from './telegramStore.js';
-import { signOAuthState, verifyOAuthState } from './notifyActionToken.js';
+import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
+import { findOrCreateUserByEmail, TelegramSessionStore } from '../../../server/telegramStore.js';
+import { signOAuthState } from '../../../server/notifyActionToken.js';
 import {
   hasBackgroundSyncLinked,
   unlinkBackgroundSync,
@@ -16,17 +8,27 @@ import {
   missingBackgroundSyncConfig,
   getGoogleClientSecret,
   describeSecretShape,
-  exchangeAuthorizationCode,
-  storeRefreshToken,
   getNotifyPrefs,
   setNotifyPrefs,
-} from './googleOAuthTokenStore.js';
-import { mergeNotifyPrefs } from './notifyPrefs.js';
-import { listPendingFindings, dismissAllFindings } from './agendaFindingsStore.js';
-import { isEmailConfigured } from './emailService.js';
-import { getGoogleClientId } from './googleClientId.js';
-import { sendTestUpdate } from './sendTestUpdate.js';
+} from '../../../server/googleOAuthTokenStore.js';
+import { mergeNotifyPrefs } from '../../../server/notifyPrefs.js';
+import { listPendingFindings, dismissAllFindings } from '../../../server/agendaFindingsStore.js';
+import { isEmailConfigured } from '../../../server/emailService.js';
+import { getGoogleClientId } from '../../../server/googleClientId.js';
+import { sendTestUpdate } from '../../../server/sendTestUpdate.js';
 
+// Consolidated Vercel function for /api/auth/google/authorize (GET) and
+// /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
+// paths here with an ?action= query param, so the frontend and
+// server.ts's own Express routes need no changes. api/auth/google/callback.ts
+// stays its own separate file/function - its path is the OAuth redirect
+// URI registered by hand in Google Cloud Console, so it can't be merged
+// away without also updating that external config. Vercel's Hobby plan
+// caps a deployment at 12 serverless functions; merging same-domain
+// endpoints like this is how this project stays under that cap as routes
+// are added over time (see api/telegram/[...path].ts for the same
+// pattern applied earlier). Logic below is ported verbatim from the two
+// files this replaces.
 const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 
 // Kept in sync by hand with src/services/googleAuth.ts's CALENDAR_SCOPES -
@@ -46,7 +48,7 @@ function getRedirectUri(req: any): string {
   return `${origin.replace(/\/$/, '')}/api/auth/google/callback`;
 }
 
-export async function handleAuthorize(req: any, res: any) {
+async function handleAuthorize(req: any, res: any) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -84,7 +86,7 @@ export async function handleAuthorize(req: any, res: any) {
   return res.status(200).json({ ok: true, authorizeUrl: `${GOOGLE_AUTH_ENDPOINT}?${params.toString()}` });
 }
 
-export async function handleStatus(req: any, res: any) {
+async function handleStatus(req: any, res: any) {
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -154,7 +156,7 @@ export async function handleStatus(req: any, res: any) {
  * The in-app fallback notice: new calendar events the daily scan found that
  * no Telegram/email message covered. GET lists them, POST dismisses them.
  */
-export async function handleFindings(req: any, res: any) {
+async function handleFindings(req: any, res: any) {
   const verified = await verifyGoogleAccessToken(extractBearerToken(req));
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -172,54 +174,22 @@ export async function handleFindings(req: any, res: any) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
-
-
-function getAppOrigin(req: any): string {
-  const configured = process.env.APP_URL?.trim();
-  return (configured || `https://${req.headers?.host}`).replace(/\/$/, '');
-}
-
-/**
- * Step 2 of the authorization-code flow: Google redirects the browser
- * here with ?code=...&state=.... No Authorization header is available on
- * this request (it's a plain browser navigation from Google, not a fetch
- * from our own client) - the signed state from step 1 is the only proof
- * of which user initiated this.
- */
-export async function handleCallback(req: any, res: any) {
-  const { code, state, error: oauthError } = req.query || {};
-  const appOrigin = getAppOrigin(req);
-
-  if (oauthError) {
-    // The user declined consent, or Google returned some other error -
-    // send them back to settings with a plain query flag rather than a
-    // raw error page.
-    return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=declined`);
+export default async function handler(req: any, res: any) {
+  const action = (req.query?.action as string) || 'status';
+  // Per-user, authenticated state that changes when env/settings change: never
+  // let a browser or proxy answer these from a cache (a 304 replay of an old
+  // "not configured" body would hide the Background Sync card indefinitely).
+  res.setHeader('Cache-Control', 'no-store');
+  if (action === 'findings') {
+    return handleFindings(req, res);
   }
 
-  const verifiedState = verifyOAuthState(typeof state === 'string' ? state : undefined);
-  if (!verifiedState || typeof code !== 'string') {
-    return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
+  if (action === 'authorize') {
+    return handleAuthorize(req, res);
+  }
+  if (action === 'status') {
+    return handleStatus(req, res);
   }
 
-  try {
-    const userId = await findOrCreateUserByEmail(verifiedState.email);
-    const exchanged = await exchangeAuthorizationCode(code, getRedirectUri(req));
-
-    if (!exchanged) {
-      // No refresh_token came back - most likely this user already
-      // granted offline access before and Google didn't re-issue one.
-      // Treat as a soft failure: tell them to try disconnecting and
-      // reconnecting from Google's own account permissions page if they
-      // genuinely need a fresh grant, rather than silently pretending
-      // this succeeded.
-      return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=no_refresh_token`);
-    }
-
-    await storeRefreshToken(userId, exchanged.refreshToken, exchanged.scope);
-    return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=connected`);
-  } catch (err: any) {
-    console.error('Google OAuth callback error:', err);
-    return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
-  }
+  return res.status(404).json({ ok: false, error: 'Unknown action' });
 }
