@@ -102,46 +102,29 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   // for space on the calendar grid) vs a 30-minute timed Calendar Event
   // block per milestone. Rendered above the push button in both single and
   // batch mode so the choice applies no matter which flow is used.
-  const renderMilestoneFormatToggle = () => (
-    <div className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2">
-      <span className="text-xs font-bold text-slate-700">Show preparation tasks in Google as:</span>
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => handleMilestoneSyncFormatChange('tasks_only')}
-          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-            milestoneSyncFormat === 'tasks_only'
-              ? 'bg-[#182A42] border-slate-900 text-white shadow-sm'
-              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          <div className="text-xs font-bold flex items-center gap-1.5">
-            <span>Google Tasks</span>
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-              milestoneSyncFormat === 'tasks_only' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-            }`}>Recommended</span>
-          </div>
-          <p className={`text-[11px] mt-0.5 ${milestoneSyncFormat === 'tasks_only' ? 'text-slate-300' : 'text-slate-500'}`}>
-            Checkable to-dos, don't crowd your calendar grid
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleMilestoneSyncFormatChange('timed')}
-          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-            milestoneSyncFormat === 'timed'
-              ? 'bg-[#182A42] border-slate-900 text-white shadow-sm'
-              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          <div className="text-xs font-bold">Calendar Events</div>
-          <p className={`text-[11px] mt-0.5 ${milestoneSyncFormat === 'timed' ? 'text-slate-300' : 'text-slate-500'}`}>
-            30-minute blocks on your calendar
-          </p>
-        </button>
-      </div>
+  // One compact labelled row per choice: label left, control right.
+  const settingRow = (label: string, control: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <span className="text-xs font-bold text-slate-500 shrink-0">{label}</span>
+      <div className="min-w-0 flex justify-end">{control}</div>
     </div>
   );
+  const selectClass =
+    'max-w-full bg-white text-slate-900 text-xs font-semibold pl-3 pr-8 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 cursor-pointer truncate';
+
+  const renderMilestoneFormatToggle = () =>
+    settingRow(
+      'Tasks as',
+      <select
+        aria-label="Show preparation tasks in Google as"
+        value={milestoneSyncFormat === 'tasks_only' ? 'tasks_only' : 'timed'}
+        onChange={(e) => handleMilestoneSyncFormatChange(e.target.value as MilestoneSyncFormat)}
+        className={selectClass}
+      >
+        <option value="tasks_only">Google Tasks: checkable to-dos (recommended)</option>
+        <option value="timed">Calendar events: 30-minute blocks</option>
+      </select>
+    );
 
   // Determine active event to push
   const activeEvent = selectedEventId
@@ -471,9 +454,9 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
             <h3 className="text-base font-bold text-slate-900 leading-tight">
               Push to Google Calendar
             </h3>
-            <p className="text-xs text-slate-500">
-              Sync your event &amp; preparation milestones
-            </p>
+            {syncMode === 'single' && activeEvent && (
+              <p className="text-xs text-slate-500 truncate">{activeEvent.title}</p>
+            )}
           </div>
         </div>
 
@@ -487,7 +470,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
         )}
       </div>
 
-      <div className="p-6 space-y-5">
+      <div className="p-5 space-y-4">
 
         {/* Auth Error Banner */}
         {authError && (
@@ -508,77 +491,59 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           </div>
         )}
 
-        {/* Connected Account Bar */}
-        <div className="p-3.5 bg-sky-50/40 rounded-2xl border border-sky-100 flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${accessToken || serverLinked ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'}`} />
-            <div className="truncate">
-              <span className="text-slate-500 font-medium">Calendar Account: </span>
-              <strong className="text-slate-800 font-semibold truncate">
-                {calendarProfile?.id || (accessToken ? 'Connected (Primary Calendar)' : serverLinked ? 'Connected via Background Sync' : 'Not Connected')}
-              </strong>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {accessToken ? (
-              <>
-                <button
-                  onClick={handleSignIn}
-                  disabled={isSigningIn}
-                  className="text-xs text-sky-800 hover:text-sky-950 font-bold cursor-pointer underline underline-offset-2"
-                  title="Switch to a different Google Account"
-                >
-                  {isSigningIn ? 'Switching...' : 'Switch Account'}
-                </button>
-                <span className="text-sky-200">|</span>
-                <button
-                  onClick={handleSignOut}
-                  className="text-slate-400 hover:text-rose-600 transition-colors flex items-center gap-1 font-semibold cursor-pointer"
-                  title="Disconnect Google Account"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Disconnect</span>
-                </button>
-              </>
+        {/* Account and what to push: one compact row each */}
+        <div className="divide-y divide-slate-100 border-y border-slate-100">
+          {settingRow(
+            'Account',
+            accessToken || serverLinked ? (
+              <select
+                aria-label="Google account"
+                value="current"
+                disabled={isSigningIn}
+                onChange={(e) => {
+                  if (e.target.value === 'switch') void handleSignIn();
+                  if (e.target.value === 'disconnect') handleSignOut();
+                }}
+                className={selectClass}
+              >
+                <option value="current">
+                  {isSigningIn ? 'Switching…' : calendarProfile?.id || (serverLinked && !accessToken ? 'Connected via Background Sync' : 'Google Calendar')}
+                </option>
+                <option value="switch">Switch account…</option>
+                {accessToken && <option value="disconnect">Disconnect</option>}
+              </select>
             ) : (
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="px-3 py-1.5 bg-[#182A42] hover:bg-slate-800 text-white font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-3 py-2 bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 {isSigningIn ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
                 <span>Connect Google</span>
               </button>
+            )
+          )}
+          {events.length > 1 &&
+            settingRow(
+              'Push',
+              <div className="flex bg-slate-100 p-0.5 rounded-xl gap-0.5">
+                {(['single', 'batch'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => { setSyncMode(mode); setSyncSuccessResult(null); setBatchSuccessResult(null); }}
+                    aria-pressed={syncMode === mode}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      syncMode === mode ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {mode === 'single' ? 'This event' : `Several (${events.length})`}
+                  </button>
+                ))}
+              </div>
             )}
-          </div>
+          {!(syncMode === 'single' ? syncSuccessResult : batchSuccessResult) && renderMilestoneFormatToggle()}
         </div>
-
-        {/* Mode Selector Tabs (Single vs Batch Multiple) */}
-        {events.length > 1 && (
-          <div className="flex bg-sky-100/70 p-1 rounded-2xl gap-1">
-            <button
-              type="button"
-              onClick={() => { setSyncMode('single'); setSyncSuccessResult(null); setBatchSuccessResult(null); }}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                syncMode === 'single' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <CalendarIcon className="w-3.5 h-3.5 text-sky-700" />
-              <span>Single Event</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setSyncMode('batch'); setSyncSuccessResult(null); setBatchSuccessResult(null); }}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                syncMode === 'batch' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5 text-sky-700" />
-              <span>Batch Push ({events.length} Events)</span>
-            </button>
-          </div>
-        )}
 
         {syncMode === 'batch' ? (
           <>
@@ -621,23 +586,13 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
               </div>
             ) : (
               <>
-                <div className="p-4 bg-sky-50 border border-sky-200/90 rounded-2xl space-y-1 text-sky-950">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-sky-600" />
-                      <h4 className="text-sm font-bold">
-                        Batch Push Multiple Events ({selectedBatchIds.length} of {events.length} Selected)
-                      </h4>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <button type="button" onClick={handleSelectAllBatch} className="text-sky-700 hover:underline font-semibold cursor-pointer">Select All</button>
-                      <span className="text-sky-300">|</span>
-                      <button type="button" onClick={handleDeselectAllBatch} className="text-slate-500 hover:underline font-semibold cursor-pointer">Deselect All</button>
-                    </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-500">{selectedBatchIds.length} of {events.length} selected</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={handleSelectAllBatch} className="text-sky-700 hover:underline font-semibold cursor-pointer">All</button>
+                    <span className="text-slate-300">|</span>
+                    <button type="button" onClick={handleDeselectAllBatch} className="text-slate-500 hover:underline font-semibold cursor-pointer">None</button>
                   </div>
-                  <p className="text-xs text-sky-800 leading-relaxed pl-6">
-                    Select which events you want to push to Google Calendar simultaneously. Each selected event will add its target date event and all prep tasks to Google Tasks.
-                  </p>
                 </div>
 
                 {/* Events Checklist */}
@@ -649,7 +604,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                       <div
                         key={ev.id}
                         onClick={() => toggleBatchId(ev.id)}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                        className={`px-3 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
                           isSelected ? 'bg-sky-50/70 border-sky-300 shadow-2xs' : 'bg-slate-50/50 border-slate-200 hover:bg-slate-50'
                         }`}
                       >
@@ -664,25 +619,18 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                             <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                               {ev.title}
                             </div>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-                              <span>📅 {formatDisplayDate(ev.eventDate)}</span>
-                              <span>•</span>
-                              <span>📋 {evTaskCount} prep tasks</span>
+                            <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                              {formatDisplayDate(ev.eventDate)} · {evTaskCount} {evTaskCount === 1 ? 'task' : 'tasks'}
                             </div>
                           </div>
                         </div>
-                        <span className="font-mono text-xs font-semibold text-sky-900 bg-sky-100/80 px-2 py-1 rounded-lg shrink-0">
-                          {ev.category}
-                        </span>
                       </div>
                     );
                   })}
                 </div>
 
-                {renderMilestoneFormatToggle()}
-
                 {/* Action Buttons */}
-                <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-2.5">
                   {onClose && (
                     <button
                       type="button"
@@ -707,7 +655,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     ) : (
                       <>
                         <CalendarIcon className="w-4 h-4" />
-                        <span>Push {selectedBatchIds.length} Events to Calendar</span>
+                        <span>Push {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'event' : 'events'}</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
@@ -759,92 +707,8 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
               </div>
             ) : (
               <>
-                {/* Clear Push Summary Box */}
-                <div className="p-4 bg-sky-50 border border-sky-200/90 rounded-2xl space-y-1 text-sky-950">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-sky-600" />
-                    <h4 className="text-sm font-bold">
-                      Clean Calendar Sync: 1 Main Event + {taskCount} {milestoneSyncFormat === 'tasks_only' ? 'Google Tasks' : 'Calendar Events'}
-                    </h4>
-                  </div>
-                  <p className="text-xs text-sky-800 leading-relaxed pl-6">
-                    <strong>1 Calendar Event:</strong> Scheduled on your target event date ({activeEvent.eventDate}).<br />
-                    {milestoneSyncFormat === 'tasks_only' ? (
-                      <><strong>{taskCount} Preparation Tasks:</strong> Pushed strictly to Google Tasks with due dates and checkboxes (preventing duplicate event blocks from crowding your calendar).</>
-                    ) : (
-                      <><strong>{taskCount} Preparation Tasks:</strong> Added as 30-minute Calendar Events on each task's due date.</>
-                    )}
-                  </p>
-                </div>
-
-                {/* Event & Tasks Preview Breakdown */}
-                <div className="space-y-3">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Sync Preview Breakdown
-                  </div>
-
-                  <div className="bg-slate-50/80 rounded-2xl border border-sky-100 divide-y divide-slate-200/80 overflow-hidden">
-                    {/* 1. Main Target Event */}
-                    <div className="p-3.5 flex items-center justify-between gap-3 bg-white">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-sky-100 text-slate-900 flex items-center justify-center font-bold text-xs shrink-0">
-                          🎯
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-sky-950 uppercase tracking-wider bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/80">
-                              1 Main Calendar Event
-                            </span>
-                            <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                              {activeEvent.title}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Target Date: {formatDisplayDate(activeEvent.eventDate)} {activeEvent.eventTime ? `at ${activeEvent.eventTime}` : ''}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="font-mono text-xs font-semibold text-slate-700 shrink-0">
-                        {activeEvent.eventDate}
-                      </div>
-                    </div>
-
-                    {/* 2. Tasks List */}
-                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-                      {prepTasks.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-slate-400">
-                          No prep tasks calculated for this event.
-                        </div>
-                      ) : (
-                        prepTasks.map((task, idx) => (
-                          <div key={task.id || idx} className="p-3 flex items-center justify-between gap-3 hover:bg-sky-50/50 transition-colors">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="font-mono text-[10px] font-bold text-sky-950 bg-sky-50 border border-sky-200/80 px-2 py-0.5 rounded-md shrink-0">
-                                {task.tMinusLabel}
-                              </span>
-                              <span className="text-xs font-semibold text-slate-800 truncate">
-                                {task.title}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 shrink-0">
-                                {milestoneSyncFormat === 'tasks_only' ? 'Google Task' : 'Calendar Event'}
-                              </span>
-                              <div className="font-mono text-xs text-slate-500 shrink-0">
-                                {formatDisplayDate(task.calculatedDate)}
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {renderMilestoneFormatToggle()}
-
                 {/* Action Buttons */}
-                <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-2.5">
                   {onClose && (
                     <button
                       type="button"
@@ -869,7 +733,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     ) : (
                       <>
                         <CalendarIcon className="w-4 h-4" />
-                        <span>Push 1 Event + {taskCount} Tasks</span>
+                        <span>Push event + {taskCount} {milestoneSyncFormat === 'tasks_only' ? 'tasks' : 'blocks'}</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
