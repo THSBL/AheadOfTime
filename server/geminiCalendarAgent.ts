@@ -316,13 +316,17 @@ export class GeminiCalendarAgent {
   public static async processMessage(
     chatId: number | string,
     rawText: string,
-    defaultTimezone: string = 'Europe/London'
+    defaultTimezone: string = 'Europe/London',
+    // forceNewEvent: rawText is a complete brief for a NEW plan (first
+    // message + answers to the refinement questions): always create a new
+    // event (never merge into the one discussed before) and ask nothing more.
+    options: { forceNewEvent?: boolean } = {}
   ): Promise<CalendarAgentResult> {
     const referenceDateISO = new Date().toISOString();
 
-    const pending = await TelegramSessionStore.getPendingClarification(chatId);
+    const pending = options.forceNewEvent ? undefined : await TelegramSessionStore.getPendingClarification(chatId);
     let effectiveText = rawText;
-    let isSecondRound = false;
+    let isSecondRound = Boolean(options.forceNewEvent);
     if (pending) {
       await TelegramSessionStore.setPendingClarification(chatId, null);
       effectiveText = `${pending.originalText}\n\n(Follow-up answer to "${pending.question}"): ${rawText}`;
@@ -373,7 +377,7 @@ export class GeminiCalendarAgent {
               currentlyOpenEventId,
               activeEventsById,
             });
-            if (targetResolution.existingEvent) {
+            if (targetResolution.existingEvent && !options.forceNewEvent) {
               return this.mergeMilestonesIntoEvent(targetResolution.existingEvent, parsed, effectiveText);
             }
             return this.buildAndStoreEvent(chatId, parsed, effectiveText, referenceDateISO, tripDecomposition);
@@ -628,7 +632,11 @@ export class GeminiCalendarAgent {
     const startDateStr = macro?.start_date || explicitDate?.startDate || parsed.start_date;
     const endDateStr = macro?.end_date || explicitDate?.endDate || parsed.end_date || startDateStr;
     const startTimeStr = parsed.start_time || '09:00';
-    const title = macro?.title || getCleanEventTitle(parsed.summary, category, { destination: parsed.location });
+    // "Group Trip Horizon" is the trip parser's internal placeholder for "no
+    // destination found" (e.g. a lowercase "mallorca") - it must never
+    // become the title when the model named the trip itself.
+    const macroTitle = macro?.title && macro.title !== 'Group Trip Horizon' ? macro.title : undefined;
+    const title = macroTitle || getCleanEventTitle(parsed.summary || macro?.title, category, { destination: parsed.location || macro?.destination });
 
     // Prefer the model's own runway; fall back to the deterministic trip
     // decomposition's Track A / Track B milestones when it has none.

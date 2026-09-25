@@ -1,7 +1,17 @@
+import type { RefinementQuestion } from '../src/types.js';
 import { query } from './db.js';
 import { ensureEventSyncSchema } from './eventSyncSchema.js';
 import { CalendarEvent, TMinusMilestone, Deliverable, EventCategory, MilestoneCategory, PreparationLevel } from '../src/types.js';
 
+
+export interface PendingTelegramRefinement {
+  originalMessage: string;
+  questions: RefinementQuestion[];
+  answers: { question: string; answer: string }[];
+  /** Index into questions of the one currently waiting for an answer. */
+  index: number;
+  askedAt: string;
+}
 export interface TelegramUserSession {
   chatId: number | string;
   userId?: number | string;
@@ -736,6 +746,31 @@ export class TelegramSessionStore {
       metadata.pendingClarification = pending;
     } else {
       delete metadata.pendingClarification;
+    }
+    await query(
+      `UPDATE integration_accounts SET metadata = $2 WHERE channel = 'telegram' AND external_id = $1`,
+      [String(chatId), JSON.stringify(metadata)]
+    );
+  }
+
+  /**
+   * A new plan being set up, before anything is created: the refinement
+   * questions still being asked one at a time, and the answers so far. Same
+   * JSONB-metadata scratch state as pendingClarification.
+   */
+  public static async getPendingRefinement(chatId: number | string): Promise<PendingTelegramRefinement | undefined> {
+    const row = await this.getAccountRow(chatId);
+    return row?.metadata?.pendingRefinement;
+  }
+
+  public static async setPendingRefinement(chatId: number | string, pending: PendingTelegramRefinement | null): Promise<void> {
+    await this.getOrCreateSession(chatId);
+    const row = await this.getAccountRow(chatId);
+    const metadata = { ...(row?.metadata || {}) };
+    if (pending) {
+      metadata.pendingRefinement = pending;
+    } else {
+      delete metadata.pendingRefinement;
     }
     await query(
       `UPDATE integration_accounts SET metadata = $2 WHERE channel = 'telegram' AND external_id = $1`,

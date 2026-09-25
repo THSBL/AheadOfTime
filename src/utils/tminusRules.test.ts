@@ -1098,3 +1098,20 @@ describe('parseNaturalDateRange - explicit dates first, weekdays', () => {
     expect(r?.alternatives).toEqual(['2026-09-26', '2026-10-03']);
   });
 });
+
+describe('Telegram-reported trip parsing gaps', () => {
+  const REF_THU = '2026-09-24T10:00:00.000Z';
+  it('keeps the end date of "23 oktober to 29"', () => {
+    const r = parseNaturalDateRange('Trip to mallorca 23 oktober to 29', REF_THU);
+    expect(r?.startDate).toBe('2026-10-23');
+    expect(r?.endDate).toBe('2026-10-29');
+  });
+  it('does not swallow a full second date ("12 november to 3 december")', () => {
+    const r = parseNaturalDateRange('Trip 12 november to 3 december', REF_THU);
+    expect(r?.startDate).toBe('2026-11-12');
+  });
+  it('names a lowercase destination after a trip word, never the placeholder', () => {
+    expect(decomposeComplexTripIntent('Trip to mallorca 23 oktober to 29', REF_THU)?.macro_event.title).toBe('Trip to Mallorca');
+    expect(decomposeComplexTripIntent('Trip to the beach 23 oktober to 29', REF_THU)?.macro_event.title).not.toContain('The');
+  });
+});

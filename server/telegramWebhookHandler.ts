@@ -7,6 +7,17 @@ import { signEventDeepLink } from './deepLinkToken.js';
 import { logQualityEvent, checkAndLogRapidCorrection } from './qualityStore.js';
 import { pushEventToGoogleInBackground, isAutoPushEnabledForUser } from './googleBackgroundPush.js';
 import { formatDisplayDate } from '../src/utils/tminusRules.js';
+import { askRefinementQuestions } from './agentProcessor.js';
+import { composeConversationBrief } from '../src/utils/refinementQuestions.js';
+import type { PendingTelegramRefinement } from './telegramStore.js';
+
+// A half-answered set of refinement questions older than this is dropped,
+// so a message days later starts fresh instead of answering a stale question.
+const REFINEMENT_STALE_MS = 12 * 60 * 60 * 1000;
+
+// Legacy Telegram Markdown: dynamic text (Gemini's questions, options) must
+// not accidentally open a bold/italic/code span and make Telegram reject it.
+const escapeMd = (text: string) => text.replace(/([_*`\[])/g, '\\$1');
 
 export class TelegramWebhookHandler {
   // Deduplication cache: stores update_id -> timestamp (ms)
@@ -149,6 +160,18 @@ export class TelegramWebhookHandler {
     // refinement, this message is the answer to THAT question instead of a
     // fresh request - checked first since both states use the same
     // pendingNoteForEventId marker.
+    // A new plan still being set up: this message answers the refinement
+    // question currently waiting (the web chat's same order - questions
+    // first, then one plan from everything). Commands still work normally.
+    const pendingNewPlan = await TelegramSessionStore.getPendingRefinement(chatId);
+    if (pendingNewPlan && text && !text.startsWith('/')) {
+      if (Date.now() - new Date(pendingNewPlan.askedAt).getTime() < REFINEMENT_STALE_MS) {
+        await this.answerRefinementQuestion(chatId, pendingNewPlan, text, appBaseUrl);
+        return;
+      }
+      await TelegramSessionStore.setPendingRefinement(chatId, null);
+    }
+
     const pendingRefinementClarification = await TelegramSessionStore.getPendingRefinementClarification(chatId);
     const pendingNoteEventId = await TelegramSessionStore.getPendingEventNote(chatId);
     if (pendingRefinementClarification && text && !text.startsWith('/')) {
@@ -288,14 +311,39 @@ export class TelegramWebhookHandler {
   private static async processNaturalLanguageEvent(
     chatId: number | string,
     rawText: string,
-    appBaseUrl: string
+    appBaseUrl: string,
+    // forceNewEvent: rawText is the complete brief built from answered
+    // refinement questions - plan it straight away as a new event.
+    options: { forceNewEvent?: boolean } = {}
   ): Promise<void> {
     // Telegram's own "typing…" indicator auto-expires after ~5s, so it's
     // repeated for the duration of the (usually sub-few-second, but not
     // guaranteed) planning call instead of the chat going silent.
     const stopTyping = this.startTypingIndicator(chatId);
     try {
-      const agentResult = await GeminiCalendarAgent.processMessage(chatId, rawText);
+      // Same order as the web chat: for a NEW plan, first ask the
+      // refinement questions (where/when/what, travel documents, which
+      // date for "next Saturday"...), then plan once from everything.
+      // Skipped for schedule questions and changes to existing plans
+      // (Gemini classifies), when the agent is mid-way through its own
+      // clarifying question, and when Gemini is unavailable.
+      if (!options.forceNewEvent && !(await TelegramSessionStore.getPendingClarification(chatId))) {
+        const refinement = await askRefinementQuestions({ message: rawText, currentReferenceDate: new Date().toISOString() });
+        if (refinement.isNewEventPlan && refinement.questions.length > 0) {
+          const pending: PendingTelegramRefinement = {
+            originalMessage: rawText,
+            questions: refinement.questions,
+            answers: [],
+            index: 0,
+            askedAt: new Date().toISOString(),
+          };
+          await TelegramSessionStore.setPendingRefinement(chatId, pending);
+          await this.sendRefinementQuestion(chatId, pending);
+          return;
+        }
+      }
+
+      const agentResult = await GeminiCalendarAgent.processMessage(chatId, rawText, undefined, { forceNewEvent: options.forceNewEvent });
 
       if (agentResult.createdEvent) {
         // Event was created via create_calendar_event.
@@ -353,6 +401,54 @@ export class TelegramWebhookHandler {
     } finally {
       stopTyping();
     }
+  }
+
+  /** Sends the refinement question currently waiting, with its options as buttons. */
+  private static async sendRefinementQuestion(chatId: number | string, pending: PendingTelegramRefinement): Promise<void> {
+    const q = pending.questions[pending.index];
+    const total = pending.questions.length;
+    const isDate = q.kind === 'date' || q.kind === 'dateRange';
+    const hint = isDate
+      ? '_Reply with the date(s), e.g. 12–19 November._'
+      : q.options.length > 0
+        ? '_Tap an option, or type your own answer._'
+        : '_Type your answer._';
+    const text = [
+      pending.index === 0 ? `A few quick questions so the plan fits:` : null,
+      `*${total > 1 ? `${pending.index + 1}/${total} · ` : ''}${escapeMd(q.question)}*`,
+      hint,
+    ].filter(Boolean).join('\n');
+    // Callback data stays tiny (Telegram caps it at 64 bytes): question and
+    // option by index; the text lives in the pending state.
+    const optionRows = q.options.slice(0, 4).map((opt, optionIndex) => [{ text: opt, callback_data: `RQ:${pending.index}:${optionIndex}` }]);
+    await TelegramService.sendMessage(chatId, text, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [...optionRows, [{ text: 'Skip', callback_data: `RQ:${pending.index}:s` }]] },
+    });
+  }
+
+  /**
+   * Records the answer (empty = skipped) to the question currently waiting,
+   * then asks the next one - or, after the last, builds the plan from the
+   * first message plus every answer in one go, as a new event.
+   */
+  private static async answerRefinementQuestion(
+    chatId: number | string,
+    pending: PendingTelegramRefinement,
+    answer: string,
+    appBaseUrl: string
+  ): Promise<void> {
+    const q = pending.questions[pending.index];
+    const answers = answer.trim() && q ? [...pending.answers, { question: q.question, answer: answer.trim() }] : pending.answers;
+    const next: PendingTelegramRefinement = { ...pending, answers, index: pending.index + 1, askedAt: new Date().toISOString() };
+    if (next.index < next.questions.length) {
+      await TelegramSessionStore.setPendingRefinement(chatId, next);
+      await this.sendRefinementQuestion(chatId, next);
+      return;
+    }
+    await TelegramSessionStore.setPendingRefinement(chatId, null);
+    const brief = composeConversationBrief({ originalMessage: pending.originalMessage, answers });
+    await this.processNaturalLanguageEvent(chatId, brief, appBaseUrl, { forceNewEvent: true });
   }
 
   /**
@@ -466,6 +562,22 @@ export class TelegramWebhookHandler {
     const data = callbackQuery.data || '';
     const chatId = callbackQuery.message?.chat?.id;
 
+    if (data.startsWith('RQ:')) {
+      // "RQ:<questionIndex>:<optionIndex|s>" - an answer to a refinement
+      // question (s = skip). A tap on an older question is ignored.
+      const [, indexStr, choice] = data.split(':');
+      const pending = chatId ? await TelegramSessionStore.getPendingRefinement(chatId) : undefined;
+      const questionIndex = parseInt(indexStr, 10);
+      if (!pending || pending.index !== questionIndex) {
+        await TelegramService.answerCallbackQuery(callbackId, 'That question was already answered.');
+        return;
+      }
+      const option = choice === 's' ? '' : pending.questions[questionIndex]?.options?.[parseInt(choice, 10)] || '';
+      await TelegramService.answerCallbackQuery(callbackId, option ? `✅ ${option}` : 'Skipped');
+      await this.answerRefinementQuestion(chatId, pending, option, appBaseUrl);
+      return;
+    }
+
     if (data.startsWith('CONFIRM_DEFAULT:')) {
       const eventId = data.replace('CONFIRM_DEFAULT:', '');
       const event = await TelegramSessionStore.getEvent(eventId);
@@ -541,7 +653,9 @@ export class TelegramWebhookHandler {
       await TelegramService.answerCallbackQuery(callbackId, `✅ ${optionText}`);
       if (chatId) {
         try {
-          const result = await GeminiCalendarAgent.refineEvent(event, optionText, false);
+          // The question travels with the answer, so a bare "Yes" or
+          // "I'm organizing it" isn't planned without knowing what it answers.
+          const result = await GeminiCalendarAgent.refineEvent(event, `${gap.question.replace(/^Decide:\s*/i, '')} ${optionText}`, false);
           await TelegramSessionStore.replaceMilestonesAndRecomputeGaps(eventId, result.mergedMilestones);
           await TelegramService.sendMessage(chatId, result.replyText, { parse_mode: 'Markdown' });
         } catch (err: any) {

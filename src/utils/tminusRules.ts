@@ -406,6 +406,24 @@ export function parseNaturalDateRange(
   // all; without them, "1st of" matched nothing, and D2 below was left to
   // wrongly parse the trailing "March 2027" on its own (see the `(?!\d)`
   // comment above patternA for why that used to produce the wrong date).
+  // "23 oktober to 29" / "23 october - 29": a range whose end day reuses
+  // the start's month (the end date used to be dropped).
+  const patternD1Range = new RegExp(`(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(${monthRegexPart})\\s*(?:to|-|–|until|till|tot|t/m|au|bis)\\s*(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\b(?!\\s*(?:${monthRegexPart}))`, 'i');
+  const matchD1Range = raw.match(patternD1Range);
+  if (matchD1Range) {
+    const startDay = parseInt(matchD1Range[1], 10);
+    const endDay = parseInt(matchD1Range[3], 10);
+    const month = monthMap[matchD1Range[2].toLowerCase()] ?? 9;
+    if (endDay > startDay && endDay <= 31) {
+      const year = resolveImpliedYear(month, startDay);
+      return {
+        startDate: new Date(year, month, startDay, 12, 0, 0).toISOString().substring(0, 10),
+        endDate: new Date(year, month, endDay, 12, 0, 0).toISOString().substring(0, 10),
+        matchedText: matchD1Range[0],
+      };
+    }
+  }
+
   const patternD1 = new RegExp(`(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthRegexPart})(?:,?\\s*(\\d{4}))?`, 'i');
   const matchD1 = raw.match(patternD1);
   if (matchD1) {
@@ -2336,7 +2354,16 @@ export function decomposeComplexTripIntent(
   const destMatch = message.match(
     new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z ]{2,20}?)(?:\\s+(?:from|with|for|on|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|[ \\t]*\\n|$)`)
   );
-  const destination = destMatch ? destMatch[1].trim() : undefined;
+  // A lowercase place right after a trip word ("trip to mallorca") is
+  // still a destination - only there, so ordinary lowercase words elsewhere
+  // aren't mistaken for one.
+  const NOT_A_PLACE = /^(the|a|an|my|our|his|her|their|see|visit|meet|go|get|do|be|work|school|town|bed|stay|come)$/i;
+  const lowercaseDest = destMatch ? null : message.match(/\b(?:trip|travel(?:ling|ing)?|holiday|vacation|getaway|flight|flying|fly|going|heading|drive|driving)\s+to\s+([a-z][a-z-]{2,20})\b/i);
+  const destination = destMatch
+    ? destMatch[1].trim()
+    : lowercaseDest && !NOT_A_PLACE.test(lowercaseDest[1])
+      ? lowercaseDest[1].charAt(0).toUpperCase() + lowercaseDest[1].slice(1)
+      : undefined;
   if (destination) {
     // No specific archetype matched (stag/hen/conference/vacation) - use a
     // plain, user-facing title instead of exposing the internal sentinel.

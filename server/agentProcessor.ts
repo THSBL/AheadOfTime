@@ -251,11 +251,14 @@ Rules:
 - Don't ask what a sensible default covers (exact guest count, exact time of day).
 - If the description already has everything needed for a good plan, return an empty questions list.
 
-Respond with JSON only: { "questions": [ { "id": short snake_case id, "question": string, "options": string[] } ] }`;
+Also classify the message: is_new_event_plan is true only when it describes a NEW event or plan to prepare for (a trip, party, deadline, appointment...). It is false for a question about the schedule ("what's on tomorrow?"), a change to a plan that already exists ("also book a rental car"), a greeting, or anything else - and then return an empty questions list.
+
+Respond with JSON only: { "is_new_event_plan": boolean, "questions": [ { "id": short snake_case id, "question": string, "options": string[] } ] }`;
 
 const CLARIFY_SCHEMA = {
   type: Type.OBJECT,
   properties: {
+    is_new_event_plan: { type: Type.BOOLEAN },
     questions: {
       type: Type.ARRAY,
       items: {
@@ -269,12 +272,16 @@ const CLARIFY_SCHEMA = {
       },
     },
   },
-  required: ['questions'],
+  required: ['is_new_event_plan', 'questions'],
 };
 
 export interface RefinementQuestionsResult {
   needsClarification: boolean;
   questions: RefinementQuestion[];
+  // Gemini's read of whether the message starts a NEW plan (vs a schedule
+  // question or a change to an existing plan). undefined when Gemini was
+  // unavailable - Telegram then skips the questions rather than guess.
+  isNewEventPlan?: boolean;
 }
 
 function sanitizeMessageQuestions(raw: unknown): RefinementQuestion[] {
@@ -323,6 +330,7 @@ export async function askRefinementQuestions(params: {
     ...buildProfileRefinementQuestions(params.message, params.userProfile),
   ];
   let messageQuestions: RefinementQuestion[] | null = null;
+  let isNewEventPlan: boolean | undefined;
 
   if (process.env.GEMINI_API_KEY) {
     try {
@@ -349,7 +357,9 @@ export async function askRefinementQuestions(params: {
       } else if (rawText.startsWith('```')) {
         rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
       }
-      messageQuestions = sanitizeMessageQuestions(JSON.parse(rawText)?.questions);
+      const parsedClarify = JSON.parse(rawText);
+      messageQuestions = sanitizeMessageQuestions(parsedClarify?.questions);
+      if (typeof parsedClarify?.is_new_event_plan === 'boolean') isNewEventPlan = parsedClarify.is_new_event_plan;
     } catch (err: any) {
       console.warn(`Refinement-question notice, using fallback questions: ${describeGeminiError(err)}`);
     }
@@ -359,7 +369,7 @@ export async function askRefinementQuestions(params: {
     messageQuestions ?? buildFallbackMessageQuestions(params.message, params.currentReferenceDate),
     guaranteedQuestions
   );
-  return { needsClarification: questions.length > 0, questions };
+  return { needsClarification: questions.length > 0, questions, ...(isNewEventPlan !== undefined ? { isNewEventPlan } : {}) };
 }
 
 /**

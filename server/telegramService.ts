@@ -208,27 +208,15 @@ export class TelegramService {
     // they just did. Falls back to a plain (Google-auth-only) link if
     // TELEGRAM_WEBHOOK_SECRET isn't configured in this environment.
     const refineDeepLink = buildEventDeepLink(event.id, appBaseUrl, 'refine');
-    // Same event, same deep-link mechanism, distinct label/intent: there is
-    // no server-side Google OAuth token for Telegram users (the bot runs
-    // headless, with nothing analogous to the browser's stored access
-    // token that src/services/googleAuth.ts relies on), so an in-chat
-    // one-tap push isn't possible yet. This instead lands the user on the
-    // event's Timeline & Tasks view, where the pre-existing "Push to Cal"
-    // button (EventTimelineRadar.tsx) is one tap away using whatever
-    // Google session the browser already has.
-    const pushToCalDeepLink = buildEventDeepLink(event.id, appBaseUrl, 'push');
 
     let text = customText;
     if (!text) {
-      const milestoneLines = (event.milestones || [])
-        .slice(0, 5)
+      const allMilestones = event.milestones || [];
+      const milestoneLines = allMilestones
+        .slice(0, 8)
         .map((m: TMinusMilestone) => `📌 *${formatDisplayDate(m.calculatedDate)}* — ${m.title}`)
         .join('\n');
-
-      const gapsWithOptions = (event.outstandingGaps || []).filter((g) => g.options && g.options.length > 0);
-      const gapLine = gapsWithOptions.length > 0
-        ? `❓ Still deciding: ${gapsWithOptions.map((g) => g.question.replace(/^Decide:\s*/i, '')).join(' · ')}`
-        : null;
+      const moreLine = allMilestones.length > 8 ? `…and ${allMilestones.length - 8} more in the app.` : null;
 
       // Was "Initial Runway Created" / "lock your optimal reverse-logistics
       // schedule" - internal planning vocabulary a user has no reason to
@@ -246,66 +234,29 @@ export class TelegramService {
         '',
         `Here's your prep checklist, saved to your account:`,
         milestoneLines || '📌 Initial review and planning',
-        gapLine ? '' : null,
-        gapLine,
+        moreLine,
         '',
         options.autoPushingToGoogle
-          ? `Not on your calendar yet - tap Looks Good below once it's right, and I'll add it. Anything off? Tap Refine in Chat and tell me.`
-          : `Not on your calendar yet - tap Push to Calendar below once it's right. Anything off? Tap Refine in Chat and tell me.`,
+          ? `Not on your calendar yet - tap Looks Good once it's right, and I'll add it. Anything off? Tap Refine in Chat and tell me.`
+          : `Tap Looks Good once it's right - I'll then give you the link to add it to your calendar. Anything off? Tap Refine in Chat and tell me.`,
       ]
         .filter(Boolean)
         .join('\n');
     }
 
-    // Architecture reset Phase 8 - one button row per still-open decision
-    // that has concrete options (e.g. "Decide: home dinner or restaurant
-    // reservation" -> ["Home dinner", "Restaurant reservation"]), so a
-    // Telegram user can resolve it with a tap instead of typing free text.
-    // Capped at 3 gaps here to keep the message from ballooning - the rest
-    // stay answerable via "Refine in Chat" or the app.
-    const gapRows = (event.outstandingGaps || [])
-      .map((gap, gapIndex) => ({ gap, gapIndex }))
-      .filter(({ gap }) => gap.options && gap.options.length > 0)
-      .slice(0, 3)
-      .map(({ gap, gapIndex }) =>
-        (gap.options || []).slice(0, 3).map((opt, optionIndex) => ({
-          text: opt,
-          callback_data: `RESOLVE_GAP:${event.id}:${gapIndex}:${optionIndex}`,
-        }))
-      );
-
-    // Was always shown alongside "Looks Good," live-reported as confusing -
-    // two calendar-ish actions with no clear relationship. Now there's
-    // exactly one path per user: Background Sync users just tap "Looks
-    // Good" and the bot pushes it for them (CONFIRM_DEFAULT below); anyone
-    // else needs the app link, since there's no server-side Google session
-    // to push with on their behalf.
-    const pushToCalRow = options.autoPushingToGoogle
-      ? []
-      : [[{ text: '📅 Push to Calendar', url: pushToCalDeepLink }]];
-
+    // Same order as the web chat, only after the milestones are shown:
+    // Looks Good, Open timeline, Refine in chat. Open decisions are no
+    // longer buttons here (the refinement questions now come first); they
+    // stay answerable in the app or via Refine in Chat. "Push to Calendar"
+    // for users without Background Sync comes after Looks Good (see the
+    // CONFIRM_DEFAULT handler), so it's never a competing action here.
     return this.sendMessage(chatId, text, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [
-            {
-              text: '🛠️ Open Full Timeline in App',
-              url: refineDeepLink,
-            },
-          ],
-          ...pushToCalRow,
-          ...gapRows,
-          [
-            {
-              text: '✅ Looks Good',
-              callback_data: `CONFIRM_DEFAULT:${event.id}`,
-            },
-            {
-              text: '🔄 Refine in Chat',
-              callback_data: `ADD_NOTE:${event.id}`,
-            },
-          ],
+          [{ text: '✅ Looks Good', callback_data: `CONFIRM_DEFAULT:${event.id}` }],
+          [{ text: '🛠️ Open Timeline in App', url: refineDeepLink }],
+          [{ text: '🔄 Refine in Chat', callback_data: `ADD_NOTE:${event.id}` }],
         ],
       },
     });
