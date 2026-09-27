@@ -46,6 +46,7 @@ import { handleProfileApi } from "./server/userProfileStore";
 import { handleSessionApi } from "./server/sessionRoutes";
 import { verifyRequestUser } from "./server/requestAuth";
 import { handleAiSettings } from "./server/aiSettingsRoute";
+import { handleAccountDeletion } from "./server/accountDeletion";
 import { guardAiRequest, AI_LIMITS, OffTopicRequestError, OFF_TOPIC_REPLY, AI_SCOPE_RULE, capPlannerOutput, capText, capTimingSuggestion } from "./server/aiGuard";
 import { handleCalendarPush, handleCalendarEvents } from "./server/googleCalendarServerApi";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
@@ -807,6 +808,10 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
 });
 
 app.post("/api/quality/report-client-error", async (req: Request, res: Response) => {
+  if (!(await verifyRequestUser(req))) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
   try {
     const { signalType, errorDetail, rawUserMessage, eventId } = req.body || {};
     const allowedSignalTypes: QualitySignalType[] = ['explicit_failure_reply', 'gemini_error'];
@@ -1068,37 +1073,24 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
   });
 });
 
-// 2b. Manual Verification Fallback & Force-Link Endpoint
-app.post("/api/telegram/manual-link", async (req: Request, res: Response) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  try {
-    const { code, username = "Telegram User", chatId } = req.body || {};
-    const cleanChatId = chatId && chatId !== 123456789 && chatId !== '123456789' ? chatId : undefined;
-    const record = await TelegramSessionStore.manualLink(code, username, cleanChatId);
-    res.json({
-      ok: true,
-      linked: true,
-      status: "linked",
-      username: record.username,
-      chatId: record.chatId,
-      record,
-    });
-  } catch (err: any) {
-    res.status(500).json({ ok: false, error: err.message || "Failed to manually link" });
-  }
+// 2b. Manual linking is gone: it linked the code to whichever Telegram chat
+// was most recently active - any user's - so a click could attach an
+// account to a stranger's chat. Linking only happens when the user sends
+// the code to the bot (/start pair_...). Twin of api/telegram's 410.
+app.post("/api/telegram/manual-link", (_req: Request, res: Response) => {
+  res.status(410).json({ ok: false, error: "Send the code to the bot in Telegram to link your account." });
 });
 
-// 3. Register Webhook with Telegram API
+// 3. Register the webhook with Telegram: owner only (CRON_SECRET), and
+// always this app's own URL with its secret - never a URL from the request.
 app.post("/api/telegram/set-webhook", async (req: Request, res: Response) => {
+  const ownerSecret = process.env.CRON_SECRET?.trim();
+  if (!ownerSecret || req.get("authorization") !== `Bearer ${ownerSecret}`) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
   try {
-    const host = req.get("host") || "localhost:3000";
-    const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
-    const defaultUrl = `${protocol}://${host}/api/telegram/webhook`;
-    const targetUrl = req.body?.webhookUrl || defaultUrl;
-    const secretToken = req.body?.secretToken || process.env.TELEGRAM_WEBHOOK_SECRET;
-
-    const result = await TelegramService.setWebhook(targetUrl, secretToken);
-    res.json(result);
+    res.json(await TelegramService.setWebhook(TelegramService.ownWebhookUrl(req.get("host") || undefined)));
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message || "Failed to set webhook" });
   }
@@ -1404,6 +1396,8 @@ function getAppOrigin(req: Request): string {
 app.all("/api/auth/session", (req: Request, res: Response) => handleSessionApi(req, res));
 // Twin of api/auth/google/index.ts action=ai-settings.
 app.all("/api/auth/ai-settings", (req: Request, res: Response) => handleAiSettings(req, res));
+// Twin of api/auth/google/index.ts action=delete-account.
+app.all("/api/auth/account", (req: Request, res: Response) => handleAccountDeletion(req, res));
 
 app.get("/api/auth/google/authorize", async (req: Request, res: Response) => {
   const verified = await verifyRequestUser(req);

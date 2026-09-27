@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { CalendarEvent, TMinusMilestone } from '../src/types.js';
 import { signEventDeepLink } from './deepLinkToken.js';
 import { formatDisplayDate } from '../src/utils/tminusRules.js';
@@ -263,6 +264,26 @@ export class TelegramService {
   }
 
   /**
+   * The secret Telegram must send with every webhook call. From
+   * TELEGRAM_WEBHOOK_SECRET when set, otherwise derived from the bot token,
+   * so the webhook is never open: without it anyone could post fake
+   * "messages" as any chat and change a linked user's plans.
+   */
+  public static getWebhookSecret(): string | null {
+    const configured = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+    if (configured) return configured;
+    const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    if (!botToken) return null;
+    return crypto.createHmac('sha256', botToken).update('aheadoftime-telegram-webhook').digest('hex').slice(0, 48);
+  }
+
+  /** This app's own webhook URL (APP_URL, else the host this request came to). */
+  public static ownWebhookUrl(host?: string): string {
+    const base = process.env.APP_URL?.trim() || `https://${host || 'aheadoftime.app'}`;
+    return `${base.replace(/\/$/, '')}/api/telegram/webhook`;
+  }
+
+  /**
    * Set webhook URL on Telegram API
    */
   public static async setWebhook(
@@ -275,7 +296,7 @@ export class TelegramService {
 
     try {
       const url = `${this.getApiBase()}/setWebhook`;
-      const token = secretToken || process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+      const token = secretToken || this.getWebhookSecret();
       const body: any = {
         url: webhookUrl,
         allowed_updates: ['message', 'callback_query'],

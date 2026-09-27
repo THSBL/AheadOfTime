@@ -85,6 +85,14 @@ export async function logQualityEvent(input: LogQualityEventInput): Promise<stri
       ]
     );
     const id = rows[0]?.id || null;
+    // Privacy: the user's own words are only needed while investigating;
+    // after 90 days the text goes and the counts stay.
+    if (Math.random() < 0.02) {
+      await query(
+        `UPDATE ai_quality_events SET raw_user_message = NULL
+          WHERE raw_user_message IS NOT NULL AND created_at < now() - interval '90 days'`
+      ).catch(() => {});
+    }
 
     if (severity === 'high') {
       const lines = [

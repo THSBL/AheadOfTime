@@ -281,52 +281,13 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         return;
       }
 
-      // 2. If not detected via webhook yet, trigger manual link fallback
-      const customUsername = manualUsernameInput.trim() || 'Telegram User';
-      const res = await fetch('/api/telegram/manual-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: activePairCode || 'pair_manual',
-          username: customUsername,
-        }),
+      // 2. Not linked yet. There is no way to link without the bot: the
+      // old "manual link" linked the code to whichever Telegram chat was
+      // most recently active - possibly someone else's.
+      setFeedback({
+        type: 'error',
+        message: 'Not linked yet. Open the bot in Telegram, send the link code (tap Start), then check again.',
       });
-
-      const data = await res.json();
-      if (data.ok && data.linked) {
-        const linkedUser = data.username || customUsername;
-        setIsLinked(true);
-        setUsername(linkedUser);
-        if (data.chatId) {
-          setChatId(data.chatId);
-        }
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('aot_telegram_linked', 'true');
-          localStorage.setItem('aot_telegram_user', linkedUser);
-          if (data.chatId) {
-            localStorage.setItem('aot_telegram_chat_id', String(data.chatId));
-          }
-        }
-
-        stopPolling();
-        setIsWaitingForHandshake(false);
-        setPairingLink(null);
-        setActivePairCode(null);
-        setShowManualInput(false);
-        setIsLinking(false);
-
-        setFeedback({
-          type: 'success',
-          message: `🎉 Connected! AheadOfTime calendar assistant is linked to @${linkedUser}.`,
-        });
-      } else {
-        setShowManualInput(true);
-        setFeedback({
-          type: 'error',
-          message: 'Could not auto-verify yet. Please enter your Telegram username below to confirm.',
-        });
-      }
     } catch (err: any) {
       setFeedback({
         type: 'error',

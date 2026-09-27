@@ -8,6 +8,7 @@ import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { AiPlanningCard } from './AiPlanningCard';
+import { DeleteAccountCard } from './DeleteAccountCard';
 
 interface SettingsCredentialsPageProps {
   onSyncComplete?: (events: CalendarEvent[]) => void;
@@ -113,6 +114,9 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
 
           {/* Undo for accidental deletes (soft-deleted for 30 days) */}
           <RecentlyDeletedEventsCard />
+
+          {/* Delete the account and all data stored for it */}
+          {currentUser?.id && <DeleteAccountCard />}
 
           {/* CARD 3: QUESTIONNAIRE PROFILE & PRESET HEURISTICS */}
           <div className="bg-white border border-sky-200/90 rounded-2xl p-5 shadow-xs">

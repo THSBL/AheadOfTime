@@ -257,7 +257,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       // UI flow, which already succeeded via the local fallback above.
       fetch('/api/quality/report-client-error', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           signalType: 'gemini_error',
           errorDetail: e instanceof Error ? e.message : String(e),
@@ -354,7 +354,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       // awaited: a logging failure must not affect this UI flow.
       fetch('/api/quality/report-client-error', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           signalType: 'explicit_failure_reply',
           errorDetail: e instanceof Error ? e.message : String(e),

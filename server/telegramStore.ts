@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import type { RefinementQuestion } from '../src/types.js';
 import { query } from './db.js';
 import { ensureEventSyncSchema } from './eventSyncSchema.js';
@@ -355,7 +356,8 @@ export class TelegramSessionStore {
    * a later flow supplies one. Flagged for review.
    */
   public static async createPairingCode(userId: string = 'user_default', email?: string): Promise<string> {
-    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    // Unguessable (the code links a Telegram chat to this account).
+    const randomSuffix = crypto.randomBytes(6).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8).padEnd(8, '0');
     const code = `pair_${randomSuffix}`;
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -387,11 +389,33 @@ export class TelegramSessionStore {
     const normalizedCode = pairingCode.trim();
     const username = from?.username || from?.first_name || 'Telegram User';
 
-    const rows = await query<{ code: string; user_id: string | null; status: string }>(
-      `SELECT code, user_id, status FROM pairing_codes WHERE code = $1`,
+    const rows = await query<{ code: string; user_id: string | null; status: string; expires_at: string | Date | null }>(
+      `SELECT code, user_id, status, expires_at FROM pairing_codes WHERE code = $1`,
       [normalizedCode]
     );
     let record = rows[0];
+
+    // A code links a chat to an account once, within its 24 hours. Without
+    // these checks, anyone who later saw a used code (a screenshot, a
+    // shared t.me link) could attach their own chat to that account.
+    if (record) {
+      if (record.status === 'linked') {
+        const same = record.user_id
+          ? await query<{ one: number }>(
+              `SELECT 1 AS one FROM integration_accounts
+                WHERE channel = 'telegram' AND external_id = $1 AND user_id = $2 AND is_linked = true`,
+              [String(chatId), record.user_id]
+            )
+          : [];
+        if (same.length === 0) {
+          return { success: false, error: 'This link code was already used. Generate a new one in the app (Settings -> Credentials).' };
+        }
+        return { success: true, session: rowToSession((await this.getAccountRow(chatId))!) };
+      }
+      if (record.expires_at && new Date(record.expires_at).getTime() < Date.now()) {
+        return { success: false, error: 'This link code has expired. Generate a new one in the app (Settings -> Credentials).' };
+      }
+    }
 
     if (!record) {
       // If code starts with pair_, create an ad-hoc valid record for smooth pairing,
@@ -399,7 +423,7 @@ export class TelegramSessionStore {
       if (!normalizedCode.startsWith('pair_')) {
         return { success: false, error: 'Invalid pairing token. Please generate a new link in your dashboard.' };
       }
-      record = { code: normalizedCode, user_id: null, status: 'linked' };
+      record = { code: normalizedCode, user_id: null, status: 'linked', expires_at: null };
     }
 
     // No real email was ever collected for this code (createPairingCode's

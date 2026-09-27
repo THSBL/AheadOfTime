@@ -387,6 +387,18 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                   </a>.
                 </p>
               </div>
+
+              <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-1.5 sm:col-span-2">
+                <div className="flex items-center gap-2 text-slate-900 font-bold text-xs sm:text-sm">
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Delete Your Account &amp; Data</span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Settings &rarr; Credentials &rarr; <strong>Delete account</strong> permanently deletes your account and everything we store
+                  for it: plans and tasks, profile, Telegram link, Background Sync access (also revoked at Google), feedback and settings.
+                  Events already pushed to your own Google Calendar stay there. Your own words kept in our error logs are removed after 90 days.
+                </p>
+              </div>
             </div>
           </section>
 

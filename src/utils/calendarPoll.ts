@@ -38,7 +38,7 @@ export function parseCalendarVote(raw: unknown): { vote: CalendarVoteInput } | {
   let notifyEmail: string | undefined;
   if (typeof r.notifyEmail === 'string' && r.notifyEmail.trim()) {
     const email = r.notifyEmail.trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) return { error: 'That email address does not look right.' };
+    if (email.length > 254 || !EMAIL_RE.test(email)) return { error: 'That email address does not look right.' };
     notifyEmail = email;
   }
   return {

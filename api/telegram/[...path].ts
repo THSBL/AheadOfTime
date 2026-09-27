@@ -113,31 +113,11 @@ export default async function handler(req: any, res: any) {
   }
 
   // --- /api/telegram/manual-link ---
+  // Manual linking is gone: it linked the code to whichever Telegram chat was
+  // most recently active - any user's. Linking only happens when the user
+  // sends the code to the bot.
   if (route === 'manual-link') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-    if (req.method === 'POST') {
-      try {
-        const { code, username = 'Telegram User', chatId = 123456789 } = req.body || {};
-        const record = await TelegramSessionStore.manualLink(code, username, chatId);
-        return res.status(200).json({
-          ok: true,
-          linked: true,
-          status: 'linked',
-          username: record.username,
-          chatId: record.chatId,
-          record,
-        });
-      } catch (err: any) {
-        return res.status(500).json({ ok: false, error: err.message || 'Failed to manually link' });
-      }
-    }
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
+    return res.status(410).json({ ok: false, error: 'Send the code to the bot in Telegram to link your account.' });
   }
 
   // --- /api/telegram/pair-code ---
@@ -220,17 +200,19 @@ export default async function handler(req: any, res: any) {
   }
 
   // --- /api/telegram/set-webhook ---
+  // Owner only (CRON_SECRET), and always this app's own URL with its secret -
+  // it used to accept any caller and any URL, i.e. anyone could redirect the
+  // bot's messages to their own server.
   if (route === 'set-webhook') {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
+    const ownerSecret = process.env.CRON_SECRET?.trim();
+    if (!ownerSecret || (req.headers?.authorization || '') !== `Bearer ${ownerSecret}`) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
     try {
-      const host = req.headers?.['host'] || 'aheadoftime.app';
-      const protocol = req.headers?.['x-forwarded-proto'] || 'https';
-      const defaultUrl = `${protocol}://${host}/api/telegram/webhook`;
-      const targetUrl = req.body?.webhookUrl || defaultUrl;
-
-      const result = await TelegramService.setWebhook(targetUrl);
+      const result = await TelegramService.setWebhook(TelegramService.ownWebhookUrl(req.headers?.['host']));
       return res.status(200).json(result);
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err?.message || 'Failed to set webhook' });

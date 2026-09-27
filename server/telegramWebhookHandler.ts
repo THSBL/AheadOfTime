@@ -37,19 +37,40 @@ export class TelegramWebhookHandler {
     }, 60000);
   }
 
+  private static lastReRegisterAt = 0;
+
+  /**
+   * Re-registers the production webhook with the secret, at most every 10
+   * minutes per instance. Only from production (or local dev): a preview
+   * deployment must never pull the bot's webhook to itself.
+   */
+  private static async reRegisterWebhookOnce(req: Request): Promise<void> {
+    const isProduction = process.env.VERCEL_ENV === 'production' || !process.env.VERCEL;
+    if (!isProduction || Date.now() - this.lastReRegisterAt < 10 * 60 * 1000) return;
+    this.lastReRegisterAt = Date.now();
+    const host = String(req.headers['host'] || '');
+    const result = await TelegramService.setWebhook(TelegramService.ownWebhookUrl(host)).catch(() => null);
+    console.warn('Telegram webhook re-registered with its secret:', result?.ok ? 'ok' : result?.description || 'failed');
+  }
+
   /**
    * Primary entry point for POST /api/telegram/webhook and /webhook/telegram
    */
   public static async handleWebhook(req: Request, res: Response): Promise<void> {
     try {
-      // 1. Webhook secret verification (if configured, a matching header is required)
-      const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
-      const receivedSecret =
-        req.headers['x-telegram-bot-api-secret-token'] ||
-        req.headers['X-Telegram-Bot-Api-Secret-Token'];
-
-      if (expectedSecret && receivedSecret !== expectedSecret) {
-        console.warn('⚠️ Telegram webhook secret mismatch, ignoring update.');
+      // 1. Webhook secret: always required (see TelegramService.getWebhookSecret).
+      const expectedSecret = TelegramService.getWebhookSecret();
+      const receivedSecret = req.headers['x-telegram-bot-api-secret-token'];
+      if (!expectedSecret) {
+        res.status(503).json({ error: 'Telegram is not configured' });
+        return;
+      }
+      if (receivedSecret !== expectedSecret) {
+        // A webhook registered before the secret was required sends no
+        // header: re-register it (our own URL, with the secret) once. The
+        // 403 makes Telegram retry this update, which then carries the secret.
+        if (!receivedSecret) await this.reRegisterWebhookOnce(req);
+        console.warn('⚠️ Telegram webhook secret missing or wrong, ignoring update.');
         res.status(403).json({ error: 'Secret mismatch' });
         return;
       }

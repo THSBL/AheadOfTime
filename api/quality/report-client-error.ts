@@ -1,3 +1,4 @@
+import { verifyRequestUser } from '../../server/requestAuth.js';
 import { logQualityEvent, QualitySignalType } from '../../server/qualityStore.js';
 
 const ALLOWED_SIGNAL_TYPES: QualitySignalType[] = ['explicit_failure_reply', 'gemini_error'];
@@ -14,6 +15,12 @@ const ALLOWED_SIGNAL_TYPES: QualitySignalType[] = ['explicit_failure_reply', 'ge
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Signed-in users only: each report alerts the owner, and an open
+  // endpoint let anyone write to the database and spam that alert.
+  if (!(await verifyRequestUser(req))) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
   try {

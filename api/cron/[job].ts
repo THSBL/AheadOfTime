@@ -67,12 +67,14 @@ async function handleAgendaScan(req: any, res: any) {
  * CRON_SECRET so it can't be hit by anyone else.
  */
 async function handleWeeklyReport(req: any, res: any) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers?.authorization || '';
-    if (auth !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ ok: false, error: 'Unauthorized' });
-    }
+  // Fails closed like the agenda scan: without CRON_SECRET anyone could
+  // trigger it (it sends user feedback quotes to the owner's chat).
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) {
+    return res.status(500).json({ ok: false, error: 'CRON_SECRET is not configured.' });
+  }
+  if ((req.headers?.authorization || '') !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
   try {
