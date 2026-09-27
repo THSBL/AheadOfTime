@@ -1,4 +1,5 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+﻿import { AI_SETTING_EVENT, getCachedAiPlanningEnabled } from '../services/aiSettings';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Mic,
@@ -86,6 +87,32 @@ interface ChatConsoleProps {
   onOpenPreferences?: () => void;
   currentReferenceDate: string;
 }
+
+const VOICE_INPUT_ENABLED = false;
+
+/**
+ * One line under the chat input saying plans are written with Google's
+ * Gemini from what the user types, with a link to switch it off in
+ * Settings -> Credentials (or back on, when it's off).
+ */
+const AiUseNotice: React.FC = () => {
+  const [enabled, setEnabled] = useState<boolean>(getCachedAiPlanningEnabled());
+  useEffect(() => {
+    const onChange = (e: Event) => setEnabled(Boolean((e as CustomEvent).detail?.enabled));
+    window.addEventListener(AI_SETTING_EVENT, onChange);
+    return () => window.removeEventListener(AI_SETTING_EVENT, onChange);
+  }, []);
+  return (
+    <p className="mt-2 px-1 text-[11px] leading-snug text-slate-400">
+      {enabled
+        ? 'To give you the best plan, what you type here is processed by AI (Google Gemini).'
+        : 'AI planning is off - plans use built-in templates, so details you add are used less.'}{' '}
+      <a href="/settings/credentials?setup=ai" className="font-semibold text-sky-300 hover:text-sky-200 underline underline-offset-2">
+        {enabled ? 'AI settings' : 'Turn AI on'}
+      </a>
+    </p>
+  );
+};
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
   messages,
@@ -317,7 +344,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         // failing): say so, instead of template text that suggests the
         // message was understood.
         additionText: data.usedAi === false
-          ? "The AI planner isn't available right now, so this is a basic template plan - details you add may not change it yet."
+          ? getCachedAiPlanningEnabled()
+            ? "The AI planner isn't available right now, so this is a basic template plan - details you add may not change it yet."
+            : 'AI planning is off (Settings -> Credentials), so this is a template plan - details you add are used less.'
           : data.additionText,
         associatedEventId: updatedEvent.id,
         generatedMilestones: updatedEvent.milestones,
@@ -1194,7 +1223,11 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 pb-0.5">
-            {!inputText && (
+            {/* The voice memo button recorded audio and then submitted a
+                hardcoded demo sentence, planning an event the user never
+                described (and asked for microphone access for nothing).
+                Hidden until real transcription exists. */}
+            {VOICE_INPUT_ENABLED && !inputText && (
               <button
                 type="button"
                 onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
@@ -1221,6 +1254,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             </button>
           </div>
         </form>
+        <AiUseNotice />
       </div>
 
       {/* Divider - sits between the freeform input above and the preset

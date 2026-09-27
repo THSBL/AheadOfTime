@@ -1,3 +1,4 @@
+import { getCachedAiPlanningEnabled, saveAiPlanningEnabled } from '../services/aiSettings';
 import React, { useState, useEffect } from 'react';
 import { CalendarPreferencePoll } from './CalendarPreferencePoll';
 import type { CalendarChoice } from '../utils/calendarPoll';
@@ -61,6 +62,9 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   const [primaryCalendar, setPrimaryCalendar] = useState<CalendarChoice | undefined>(initialProfile?.primaryCalendar);
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
+  // Optional, separate from the required consent above: whether plans are
+  // written with AI (Google Gemini). Changeable later in Settings.
+  const [aiPlanningChecked, setAiPlanningChecked] = useState<boolean>(getCachedAiPlanningEnabled());
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
   useEffect(() => {
@@ -95,6 +99,8 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       privacyConsentAccepted: true,
       completedAt: new Date().toISOString(),
     };
+    // Saved on the account when reachable; kept on this device until then.
+    void saveAiPlanningEnabled(aiPlanningChecked);
 
     if (action === 'connect_calendar') {
       setIsConnecting(true);
@@ -371,6 +377,23 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                 Please check the consent agreement to proceed with Ahead Of Time setup.
               </p>
             )}
+          </div>
+
+          {/* AI planning choice - optional, can be changed in Settings */}
+          <div className="p-4 rounded-2xl border bg-slate-50/80 border-slate-200">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={aiPlanningChecked}
+                onChange={(e) => setAiPlanningChecked(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer mt-0.5 shrink-0"
+              />
+              <div className="text-xs text-slate-700 leading-relaxed">
+                <span className="font-semibold text-slate-900">Plan with AI (Google Gemini) for the best plans.</span>{' '}
+                What you type and the details of the events you plan are sent to Google's Gemini API to write tailored plans.
+                Untick to use our built-in templates instead - they're more generic. You can change this anytime in Settings.
+              </div>
+            </label>
           </div>
 
           {/* Actions */}

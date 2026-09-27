@@ -37,6 +37,10 @@
       "destination": "/api/auth/google?action=calendar-events"
     },
     {
+      "source": "/api/auth/ai-settings",
+      "destination": "/api/auth/google?action=ai-settings"
+    },
+    {
       "source": "/api/auth/session",
       "destination": "/api/auth/google?action=session"
     },

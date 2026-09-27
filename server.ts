@@ -45,6 +45,7 @@ import { parseCalendarVote } from "./src/utils/calendarPoll";
 import { handleProfileApi } from "./server/userProfileStore";
 import { handleSessionApi } from "./server/sessionRoutes";
 import { verifyRequestUser } from "./server/requestAuth";
+import { handleAiSettings } from "./server/aiSettingsRoute";
 import { guardAiRequest, AI_LIMITS, OffTopicRequestError, OFF_TOPIC_REPLY, AI_SCOPE_RULE, capPlannerOutput, capText, capTimingSuggestion } from "./server/aiGuard";
 import { handleCalendarPush, handleCalendarEvents } from "./server/googleCalendarServerApi";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
@@ -1401,6 +1402,8 @@ function getAppOrigin(req: Request): string {
 
 // The app's own login session (local-dev twin of the Vercel route).
 app.all("/api/auth/session", (req: Request, res: Response) => handleSessionApi(req, res));
+// Twin of api/auth/google/index.ts action=ai-settings.
+app.all("/api/auth/ai-settings", (req: Request, res: Response) => handleAiSettings(req, res));
 
 app.get("/api/auth/google/authorize", async (req: Request, res: Response) => {
   const verified = await verifyRequestUser(req);

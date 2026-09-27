@@ -1,3 +1,4 @@
+import { refreshAiPlanningEnabled } from './services/aiSettings';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   BrowserRouter, 
@@ -229,7 +230,9 @@ function App() {
   // app session (it outlives closing Chrome and the Google token's one-hour
   // expiry); the event sync starts as soon as it's confirmed.
   useEffect(() => {
-    if (currentUser?.id) void checkAppSession();
+    // Then sync the AI planning switch: saves a choice made before the
+    // account was reachable (onboarding) and picks up the server's value.
+    if (currentUser?.id) void checkAppSession().then(() => refreshAiPlanningEnabled());
   }, [currentUser?.id]);
 
   // Persist events to user-scoped storage whenever events change

@@ -249,7 +249,24 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 <span>Explicit Prohibition on AI &amp; Machine Learning Model Training</span>
               </h4>
               <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed">
-                Ahead Of Time does <strong>NOT</strong> use Google Workspace APIs or any user data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) foundation models. All data processing is strictly deterministic and localized to your specific preparation timeline calculations.
+                Ahead Of Time does <strong>NOT</strong> use Google Workspace APIs or any user data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) foundation models.
+              </p>
+            </div>
+
+            {/* AI processing to generate plans (Google Gemini) */}
+            <div id="ai-processing" className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-slate-900">AI processing to write your plans (Google Gemini)</h4>
+              <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                When <strong>Plan with AI</strong> is on (the default; you choose during onboarding and can change it anytime in
+                Settings &rarr; Credentials), Ahead Of Time sends the information needed to write a plan to Google's Gemini API:
+                what you type in the chat or on Telegram, and the details of the events you plan - title, dates, place, the calendar
+                entries you choose to import, and profile answers such as your home area or whether you have a pet. This is used only
+                to generate your preparation plan, as part of the feature you asked for. It is not used by us to train AI models, and it
+                is not used for advertising.
+              </p>
+              <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                When Plan with AI is off, nothing is sent to an AI provider: plans are made by our built-in templates on our own servers.
+                Requests to the AI are limited per account and restricted to planning your events.
               </p>
             </div>
           </section>

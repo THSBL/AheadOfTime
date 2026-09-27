@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, Settings2, Check } from
 import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
 import { useUserProfile } from '../contexts/UserProfileContext';
+import { AiPlanningCard } from './AiPlanningCard';
 
 interface SettingsCredentialsPageProps {
   onSyncComplete?: (events: CalendarEvent[]) => void;
@@ -106,6 +107,9 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
 
           {/* CARD 2: TELEGRAM ASSISTANT BOT */}
           <TelegramIntegrationCard userId={currentUser?.id} />
+
+          {/* AI planning switch (Google Gemini) - linked from the chat's notice */}
+          <AiPlanningCard />
 
           {/* Undo for accidental deletes (soft-deleted for 30 days) */}
           <RecentlyDeletedEventsCard />

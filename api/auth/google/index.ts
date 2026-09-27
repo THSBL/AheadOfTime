@@ -20,6 +20,7 @@ import { isEmailConfigured } from '../../../server/emailService.js';
 import { getGoogleClientId } from '../../../server/googleClientId.js';
 import { sendTestUpdate } from '../../../server/sendTestUpdate.js';
 import { handleCalendarPush, handleCalendarEvents } from '../../../server/googleCalendarServerApi.js';
+import { handleAiSettings } from '../../../server/aiSettingsRoute.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -194,6 +195,9 @@ export default async function handler(req: any, res: any) {
 
   if (action === 'authorize') {
     return handleAuthorize(req, res);
+  }
+  if (action === 'ai-settings') {
+    return handleAiSettings(req, res);
   }
   // Push to Cal / Scan agenda through the stored Background Sync grant.
   if (action === 'calendar-push' || action === 'calendar-events') {
