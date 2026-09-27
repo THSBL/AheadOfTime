@@ -48,6 +48,7 @@ import {
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
 import { finalizeMilestonePlan, preserveCompletedMilestones } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
+import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 // Looked up by each RefinementQuestion's iconKey (creationStateMachine.ts) -
 // gives every question card a distinct visual anchor instead of an
@@ -290,7 +291,7 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
       try {
         const res = await fetch('/api/event/deep-refine', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: aiJsonHeaders(),
           body: JSON.stringify({ event: draftEvent }),
         });
         if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -328,7 +329,7 @@ export const EventCreationWizard: React.FC<EventCreationWizardProps> = ({
         try {
           const res = await fetch('/api/agent/process', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: aiJsonHeaders(),
             body: JSON.stringify({
               message: answersSummary,
               currentReferenceDate: new Date().toISOString(),

@@ -1,5 +1,6 @@
 import { generateContentFast, DEFAULT_FAST_MODELS } from '../../server/agentProcessor.js';
 import { inferTaskTimingLocally } from '../../src/utils/timingAI.js';
+import { guardAiRequest, AI_SCOPE_RULE, capTimingSuggestion } from '../../server/aiGuard.js';
 
 // Vercel serverless equivalent of server.ts's POST /api/milestone/suggest-timing
 // route. Logic ported verbatim; generateContentFast/DEFAULT_FAST_MODELS are
@@ -22,6 +23,8 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
+    const aiUser = await guardAiRequest(req, res, { taskTitle: 400, taskDescription: 1000, eventTitle: 400 });
+    if (!aiUser) return;
     const rawTaskTitle = req.body.taskTitle || '';
     const rawTaskDescription = req.body.taskDescription || '';
     const rawEventTitle = req.body.eventTitle || '';
@@ -41,7 +44,7 @@ export default async function handler(req: any, res: any) {
 
     const localBaseline = inferTaskTimingLocally(taskTitle, taskDescription, eventTitle);
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       res.json(localBaseline);
       return;
     }
@@ -84,6 +87,8 @@ Required JSON format:
   ]
 }
 
+${AI_SCOPE_RULE}
+
 Output ONLY the JSON object.`;
 
     const result = await generateContentFast(
@@ -100,7 +105,7 @@ Output ONLY the JSON object.`;
 
     const parsed = JSON.parse(result.text.trim());
     if (parsed && typeof parsed.amount === 'number' && parsed.unit && parsed.reason) {
-      res.json(parsed);
+      res.json(capTimingSuggestion(parsed));
       return;
     }
     res.json(localBaseline);

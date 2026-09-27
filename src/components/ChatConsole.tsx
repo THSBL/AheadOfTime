@@ -48,6 +48,7 @@ import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
 import { EventCreationWizard } from './EventCreationWizard';
 import { CanonicalCategory } from '../utils/creationStateMachine';
+import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
   if (presetId === 'hobbies') return 'hobbies';
@@ -295,9 +296,15 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           };
       const response = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({ currentReferenceDate, userProfile: planningProfile, ...body }),
       });
+      const refusal = await readAiRefusal(response);
+      if (refusal) {
+        if (generation !== draftGeneration.current) return;
+        appendDraftMessage('agent', refusal);
+        return;
+      }
       if (!response.ok) throw new Error(`Server returned status ${response.status}`);
       const data = await response.json();
       if (generation !== draftGeneration.current) return;
@@ -343,10 +350,22 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     try {
       const res = await fetch('/api/agent/clarify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({ message: text, currentReferenceDate, userProfile: planningProfile }),
       });
-      const data = await res.json();
+      const refusal = await readAiRefusal(res);
+      const data = refusal ? null : await res.json();
+      // Not a planning request, too long, rate-limited or signed out: say
+      // so and stop, instead of planning something from it.
+      const stopMessage = refusal || (data?.offTopic && typeof data.message === 'string' ? data.message : null);
+      if (stopMessage) {
+        if (generation !== draftGeneration.current) return;
+        draftRequestInFlight.current = false;
+        setDraftBrief(null);
+        appendDraftMessage('agent', stopMessage);
+        setIsDraftLoading(false);
+        return;
+      }
       if (Array.isArray(data?.questions)) {
         questions = data.questions.filter((q: RefinementQuestion) => q && typeof q.question === 'string' && q.question.trim());
       }

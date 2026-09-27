@@ -47,6 +47,11 @@ vi.mock('./geminiCalendarAgent.js', () => ({
 }));
 vi.mock('./googleBackgroundPush.js', () => ({ pushEventToGoogleInBackground: vi.fn(), isAutoPushEnabledForUser: vi.fn(async () => false) }));
 vi.mock('./userProfileStore.js', () => ({ getUserProfile: vi.fn(async () => ({ hasPet: true })) }));
+vi.mock('./aiGuard.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./aiGuard.js')>()),
+  isAiPlanningEnabled: vi.fn(async () => true),
+  recordAiCall: vi.fn(async () => true),
+}));
 vi.mock('./qualityStore.js', () => ({ logQualityEvent: vi.fn(async () => {}), checkAndLogRapidCorrection: vi.fn() }));
 
 import { TelegramWebhookHandler } from './telegramWebhookHandler';
@@ -72,7 +77,7 @@ describe('Telegram: questions first, then one plan (same order as the web chat)'
     await tap('RQ:1:0');                            // tapped answer to Q2
     expect(state.pending).toBeUndefined();
     expect(state.plannedWith).toHaveLength(1);
-    expect(state.plannedWith[0].options).toEqual({ forceNewEvent: true });
+    expect(state.plannedWith[0].options).toEqual({ forceNewEvent: true, useAi: true });
     expect(state.plannedWith[0].text).toBe(
       'Trip to mallorca\n\nDetails:\n- When do you go, and when are you back? 23 to 29 October\n- Travel documents: anything to arrange? Visa needed'
     );
@@ -93,7 +98,7 @@ describe('Telegram: questions first, then one plan (same order as the web chat)'
   it('a schedule question skips the questions entirely', async () => {
     await say("What's on tomorrow?");
     expect(state.pending).toBeUndefined();
-    expect(state.plannedWith).toEqual([{ text: "What's on tomorrow?", options: { forceNewEvent: undefined } }]);
+    expect(state.plannedWith).toEqual([{ text: "What's on tomorrow?", options: { forceNewEvent: undefined, useAi: true } }]);
   });
 });
 

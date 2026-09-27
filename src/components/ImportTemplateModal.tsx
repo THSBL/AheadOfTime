@@ -36,6 +36,7 @@ import {
   SpreadsheetColumnMapping,
   CalendarEvent
 } from '../types';
+import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 interface SuggestedAddition extends CustomPresetMilestone {
   rationale: string;
@@ -109,7 +110,7 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
     try {
       const response = await fetch('/api/presets/smart-import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({ fileName: apiFileName, sheets }),
       });
 
@@ -280,7 +281,7 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
     try {
       const response = await fetch('/api/presets/calibrate-offsets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           presetTitle,
           targetDate: targetLaunchDate,

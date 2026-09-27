@@ -45,6 +45,7 @@ import { parseCalendarVote } from "./src/utils/calendarPoll";
 import { handleProfileApi } from "./server/userProfileStore";
 import { handleSessionApi } from "./server/sessionRoutes";
 import { verifyRequestUser } from "./server/requestAuth";
+import { guardAiRequest, AI_LIMITS, OffTopicRequestError, OFF_TOPIC_REPLY, AI_SCOPE_RULE, capPlannerOutput, capText, capTimingSuggestion } from "./server/aiGuard";
 import { handleCalendarPush, handleCalendarEvents } from "./server/googleCalendarServerApi";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
@@ -93,47 +94,10 @@ app.get("/api/health", (_req: Request, res: Response) => {
   });
 });
 
-// Audio transcription endpoint with fast model
-app.post("/api/agent/transcribe", async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { audioBase64, mimeType = "audio/webm" } = req.body;
-    if (!audioBase64) {
-      res.status(400).json({ error: "audioBase64 is required" });
-      return;
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      res.json({ transcribedText: "Voice memo captured (Gemini API key not configured for live transcription)." });
-      return;
-    }
-
-    const audioPart = {
-      inlineData: {
-        mimeType: mimeType || "audio/webm",
-        data: audioBase64,
-      },
-    };
-
-    const transcribeModels = TRANSCRIBE_MODELS;
-    const result = await generateContentFast(
-      () => ({
-        contents: { 
-          parts: [
-            audioPart, 
-            { text: "Transcribe this conversational calendar voice memo exactly. Output ONLY the transcribed speech text." }
-          ] 
-        },
-      }),
-      transcribeModels,
-      4500
-    );
-
-    const transcribedText = result.text?.trim() || "";
-    res.json({ transcribedText });
-  } catch (error: any) {
-    console.warn("Audio transcription notice:", error?.message || "Unavailable");
-    res.json({ transcribedText: "Voice memo captured successfully. (Transcription fallback applied)." });
-  }
+// Voice transcription was never used by the app and answered anyone (an
+// open Gemini transcription service) - removed; twin of api/agent's 410.
+app.post("/api/agent/transcribe", (_req: Request, res: Response) => {
+  res.status(410).json({ error: "Voice transcription is not available." });
 });
 
 // Endpoint to intelligently infer preparation timing based on task input and event context
@@ -144,6 +108,8 @@ app.post("/api/milestone/suggest-timing", async (req: Request, res: Response): P
   };
 
   try {
+    const aiUser = await guardAiRequest(req, res, { taskTitle: 400, taskDescription: 1000, eventTitle: 400 });
+    if (!aiUser) return;
     const rawTaskTitle = req.body.taskTitle || "";
     const rawTaskDescription = req.body.taskDescription || "";
     const rawEventTitle = req.body.eventTitle || "";
@@ -163,7 +129,7 @@ app.post("/api/milestone/suggest-timing", async (req: Request, res: Response): P
 
     const localBaseline = inferTaskTimingLocally(taskTitle, taskDescription, eventTitle);
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       res.json(localBaseline);
       return;
     }
@@ -206,6 +172,8 @@ Required JSON format:
   ]
 }
 
+${AI_SCOPE_RULE}
+
 Output ONLY the JSON object.`;
 
     const result = await generateContentFast(
@@ -222,7 +190,7 @@ Output ONLY the JSON object.`;
 
     const parsed = JSON.parse(result.text.trim());
     if (parsed && typeof parsed.amount === "number" && parsed.unit && parsed.reason) {
-      res.json(parsed);
+      res.json(capTimingSuggestion(parsed));
       return;
     }
     res.json(localBaseline);
@@ -236,6 +204,8 @@ Output ONLY the JSON object.`;
 // Endpoint to deeply refine an unrefined agenda event with expert logistics reasoning
 app.post("/api/event/deep-refine", async (req: Request, res: Response): Promise<void> => {
   try {
+    const aiUser = await guardAiRequest(req, res, { event: 60_000 });
+    if (!aiUser) return;
     const { event }: { event: CalendarEvent } = req.body;
     if (!event || !event.title) {
       res.status(400).json({ error: "Valid calendar event is required" });
@@ -272,7 +242,7 @@ app.post("/api/event/deep-refine", async (req: Request, res: Response): Promise<
       preparationLevelSetBy: "aot",
     };
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       // usedAi lets a caller that has its OWN, more context-aware local
       // generator (e.g. the event wizard, which knows the user's actual
       // chip answers) tell this generic local fallback apart from a real
@@ -329,6 +299,8 @@ Required JSON format:
 
 Categories allowed: "booking" | "gift" | "shopping" | "logistics" | "prep" | "costume" | "tickets" | "review" | "work" | "admin"
 
+${AI_SCOPE_RULE}
+
 Output ONLY the raw JSON object.`;
 
     const result = await generateContentFast(
@@ -343,7 +315,7 @@ Output ONLY the raw JSON object.`;
       8000
     );
 
-    const parsed = JSON.parse(result.text.trim());
+    const parsed = capPlannerOutput(JSON.parse(result.text.trim()));
     if (parsed && Array.isArray(parsed.milestones) && parsed.milestones.length > 0) {
       const refinedMilestones: TMinusMilestone[] = parsed.milestones.map((m: any, idx: number) => {
         const offset = typeof m.tMinusOffsetMinutes === "number" ? m.tMinusOffsetMinutes : -((idx + 1) * 24 * 60);
@@ -422,6 +394,8 @@ Output ONLY the raw JSON object.`;
 // Endpoint to AI-calibrate T-Minus offsets for spreadsheet checklists lacking explicit lead times
 app.post("/api/presets/calibrate-offsets", async (req: Request, res: Response): Promise<void> => {
   try {
+    const aiUser = await guardAiRequest(req, res, { presetTitle: 200, tasks: 60_000 });
+    if (!aiUser) return;
     const { 
       presetTitle = "Project Workflow", 
       targetDate = "2026-11-20", 
@@ -473,7 +447,7 @@ app.post("/api/presets/calibrate-offsets", async (req: Request, res: Response): 
       }).sort((a, b) => b.t_minus_days - a.t_minus_days);
     };
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       const calibratedTasks = computeHeuristicCalibration();
       res.json({ calibratedTasks, calibratedBy: 'heuristic_engine' });
       return;
@@ -512,7 +486,9 @@ Return a JSON object strictly following this structure:
   ]
 }
 
-Ensure every input task is preserved and calibrated. Output ONLY the raw JSON object.`;
+Ensure every input task is preserved and calibrated. ${AI_SCOPE_RULE}
+
+Output ONLY the raw JSON object.`;
 
     const result = await generateContentFast(
       () => ({
@@ -530,6 +506,9 @@ Ensure every input task is preserved and calibrated. Output ONLY the raw JSON ob
     try {
       const cleanJson = result.text.replace(/```json/g, '').replace(/```/g, '').trim();
       parsedResult = JSON.parse(cleanJson);
+      if (parsedResult && Array.isArray(parsedResult.calibratedTasks)) {
+        parsedResult.calibratedTasks = capPlannerOutput({ milestones: parsedResult.calibratedTasks }).milestones;
+      }
     } catch (parseErr) {
       console.warn("Failed to parse Gemini calibrated offsets response:", parseErr);
     }
@@ -553,6 +532,8 @@ Ensure every input task is preserved and calibrated. Output ONLY the raw JSON ob
 // milestone runway directly, without requiring manual column mapping.
 app.post("/api/presets/smart-import", async (req: Request, res: Response): Promise<void> => {
   try {
+    const aiUser = await guardAiRequest(req, res, { fileName: 300, sheets: 200_000 });
+    if (!aiUser) return;
     const {
       fileName = "Uploaded workbook",
       sheets = [],
@@ -566,7 +547,7 @@ app.post("/api/presets/smart-import", async (req: Request, res: Response): Promi
       return;
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       res.json({
         extractedBy: "unavailable",
         error: "AI smart import requires Gemini to be configured on this environment. Use manual column mapping instead.",
@@ -631,6 +612,8 @@ Return a JSON object strictly following this structure:
   ]
 }
 
+${AI_SCOPE_RULE}
+
 Output ONLY the raw JSON object.`;
 
     const result = await generateContentFast(
@@ -646,18 +629,18 @@ Output ONLY the raw JSON object.`;
     );
 
     const cleanJson = result.text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleanJson);
+    const parsed = capPlannerOutput(JSON.parse(cleanJson));
 
     if (!parsed || !Array.isArray(parsed.milestones) || parsed.milestones.length === 0) {
       throw new Error("Model returned no extractable milestones");
     }
 
     res.json({
-      presetTitle: parsed.presetTitle || fileName.replace(/\.[^/.]+$/, ""),
+      presetTitle: capText(parsed.presetTitle, 120) || fileName.replace(/\.[^/.]+$/, ""),
       tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : ["Custom"],
       targetDateGuess: parsed.targetDateGuess || null,
       milestones: parsed.milestones.sort((a: any, b: any) => (b.t_minus_days || 0) - (a.t_minus_days || 0)),
-      suggestedAdditions: Array.isArray(parsed.suggestedAdditions) ? parsed.suggestedAdditions : [],
+      suggestedAdditions: Array.isArray(parsed.suggestedAdditions) ? capPlannerOutput({ milestones: parsed.suggestedAdditions.slice(0, 10) }).milestones : [],
       extractedBy: result.usedModel,
     });
   } catch (error: any) {
@@ -675,6 +658,8 @@ Output ONLY the raw JSON object.`;
 // this never blocks event creation).
 app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void> => {
   try {
+    const aiUser = await guardAiRequest(req, res, { message: AI_LIMITS.messageChars });
+    if (!aiUser) return;
     const { message, currentReferenceDate, userProfile } = req.body || {};
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: "Message is required." });
@@ -682,8 +667,8 @@ app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void
     }
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date();
     const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
-    const result = await askRefinementQuestions({ message, currentReferenceDate: refDateISO, userProfile: sanitizePlanningProfile(userProfile) });
-    res.json(result);
+    const result = await askRefinementQuestions({ message, currentReferenceDate: refDateISO, userProfile: sanitizePlanningProfile(userProfile), useAi: aiUser.aiEnabled });
+    res.json(result.offTopic ? { ...result, message: OFF_TOPIC_REPLY } : result);
   } catch (error: any) {
     console.error("Error in /api/agent/clarify:", error);
     res.json({ needsClarification: false, questions: [] });
@@ -693,6 +678,12 @@ app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void
 // Main intelligent agent processing endpoint
 app.post("/api/agent/process", async (req: Request, res: Response): Promise<void> => {
   try {
+    const aiUser = await guardAiRequest(req, res, {
+      message: AI_LIMITS.messageChars,
+      conversationBrief: AI_LIMITS.briefChars,
+      activeEvents: 400_000,
+    });
+    if (!aiUser) return;
     const payload: ProcessAgentInputPayload = req.body;
     let {
       message = "",
@@ -714,38 +705,11 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
     const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
     const refDateStr = refDateISO.substring(0, 10);
 
-    let transcribedVoiceText: string | undefined = undefined;
-
-    // Handle voice memo transcription if audio provided
-    if (audioBase64 && process.env.GEMINI_API_KEY) {
-      try {
-        const audioPart = {
-          inlineData: {
-            mimeType: mimeType || "audio/webm",
-            data: audioBase64,
-          },
-        };
-        const transcribeModels = TRANSCRIBE_MODELS;
-        const transcribeRes = await generateContentFast(
-          () => ({
-            contents: { 
-              parts: [
-                audioPart, 
-                { text: "Transcribe this calendar / event prep voice memo accurately. Return only the transcript." }
-              ] 
-            },
-          }),
-          transcribeModels,
-          3000
-        );
-        transcribedVoiceText = transcribeRes.text?.trim() || "";
-        if (transcribedVoiceText && !message) {
-          message = transcribedVoiceText;
-        }
-      } catch (audioErr: any) {
-        console.warn("Audio transcription notice:", audioErr?.message || "Transcribe fallback");
-      }
-    }
+    // The app never sends voice memos; audio in a request is ignored
+    // rather than transcribed for whoever sends it.
+    const transcribedVoiceText: string | undefined = undefined;
+    void audioBase64;
+    void mimeType;
 
     if (!message && !intakeAnswer && !batchAnswers) {
       res.status(400).json({ error: "Message or intake answer is required." });
@@ -767,7 +731,7 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
 
     let result: ProcessAgentResponsePayload;
 
-    if (process.env.GEMINI_API_KEY) {
+    if (process.env.GEMINI_API_KEY && aiUser.aiEnabled) {
       try {
         result = await processWithGemini({
           message,
@@ -787,6 +751,10 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
         }
         result.usedAi = true;
       } catch (geminiError: any) {
+        if (geminiError instanceof OffTopicRequestError) {
+          res.status(422).json({ ok: false, error: 'off_topic', message: OFF_TOPIC_REPLY });
+          return;
+        }
         console.warn(`Fast Gemini notice, seamlessly using deterministic rules engine: ${describeGeminiError(geminiError)}`);
         // Pure logging - does not affect the deterministic fallback below.
         await logQualityEvent({

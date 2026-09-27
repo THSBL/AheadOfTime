@@ -9,6 +9,7 @@ import {
 } from '../../server/agentProcessor.js';
 import { sanitizePlanningProfile } from '../../src/utils/refinementQuestions.js';
 import { logQualityEvent } from '../../server/qualityStore.js';
+import { guardAiRequest, AI_LIMITS, OffTopicRequestError, OFF_TOPIC_REPLY } from '../../server/aiGuard.js';
 
 // Consolidated Vercel function for /api/agent/transcribe (POST) and
 // /api/agent/process (POST) - vercel.json rewrites both old paths here
@@ -33,50 +34,10 @@ export const config = {
   maxDuration: 30,
 };
 
-async function handleTranscribe(req: any, res: any) {
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed. /api/agent/transcribe requires POST.' });
-    return;
-  }
-
-  try {
-    const { audioBase64, mimeType = 'audio/webm' } = req.body;
-    if (!audioBase64) {
-      res.status(400).json({ error: 'audioBase64 is required' });
-      return;
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      res.json({ transcribedText: 'Voice memo captured (Gemini API key not configured for live transcription).' });
-      return;
-    }
-
-    const audioPart = {
-      inlineData: {
-        mimeType: mimeType || 'audio/webm',
-        data: audioBase64,
-      },
-    };
-
-    const result = await generateContentFast(
-      () => ({
-        contents: {
-          parts: [
-            audioPart,
-            { text: 'Transcribe this conversational calendar voice memo exactly. Output ONLY the transcribed speech text.' }
-          ]
-        },
-      }),
-      TRANSCRIBE_MODELS,
-      4500
-    );
-
-    const transcribedText = result.text?.trim() || '';
-    res.json({ transcribedText });
-  } catch (error: any) {
-    console.warn('Audio transcription notice:', error?.message || 'Unavailable');
-    res.json({ transcribedText: 'Voice memo captured successfully. (Transcription fallback applied).' });
-  }
+// Voice transcription was never used by the app and answered anyone - an
+// open Gemini transcription service. Gone; kept as a clear 410.
+async function handleTranscribe(_req: any, res: any) {
+  res.status(410).json({ error: 'Voice transcription is not available.' });
 }
 
 async function handleProcess(req: any, res: any) {
@@ -86,6 +47,12 @@ async function handleProcess(req: any, res: any) {
   }
 
   try {
+    const aiUser = await guardAiRequest(req, res, {
+      message: AI_LIMITS.messageChars,
+      conversationBrief: AI_LIMITS.briefChars,
+      activeEvents: 400_000,
+    });
+    if (!aiUser) return;
     const payload: ProcessAgentInputPayload = req.body;
     let {
       message = "",
@@ -107,38 +74,11 @@ async function handleProcess(req: any, res: any) {
     const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
     const refDateStr = refDateISO.substring(0, 10);
 
-    let transcribedVoiceText: string | undefined = undefined;
-
-    // Handle voice memo transcription if audio provided
-    if (audioBase64 && process.env.GEMINI_API_KEY) {
-      try {
-        const audioPart = {
-          inlineData: {
-            mimeType: mimeType || "audio/webm",
-            data: audioBase64,
-          },
-        };
-        const transcribeModels = TRANSCRIBE_MODELS;
-        const transcribeRes = await generateContentFast(
-          () => ({
-            contents: {
-              parts: [
-                audioPart,
-                { text: "Transcribe this calendar / event prep voice memo accurately. Return only the transcript." }
-              ]
-            },
-          }),
-          transcribeModels,
-          3000
-        );
-        transcribedVoiceText = transcribeRes.text?.trim() || "";
-        if (transcribedVoiceText && !message) {
-          message = transcribedVoiceText;
-        }
-      } catch (audioErr: any) {
-        console.warn("Audio transcription notice:", audioErr?.message || "Transcribe fallback");
-      }
-    }
+    // The app never sends voice memos; audio in a request is ignored
+    // rather than transcribed for whoever sends it.
+    const transcribedVoiceText: string | undefined = undefined;
+    void audioBase64;
+    void mimeType;
 
     if (!message && !intakeAnswer && !batchAnswers) {
       res.status(400).json({ error: "Message or intake answer is required." });
@@ -159,7 +99,7 @@ async function handleProcess(req: any, res: any) {
 
     let result: ProcessAgentResponsePayload;
 
-    if (process.env.GEMINI_API_KEY) {
+    if (process.env.GEMINI_API_KEY && aiUser.aiEnabled) {
       try {
         result = await processWithGemini({
           message,
@@ -179,6 +119,10 @@ async function handleProcess(req: any, res: any) {
         }
         result.usedAi = true;
       } catch (geminiError: any) {
+        if (geminiError instanceof OffTopicRequestError) {
+          res.status(422).json({ ok: false, error: 'off_topic', message: OFF_TOPIC_REPLY });
+          return;
+        }
         console.warn(`Fast Gemini notice, seamlessly using deterministic rules engine: ${describeGeminiError(geminiError)}`);
         // Pure logging - does not affect the deterministic fallback below.
         // Note: web-chat events use client-generated ids (evt-...), not
@@ -240,6 +184,8 @@ async function handleClarify(req: any, res: any) {
     return;
   }
   try {
+    const aiUser = await guardAiRequest(req, res, { message: AI_LIMITS.messageChars });
+    if (!aiUser) return;
     const { message, currentReferenceDate, userProfile } = req.body || {};
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required.' });
@@ -247,8 +193,8 @@ async function handleClarify(req: any, res: any) {
     }
     const refDate = currentReferenceDate ? new Date(currentReferenceDate) : new Date();
     const refDateISO = isNaN(refDate.getTime()) ? new Date().toISOString() : refDate.toISOString();
-    const result = await askRefinementQuestions({ message, currentReferenceDate: refDateISO, userProfile: sanitizePlanningProfile(userProfile) });
-    res.json(result);
+    const result = await askRefinementQuestions({ message, currentReferenceDate: refDateISO, userProfile: sanitizePlanningProfile(userProfile), useAi: aiUser.aiEnabled });
+    res.json(result.offTopic ? { ...result, message: OFF_TOPIC_REPLY } : result);
   } catch (error: any) {
     console.error('Error in /api/agent/clarify:', error);
     res.json({ needsClarification: false, questions: [] });

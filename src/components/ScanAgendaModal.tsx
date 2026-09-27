@@ -36,6 +36,7 @@ import { getCurrentUser, loadUserEvents, setCurrentUser as setGlobalCurrentUser,
 import { groupTripEntries, describeTripEntry } from '../utils/tripGrouping';
 import { completeTasksEvidencedByCalendar } from '../utils/calendarEvidence';
 import { isServerCalendarLinked, scanAgendaViaServer, ServerCalendarUnavailable } from '../services/serverCalendar';
+import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 /**
  * Robust check to determine if a Google Calendar item is already tracked in the dashboard.
@@ -466,7 +467,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
     try {
       const res = await fetch('/api/event/deep-refine', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({ event: draft }),
       });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);

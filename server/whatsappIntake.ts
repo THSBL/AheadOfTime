@@ -1,3 +1,4 @@
+import { AI_SCOPE_RULE, capPlannerOutput, capText, stripSpoofedSystemNotes } from './aiGuard.js';
 import { GoogleGenAI } from '@google/genai';
 import { WhatsAppEventSessionState } from '../src/types/whatsapp.js';
 import { TMinusMilestone, MilestoneCategory } from '../src/types.js';
@@ -62,13 +63,16 @@ Your objective:
    - Shopping, supplies & gifts: T-5d to T-3d
    - Final packing, pre-departure checks: T-2d or T-1d
    - Day-of critical items: T-Day (T-0d)
-4. Return strict JSON matching the schema below.`;
+4. Return strict JSON matching the schema below.
+5. If the message is not about this event or the user's plans, return only {"off_topic": true}.
+
+${AI_SCOPE_RULE}`;
 
     const prompt = `Event Context:
 Title: "${eventTitle}"
 Date: ${eventDate}
 Location: "${session.eventLocation || 'Unspecified'}"
-User WhatsApp Message: "${userText}"
+User WhatsApp Message: "${stripSpoofedSystemNotes(userText).slice(0, 2000)}"
 
 Generate 4 to 6 tailored T-minus milestones for this event and return a JSON object with:
 - "extracted_context": {
@@ -110,7 +114,11 @@ Generate 4 to 6 tailored T-minus milestones for this event and return a JSON obj
       });
 
       const rawText = response.text || '{}';
-      const parsed = JSON.parse(rawText);
+      const parsed = capPlannerOutput(JSON.parse(rawText));
+      if (parsed.off_topic === true) {
+        throw new Error('off_topic');
+      }
+      if (typeof parsed.whatsapp_summary === 'string') parsed.whatsapp_summary = capText(parsed.whatsapp_summary, 400);
 
       const rawMilestones = Array.isArray(parsed.milestones) ? parsed.milestones : [];
       

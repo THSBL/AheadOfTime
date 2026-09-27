@@ -1,5 +1,6 @@
 import { MilestoneCategory } from '../types.js';
 import { lookupTaskTiming } from '../data/prepTimelineDatabase.js';
+import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 export type TimeUnit = 'weeks' | 'days' | 'hours';
 
@@ -343,7 +344,7 @@ export async function fetchAITaskTiming(
 
     const res = await fetch('/api/milestone/suggest-timing', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: aiJsonHeaders(),
       body: JSON.stringify({
         taskTitle,
         taskDescription,

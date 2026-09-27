@@ -4,6 +4,7 @@ import { generateDeterministicMilestones } from '../../src/utils/deterministicMi
 import { SHARED_PLANNING_RULES, buildPreparationLevelAddendum } from '../../server/planningPipeline.js';
 import { getActiveAssessor } from '../../src/utils/preparationAssessment.js';
 import type { CalendarEvent, TMinusMilestone } from '../../src/types.js';
+import { guardAiRequest, AI_SCOPE_RULE, capPlannerOutput } from '../../server/aiGuard.js';
 
 // Vercel serverless equivalent of server.ts's POST /api/event/deep-refine
 // route. Logic ported verbatim; shared helpers imported from
@@ -16,6 +17,8 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    const aiUser = await guardAiRequest(req, res, { event: 60_000 });
+    if (!aiUser) return;
     const { event }: { event: CalendarEvent } = req.body;
     if (!event || !event.title) {
       res.status(400).json({ error: 'Valid calendar event is required' });
@@ -52,7 +55,7 @@ export default async function handler(req: any, res: any) {
       preparationLevelSetBy: 'aot',
     };
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       // usedAi lets a caller that has its OWN, more context-aware local
       // generator (e.g. the event wizard, which knows the user's actual
       // chip answers) tell this generic local fallback apart from a real
@@ -106,6 +109,8 @@ Required JSON format:
 
 Categories allowed: "booking" | "gift" | "shopping" | "logistics" | "prep" | "costume" | "tickets" | "review" | "work" | "admin"
 
+${AI_SCOPE_RULE}
+
 Output ONLY the raw JSON object.`;
 
     const result = await generateContentFast(
@@ -120,7 +125,7 @@ Output ONLY the raw JSON object.`;
       8000
     );
 
-    const parsed = JSON.parse(result.text.trim());
+    const parsed = capPlannerOutput(JSON.parse(result.text.trim()));
     if (parsed && Array.isArray(parsed.milestones) && parsed.milestones.length > 0) {
       const refinedMilestones: TMinusMilestone[] = parsed.milestones.map((m: any, idx: number) => {
         const offset = typeof m.tMinusOffsetMinutes === 'number' ? m.tMinusOffsetMinutes : -((idx + 1) * 24 * 60);

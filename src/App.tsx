@@ -81,6 +81,7 @@ import {
   logoutAndClearAccountSession
 } from './services/accountManager';
 import { UserProfileProvider, useUserProfile } from './contexts/UserProfileContext';
+import { aiJsonHeaders, readAiRefusal } from './services/aiRequest';
 
 const INITIAL_MESSAGES: AgentMessage[] = [
   {
@@ -1300,7 +1301,7 @@ function App() {
       // its own targetEventId directly.
       const response = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           message: text,
           currentReferenceDate,
@@ -1309,6 +1310,14 @@ function App() {
           userProfile: { homeZipOrLocation: onboardingProfile?.homeZipOrLocation },
         }),
       });
+
+      // Off-topic, too long, rate-limited or signed out: tell the user and
+      // stop - never fall back to building a template "event" from it.
+      const refusal = await readAiRefusal(response);
+      if (refusal) {
+        setAgentConfirmationToast({ id: Date.now(), title: "Can't plan that", message: refusal });
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(`Server returned status ${response.status}`);
@@ -1451,7 +1460,7 @@ function App() {
     try {
       const response = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           // The question travels with the answer so the planner knows what
           // it refers to, and the answer always refines this event.
@@ -1519,7 +1528,7 @@ function App() {
     try {
       const response = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           message: `Variable tune: ${key} = ${value}`,
           currentReferenceDate,
@@ -1589,7 +1598,7 @@ function App() {
       
       const response = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           message: `Batch intake submission for event ${eventId}`,
           currentReferenceDate,

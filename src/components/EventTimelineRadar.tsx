@@ -39,6 +39,7 @@ import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
+import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 // Category-specific example so the "SOMETHING OFF?" placeholder feels like
 // it's actually about this event, not a hardcoded party-planning example
@@ -194,7 +195,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     try {
       const resp = await fetch('/api/event/deep-refine', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({ event: activeEvent }),
       });
       if (resp.ok) {
@@ -292,7 +293,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     try {
       const res = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           message: answer ? `${answer.question} ${text}` : text,
           currentReferenceDate,
@@ -305,6 +306,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           ...(answer?.intakeAnswer ? { intakeAnswer: answer.intakeAnswer } : {}),
         }),
       });
+      const refusal = await readAiRefusal(res);
+      if (refusal) {
+        setCorrectionReply(refusal);
+        setCorrectionExchanges((prev) => [...prev, { text: refusal, isUser: false }]);
+        return;
+      }
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       const data = await res.json();
       if (data?.event) {
@@ -397,7 +404,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     try {
       const res = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           message: `Expand this into a full ${newLevel} preparation plan, given my actual responsibility for this event.`,
           currentReferenceDate,
@@ -567,7 +574,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
       const res = await fetch('/api/agent/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiJsonHeaders(),
         body: JSON.stringify({
           message: changeParts.join(' '),
           currentReferenceDate,

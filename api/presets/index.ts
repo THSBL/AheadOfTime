@@ -1,4 +1,5 @@
 import { generateContentFast, DEFAULT_FAST_MODELS } from '../../server/agentProcessor.js';
+import { guardAiRequest, AI_SCOPE_RULE, capPlannerOutput, capText } from '../../server/aiGuard.js';
 
 // Consolidated Vercel function for /api/presets/calibrate-offsets (POST) and
 // /api/presets/smart-import (POST) - vercel.json rewrites both old paths
@@ -17,6 +18,8 @@ async function handleCalibrateOffsets(req: any, res: any) {
   }
 
   try {
+    const aiUser = await guardAiRequest(req, res, { presetTitle: 200, tasks: 60_000 });
+    if (!aiUser) return;
     const {
       presetTitle = 'Project Workflow',
       targetDate = '2026-11-20',
@@ -68,7 +71,7 @@ async function handleCalibrateOffsets(req: any, res: any) {
       }).sort((a, b) => b.t_minus_days - a.t_minus_days);
     };
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       const calibratedTasks = computeHeuristicCalibration();
       res.json({ calibratedTasks, calibratedBy: 'heuristic_engine' });
       return;
@@ -107,7 +110,9 @@ Return a JSON object strictly following this structure:
   ]
 }
 
-Ensure every input task is preserved and calibrated. Output ONLY the raw JSON object.`;
+Ensure every input task is preserved and calibrated. ${AI_SCOPE_RULE}
+
+Output ONLY the raw JSON object.`;
 
     const result = await generateContentFast(
       () => ({
@@ -125,6 +130,9 @@ Ensure every input task is preserved and calibrated. Output ONLY the raw JSON ob
     try {
       const cleanJson = result.text.replace(/```json/g, '').replace(/```/g, '').trim();
       parsedResult = JSON.parse(cleanJson);
+      if (parsedResult && Array.isArray(parsedResult.calibratedTasks)) {
+        parsedResult.calibratedTasks = capPlannerOutput({ milestones: parsedResult.calibratedTasks }).milestones;
+      }
     } catch (parseErr) {
       console.warn('Failed to parse Gemini calibrated offsets response:', parseErr);
     }
@@ -150,6 +158,8 @@ async function handleSmartImport(req: any, res: any) {
   }
 
   try {
+    const aiUser = await guardAiRequest(req, res, { fileName: 300, sheets: 200_000 });
+    if (!aiUser) return;
     const {
       fileName = 'Uploaded workbook',
       sheets = [],
@@ -163,7 +173,7 @@ async function handleSmartImport(req: any, res: any) {
       return;
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY || !aiUser.aiEnabled) {
       res.json({
         extractedBy: 'unavailable',
         error: 'AI smart import requires Gemini to be configured on this environment. Use manual column mapping instead.',
@@ -228,6 +238,8 @@ Return a JSON object strictly following this structure:
   ]
 }
 
+${AI_SCOPE_RULE}
+
 Output ONLY the raw JSON object.`;
 
     const result = await generateContentFast(
@@ -243,18 +255,18 @@ Output ONLY the raw JSON object.`;
     );
 
     const cleanJson = result.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    const parsed = JSON.parse(cleanJson);
+    const parsed = capPlannerOutput(JSON.parse(cleanJson));
 
     if (!parsed || !Array.isArray(parsed.milestones) || parsed.milestones.length === 0) {
       throw new Error('Model returned no extractable milestones');
     }
 
     res.json({
-      presetTitle: parsed.presetTitle || fileName.replace(/\.[^/.]+$/, ''),
+      presetTitle: capText(parsed.presetTitle, 120) || fileName.replace(/\.[^/.]+$/, ''),
       tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : ['Custom'],
       targetDateGuess: parsed.targetDateGuess || null,
       milestones: parsed.milestones.sort((a: any, b: any) => (b.t_minus_days || 0) - (a.t_minus_days || 0)),
-      suggestedAdditions: Array.isArray(parsed.suggestedAdditions) ? parsed.suggestedAdditions : [],
+      suggestedAdditions: Array.isArray(parsed.suggestedAdditions) ? capPlannerOutput({ milestones: parsed.suggestedAdditions.slice(0, 10) }).milestones : [],
       extractedBy: result.usedModel,
     });
   } catch (error: any) {

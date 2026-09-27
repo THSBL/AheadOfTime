@@ -1,3 +1,4 @@
+import { AI_LIMITS, OFF_TOPIC_REPLY, isAiPlanningEnabled, recordAiCall } from './aiGuard.js';
 import { Request, Response } from 'express';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService, buildEventDeepLink } from './telegramService.js';
@@ -324,6 +325,11 @@ export class TelegramWebhookHandler {
     // guaranteed) planning call instead of the chat going silent.
     const stopTyping = this.startTypingIndicator(chatId);
     try {
+      const access = await this.aiAccessForChat(chatId, rawText);
+      if (access.stop) {
+        await TelegramService.sendMessage(chatId, access.stop);
+        return;
+      }
       // Same order as the web chat: for a NEW plan, first ask the
       // refinement questions (where/when/what, travel documents, which
       // date for "next Saturday"...), then plan once from everything.
@@ -341,7 +347,12 @@ export class TelegramWebhookHandler {
           userProfile: profile
             ? { hasPet: profile.hasPet, familyStructure: profile.family_structure, homeZipOrLocation: profile.homeZipOrLocation }
             : null,
+          useAi: access.useAi,
         });
+        if (refinement.offTopic) {
+          await TelegramService.sendMessage(chatId, OFF_TOPIC_REPLY);
+          return;
+        }
         if (refinement.isNewEventPlan && refinement.questions.length > 0) {
           const pending: PendingTelegramRefinement = {
             originalMessage: rawText,
@@ -356,7 +367,7 @@ export class TelegramWebhookHandler {
         }
       }
 
-      const agentResult = await GeminiCalendarAgent.processMessage(chatId, rawText, undefined, { forceNewEvent: options.forceNewEvent });
+      const agentResult = await GeminiCalendarAgent.processMessage(chatId, rawText, undefined, { forceNewEvent: options.forceNewEvent, useAi: access.useAi });
 
       if (agentResult.createdEvent) {
         // Event was created via create_calendar_event.
@@ -471,6 +482,26 @@ export class TelegramWebhookHandler {
    * stays their way in. Awaited by callers (not fire-and-forget): on
    * serverless the work would be cut off once the handler returns.
    */
+  /**
+   * Whether this chat's message may use Gemini: only for a linked account
+   * with AI planning on and within the same per-user rate limit as the web
+   * app (anyone can message the bot, so an unlinked chat never spends the
+   * app's Gemini key - it gets the built-in planner). `stop` is a reply to
+   * send instead of planning.
+   */
+  private static async aiAccessForChat(chatId: number | string, text: string): Promise<{ useAi: boolean; stop?: string }> {
+    if ((text || '').length > AI_LIMITS.messageChars) {
+      return { useAi: false, stop: 'That message is too long - please keep it shorter.' };
+    }
+    const session = await TelegramSessionStore.getOrCreateSession(chatId);
+    if (!session.webUserId) return { useAi: false };
+    if (!(await isAiPlanningEnabled(session.webUserId))) return { useAi: false };
+    if (!(await recordAiCall(session.webUserId))) {
+      return { useAi: false, stop: "You've made a lot of requests in a short time - please try again in a little while." };
+    }
+    return { useAi: true };
+  }
+
   private static async pushToGoogleAndReport(chatId: number | string, eventId: string, appBaseUrl?: string): Promise<void> {
     const result = await pushEventToGoogleInBackground(eventId);
     if (result.status === 'skipped') return;
@@ -536,7 +567,12 @@ export class TelegramWebhookHandler {
         return;
       }
 
-      const result = await GeminiCalendarAgent.refineEvent(event, text, isSecondRound);
+      const access = await this.aiAccessForChat(chatId, text);
+      if (access.stop) {
+        await TelegramService.sendMessage(chatId, access.stop);
+        return;
+      }
+      const result = await GeminiCalendarAgent.refineEvent(event, text, isSecondRound, undefined, access.useAi);
 
       if (result.clarificationPending) {
         await TelegramSessionStore.setPendingRefinementClarification(chatId, {
@@ -689,7 +725,12 @@ export class TelegramWebhookHandler {
         try {
           // The question travels with the answer, so a bare "Yes" or
           // "I'm organizing it" isn't planned without knowing what it answers.
-          const result = await GeminiCalendarAgent.refineEvent(event, `${gap.question.replace(/^Decide:\s*/i, '')} ${optionText}`, false);
+          const access = await this.aiAccessForChat(chatId, optionText);
+          if (access.stop) {
+            await TelegramService.sendMessage(chatId, access.stop);
+            return;
+          }
+          const result = await GeminiCalendarAgent.refineEvent(event, `${gap.question.replace(/^Decide:\s*/i, '')} ${optionText}`, false, undefined, access.useAi);
           await TelegramSessionStore.replaceMilestonesAndRecomputeGaps(eventId, result.mergedMilestones);
           await TelegramService.sendMessage(chatId, result.replyText, { parse_mode: 'Markdown' });
         } catch (err: any) {
