@@ -6,7 +6,7 @@ Things only the owner can do (Vercel / Google / Telegram settings). Tick them of
 
 Why: the two daily/weekly jobs, and re-registering the Telegram bot, now **refuse to run without `CRON_SECRET`**. Before this deploy the weekly report ran without it.
 
-- [ ] **Is `CRON_SECRET` set?** Vercel → your project → Settings → Environment Variables. Look for `CRON_SECRET` in **Production**.
+- [x] **Is `CRON_SECRET` set?** (confirmed 28 Sep 2026) Vercel → your project → Settings → Environment Variables. Look for `CRON_SECRET` in **Production**.
   - If it's missing: add it with a long random value (any password generator, 32+ characters), Production only, then **Redeploy** (Deployments → latest → ⋯ → Redeploy). Vercel's own cron sends it automatically once it exists.
 - [ ] **Do the crons run?** Vercel → your project → Settings → **Cron Jobs**. You should see:
   - `/api/cron/agenda-scan` — daily at 07:00 UTC
