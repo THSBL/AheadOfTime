@@ -21,7 +21,7 @@ const LEVEL_LABEL: Record<PreparationLevel, string> = {
 const LEVEL_TAGLINE: Record<PreparationLevel, string> = {
   essentials: "Core milestones only. Perfect for when you're just on the guest list.",
   balanced: 'Key steps and logistics. Ideal for events where you own the execution.',
-  extensive: 'Granular tasks and contingencies. Built for complex, high-stakes planning.',
+  extensive: 'Time to decide: look at options and share them before every booking.',
 };
 
 const LEVELS: PreparationLevel[] = ['essentials', 'balanced', 'extensive'];

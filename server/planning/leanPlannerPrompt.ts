@@ -25,7 +25,7 @@ export function selectPlannerPromptVariant(override?: PlannerPromptVariant): Pla
 const LEVEL_LINE: Record<PreparationLevel, string> = {
   essentials: 'Keep to the essentials: only what the user must do themselves, nothing that belongs to whoever else runs this.',
   balanced: 'The user handles their own part of this event: cover their steps thoroughly, not every organizer contingency.',
-  extensive: 'The user organizes this event: include coordination with others, dependencies and realistic contingencies.',
+  extensive: 'The user organizes this event and wants time to decide: include coordination with others, dependencies and realistic contingencies, and before each booking or choice a run-up (look at options, share with the group when others are involved, decide and book days later).',
 };
 
 export function buildLeanSystemInstruction(params: {

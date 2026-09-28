@@ -408,7 +408,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
    */
   const handleChangePreparationLevel = async (newLevel: PreparationLevel) => {
     if (!activeEvent || !onUpdateEvent) return;
-    const { milestones, needsReplan } = applyPreparationLevelChange(activeEvent.milestones || [], newLevel, activeEvent.planningContextVersion);
+    const { milestones, needsReplan } = applyPreparationLevelChange(activeEvent.milestones || [], newLevel, activeEvent.planningContextVersion, {
+      event: activeEvent,
+      referenceDate: currentReferenceDate,
+    });
     const updatedEvent: CalendarEvent = {
       ...activeEvent,
       milestones,

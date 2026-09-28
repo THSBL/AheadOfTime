@@ -1,4 +1,5 @@
-import { PreparationLevel, TMinusMilestone } from '../types.js';
+import { CalendarEvent, PreparationLevel, TMinusMilestone } from '../types.js';
+import { isRunUp, withDecisionRunUps } from './decisionRunUps.js';
 
 const TIER_RANK: Record<PreparationLevel, number> = { essentials: 0, balanced: 1, extensive: 2 };
 
@@ -28,7 +29,9 @@ export interface ApplyPreparationLevelChangeResult {
 export function applyPreparationLevelChange(
   milestones: TMinusMilestone[],
   targetLevel: PreparationLevel,
-  currentPlanningContextVersion?: string
+  currentPlanningContextVersion?: string,
+  /** With these, switching to Extensive also adds a run-up before each decision (see decisionRunUps.ts). */
+  runUps?: { event: CalendarEvent; referenceDate: string }
 ): ApplyPreparationLevelChangeResult {
   const targetRank = TIER_RANK[targetLevel];
   const updated = milestones.map((m) => {
@@ -39,7 +42,8 @@ export function applyPreparationLevelChange(
       hiddenReason: shouldBeActive ? undefined : ('level_downgrade' as const),
     };
   });
-  const targetTierMilestones = milestones.filter((m) => TIER_RANK[m.tier || 'essentials'] === targetRank);
+  // Run-ups are added locally, so they don't count as the tier's planned content.
+  const targetTierMilestones = milestones.filter((m) => TIER_RANK[m.tier || 'essentials'] === targetRank && !isRunUp(m));
   const hasContentAtTargetTier = targetTierMilestones.length > 0;
   // A milestone with no recorded generatedFromContextVersion (pre-Phase-7
   // data, or a tier that's never been regenerated since) is treated as
@@ -50,5 +54,6 @@ export function applyPreparationLevelChange(
     hasContentAtTargetTier &&
     targetTierMilestones.some((m) => m.generatedFromContextVersion && m.generatedFromContextVersion !== currentPlanningContextVersion)
   );
-  return { milestones: updated, needsReplan: !hasContentAtTargetTier || isStale };
+  const withRunUps = targetLevel === 'extensive' && runUps ? withDecisionRunUps(runUps.event, updated, runUps.referenceDate) : updated;
+  return { milestones: withRunUps, needsReplan: !hasContentAtTargetTier || isStale };
 }

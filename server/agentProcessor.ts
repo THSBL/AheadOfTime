@@ -26,6 +26,7 @@ import {
   formatTMinusLabel
 } from "../src/utils/tminusRules.js";
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
+import { withDecisionRunUps } from "../src/utils/decisionRunUps.js";
 import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment, deriveOutstandingGaps, detectStatedResponsibility } from "../src/utils/preparationAssessment.js";
 import {
   mergePlanningContext,
@@ -1944,4 +1945,15 @@ export function processWithDeterministicRules(params: {
     event: calendarEvent,
     transcribedText: params.transcribedVoiceText,
   };
+}
+
+/**
+ * Extensive help = time to decide: every plan at the Extensive level gets
+ * a run-up (look at options, share with the group) before each decision.
+ * Applied to every planner result, AI or built-in, so both agree.
+ */
+export function applyExtensiveRunUps(result: ProcessAgentResponsePayload, referenceDateIso: string): ProcessAgentResponsePayload {
+  const event = result.event;
+  if (!event || event.preparationLevel !== 'extensive' || !event.milestones?.length) return result;
+  return { ...result, event: { ...event, milestones: withDecisionRunUps(event, event.milestones, referenceDateIso) } };
 }

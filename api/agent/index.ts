@@ -4,6 +4,7 @@ import {
   TRANSCRIBE_MODELS,
   processWithGemini,
   processWithDeterministicRules,
+  applyExtensiveRunUps,
   askRefinementQuestions,
   describeGeminiError,
 } from '../../server/agentProcessor.js';
@@ -162,7 +163,7 @@ async function handleProcess(req: any, res: any) {
       result.usedAi = false;
     }
 
-    res.json(result);
+    res.json(applyExtensiveRunUps(result, refDateISO));
   } catch (error: any) {
     console.error("Agent process handler error:", error);
     await logQualityEvent({
