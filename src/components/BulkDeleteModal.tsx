@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Trash2, Loader2, X, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { CalendarEvent } from '../types';
-import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
+import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, DEFAULT_CLIENT_ID } from '../services/googleAuth';
+import { deletePlanViaServer, isServerCalendarLinked, ServerCalendarUnavailable } from '../services/serverCalendar';
 import { executeSafePlanDeletion } from '../services/googleCalendar';
 import { isEventInCalendar } from '../utils/pushStatus';
 
@@ -50,14 +51,21 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionStatus, setDeletionStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Background Sync's lasting grant lets the server clean up Google even
+  // when this browser's one-hour Google sign-in has expired.
+  const [serverLinked, setServerLinked] = useState(false);
 
   // Every opening starts from the safe choice.
   useEffect(() => {
-    if (isOpen) {
-      setChoice('app');
-      setConfirmingEvents(false);
-      setErrorMessage(null);
-    }
+    if (!isOpen) return;
+    setChoice('app');
+    setConfirmingEvents(false);
+    setErrorMessage(null);
+    let cancelled = false;
+    isServerCalendarLinked().then((linked) => !cancelled && setServerLinked(linked));
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   if (!isOpen || selectedEventIds.length === 0) return null;
@@ -67,8 +75,10 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
   const planWord = count === 1 ? 'plan' : 'plans';
   const eventWord = count === 1 ? 'event' : 'events';
 
-  const token = getStoredAccessToken();
-  const isGoogleConnected = Boolean(token && !isTokenExpired());
+  const browserToken = getStoredAccessToken();
+  const hasBrowserToken = Boolean(browserToken && !isTokenExpired());
+  // Neither: the calendar choices still work, Google just asks to sign in first.
+  const signInNote = hasBrowserToken || serverLinked ? '' : " You'll be asked to sign in to Google.";
   const anyTasksInGoogle = selectedEvents.some(hasTasksInGoogle);
   const eventsInCalendar = selectedEvents.filter(isEventInCalendar);
   const importedEvents = eventsInCalendar.filter(isImportedFromCalendar);
@@ -83,16 +93,16 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
     {
       id: 'tasks',
       title: 'Also remove the prep tasks from Google',
-      detail: `Your ${eventWord} ${count === 1 ? 'stays' : 'stay'} in your calendar.`,
-      available: isGoogleConnected && anyTasksInGoogle,
-      unavailable: !anyTasksInGoogle ? 'No prep tasks of these plans are in Google.' : 'Connect Google Calendar to do this.',
+      detail: `Your ${eventWord} ${count === 1 ? 'stays' : 'stay'} in your calendar.${signInNote}`,
+      available: anyTasksInGoogle,
+      unavailable: 'No prep tasks of these plans are in Google.',
     },
     {
       id: 'everything',
       title: `Also delete the ${eventWord} from Google Calendar`,
-      detail: 'Removes the appointment itself. You confirm each one on the next step.',
-      available: isGoogleConnected && eventsInCalendar.length > 0,
-      unavailable: eventsInCalendar.length === 0 ? `${count === 1 ? 'This event is' : 'These events are'} not in your Google Calendar.` : 'Connect Google Calendar to do this.',
+      detail: `Removes the appointment itself. You confirm each one on the next step.${signInNote}`,
+      available: eventsInCalendar.length > 0,
+      unavailable: `${count === 1 ? 'This event is' : 'These events are'} not in your Google Calendar.`,
     },
   ];
 
@@ -108,21 +118,48 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
     setErrorMessage(null);
     let calCount = 0;
     let taskCount = 0;
+    const failed: string[] = [];
+    let useServer = serverLinked;
+    let token: string | null = hasBrowserToken ? browserToken : null;
+    // Browser path: sign in to Google first when there is no live token
+    // (still inside the click, so the popup isn't blocked).
+    const browserToken_ = async (): Promise<string> => {
+      if (token) return token;
+      const res = await requestGoogleCalendarToken(DEFAULT_CLIENT_ID);
+      token = res.accessToken;
+      return token;
+    };
     try {
       for (let i = 0; i < selectedEvents.length; i++) {
         const ev = selectedEvents[i];
         setDeletionStatus(`Cleaning up ${i + 1} of ${count}: ${ev.title}…`);
+        const options = { deleteMainEvent, deleteTasks: true };
         try {
-          const res = await executeSafePlanDeletion(token!, ev, {
-            deleteFromPrimaryCalendar: deleteMainEvent,
-            deleteMainEvent,
-            deleteTasks: true,
-          });
+          let res: { deletedTasksCount: number; deletedPrimaryEvent: boolean } | null = null;
+          if (useServer) {
+            try {
+              res = await deletePlanViaServer(ev, options);
+            } catch (err) {
+              if (!(err instanceof ServerCalendarUnavailable)) throw err;
+              useServer = false;
+            }
+          }
+          if (!res) res = await executeSafePlanDeletion(await browserToken_(), ev, { ...options, deleteFromPrimaryCalendar: deleteMainEvent });
           if (res.deletedPrimaryEvent) calCount += 1;
           taskCount += res.deletedTasksCount;
-        } catch (gErr) {
+        } catch (gErr: any) {
           console.warn(`Failed to clean up ${ev.title} in Google:`, gErr);
+          failed.push(ev.title);
+          // A closed sign-in popup ends the run: nothing else can reach Google.
+          if (!useServer && !token) break;
         }
+      }
+      if (failed.length > 0) {
+        // Keep the plans in the app so the cleanup can simply be tried again.
+        setErrorMessage(
+          `Couldn't reach Google for ${failed.length === 1 ? `"${failed[0]}"` : `${failed.length} plans`}, so your plans stay in Ahead Of Time. Please try again.`
+        );
+        return;
       }
       onConfirmDeleteAppAndCalendar(selectedEventIds, { calCount, taskCount }, { deleteMainEvent, deleteTasks: true });
       onClose();

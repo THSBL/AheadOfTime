@@ -37,6 +37,10 @@
       "destination": "/api/auth/google?action=calendar-events"
     },
     {
+      "source": "/api/auth/google/calendar-delete",
+      "destination": "/api/auth/google?action=calendar-delete"
+    },
+    {
       "source": "/api/auth/account",
       "destination": "/api/auth/google?action=delete-account"
     },

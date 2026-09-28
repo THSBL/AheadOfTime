@@ -1,6 +1,7 @@
 import { getValidAccessToken, backgroundSyncHasTasksScope } from './googleOAuthTokenStore.js';
 import {
   syncEventToGoogleCalendar,
+  executeSafePlanDeletion,
   fetchGoogleCalendarEvents,
   fetchPrimaryCalendarProfile,
   type MilestoneSyncFormat,
@@ -111,5 +112,30 @@ export async function handleCalendarEvents(userId: string, method: string, query
   } catch (err: any) {
     if (isAuthError(err)) return notLinked();
     return { status: 502, body: { ok: false, error: err?.message || 'Could not read Google Calendar' } };
+  }
+}
+
+/**
+ * POST /api/auth/google/calendar-delete { event, deleteMainEvent?, deleteTasks? }
+ * Removing a plan's prep tasks (and, only when asked, the event itself) from
+ * Google through the Background Sync grant, like calendar-push. Only items
+ * in the signed-in user's own Google account are touched: the grant is theirs.
+ */
+export async function handleCalendarDelete(userId: string, method: string, body: any): Promise<CalendarApiResult> {
+  if (method !== 'POST') return { status: 405, body: { ok: false, error: 'Method not allowed' } };
+  const event = body?.event;
+  if (!looksLikeEvent(event)) return { status: 400, body: { ok: false, error: 'A valid event is required.' } };
+
+  const accessToken = await getValidAccessToken(userId);
+  if (!accessToken) return notLinked();
+  try {
+    const result = await executeSafePlanDeletion(accessToken, event, {
+      deleteMainEvent: body?.deleteMainEvent === true,
+      deleteTasks: body?.deleteTasks !== false,
+    });
+    return { status: 200, body: { ok: true, result } };
+  } catch (err: any) {
+    if (isAuthError(err)) return notLinked();
+    return { status: 502, body: { ok: false, error: err?.message || 'Google cleanup failed' } };
   }
 }

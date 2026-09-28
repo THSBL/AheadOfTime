@@ -19,7 +19,7 @@ import { listPendingFindings, dismissAllFindings } from '../../../server/agendaF
 import { isEmailConfigured } from '../../../server/emailService.js';
 import { getGoogleClientId } from '../../../server/googleClientId.js';
 import { sendTestUpdate } from '../../../server/sendTestUpdate.js';
-import { handleCalendarPush, handleCalendarEvents } from '../../../server/googleCalendarServerApi.js';
+import { handleCalendarPush, handleCalendarEvents, handleCalendarDelete } from '../../../server/googleCalendarServerApi.js';
 import { handleAiSettings } from '../../../server/aiSettingsRoute.js';
 import { handleNotifyPrefs } from '../../../server/notifyPrefsRoute.js';
 import { handleAccountDeletion } from '../../../server/accountDeletion.js';
@@ -208,7 +208,7 @@ export default async function handler(req: any, res: any) {
     return handleAccountDeletion(req, res);
   }
   // Push to Cal / Scan agenda through the stored Background Sync grant.
-  if (action === 'calendar-push' || action === 'calendar-events') {
+  if (action === 'calendar-push' || action === 'calendar-events' || action === 'calendar-delete') {
     const verified = await verifyRequestUser(req);
     if (!verified) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -217,7 +217,9 @@ export default async function handler(req: any, res: any) {
     const result =
       action === 'calendar-push'
         ? await handleCalendarPush(userId, req.method, req.body)
-        : await handleCalendarEvents(userId, req.method, req.query);
+        : action === 'calendar-delete'
+          ? await handleCalendarDelete(userId, req.method, req.body)
+          : await handleCalendarEvents(userId, req.method, req.query);
     return res.status(result.status).json(result.body);
   }
   if (action === 'status') {

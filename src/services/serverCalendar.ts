@@ -75,3 +75,18 @@ export async function scanAgendaViaServer(
   const data = await readResponse<{ profile: GoogleCalendarProfile; items: GoogleCalendarEventItem[] }>(res);
   return { profile: data.profile, items: data.items || [] };
 }
+
+/** Removes a plan's prep tasks (and optionally the event) from Google via the Background Sync grant. */
+export async function deletePlanViaServer(
+  event: CalendarEvent,
+  options: { deleteMainEvent: boolean; deleteTasks: boolean }
+): Promise<{ deletedTasksCount: number; deletedPrimaryEvent: boolean }> {
+  const res = await fetch('/api/auth/google/calendar-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ event, ...options }),
+    cache: 'no-store',
+  });
+  const data = await readResponse<{ result: { deletedTasksCount: number; deletedPrimaryEvent: boolean } }>(res);
+  return data.result;
+}

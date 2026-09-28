@@ -50,7 +50,7 @@ import { handleNotifyPrefs } from "./server/notifyPrefsRoute";
 import { handleTelegramWarm } from "./server/telegramWarm";
 import { handleAccountDeletion } from "./server/accountDeletion";
 import { guardAiRequest, AI_LIMITS, OffTopicRequestError, OFF_TOPIC_REPLY, AI_SCOPE_RULE, capPlannerOutput, capText, capTimingSuggestion } from "./server/aiGuard";
-import { handleCalendarPush, handleCalendarEvents } from "./server/googleCalendarServerApi";
+import { handleCalendarPush, handleCalendarEvents, handleCalendarDelete } from "./server/googleCalendarServerApi";
 import { signOAuthState, verifyOAuthState } from "./server/notifyActionToken";
 import {
   exchangeAuthorizationCode,
@@ -1530,7 +1530,7 @@ app.put("/api/auth/google/status", async (req: Request, res: Response) => {
 
 // Push to Cal / Scan agenda through the Background Sync grant (twins of
 // api/auth/google/index.ts's action=calendar-push / calendar-events).
-app.all(["/api/auth/google/calendar-push", "/api/auth/google/calendar-events"], async (req: Request, res: Response) => {
+app.all(["/api/auth/google/calendar-push", "/api/auth/google/calendar-events", "/api/auth/google/calendar-delete"], async (req: Request, res: Response) => {
   const verified = await verifyRequestUser(req);
   if (!verified) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
@@ -1539,7 +1539,9 @@ app.all(["/api/auth/google/calendar-push", "/api/auth/google/calendar-events"], 
   const userId = await findOrCreateUserByEmail(verified.email);
   const result = req.path.endsWith("calendar-push")
     ? await handleCalendarPush(userId, req.method, req.body)
-    : await handleCalendarEvents(userId, req.method, req.query);
+    : req.path.endsWith("calendar-delete")
+      ? await handleCalendarDelete(userId, req.method, req.body)
+      : await handleCalendarEvents(userId, req.method, req.query);
   res.status(result.status).json(result.body);
 });
 
