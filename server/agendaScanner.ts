@@ -197,7 +197,7 @@ export class AgendaScannerService {
             {
               id: `wa-msg-${Date.now()}`,
               sender: 'bot',
-              text: `Hi ${userFirstName}! AheadOfTime spotted a new event on your calendar: *${event.title}* on *${formattedDate}*. To build your custom runway (bookings, packing, gifts), what are the key details or extra plans for this?`,
+              text: `Hi ${userFirstName}! Ahead Of Time spotted a new event on your calendar: *${event.title}* on *${formattedDate}*. To build your custom runway (bookings, packing, gifts), what are the key details or extra plans for this?`,
               timestamp: new Date().toISOString(),
               type: 'template',
             },

@@ -129,7 +129,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
         <div className="space-y-3 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700 delay-100">
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.2]">
             <span className="block">Calendars tell you when an event starts.</span>
-            <span className="block">Ahead of time makes sure you are ready.</span>
+            <span className="block">Ahead Of Time makes sure you are ready.</span>
           </h1>
           <p className="text-sm sm:text-base text-slate-300 font-medium leading-relaxed">
             Drop an entry onto your calendar or plan with our assistant, and Ahead Of Time automatically builds backward preparation milestones. Whether you are organizing a birthday celebration, packing for a trip, or prepping a school theme day for your kids, we build in the breathing room.

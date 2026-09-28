@@ -185,7 +185,7 @@ export const FeedbackPage: React.FC = () => {
                 ) : (
                   <form onSubmit={handleSubmitCsat} className="space-y-4">
                     <div className="space-y-2">
-                      <label className="block text-xs font-bold text-slate-700">How's Ahead of Time working for you?</label>
+                      <label className="block text-xs font-bold text-slate-700">How's Ahead Of Time working for you?</label>
                       <div className="flex items-center gap-1.5">
                         {[1, 2, 3, 4, 5].map((n) => (
                           <button

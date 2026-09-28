@@ -30,7 +30,7 @@ const FAQ_ENTRIES: FaqEntry[] = [
       "Open the event and use the \"Want to add or change something? Tell us in your own words\" box - type the correction in plain language (e.g. \"actually we need a rental car too\") and it updates the plan without you having to hand-edit each task.",
   },
   {
-    question: "Does Ahead of Time plan for pet care when I have a trip?",
+    question: "Does Ahead Of Time plan for pet care when I have a trip?",
     answer:
       "If you tell us you have a dependent pet (Settings > Questionnaire Profile, or during onboarding), trips detected on your calendar automatically get a pet-sitter / boarding prep milestone. You can also just mention a pet by name in the event itself and it'll be picked up the same way.",
   },

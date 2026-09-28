@@ -420,7 +420,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                           ) : (
                             <>
                               <Send className="w-3.5 h-3.5" />
-                              Send Reply to AheadOfTime Bot
+                              Send Reply to Ahead Of Time Bot
                             </>
                           )}
                         </button>
@@ -472,7 +472,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                           AO
                         </div>
                         <div>
-                          <div className="font-semibold text-xs leading-tight">AheadOfTime Bot</div>
+                          <div className="font-semibold text-xs leading-tight">Ahead Of Time Bot</div>
                           <div className="text-[10px] text-emerald-200 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
                             Official Business Account
@@ -622,7 +622,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                       Step 1: Daily Background Calendar Scanner (Scheduled Job)
                     </h3>
                     <p className="text-xs text-stone-600 mt-1 max-w-2xl leading-relaxed">
-                      Every 24 hours, AheadOfTime evaluates your upcoming agenda. It automatically ignores daily chores, standups, and routine 1-on-1s, while identifying high-prep compound events (parties, trips, vacations, flights) that require backward reverse-logistics.
+                      Every 24 hours, Ahead Of Time evaluates your upcoming agenda. It automatically ignores daily chores, standups, and routine 1-on-1s, while identifying high-prep compound events (parties, trips, vacations, flights) that require backward reverse-logistics.
                     </p>
                   </div>
                   <button
@@ -694,7 +694,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
               {/* Filtering Rules Matrix */}
               <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
                 <h4 className="text-sm font-semibold text-stone-900">
-                  AheadOfTime Calendar Filtering Matrix
+                  Ahead Of Time Calendar Filtering Matrix
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                   <div className="p-3.5 rounded-lg bg-red-50/60 border border-red-200 space-y-1.5">
@@ -864,7 +864,7 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                   Meta-approved Utility Template (<code className="font-mono text-emerald-700">ahead_of_time_event_alert</code>) bypassing the 24-hour conversational window:
                 </p>
                 <div className="p-3.5 bg-stone-900 text-emerald-400 rounded-lg font-mono text-[11px] overflow-x-auto leading-relaxed">
-{`"Hi {{1}}! AheadOfTime spotted a new event on your calendar: *{{2}}* on *{{3}}*.
+{`"Hi {{1}}! Ahead Of Time spotted a new event on your calendar: *{{2}}* on *{{3}}*.
 To build your custom runway (bookings, packing, gifts), what are the key details or extra plans for this?"
 
 Buttons:

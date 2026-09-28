@@ -4,9 +4,11 @@ interface LogoProps {
   variant?: 'small' | 'large' | 'icon' | 'header' | 'dark';
   className?: string;
   size?: 'sm' | 'normal' | 'lg' | 'xl' | '2xl';
+  /** Small variant: keep the "Ahead Of Time" name visible on phones too. */
+  nameOnMobile?: boolean;
 }
 
-export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', size = 'normal' }) => {
+export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', size = 'normal', nameOnMobile = false }) => {
   const [largeImgSrc, setLargeImgSrc] = useState('/assets/AheadOfTime_Large-logo-tag.png');
   const [smallImgSrc, setSmallImgSrc] = useState('/assets/logo-small.png');
 
@@ -78,7 +80,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
     // One navy badge (the page's own navy) holds the mark and the brand name;
     // on phones it's just the mark, to keep the header uncluttered. The mark
     // is a transparent cutout so it sits on the badge with no visible tile edge.
-    <div className={`inline-flex items-center gap-2.5 select-none bg-[#182A42] rounded-2xl px-2.5 py-1.5 sm:pr-4 shadow-sm ${className}`}>
+    <div className={`inline-flex items-center gap-2.5 select-none bg-[#182A42] rounded-2xl px-2.5 py-1.5 ${nameOnMobile ? 'pr-3.5' : ''} sm:pr-4 shadow-sm ${className}`}>
       <div className="flex items-center justify-center shrink-0">
         <img
           src="/assets/logo-hero.png"
@@ -91,7 +93,7 @@ export const Logo: React.FC<LogoProps> = ({ variant = 'large', className = '', s
       {/* Same treatment as the landing-page wordmark: "Ahead" heavy and sage,
           "Of Time" lighter, white on the navy badge with the same soft depth. */}
       <span
-        className={`hidden sm:inline-flex items-center tracking-tight leading-none ${textSize} text-white whitespace-nowrap`}
+        className={`${nameOnMobile ? 'inline-flex' : 'hidden sm:inline-flex'} items-center tracking-tight leading-none ${textSize} text-white whitespace-nowrap`}
         style={{ textShadow: '0 2px 4px rgba(0,0,0,0.55)' }}
       >
         <span className="font-black text-aot-sage">Ahead</span>&nbsp;<span className="font-semibold">Of Time</span>

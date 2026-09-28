@@ -1086,7 +1086,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               if (onSaveEvent) {
                 onSaveEvent(createdEvent);
               } else {
-                onSendMessage(`Created event "${createdEvent.title}" with AheadOfTime milestones`, false);
+                onSendMessage(`Created event "${createdEvent.title}" with Ahead Of Time milestones`, false);
               }
               setSelectedPreset(null);
               setLastSelectedPresetId(null);

@@ -301,7 +301,7 @@ export function buildMilestoneCalendarPayload(
     checklistItems = `[ ] ${cleanTitle}`;
   }
 
-  const description = `Checklist for ${eventTitle}:\n${checklistItems}\n\n--\nPlanned with AheadOfTime`;
+  const description = `Checklist for ${eventTitle}:\n${checklistItems}\n\n--\nPlanned with Ahead Of Time`;
   const nextDay = getNextDayDate(dateOnly);
   const timedData = isTimed ? formatStartEndDateTime(dateOnly, '09:00', 30) : null;
 
@@ -358,7 +358,7 @@ export async function pushSingleMilestoneToGoogleCalendar(
     taskChecklist = `[ ] ${cleanTitle}`;
   }
 
-  const taskNotes = `Checklist for ${eventTitle}:\n${taskChecklist}\n\n--\nPlanned with AheadOfTime`;
+  const taskNotes = `Checklist for ${eventTitle}:\n${taskChecklist}\n\n--\nPlanned with Ahead Of Time`;
 
   const isOverdue = milestone.status === 'pending' && new Date(`${dateOnly}T23:59:59`) < new Date();
   try {
@@ -522,7 +522,7 @@ export async function syncEventToGoogleCalendar(
         taskChecklist = `[ ] ${cleanMsTitle}`;
       }
 
-      const taskNotes = `Checklist for ${event.title}:\n${taskChecklist}\n\n--\nPlanned with AheadOfTime`;
+      const taskNotes = `Checklist for ${event.title}:\n${taskChecklist}\n\n--\nPlanned with Ahead Of Time`;
       const msIsOverdue = milestone.status === 'pending' && new Date(`${msDateOnly}T23:59:59`) < new Date();
 
       try {

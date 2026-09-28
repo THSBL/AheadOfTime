@@ -134,10 +134,10 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
         : `the main event "${event.title}"`;
 
     const locationsText = deleteFromApp && deleteFromCalendar
-      ? 'Ahead of Time and Google Calendar & Tasks'
+      ? 'Ahead Of Time and Google Calendar & Tasks'
       : deleteFromApp
-        ? 'Ahead of Time only (Google Calendar remains untouched)'
-        : 'Google Calendar & Tasks only (Ahead of Time remains untouched)';
+        ? 'Ahead Of Time only (Google Calendar remains untouched)'
+        : 'Google Calendar & Tasks only (Ahead Of Time remains untouched)';
 
     const safetyNote = (!deleteMainEvent && (deleteFromCalendar || deleteFromApp))
       ? ` Your main event "${event.title}" on ${formatDisplayDate(event.eventDate)} will remain intact.`
@@ -226,7 +226,7 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
                     <span>From the App</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
-                    Ahead of Time workspace &amp; radar
+                    Ahead Of Time workspace &amp; radar
                   </p>
                 </div>
               </label>

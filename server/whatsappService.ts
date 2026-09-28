@@ -172,7 +172,7 @@ export class WhatsAppService {
           messaging_product: 'whatsapp',
           contacts: [{ input: payload.to, wa_id: payload.to }],
           messages: [{ id: mockMsgId }],
-          note: 'Sent via AheadOfTime WhatsApp sandbox simulator (Configure WHATSAPP_ACCESS_TOKEN for live Meta Graph delivery)',
+          note: 'Sent via Ahead Of Time WhatsApp sandbox simulator (Configure WHATSAPP_ACCESS_TOKEN for live Meta Graph delivery)',
         },
       };
     }
@@ -226,7 +226,7 @@ export class WhatsAppService {
     milestones: TMinusMilestone[]
   ): string {
     const lines = [
-      `🎯 *AheadOfTime Preparation Runway* for *${session.eventTitle}*:`,
+      `🎯 *Ahead Of Time Preparation Runway* for *${session.eventTitle}*:`,
       '',
     ];
 

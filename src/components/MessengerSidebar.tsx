@@ -270,8 +270,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const isSelected = selectedEventId === evt.id;
             const isCheckedForBulk = selectedEventIds.includes(evt.id);
             const countdown = getCountdownStatus(evt.eventDate, currentReferenceDate);
-            const pendingTasks = evt.milestones?.filter((m) => m.status !== 'completed' && m.isActive !== false) || [];
-            const nextTask = pendingTasks[0];
 
             const displayTitle = getCleanEventTitle(evt.title, evt.category, evt.context);
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
@@ -356,11 +354,10 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     </div>
                   )}
 
-                  {/* Bottom Row: Next Preparation Task */}
-                  {nextTask && !compact && (
-                    <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate flex items-center gap-1 pt-0.5">
-                      <span className="text-slate-500 font-bold">•</span>
-                      <span className="truncate">Next: <span className="text-slate-300 font-semibold">{nextTask.title}</span></span>
+                  {/* Bottom Row: the event's date, written out */}
+                  {!compact && (
+                    <p className="text-[10px] sm:text-[11px] text-slate-300 font-medium truncate pt-0.5">
+                      {new Date(`${evt.eventDate.slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
                     </p>
                   )}
                 </div>

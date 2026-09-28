@@ -175,7 +175,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => navigate('/summary')}
               title="Your road ahead overview"
             >
-              <Logo variant="small" />
+              <Logo variant="small" nameOnMobile />
             </div>
           </div>
 
@@ -187,7 +187,7 @@ export const Header: React.FC<HeaderProps> = ({
               ref={triggerRef}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
-              className="relative"
+              className="relative hidden sm:block"
             >
               <div className="bg-white/90 hover:bg-white backdrop-blur-md border border-white/95 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 text-xs text-slate-700 shadow-xs transition-all">
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -509,6 +509,35 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>Data Isolated &amp; GDPR Scoped</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* On phones the agenda pill is hidden; its facts live here. */}
+                  <div className="sm:hidden rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-2.5">
+                    <dl className="text-xs space-y-1">
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-slate-500">Last scan</dt>
+                        <dd className="font-bold text-slate-900">{agendaScan ? formatShortDateTime(agendaScan.at) : 'Not scanned yet'}</dd>
+                      </div>
+                      {agendaScan && (
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-slate-500">Synced until</dt>
+                          <dd className="font-bold text-slate-900">{monthYear(agendaScan.until)}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    {onOpenScanAgenda && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAccountDropdownOpen(false);
+                          onOpenScanAgenda();
+                        }}
+                        className="w-full py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        <span>Scan agenda</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-1.5 pt-1">

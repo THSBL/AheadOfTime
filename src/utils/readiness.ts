@@ -390,7 +390,7 @@ export function computeSimpleAheadStatus(
   return {
     ...base,
     level: 'ahead',
-    label: 'You are Ahead of Time',
+    label: 'You are Ahead Of Time',
     sub: 'Nothing else due this week',
   };
 }

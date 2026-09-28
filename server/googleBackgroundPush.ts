@@ -107,7 +107,7 @@ async function createTaskForMilestone(
         isOverdue,
         isCompleted: milestone.status === 'completed',
       }),
-      notes: `Checklist for ${eventTitle}:\n${checklist}\n\n--\nPlanned with AheadOfTime`,
+      notes: `Checklist for ${eventTitle}:\n${checklist}\n\n--\nPlanned with Ahead Of Time`,
       due: `${dueDate}T00:00:00.000Z`,
     }),
   });

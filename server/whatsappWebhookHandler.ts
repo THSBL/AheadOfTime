@@ -121,7 +121,7 @@ export class WhatsAppWebhookHandler {
       await WhatsAppService.sendMetaApiMessage(
         WhatsAppService.buildTextMessagePayload(
           fromPhone,
-          "Hello! AheadOfTime didn't find an active calendar outreach for this number. Open AheadOfTime on your browser to scan your calendar and build backward preparation runways."
+          "Hello! Ahead Of Time didn't find an active calendar outreach for this number. Open Ahead Of Time on your browser to scan your calendar and build backward preparation runways."
         )
       );
       return;
@@ -158,7 +158,7 @@ export class WhatsAppWebhookHandler {
           session.sessionId,
           {
             sender: 'bot',
-            text: `Awesome! Please text back key details for "${session.eventTitle}" (e.g., party size, dinner spots, rides/carpooling, packing, or gifts needed) and AheadOfTime will generate your preparation runway.`,
+            text: `Awesome! Please text back key details for "${session.eventTitle}" (e.g., party size, dinner spots, rides/carpooling, packing, or gifts needed) and Ahead Of Time will generate your preparation runway.`,
             type: 'text',
           },
           'WAITING_FOR_DETAILS'
@@ -167,7 +167,7 @@ export class WhatsAppWebhookHandler {
         await WhatsAppService.sendMetaApiMessage(
           WhatsAppService.buildTextMessagePayload(
             fromPhone,
-            `Awesome! Please text back the key details for *${session.eventTitle}* (e.g. party size, dinner spots, carpooling, or gifts needed) and AheadOfTime will build your runway.`
+            `Awesome! Please text back the key details for *${session.eventTitle}* (e.g. party size, dinner spots, carpooling, or gifts needed) and Ahead Of Time will build your runway.`
           )
         );
         return;
@@ -215,7 +215,7 @@ export class WhatsAppWebhookHandler {
           session.sessionId,
           {
             sender: 'bot',
-            text: `Understood! AheadOfTime will ignore "${session.eventTitle}". We won't prompt you again for this event.`,
+            text: `Understood! Ahead Of Time will ignore "${session.eventTitle}". We won't prompt you again for this event.`,
             type: 'text',
           },
           'IGNORED'
@@ -224,7 +224,7 @@ export class WhatsAppWebhookHandler {
         await WhatsAppService.sendMetaApiMessage(
           WhatsAppService.buildTextMessagePayload(
             fromPhone,
-            `Understood! AheadOfTime will ignore *${session.eventTitle}*. We won't prompt you again for this event.`
+            `Understood! Ahead Of Time will ignore *${session.eventTitle}*. We won't prompt you again for this event.`
           )
         );
         return;
