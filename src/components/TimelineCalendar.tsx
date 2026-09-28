@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CalendarEvent } from '../types';
 import { addDaysKey, dayKey, itemsForDay, type CalendarItem } from '../utils/calendarView';
 import { formatDisplayDate } from '../utils/tminusRules';
+import { CalendarPeek, type PeekTarget } from './CalendarPeek';
 
 export type CalendarSpan = 'month' | 'week';
 
@@ -15,6 +16,8 @@ interface TimelineCalendarProps {
   highlightEventId: string | null;
   onOpenEvent: (eventId: string) => void;
   onOpenTask: (eventId: string, milestoneId: string) => void;
+  /** Mark a task done / not done straight from the quick look. */
+  onToggleTask?: (eventId: string, milestoneId: string) => void;
   /** First and last day on screen, so Active Events can show only what's in view. */
   onRangeChange: (start: string, end: string) => void;
   /** The day the view is on, kept by the parent so returning from an event lands on the same month. */
@@ -52,6 +55,7 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
   highlightEventId,
   onOpenEvent,
   onOpenTask,
+  onToggleTask,
   onRangeChange,
   cursor: cursorProp,
   onCursorChange,
@@ -89,6 +93,16 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
     }
   };
 
+  // A click opens a quick look first; "Open plan" in it goes to the full plan.
+  const [peek, setPeek] = useState<PeekTarget | null>(null);
+  const closePeek = useCallback(() => setPeek(null), []);
+  const openPeek = (e: React.MouseEvent, eventId: string, milestoneId?: string) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPeek({ eventId, milestoneId, anchor: { top: r.top, left: r.left, bottom: r.bottom, right: r.right } });
+  };
+  const isPeeked = (item: CalendarItem) =>
+    peek !== null && peek.eventId === item.event.id && (item.kind === 'event' ? !peek.milestoneId : peek.milestoneId === item.milestone.id);
+
   const isHighlighted = (item: CalendarItem) => highlightEventId !== null && item.event.id === highlightEventId;
   const dimming = highlightEventId !== null;
 
@@ -105,9 +119,10 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
         <button
           key={item.key}
           type="button"
-          onClick={() => onOpenEvent(ev.id)}
+          onClick={(e) => openPeek(e, ev.id)}
+          aria-haspopup="dialog"
           title={`${ev.title} · ${formatDisplayDate(ev.eventDate)}`}
-          className={`w-full text-left rounded-md px-1.5 py-1 text-[11.5px] font-bold leading-snug transition-all cursor-pointer ${
+          className={`w-full text-left rounded-md px-1.5 py-1 text-[11.5px] font-bold leading-snug transition-all cursor-pointer ${isPeeked(item) ? 'outline outline-2 outline-offset-1 outline-[#447463]' : ''} ${
             lit
               ? 'bg-[#182A42] text-white ring-2 ring-aot-sage ring-offset-1'
               : compact
@@ -127,9 +142,10 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
       <button
         key={item.key}
         type="button"
-        onClick={() => onOpenTask(item.event.id, m.id)}
+        onClick={(e) => openPeek(e, item.event.id, m.id)}
+        aria-haspopup="dialog"
         title={`${m.title} · ${item.event.title}${item.carried ? ` · late, was due ${shortDate(dayKey(m.calculatedDate))}` : ''}`}
-        className={`w-full text-left rounded-md px-1.5 py-1 text-[11.5px] leading-snug flex items-start gap-1.5 transition-all cursor-pointer ${
+        className={`w-full text-left rounded-md px-1.5 py-1 text-[11.5px] leading-snug flex items-start gap-1.5 transition-all cursor-pointer ${isPeeked(item) ? 'outline outline-2 outline-offset-1 outline-[#447463] bg-white' : ''} ${
           lit
             ? 'bg-aot-sage/25 ring-2 ring-[#182A42] ring-inset font-semibold'
             : compact
@@ -249,6 +265,25 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
           })}
         </div>
       </div>
+
+      {peek && (
+        <CalendarPeek
+          target={peek}
+          events={events}
+          today={today}
+          onClose={closePeek}
+          onPeek={setPeek}
+          onOpenEvent={(id) => {
+            setPeek(null);
+            onOpenEvent(id);
+          }}
+          onOpenTask={(eventId, milestoneId) => {
+            setPeek(null);
+            onOpenTask(eventId, milestoneId);
+          }}
+          onToggleTask={onToggleTask}
+        />
+      )}
     </div>
   );
 };

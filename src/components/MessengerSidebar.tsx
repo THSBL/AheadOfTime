@@ -60,14 +60,18 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onToggleCollapse,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  // "Plans to push": only events whose plan isn't fully in Google Calendar.
-  const [showOnlyToPush, setShowOnlyToPush] = useState(false);
+  // The legend doubles as the filter: tap "In your calendar" or "Not in
+  // calendar yet" to show only those plans, tap again for all.
+  const [pushFilter, setPushFilter] = useState<'all' | 'pushed' | 'toPush'>('all');
+  const showOnlyToPush = pushFilter === 'toPush';
 
   const toPushCount = React.useMemo(() => events.filter((e) => !isPlanPushed(e)).length, [events]);
+  const pushedCount = events.length - toPushCount;
 
   const filteredEvents = React.useMemo(() => {
     const matched = events.filter((e) => {
-      if (showOnlyToPush && isPlanPushed(e)) return false;
+      if (pushFilter === 'toPush' && isPlanPushed(e)) return false;
+      if (pushFilter === 'pushed' && !isPlanPushed(e)) return false;
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase().trim();
       const displayTitle = getCleanEventTitle(e.title, e.category, e.context).toLowerCase();
@@ -85,9 +89,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     return sortEventsUpcomingFirst(matched, currentReferenceDate);
     // Every flag read in the filter must be listed here, or toggling the
     // chip changes the chip but never re-runs the filter.
-  }, [events, searchQuery, currentReferenceDate, showOnlyToPush]);
+  }, [events, searchQuery, currentReferenceDate, pushFilter]);
 
-  // What the bottom bar pushes: the selected events, else every event,
+  // What the push button pushes: the selected events, else every event,
   // keeping only plans that still have something to add.
   const pushCandidates = React.useMemo(() => {
     const pool = selectedEventIds.length > 0 ? events.filter((e) => selectedEventIds.includes(e.id)) : events;
@@ -112,8 +116,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     }
   };
 
-  // Searching or filtering on "Plans to push" shows every match.
-  const partitionActive = Boolean(partition) && !searchQuery.trim() && !showOnlyToPush;
+  // Searching or filtering shows every match.
+  const partitionActive = Boolean(partition) && !searchQuery.trim() && pushFilter === 'all';
   const mainEvents = partitionActive
     ? filteredEvents.filter((e) => partition!.ids.has(e.id) || e.id === selectedEventId)
     : filteredEvents;
@@ -156,10 +160,11 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     // sky-*/text-sky-* accent in this file was swapped to a matching raw
     // hex for the same reason - it wasn't just the container that was
     // secretly grey.
-    <div className="flex flex-col h-full bg-[#223349] border border-white/10 rounded-3xl overflow-hidden shadow-xs">
+    <div className="flex flex-col h-full bg-[#223349] border border-white/10 rounded-3xl overflow-clip shadow-xs">
 
       {/* Sidebar Header */}
-      <div className="p-3.5 sm:p-4 border-b border-white/10 space-y-3">
+      {/* On phones the page scrolls, so this header (with the Push button) stays pinned to the top. */}
+      <div className="sticky top-0 z-20 lg:static bg-[#223349] p-3.5 sm:p-4 border-b border-white/10 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
@@ -196,58 +201,78 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           />
         </div>
 
-        {/* Select All, the "Plans to push" filter, and Delete for a selection. */}
+        {/* Select All (+ Delete for a selection) and the one Push button. */}
         {events.length > 0 && (
-          <div className="flex items-center justify-between pt-1 text-xs">
+          <div className="flex items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
               <button
                 onClick={allFilteredSelected ? onDeselectAllEvents : onSelectAllEvents}
-                className="text-[#bae6fd] hover:text-white font-bold flex items-center gap-1 cursor-pointer bg-white/10 hover:bg-white/15 px-2.5 py-1 rounded-lg"
+                className="text-[#bae6fd] hover:text-white font-bold flex items-center gap-1 cursor-pointer bg-white/10 hover:bg-white/15 px-2.5 py-1.5 rounded-lg"
               >
                 {allFilteredSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-                <span>{allFilteredSelected ? 'Deselect All' : 'Select All'}</span>
+                <span>{allFilteredSelected ? 'Deselect all' : 'Select all'}</span>
               </button>
-              {(toPushCount > 0 || showOnlyToPush) && (
+              {selectedEventIds.length > 0 && (
                 <button
-                  type="button"
-                  onClick={() => setShowOnlyToPush((v) => !v)}
-                  aria-pressed={showOnlyToPush}
-                  className={`font-bold flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-lg transition-all ${
-                    showOnlyToPush
-                      ? 'bg-white text-[#182A42]'
-                      : 'bg-white/10 text-[#bae6fd] hover:bg-white/15'
-                  }`}
-                  title={showOnlyToPush ? 'Showing only plans not in your calendar yet' : 'Show only plans not in your calendar yet'}
+                  onClick={onOpenBulkDeleteModal}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-2.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Delete selected events"
                 >
-                  <span>Plans to push</span>
-                  <span className={`px-1.5 rounded-full text-[11px] ${showOnlyToPush ? 'bg-[#182A42] text-white' : 'bg-white/15 text-white'}`}>
-                    {toPushCount}
-                  </span>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{selectedEventIds.length}</span>
                 </button>
               )}
             </div>
 
-            {selectedEventIds.length > 0 && (
-              <button
-                onClick={onOpenBulkDeleteModal}
-                className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Delete selected events"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete ({selectedEventIds.length})</span>
-              </button>
-            )}
+            {onPushEvents &&
+              (pushCandidates.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onPushEvents(pushCandidates.map((e) => e.id))}
+                  title={`${pushItemCount} ${pushItemCount === 1 ? 'item' : 'items'} to add to Google Calendar`}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-[#182A42] font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>
+                    Push {pushCandidates.length}
+                    {selectedEventIds.length > 0 ? ' selected' : ''} to Calendar
+                  </span>
+                </button>
+              ) : (
+                <span className="shrink-0 text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5 text-aot-sage" />
+                  {selectedEventIds.length > 0 ? 'Selection in your calendar' : 'All in your calendar'}
+                </span>
+              ))}
           </div>
         )}
+
+        {/* The colour key is also the filter. */}
         {events.length > 0 && (
-          <p className="flex items-center gap-3 text-[11px] text-slate-400 pt-0.5">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-aot-sage" /> In your calendar
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-white/15" /> Not in your calendar yet
-            </span>
-          </p>
+          <div className="flex items-center gap-1.5 text-[11px]" role="group" aria-label="Show plans">
+            {([
+              { key: 'pushed', label: 'In your calendar', count: pushedCount, swatch: 'bg-aot-sage' },
+              { key: 'toPush', label: 'Not in calendar yet', count: toPushCount, swatch: 'bg-white/25' },
+            ] as const).map((chip) => {
+              const on = pushFilter === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setPushFilter(on ? 'all' : chip.key)}
+                  title={on ? 'Show all plans' : `Show only plans ${chip.label.toLowerCase()}`}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg font-semibold cursor-pointer transition-all ${
+                    on ? 'bg-white text-[#182A42]' : 'text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  <span className={`w-3 h-3 rounded ${chip.swatch} ${on && chip.key === 'toPush' ? 'bg-slate-300' : ''}`} />
+                  <span>{chip.label}</span>
+                  <span className={on ? 'text-[#182A42]' : 'text-slate-400'}>· {chip.count}</span>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -299,10 +324,16 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               )}
               <div
                 onClick={() => onSelectEvent(evt.id)}
-                className={`mx-2 px-3 ${compact ? 'py-1.5' : 'py-2.5'} rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group border ${
-                  isSelected
-                    ? 'bg-white/10 border-white/25'
-                    : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.07]'
+                className={`mx-2 px-3 ${compact ? 'py-1.5' : 'py-2.5'} rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group ${
+                  // Small rows (not prepping in this period) have fill only, no border,
+                  // so the full cards stand out.
+                  compact
+                    ? isSelected
+                      ? 'bg-white/10'
+                      : 'bg-white/[0.04] hover:bg-white/[0.07]'
+                    : isSelected
+                      ? 'border bg-white/10 border-white/25'
+                      : 'border bg-white/[0.04] border-white/10 hover:bg-white/[0.07]'
                 }`}
               >
                 {/* The icon is the tick box: tap to select (it shows a
@@ -400,29 +431,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           })()
         )}
       </div>
-
-      {/* Push bar: always counts the plans not in the calendar yet (or
-          the selected ones), and opens the push window pre-filled. On
-          mobile the page itself scrolls past the list, so the bar sticks
-          to the bottom of the screen instead of waiting below the last
-          event. */}
-      {onPushEvents && pushCandidates.length > 0 && (
-        <div className="sticky bottom-3 z-20 lg:static m-2 mt-0 p-2 pl-3.5 rounded-2xl bg-[#182A42] border border-white/10 shadow-lg shadow-black/30 lg:shadow-none flex items-center justify-between gap-2">
-          <span className="text-[11px] sm:text-xs text-slate-300 min-w-0">
-            {selectedEventIds.length > 0
-              ? `${pushCandidates.length} selected ${pushCandidates.length === 1 ? 'plan' : 'plans'} · ${pushItemCount} ${pushItemCount === 1 ? 'item' : 'items'} to push`
-              : `${pushCandidates.length} ${pushCandidates.length === 1 ? 'plan' : 'plans'} not in your calendar yet`}
-          </span>
-          <button
-            type="button"
-            onClick={() => onPushEvents(pushCandidates.map((e) => e.id))}
-            className="shrink-0 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-[#182A42] text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Push to Calendar</span>
-          </button>
-        </div>
-      )}
 
     </div>
   );

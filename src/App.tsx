@@ -1,3 +1,4 @@
+import { celebrateTask } from './utils/celebrate';
 import { isEventOver } from './utils/readiness';
 import { TimelineCalendar, type CalendarSpan } from './components/TimelineCalendar';
 import { eventTouchesRange, isComingUp } from './utils/calendarView';
@@ -2221,6 +2222,11 @@ function App() {
                       setFocusMilestone(null);
                       setTimelineView('list');
                       navigate(`/events/${id}`);
+                    }}
+                    onToggleTask={(eventId, milestoneId) => {
+                      const m = events.find((e) => e.id === eventId)?.milestones?.find((x) => x.id === milestoneId);
+                      if (m && m.status !== 'completed') celebrateTask();
+                      handleToggleMilestoneStatus(eventId, milestoneId);
                     }}
                     onOpenTask={(eventId, milestoneId) => {
                       setSelectedEventId(eventId);
