@@ -34,6 +34,12 @@ interface MessengerSidebarProps {
   /** Opens the push window pre-filled with these events. */
   onPushEvents?: (eventIds: string[]) => void;
   isCollapsed?: boolean;
+  /**
+   * Which events to list up front. 'fold': the rest sit under a closed
+   * "Later (N)" section (List view: the next 30 days first). 'hide': the
+   * rest are only counted (Calendar view: what's in the month/week shown).
+   */
+  partition?: { ids: Set<string>; mode: 'fold' | 'hide'; hiddenNote: string } | null;
   onToggleCollapse?: () => void;
 }
 
@@ -49,6 +55,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onOpenBulkDeleteModal,
   onPushEvents,
   isCollapsed,
+  partition,
   onToggleCollapse,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -103,6 +110,14 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         return <Calendar className="w-[18px] h-[18px]" />;
     }
   };
+
+  // Searching or filtering on "Plans to push" shows every match.
+  const partitionActive = Boolean(partition) && !searchQuery.trim() && !showOnlyToPush;
+  const mainEvents = partitionActive
+    ? filteredEvents.filter((e) => partition!.ids.has(e.id) || e.id === selectedEventId)
+    : filteredEvents;
+  const restEvents = partitionActive ? filteredEvents.filter((e) => !mainEvents.includes(e)) : [];
+  const [showLater, setShowLater] = useState(false);
 
   const allFilteredSelected = filteredEvents.length > 0 && filteredEvents.every((e) => selectedEventIds.includes(e.id));
 
@@ -240,7 +255,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         ) : (
           (() => {
             let lastMonthKey = '';
-            return filteredEvents.map((evt) => {
+            const renderRow = (evt: CalendarEvent) => {
             const isSelected = selectedEventId === evt.id;
             const isCheckedForBulk = selectedEventIds.includes(evt.id);
             const countdown = getCountdownStatus(evt.eventDate, currentReferenceDate);
@@ -341,7 +356,40 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               </div>
               </React.Fragment>
             );
-            });
+            };
+            const main = mainEvents.map(renderRow);
+            lastMonthKey = '';
+            return (
+              <>
+                {main}
+                {partitionActive && mainEvents.length === 0 && (
+                  <p className="px-4 py-3 text-xs text-slate-400">
+                    {partition!.mode === 'hide' ? 'Nothing to prepare in this period.' : 'Nothing coming up in the next 30 days.'}
+                  </p>
+                )}
+                {restEvents.length > 0 &&
+                  (partition!.mode === 'fold' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowLater((v) => !v)}
+                        aria-expanded={showLater}
+                        className="mx-2 w-[calc(100%-1rem)] flex items-center justify-between gap-2 px-3 py-2.5 rounded-2xl border border-dashed border-white/15 text-xs font-bold text-slate-300 hover:text-white hover:border-white/30 cursor-pointer transition-colors"
+                      >
+                        <span>
+                          Later <span className="font-mono text-slate-400">({restEvents.length})</span>
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-400">{showLater ? 'Hide' : partition!.hiddenNote}</span>
+                      </button>
+                      {showLater && restEvents.map(renderRow)}
+                    </>
+                  ) : (
+                    <p className="px-4 py-2 text-[11px] text-slate-400">
+                      {restEvents.length} other {restEvents.length === 1 ? 'event' : 'events'} {partition!.hiddenNote}
+                    </p>
+                  ))}
+              </>
+            );
           })()
         )}
       </div>

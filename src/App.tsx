@@ -1,3 +1,5 @@
+import { TimelineCalendar, type CalendarSpan } from './components/TimelineCalendar';
+import { eventTouchesRange, isComingUp } from './utils/calendarView';
 import { readAgendaHorizon, saveAgendaHorizon } from './services/agendaScanRecord';
 import { completeTripDuplicates } from './utils/tripDuplicates';
 import { refreshAiPlanningEnabled } from './services/aiSettings';
@@ -329,6 +331,72 @@ function App() {
     }
     return 'feed';
   });
+
+  // Timeline & Tasks on desktop: List (event detail) or Calendar (month /
+  // week grid). Both choices are remembered; phones always get the list.
+  const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsDesktop(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const [timelineView, setTimelineViewState] = useState<'list' | 'calendar'>(() => {
+    try {
+      return localStorage.getItem('aot_timeline_view') === 'calendar' ? 'calendar' : 'list';
+    } catch {
+      return 'list';
+    }
+  });
+  const setTimelineView = (view: 'list' | 'calendar') => {
+    setTimelineViewState(view);
+    try {
+      localStorage.setItem('aot_timeline_view', view);
+    } catch {
+      // remembered for this visit only
+    }
+  };
+  const [calendarSpan, setCalendarSpanState] = useState<CalendarSpan>(() => {
+    try {
+      return localStorage.getItem('aot_calendar_span') === 'week' ? 'week' : 'month';
+    } catch {
+      return 'month';
+    }
+  });
+  const setCalendarSpan = (span: CalendarSpan) => {
+    setCalendarSpanState(span);
+    try {
+      localStorage.setItem('aot_calendar_span', span);
+    } catch {
+      // remembered for this visit only
+    }
+  };
+  const [calendarHighlightId, setCalendarHighlightId] = useState<string | null>(null);
+  const [calendarRange, setCalendarRange] = useState<{ start: string; end: string } | null>(null);
+  const [calendarCursor, setCalendarCursor] = useState<string | null>(null);
+  // A task clicked in the calendar, for the detail view to open and ring.
+  const [focusMilestone, setFocusMilestone] = useState<{ milestoneId: string; at: number } | null>(null);
+  const isCalendarShown = isDesktop && activeTab === 'tasks' && timelineView === 'calendar';
+
+  // Active Events: in Calendar view only what's in the period on screen; in
+  // List view the next 30 days first, the rest folded under "Later".
+  const sidebarPartition = useMemo(() => {
+    if (activeTab !== 'tasks') return null;
+    const today = new Date(currentReferenceDate).toISOString().slice(0, 10);
+    if (isCalendarShown) {
+      if (!calendarRange) return null;
+      return {
+        ids: new Set(sortedEvents.filter((e) => eventTouchesRange(e, calendarRange.start, calendarRange.end, today)).map((e) => e.id)),
+        mode: 'hide' as const,
+        hiddenNote: `outside this ${calendarSpan}`,
+      };
+    }
+    return {
+      ids: new Set(sortedEvents.filter((e) => isComingUp(e, today)).map((e) => e.id)),
+      mode: 'fold' as const,
+      hiddenNote: 'after 30 days',
+    };
+  }, [activeTab, isCalendarShown, calendarRange, calendarSpan, sortedEvents, currentReferenceDate]);
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
   const [isWizardInputFocused, setIsWizardInputFocused] = useState(false);
 
@@ -2039,8 +2107,15 @@ function App() {
             } ${isEventSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-5 xl:col-span-4'} h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
                 events={sortedEvents}
-                selectedEventId={selectedEventId}
+                selectedEventId={isCalendarShown ? calendarHighlightId : selectedEventId}
+                partition={sidebarPartition}
                 onSelectEvent={(id) => {
+                  // In the calendar, picking an event highlights it there;
+                  // picking it again clears the highlight.
+                  if (isCalendarShown) {
+                    setCalendarHighlightId((current) => (current === id ? null : id));
+                    return;
+                  }
                   setSelectedEventId(id);
                   setActiveTab('tasks');
                   setFocusMode('adjust-event');
@@ -2098,7 +2173,57 @@ function App() {
                   onUpdateMilestone={handleUpdateMilestone}
                 />
               ) : activeTab === 'tasks' ? (
+                <div className="flex-1 flex flex-col min-h-0 gap-2">
+                {isDesktop && (
+                  <div className="flex items-center justify-between gap-3 shrink-0">
+                    <div className="inline-flex bg-white/10 p-0.5 rounded-xl gap-0.5" role="group" aria-label="Timeline view">
+                      {(['calendar', 'list'] as const).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          aria-pressed={timelineView === v}
+                          onClick={() => setTimelineView(v)}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                            timelineView === v ? 'bg-white text-[#182A42]' : 'text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          {v === 'calendar' ? 'Calendar' : 'List'}
+                        </button>
+                      ))}
+                    </div>
+                    {isCalendarShown && (
+                      <span className="text-[11px] text-slate-400">
+                        {calendarHighlightId ? 'Pick the event again to see everything' : 'Pick an event on the left to highlight its tasks'}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {isCalendarShown ? (
+                  <TimelineCalendar
+                    events={sortedEvents}
+                    currentReferenceDate={currentReferenceDate}
+                    span={calendarSpan}
+                    onSpanChange={setCalendarSpan}
+                    highlightEventId={calendarHighlightId}
+                    onRangeChange={(start, end) => setCalendarRange({ start, end })}
+                    cursor={calendarCursor}
+                    onCursorChange={setCalendarCursor}
+                    onOpenEvent={(id) => {
+                      setSelectedEventId(id);
+                      setFocusMilestone(null);
+                      setTimelineView('list');
+                      navigate(`/events/${id}`);
+                    }}
+                    onOpenTask={(eventId, milestoneId) => {
+                      setSelectedEventId(eventId);
+                      setFocusMilestone({ milestoneId, at: Date.now() });
+                      setTimelineView('list');
+                      navigate(`/events/${eventId}`);
+                    }}
+                  />
+                ) : (
                 <EventTimelineRadar
+                  focusMilestone={focusMilestone}
                   events={sortedEvents}
                   selectedEventId={selectedEventId}
                   onSelectEvent={(id) => {
@@ -2137,6 +2262,8 @@ function App() {
                   isSyncingWithGoogle={isSyncingWithGoogle}
                   onTriggerGoogleSync={() => runGoogleTaskSync(false, true)}
                 />
+                )}
+                </div>
               ) : (
                 <div className="flex-1">
                   <ChatConsole

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -103,6 +103,8 @@ interface EventTimelineRadarProps {
   onDeleteEventFromCalendarOnly?: (eventId: string, cleanupSummary?: { calCount: number; taskCount: number }) => void;
   onDeleteEventAndCalendar?: (eventId: string, cleanupSummary?: { calCount: number; taskCount: number }) => void;
   onAddCustomMilestone: (eventId: string) => void;
+  /** Opened from the calendar by clicking a task: open and highlight it. `at` re-triggers on a repeat click. */
+  focusMilestone?: { milestoneId: string; at: number } | null;
   onUpdateMilestone?: (eventId: string, updatedMilestone: TMinusMilestone) => void;
   onDeleteMilestone?: (eventId: string, milestoneId: string) => void;
   onUpdateEvent?: (updated: CalendarEvent) => void;
@@ -126,6 +128,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   onDeleteEventFromCalendarOnly,
   onDeleteEventAndCalendar,
   onAddCustomMilestone,
+  focusMilestone,
   onUpdateMilestone,
   onDeleteMilestone,
   onUpdateEvent,
@@ -172,6 +175,22 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [isCorrectionBoxOpen, setIsCorrectionBoxOpen] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
+
+  // A task clicked in the calendar: open its steps, scroll to it, and ring
+  // it for a moment so the eye finds it.
+  const [highlightedMilestoneId, setHighlightedMilestoneId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusMilestone) return;
+    const id = focusMilestone.milestoneId;
+    setExpandedMilestoneIds((prev) => new Set(prev).add(id));
+    setHighlightedMilestoneId(id);
+    const scroll = window.setTimeout(() => document.getElementById(`ms-row-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+    const clear = window.setTimeout(() => setHighlightedMilestoneId(null), 2600);
+    return () => {
+      window.clearTimeout(scroll);
+      window.clearTimeout(clear);
+    };
+  }, [focusMilestone]);
 
   const toggleMilestoneExpanded = (milestoneId: string) => {
     setExpandedMilestoneIds((prev) => {
@@ -801,12 +820,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     return (
       <div
         key={ms.id}
+        id={`ms-row-${ms.id}`}
         // Was its own individually-rounded, bordered card with a gap
         // before the next one - live feedback wanted "less separate
         // elements creating disturbance." Now a flat row inside the
         // shared container (see the "Looking ahead" call site), styled
         // only by its own text color and a hover tint.
-        className={`group transition-all ${
+        className={`group transition-all scroll-mt-24 ${
+          highlightedMilestoneId === ms.id ? 'ring-2 ring-[#182A42] ring-inset bg-slate-50 rounded-lg ' : ''
+        }${
           isSkipped
             ? 'text-slate-400 opacity-70'
             : isCompleted
