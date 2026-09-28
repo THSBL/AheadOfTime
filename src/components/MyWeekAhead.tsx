@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, Plus, Check, CheckCircle2, Calendar as CalendarIcon, FileText, Gift, Plane, ClipboardList, PhoneCall, Layers, ChevronDown, Search, CalendarClock, Clock } from 'lucide-react';
 import { CalendarEvent, TMinusMilestone } from '../types';
 import { formatDisplayDate, getCountdownStatus, sortEventsUpcomingFirst } from '../utils/tminusRules';
@@ -22,6 +22,7 @@ import {
   THEME_LABELS,
 } from '../utils/readiness';
 import { CatchUpCard } from './CatchUpCard';
+import { celebrateTask, celebrateWeekDone } from '../utils/celebrate';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
   bookings_logistics: Plane,
@@ -73,6 +74,22 @@ const PROGRESS_COLORS: Record<WeekProgress['tone'], string> = {
   mid: '#6fa596',
   high: '#447463',
   done: '#447463',
+};
+
+/**
+ * Bigger confetti the moment the week's last open task is ticked off - not
+ * on page load when the week was already done. Waits for the row's own
+ * tick animation so the two bursts don't overlap.
+ */
+const WeekDoneCelebration: React.FC<{ done: boolean }> = ({ done }) => {
+  const previous = useRef<boolean | null>(null);
+  useEffect(() => {
+    let timer: number | undefined;
+    if (done && previous.current === false) timer = window.setTimeout(celebrateWeekDone, 600);
+    previous.current = done;
+    return () => window.clearTimeout(timer);
+  }, [done]);
+  return null;
 };
 
 /** Done / total of this week's work, as a ring whose fill and colour are the real progress. */
@@ -242,6 +259,7 @@ const FlatMilestoneRow: React.FC<{
   const handleCheck = () => {
     if (isChecking) return;
     setIsChecking(true);
+    celebrateTask();
     window.setTimeout(() => {
       onToggleMilestoneStatus(item.eventId, item.milestoneId);
     }, 500);
@@ -382,6 +400,7 @@ const ClusterMilestoneRow: React.FC<{
   const handleCheck = () => {
     if (isChecking) return;
     setIsChecking(true);
+    celebrateTask();
     window.setTimeout(() => {
       onToggleMilestoneStatus(item.eventId, item.milestoneId);
     }, 500);
@@ -537,6 +556,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   // "Already done" / "Plan the rest" for a catch-up card (see CatchUpCard).
   const markCatchUpDone = (eventId: string, milestoneIds: string[]) => {
     if (!onUpdateMilestone) return;
+    celebrateTask();
     const event = liveEvents.find((e) => e.id === eventId);
     const completedAt = new Date().toISOString();
     for (const id of milestoneIds) {
@@ -598,6 +618,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   );
 
   const weekProgress = computeWeekProgress(activeEvents, currentReferenceDate, overdueItems.length + (thisWeekBucket?.items.length ?? 0));
+  const weekDone = weekProgress.total > 0 && weekProgress.tone === 'done';
   const bandClass = 'flex items-center justify-between gap-2 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider';
   const quietTitle = 'flex items-center justify-between gap-2 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400';
 
@@ -609,6 +630,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             this week. White on navy is the strongest contrast in the app, so
             it is what the eye finds first; everything further out below is
             deliberately quiet. */}
+        <WeekDoneCelebration done={weekDone} />
         <section className="bg-white rounded-3xl shadow-lg shadow-black/25 overflow-hidden" aria-label="This week">
           <div className="flex items-center gap-3.5 px-4 py-4 border-b border-slate-100">
             <WeekProgressRing progress={weekProgress} />

@@ -26,6 +26,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { celebrateTask } from '../utils/celebrate';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
@@ -597,14 +598,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   };
 
   const handleMilestoneClick = (eventId: string, milestone: TMinusMilestone) => {
-    if (milestone.status !== 'completed') {
-      confetti({
-        particleCount: 30,
-        spread: 50,
-        origin: { y: 0.7 },
-        colors: ['#e11d48', '#f43f5e', '#10b981', '#3b82f6'],
-      });
-    }
+    if (milestone.status !== 'completed') celebrateTask();
     onToggleMilestoneStatus(eventId, milestone.id);
   };
 
@@ -628,14 +622,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         : milestone.status,
     };
 
-    if (allCompleted && milestone.status !== 'completed') {
-      confetti({
-        particleCount: 30,
-        spread: 50,
-        origin: { y: 0.7 },
-        colors: ['#182A42', '#529479', '#3b82f6'],
-      });
-    }
+    if (allCompleted && milestone.status !== 'completed') celebrateTask();
 
     onUpdateMilestone(activeEvent.id, updatedMilestone);
   };
