@@ -62,7 +62,13 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     };
   }, [syncWithServer]);
 
-  const saveProfile = useCallback((nextProfile: OnboardingProfile) => {
+  // Onboarding and Preferences save a fresh profile object; keep what Scan
+  // agenda learned (scanPrefs) unless the new profile brings its own.
+  const profileRef = React.useRef(profile);
+  profileRef.current = profile;
+  const saveProfile = useCallback((incoming: OnboardingProfile) => {
+    const kept = profileRef.current?.scanPrefs;
+    const nextProfile = incoming.scanPrefs || !kept ? incoming : { ...incoming, scanPrefs: kept };
     saveUserOnboardingProfile(nextProfile, getCurrentUser()?.id);
     // Best-effort server copy; the browser copy above already took effect.
     void pushServerProfile(nextProfile);

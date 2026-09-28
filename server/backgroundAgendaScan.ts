@@ -14,7 +14,8 @@ import { TelegramService } from './telegramService.js';
 import { listTasksNeedingAttention, listOpenDecisions } from './dailyDigestData.js';
 import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, type DailyUpdateModel } from './dailyUpdateTemplate.js';
 import { detectEventCategory } from '../src/utils/tminusRules.js';
-import { assessCalendarEntry } from '../src/utils/eventEligibility.js';
+import { assessCalendarEntry, type ScanPrefs } from '../src/utils/eventEligibility.js';
+import { getUserProfile } from './userProfileStore.js';
 import { generateDeterministicMilestones } from '../src/utils/deterministicMilestoneGenerator.js';
 import type { CalendarEvent } from '../src/types.js';
 
@@ -95,7 +96,7 @@ function daysBetween(fromIso: string, toDateStr: string): number {
 }
 
 /** Whether a calendar entry looks like something worth prepping for. */
-export function isPrepWorthy(item: GoogleCalendarItem, now: Date): boolean {
+export function isPrepWorthy(item: GoogleCalendarItem, now: Date, prefs?: ScanPrefs): boolean {
   const title = (item.summary || '').trim();
   if (!title) return false;
   if (item.status === 'cancelled') return false;
@@ -117,7 +118,7 @@ export function isPrepWorthy(item: GoogleCalendarItem, now: Date): boolean {
       description: item.description,
       daysAway: daysBetween(now.toISOString(), eventDate),
       durationDays,
-    }).verdict === 'plan'
+    }, prefs).verdict === 'plan'
   );
 }
 
@@ -307,7 +308,9 @@ export async function runBackgroundAgendaScan(
         const lastPass = Date.parse(user.last_agenda_scan_at || user.linked_at);
         const since = new Date(Math.max(lastPass, now.getTime() - lookbackMs(prefs.frequency)));
         const items = await fetchNewCalendarItems(accessToken, since, now);
-        candidates = items.filter((item) => isPrepWorthy(item, now)).map(toCandidate);
+        // What the user taught Scan agenda in the app applies here too.
+        const scanPrefs = (await getUserProfile(user.user_id).catch(() => null))?.scanPrefs;
+        candidates = items.filter((item) => isPrepWorthy(item, now, scanPrefs)).map(toCandidate);
       }
 
       const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);

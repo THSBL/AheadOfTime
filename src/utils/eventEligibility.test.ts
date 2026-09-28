@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assessCalendarEntry, trimToBirthdayReminderPlan } from './eventEligibility';
+import { assessCalendarEntry, trimToBirthdayReminderPlan, titleRuleKey, sanitizeScanPrefs } from './eventEligibility';
 
 const a = (title: string, extra: Partial<Parameters<typeof assessCalendarEntry>[0]> = {}, prefs?: any) =>
   assessCalendarEntry({ title, daysAway: 14, ...extra }, prefs);
@@ -55,5 +55,29 @@ describe('birthday reminder plan', () => {
   it('keeps only the gift and card steps of a party plan', () => {
     const plan = ['Invitations & track RSVPs Sent', 'Birthday gift Ordered & Tracked', 'Party beverages run', 'Wrap gift & prepare birthday card'].map((title) => ({ title }));
     expect(trimToBirthdayReminderPlan(plan).map((m) => m.title)).toEqual(['Birthday gift Ordered & Tracked', 'Wrap gift & prepare birthday card']);
+  });
+});
+
+describe('what the user taught us', () => {
+  it('a rule for a kind of title relabels and decides', () => {
+    const prefs = { birthdays: 'skip' as const, titleRules: [{ key: 'padel', kind: 'kids_activity' as const, verdict: 'skip' as const, example: 'Padel with Tom' }] };
+    expect(assessCalendarEntry({ title: 'Padel with Sam', daysAway: 10 }, prefs)).toMatchObject({ kind: 'kids_activity', verdict: 'skip', reason: 'Your choice' });
+  });
+
+  it('a verdict for a whole kind applies to every entry of that kind, but never within 2 days', () => {
+    const prefs = { birthdays: 'skip' as const, kindVerdicts: { subscription: 'skip' as const, dinner: 'skip' as const } };
+    expect(assessCalendarEntry({ title: 'Netflix renewal', daysAway: 10 }, prefs)).toMatchObject({ verdict: 'skip' });
+    expect(assessCalendarEntry({ title: 'Dinner with Sam', daysAway: 10 }, prefs)).toMatchObject({ verdict: 'skip' });
+    const plan = { birthdays: 'skip' as const, kindVerdicts: { subscription: 'plan' as const } };
+    expect(assessCalendarEntry({ title: 'Netflix renewal', daysAway: 1 }, plan)).toMatchObject({ verdict: 'skip' });
+  });
+
+  it('keys rules on the first meaningful word and cleans stored prefs', () => {
+    expect(titleRuleKey('BDAY Anna')).toBe('bday');
+    expect(titleRuleKey('The Padel match')).toBe('padel');
+    expect(sanitizeScanPrefs({ birthdays: 'plan', kindVerdicts: { trip: 'skip', bogus: 'plan', dinner: 'maybe' }, titleRules: [{ key: 'X', kind: 'nope', verdict: 'plan' }] })).toEqual({
+      birthdays: 'plan',
+      kindVerdicts: { trip: 'skip' },
+    });
   });
 });

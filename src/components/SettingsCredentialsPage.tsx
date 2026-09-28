@@ -11,6 +11,7 @@ import { AiPlanningCard } from './AiPlanningCard';
 import { DeleteAccountCard } from './DeleteAccountCard';
 import { SettingsGroup } from './SettingsRow';
 import { UpdatesSettings } from './UpdatesSettings';
+import { CalendarHabitsCard } from './CalendarHabitsCard';
 
 export type SettingsTab = 'connections' | 'account' | 'updates';
 const TABS: Array<{ id: SettingsTab; label: string }> = [
@@ -198,6 +199,9 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
                 </button>
               </div>
             </form>
+
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1 pt-2">Your calendar habits</p>
+            <CalendarHabitsCard />
 
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1 pt-2">Data</p>
             <SettingsGroup>

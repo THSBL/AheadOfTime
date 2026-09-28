@@ -1,6 +1,10 @@
 import { recordAgendaScan } from '../services/agendaScanRecord';
 import { assessCalendarEntry, trimToBirthdayReminderPlan, ENTRY_KIND_LABELS, type EntryKind, type ScanVerdict } from '../utils/eventEligibility';
 import { readScanPrefs, saveScanPrefs } from '../services/scanPrefs';
+import { useUserProfile } from '../contexts/UserProfileContext';
+import { TeachSwipe, type TeachAnswer, type TeachCard } from './TeachSwipe';
+import { learnFromAnswers } from '../utils/teachRules';
+import type { EntryInput, ScanPrefs } from '../utils/eventEligibility';
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
@@ -127,6 +131,8 @@ interface ScannedEventItem extends GoogleCalendarEventItem {
   kind: EntryKind;
   verdict: ScanVerdict;
   reason: string;
+  /** What the rules judged, to judge again after the user teaches us (trips grouped by us have none). */
+  assessInput: EntryInput | null;
   isAlreadyInDashboard: boolean;
   shouldTrackByDefault: boolean;
   diffDays: number;
@@ -155,7 +161,15 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
   const [selectedEventIds, setSelectedEventIds] = useState<Record<string, boolean>>({});
   const [showAlreadyImported, setShowAlreadyImported] = useState<boolean>(false);
   const [showSkipped, setShowSkipped] = useState<boolean>(false);
-  const [scanPrefs, setScanPrefs] = useState(readScanPrefs);
+  const { profile: storedProfile, saveProfile } = useUserProfile();
+  const [scanPrefs, setScanPrefs] = useState<ScanPrefs>(() => storedProfile?.scanPrefs || readScanPrefs());
+  const [isTeaching, setIsTeaching] = useState(false);
+  // Kept in this browser and in the profile (so Background Sync's daily scan uses them too).
+  const persistPrefs = (next: ScanPrefs) => {
+    setScanPrefs(next);
+    saveScanPrefs(next);
+    saveProfile({ ...(storedProfile || {}), scanPrefs: next });
+  };
   const [scanMonths, setScanMonths] = useState<number>(initialScanMonths);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState<boolean>(false);
@@ -311,9 +325,10 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
         const durationDays = endStr && eventDateStr
           ? Math.max(1, Math.round((new Date(endStr.substring(0, 10)).getTime() - new Date(eventDateStr).getTime()) / 86400000))
           : 1;
-        let assessment = item.tripParts
-          ? { kind: 'trip' as EntryKind, category: 'travel_trip' as EventCategory, verdict: (diffDays >= 2 ? 'plan' : 'skip') as ScanVerdict, reason: 'Trip' }
-          : assessCalendarEntry({ title, description: desc, daysAway: diffDays, durationDays, calendarType: calendar_type }, scanPrefs);
+        const assessInput: EntryInput | null = item.tripParts ? null : { title, description: desc, daysAway: diffDays, durationDays, calendarType: calendar_type };
+        let assessment = assessInput
+          ? assessCalendarEntry(assessInput, scanPrefs)
+          : { kind: 'trip' as EntryKind, category: 'travel_trip' as EventCategory, verdict: (diffDays >= 2 ? 'plan' : 'skip') as ScanVerdict, reason: 'Trip' };
 
         // Families: school and kids' events are worth a look even when vague.
         const isKidsPriority = flagsKids && /school|costume|spirit|rehearsal|recital|tournament|sports|camp|halloween/i.test(lowerTitle);
@@ -358,6 +373,7 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
           kind: assessment.kind,
           verdict: assessment.verdict,
           reason: assessment.reason,
+          assessInput,
           isAlreadyInDashboard: alreadyInDashboard,
           shouldTrackByDefault,
           diffDays,
@@ -424,25 +440,46 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
     }));
   };
 
+  // Judge every entry again with new prefs, and tick what is now "plan".
+  const reassessAll = (prefs: ScanPrefs) => {
+    const updated = scannedEvents.map((e) => {
+      if (!e.assessInput) return e;
+      const a = assessCalendarEntry(e.assessInput, prefs);
+      return { ...e, kind: a.kind, verdict: a.verdict, reason: a.reason, detectedCategory: a.category };
+    });
+    setScannedEvents(updated);
+    setSelectedEventIds((prev) => {
+      const next = { ...prev };
+      updated.forEach((e) => {
+        if (!e.isAlreadyInDashboard) next[e.id] = e.verdict === 'plan';
+      });
+      return next;
+    });
+  };
+
   // Birthdays: plain reminders are left out until the user asks for them.
   const setBirthdayPref = (birthdays: 'skip' | 'plan') => {
     const next = { ...scanPrefs, birthdays };
-    setScanPrefs(next);
-    saveScanPrefs(next);
-    setScannedEvents((prev) =>
-      prev.map((e) =>
-        e.kind !== 'birthday_reminder'
-          ? e
-          : { ...e, verdict: birthdays === 'plan' && e.diffDays >= 2 ? 'plan' : 'skip', reason: birthdays === 'plan' ? 'Birthday: a card or gift' : 'Birthday reminder' }
-      )
+    persistPrefs(next);
+    reassessAll(next);
+  };
+
+  const finishTeaching = (answers: TeachAnswer[]) => {
+    const next = learnFromAnswers(
+      scanPrefs,
+      answers.map((a) => {
+        const item = scannedEvents.find((e) => e.id === a.card.id);
+        return { title: item?.summary || a.card.title, guessedKind: a.card.kind, kind: a.kind, verdict: a.verdict };
+      })
     );
-    setSelectedEventIds((prev) => {
-      const updated = { ...prev };
-      scannedEvents.forEach((e) => {
-        if (e.kind === 'birthday_reminder' && !e.isAlreadyInDashboard) updated[e.id] = birthdays === 'plan' && e.diffDays >= 2;
-      });
-      return updated;
-    });
+    persistPrefs(next);
+    reassessAll(next);
+    setIsTeaching(false);
+  };
+
+  const dismissTeaching = () => {
+    persistPrefs({ ...scanPrefs, lastTeachAt: new Date().toISOString() });
+    setIsTeaching(false);
   };
 
   // How many /api/event/deep-refine calls run at once during import - no
@@ -593,6 +630,28 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
     return item && !item.isAlreadyInDashboard;
   }).length;
 
+  // Teach Ahead Of Time: the entries we're least sure about, one per kind of
+  // title, at most 7. Offered after the first scan and again when a scan
+  // has 3+ of them, never more than once a week.
+  const teachCards: TeachCard[] = (() => {
+    const seen = new Set<string>();
+    const rank = (e: ScannedEventItem) =>
+      e.verdict === 'unsure' ? 0 : e.kind === 'birthday_reminder' || e.kind === 'medical' ? 1 : e.kind === 'other' || e.kind === 'kids_activity' ? 2 : 9;
+    return fresh
+      .filter((e) => e.assessInput && rank(e) < 9 && e.reason !== 'Your choice' && e.diffDays >= 2)
+      .sort((a, b) => rank(a) - rank(b))
+      .filter((e) => {
+        const key = `${e.kind}:${(e.summary || '').toLowerCase().split(/\s+/)[0]}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 7)
+      .map((e) => ({ id: e.id, title: e.summary || 'Untitled', date: (e.start?.dateTime || e.start?.date || '').slice(0, 10), kind: e.kind }));
+  })();
+  const lastTeach = scanPrefs.lastTeachAt ? Date.parse(scanPrefs.lastTeachAt) : 0;
+  const offerTeaching = hasScanned && !isLoading && teachCards.length >= 3 && Date.now() - lastTeach > 7 * 86400000;
+
   // What the rows fold away as: "routine, public holidays, birthdays".
   const skippedSummary = Array.from(
     new Set(
@@ -666,7 +725,8 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-[#f7f8fa] border border-slate-200 w-full max-w-xl rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-900 max-h-[90dvh] sm:max-h-[85vh]">
+      <div className="relative bg-[#f7f8fa] border border-slate-200 w-full max-w-xl rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-900 h-[90dvh] sm:h-auto max-h-[90dvh] sm:max-h-[85vh] sm:min-h-[560px]">
+        {isTeaching && <TeachSwipe cards={teachCards} onFinish={finishTeaching} onCancel={() => setIsTeaching(false)} />}
         {/* Header: what was scanned, in one line */}
         <div className="px-4 py-3.5 bg-[#182A42] text-white flex items-center justify-between gap-3 shrink-0">
           <div className="min-w-0">
@@ -725,6 +785,21 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
             </div>
           ) : (
             <>
+              {offerTeaching && (
+                <div className="p-3 rounded-2xl bg-[#eef6f3] border border-[#cfe3dc] flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-[#182A42]">Help us learn your calendar</p>
+                    <p className="text-xs text-slate-600">{teachCards.length} quick swipes, about 30 seconds</p>
+                  </div>
+                  <button type="button" onClick={dismissTeaching} className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">
+                    Not now
+                  </button>
+                  <button type="button" onClick={() => setIsTeaching(true)} className="px-3 py-1.5 rounded-lg bg-[#182A42] text-white text-xs font-bold cursor-pointer">
+                    Start
+                  </button>
+                </div>
+              )}
+
               {/* Birthdays: left out unless the user wants them */}
               {birthdaysLeftOut > 0 && (
                 <div className="p-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-600 space-y-1.5">

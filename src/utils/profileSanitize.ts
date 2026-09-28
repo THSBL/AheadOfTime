@@ -1,4 +1,5 @@
 import type { OnboardingProfile } from '../types.js';
+import { sanitizeScanPrefs } from './eventEligibility.js';
 
 // Whitelist of profile fields and their allowed values, applied to anything
 // coming from a request body before it is stored (server) or trusted.
@@ -27,6 +28,7 @@ export function sanitizeOnboardingProfile(raw: unknown): OnboardingProfile | nul
     calendarType: pick(r.calendarType, CALENDAR_TYPES),
     privacyConsentAccepted: typeof r.privacyConsentAccepted === 'boolean' ? r.privacyConsentAccepted : undefined,
     completedAt: typeof r.completedAt === 'string' && !isNaN(Date.parse(r.completedAt)) ? r.completedAt : undefined,
+    scanPrefs: r.scanPrefs !== undefined ? sanitizeScanPrefs(r.scanPrefs) : undefined,
   };
   const cleaned = Object.fromEntries(Object.entries(profile).filter(([, v]) => v !== undefined)) as OnboardingProfile;
   return Object.keys(cleaned).length > 0 ? cleaned : null;

@@ -69,12 +69,73 @@ const KIND_CATEGORY: Record<EntryKind, EventCategory> = {
   other: 'custom',
 };
 
+/** What the user taught us (Teach Ahead Of Time swipes, Scan agenda choices). */
+export interface TitleRule {
+  /** First meaningful word of the title ("padel"), or the whole title when `exact`. */
+  key: string;
+  /** Match the whole title only: vague titles like "Tom" must not catch "Tom's birthday". */
+  exact?: boolean;
+  kind: EntryKind;
+  verdict: ScanVerdict;
+  /** The entry it was learned from, to show in Settings. */
+  example: string;
+}
+
 export interface ScanPrefs {
   /** Plain birthday reminders ("BDAY Anna"): left out unless the user wants them. */
   birthdays: 'skip' | 'plan';
+  /** Per kind: always plan, always skip, or ask ("Right = plan things like this"). */
+  kindVerdicts?: Partial<Record<EntryKind, ScanVerdict>>;
+  /** Corrections for one kind of title ("Padel with Tom" is a hobby, not a trip). */
+  titleRules?: TitleRule[];
+  /** When the swipe round was last played or dismissed. */
+  lastTeachAt?: string;
 }
 
 export const DEFAULT_SCAN_PREFS: ScanPrefs = { birthdays: 'skip' };
+
+const KINDS = Object.keys(ENTRY_KIND_LABELS) as EntryKind[];
+const VERDICTS: ScanVerdict[] = ['plan', 'unsure', 'skip'];
+const STOPWORDS = new Set(['the', 'and', 'with', 'for', 'met', 'van', 'een', 'het', 'de', 'my', 'our', 'to', 'at', 'in', 'on']);
+
+/** The word a title rule is keyed on: first word of 3+ letters that isn't filler. */
+export function titleRuleKey(title: string): string | null {
+  const words = (title || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\s]/gu, ' ').split(/\s+/);
+  return words.find((w) => w.length >= 3 && !STOPWORDS.has(w)) || null;
+}
+
+/** The whole title, lower case, letters and spaces only (for exact rules). */
+export function normalizedTitle(title: string): string {
+  return (title || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Validates stored or submitted prefs; unknown values are dropped. */
+export function sanitizeScanPrefs(raw: unknown): ScanPrefs {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
+  const prefs: ScanPrefs = { birthdays: r.birthdays === 'plan' ? 'plan' : 'skip' };
+  if (r.kindVerdicts && typeof r.kindVerdicts === 'object') {
+    const kv: Partial<Record<EntryKind, ScanVerdict>> = {};
+    for (const [k, v] of Object.entries(r.kindVerdicts)) {
+      if (KINDS.includes(k as EntryKind) && VERDICTS.includes(v as ScanVerdict)) kv[k as EntryKind] = v as ScanVerdict;
+    }
+    if (Object.keys(kv).length) prefs.kindVerdicts = kv;
+  }
+  if (Array.isArray(r.titleRules)) {
+    const rules = r.titleRules
+      .filter((t: any) => t && typeof t.key === 'string' && KINDS.includes(t.kind) && VERDICTS.includes(t.verdict))
+      .slice(0, 100)
+      .map((t: any) => ({
+        key: t.key.slice(0, 80).toLowerCase(),
+        ...(t.exact === true ? { exact: true } : {}),
+        kind: t.kind,
+        verdict: t.verdict,
+        example: String(t.example || '').slice(0, 80),
+      }));
+    if (rules.length) prefs.titleRules = rules;
+  }
+  if (typeof r.lastTeachAt === 'string' && !isNaN(Date.parse(r.lastTeachAt))) prefs.lastTeachAt = r.lastTeachAt;
+  return prefs;
+}
 
 export interface EntryInput {
   title: string;
@@ -116,6 +177,25 @@ const TRIP =
 const HOSTING = /\b(hosting|staying with us|visiting us|in town|sleepover|guests?|logeren|house ?guests?|in-laws)\b/i;
 
 export function assessCalendarEntry(input: EntryInput, prefs: ScanPrefs = DEFAULT_SCAN_PREFS): EntryAssessment {
+  const base = assessByRules(input, prefs);
+  // What the user taught us wins: a rule for this kind of title, then one
+  // for the whole kind. Never plans something within 2 days.
+  const key = titleRuleKey(input.title);
+  const whole = normalizedTitle(input.title);
+  const rule =
+    prefs.titleRules?.find((t) => t.exact && t.key === whole) ||
+    (key ? prefs.titleRules?.find((t) => !t.exact && t.key === key) : undefined);
+  if (rule) {
+    return withTiming({ kind: rule.kind, category: KIND_CATEGORY[rule.kind], verdict: rule.verdict, reason: 'Your choice' }, input);
+  }
+  const kindVerdict = prefs.kindVerdicts?.[base.kind];
+  if (kindVerdict && kindVerdict !== base.verdict && base.reason !== 'Too soon to prepare') {
+    return withTiming({ ...base, verdict: kindVerdict, reason: 'Your choice' }, input);
+  }
+  return base;
+}
+
+function assessByRules(input: EntryInput, prefs: ScanPrefs): EntryAssessment {
   const title = (input.title || '').trim();
   const text = `${title} ${input.description || ''}`;
   const bare = title.replace(/[^\p{L}\p{N}\s'-]/gu, '').trim();

@@ -474,6 +474,10 @@ export interface OnboardingProfile {
   calendarType?: CalendarType;
   privacyConsentAccepted?: boolean;
   completedAt?: string;
+
+  // What the user taught Scan agenda (birthdays, Teach Ahead Of Time swipes).
+  // Stored with the profile so the daily Background Sync scan uses it too.
+  scanPrefs?: import('./utils/eventEligibility').ScanPrefs;
 }
 
 export interface CookieConsentSettings {
