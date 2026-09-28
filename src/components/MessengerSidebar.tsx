@@ -15,9 +15,11 @@ import {
   Repeat,
   PanelLeftClose,
   PanelLeftOpen,
+  Check,
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
+import { isPlanPushed, pendingPushItems } from '../utils/pushStatus';
 
 // How long an event counts as "newly added" for the sidebar's own filter
 // chip and highlight - measured against real wall-clock time (not
@@ -44,6 +46,8 @@ interface MessengerSidebarProps {
   onSelectAllEvents: () => void;
   onDeselectAllEvents: () => void;
   onOpenBulkDeleteModal: () => void;
+  /** Opens the push window pre-filled with these events. */
+  onPushEvents?: (eventIds: string[]) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
@@ -58,17 +62,19 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onSelectAllEvents,
   onDeselectAllEvents,
   onOpenBulkDeleteModal,
+  onPushEvents,
   isCollapsed,
   onToggleCollapse,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showOnlyNew, setShowOnlyNew] = useState(false);
+  // "Plans to push": only events whose plan isn't fully in Google Calendar.
+  const [showOnlyToPush, setShowOnlyToPush] = useState(false);
 
-  const newlyAddedCount = React.useMemo(() => events.filter(isNewlyAddedEvent).length, [events]);
+  const toPushCount = React.useMemo(() => events.filter((e) => !isPlanPushed(e)).length, [events]);
 
   const filteredEvents = React.useMemo(() => {
     const matched = events.filter((e) => {
-      if (showOnlyNew && !isNewlyAddedEvent(e)) return false;
+      if (showOnlyToPush && isPlanPushed(e)) return false;
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase().trim();
       const displayTitle = getCleanEventTitle(e.title, e.category, e.context).toLowerCase();
@@ -84,26 +90,32 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     });
 
     return sortEventsUpcomingFirst(matched, currentReferenceDate);
-    // showOnlyNew is read inside the filter above but was missing here -
-    // useMemo only recomputes when a LISTED dependency changes, so toggling
-    // the "Newly added" checkbox updated the checkbox's own visual state
-    // but never actually re-ran this filter. The list only looked "fixed"
-    // whenever events/searchQuery/currentReferenceDate happened to change
-    // for some unrelated reason afterward.
-  }, [events, searchQuery, currentReferenceDate, showOnlyNew]);
+    // Every flag read in the filter must be listed here, or toggling the
+    // chip changes the chip but never re-runs the filter.
+  }, [events, searchQuery, currentReferenceDate, showOnlyToPush]);
 
+  // What the bottom bar pushes: the selected events, else every event,
+  // keeping only plans that still have something to add.
+  const pushCandidates = React.useMemo(() => {
+    const pool = selectedEventIds.length > 0 ? events.filter((e) => selectedEventIds.includes(e.id)) : events;
+    return pool.filter((e) => !isPlanPushed(e));
+  }, [events, selectedEventIds]);
+  const pushItemCount = pushCandidates.reduce((n, e) => n + pendingPushItems(e), 0);
+
+  // Single-colour icons: the tile's colour carries the push status
+  // (sage = plan in calendar, grey = still to push, white = selected).
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'birthday_party':
-        return <Cake className="w-4 h-4 text-pink-500" />;
+        return <Cake className="w-[18px] h-[18px]" />;
       case 'hosting_visitors':
-        return <Home className="w-4 h-4 text-indigo-500" />;
+        return <Home className="w-[18px] h-[18px]" />;
       case 'travel_trip':
-        return <Plane className="w-4 h-4 text-sky-600" />;
+        return <Plane className="w-[18px] h-[18px]" />;
       case 'festival_concert':
-        return <Music className="w-4 h-4 text-amber-500" />;
+        return <Music className="w-[18px] h-[18px]" />;
       default:
-        return <Calendar className="w-4 h-4 text-slate-500" />;
+        return <Calendar className="w-[18px] h-[18px]" />;
     }
   };
 
@@ -183,10 +195,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           />
         </div>
 
-        {/* Bulk Selection & Deletion Actions Bar - "Newly added" lives on
-            this same row now, styled as the same kind of checkbox toggle as
-            Select All (no icon of its own) rather than a separate chip on
-            its own line above. */}
+        {/* Select All, the "Plans to push" filter, and Delete for a selection. */}
         {events.length > 0 && (
           <div className="flex items-center justify-between pt-1 text-xs">
             <div className="flex items-center gap-2">
@@ -197,19 +206,22 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 {allFilteredSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                 <span>{allFilteredSelected ? 'Deselect All' : 'Select All'}</span>
               </button>
-              {newlyAddedCount > 0 && (
+              {(toPushCount > 0 || showOnlyToPush) && (
                 <button
                   type="button"
-                  onClick={() => setShowOnlyNew((v) => !v)}
-                  className={`font-bold flex items-center gap-1 cursor-pointer px-2.5 py-1 rounded-lg transition-all ${
-                    showOnlyNew
-                      ? 'bg-[#38bdf8] text-[#182A42]'
+                  onClick={() => setShowOnlyToPush((v) => !v)}
+                  aria-pressed={showOnlyToPush}
+                  className={`font-bold flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-lg transition-all ${
+                    showOnlyToPush
+                      ? 'bg-white text-[#182A42]'
                       : 'bg-white/10 text-[#bae6fd] hover:bg-white/15'
                   }`}
-                  title={showOnlyNew ? 'Showing only newly added events' : 'Show only newly added events'}
+                  title={showOnlyToPush ? 'Showing only plans not in your calendar yet' : 'Show only plans not in your calendar yet'}
                 >
-                  {showOnlyNew ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-                  <span>Newly added ({newlyAddedCount})</span>
+                  <span>Plans to push</span>
+                  <span className={`px-1.5 rounded-full text-[11px] ${showOnlyToPush ? 'bg-[#182A42] text-white' : 'bg-white/15 text-white'}`}>
+                    {toPushCount}
+                  </span>
                 </button>
               )}
             </div>
@@ -228,12 +240,10 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         )}
       </div>
 
-      {/* Flat list on the same dark navy surface, divided by hairlines,
-          instead of each event being its own separate white bordered/
-          shadowed card with gaps between them - live feedback called the
-          separate-card treatment "disturbance." Only the selected row gets
-          a visible outline now; everything else is plain rows. */}
-      <div className="flex-1 overflow-y-auto py-1">
+      {/* Each event sits on a light card of its own (a faint tint of the
+          panel, not the old white cards) so events stand apart; the open
+          event gets a brighter outline. */}
+      <div className="flex-1 overflow-y-auto py-1 space-y-1.5">
         {filteredEvents.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs sm:text-sm flex flex-col items-center justify-center gap-2">
             <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-slate-300">
@@ -256,6 +266,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
 
             const isNewlyAdded = isNewlyAddedEvent(evt);
+            const planPushed = isPlanPushed(evt);
 
             // Month section header - only when the month actually changes
             // from the previous (already date-sorted) event, so scanning a
@@ -280,33 +291,35 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               )}
               <div
                 onClick={() => onSelectEvent(evt.id)}
-                className={`mx-2 px-3 py-3 rounded-xl transition-all cursor-pointer flex items-start gap-2.5 relative group border ${
+                className={`mx-2 px-3 py-2.5 rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group border ${
                   isSelected
-                    // The one row that gets a visible outline - everything
-                    // else is a flat row, so the current selection reads as
-                    // the exception, not one card among many identical ones.
                     ? 'bg-white/10 border-white/25'
-                    : 'border-transparent hover:bg-white/5'
+                    : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.07]'
                 }`}
               >
-                {/* Checkbox for Bulk Deletion */}
-                <div
-                  className="shrink-0 mt-0.5"
-                  onClick={(e) => e.stopPropagation()}
+                {/* The icon is the tick box: tap to select (it shows a
+                    check), tap the rest of the row to open the event. Its
+                    colour is the push status: sage = the whole plan is in
+                    Google Calendar, grey = something still to push. */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSelectEvent(evt.id);
+                  }}
+                  aria-pressed={isCheckedForBulk}
+                  aria-label={`Select ${displayTitle} (${planPushed ? 'plan in calendar' : 'plan not pushed yet'})`}
+                  title={isCheckedForBulk ? 'Selected' : planPushed ? 'Plan in your calendar - tap to select' : 'Plan not in your calendar yet - tap to select'}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                    isCheckedForBulk
+                      ? 'bg-white text-[#182A42] ring-2 ring-aot-sage'
+                      : planPushed
+                        ? 'bg-aot-sage text-[#447463] hover:brightness-105'
+                        : 'bg-white/10 text-slate-400 hover:bg-white/15'
+                  }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isCheckedForBulk}
-                    onChange={() => onToggleSelectEvent(evt.id)}
-                    className="w-4 h-4 rounded border-white/30 bg-white/10 text-[#38bdf8] focus:ring-[#38bdf8] cursor-pointer"
-                    title="Select event for bulk deletion"
-                  />
-                </div>
-
-                {/* Category Icon */}
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 bg-white/10">
-                  {getCategoryIcon(evt.category)}
-                </div>
+                  {isCheckedForBulk ? <Check className="w-5 h-5" strokeWidth={3} /> : getCategoryIcon(evt.category)}
+                </button>
 
                 {/* Event Details */}
                 <div className="flex-1 min-w-0 space-y-1">
@@ -355,6 +368,26 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           })()
         )}
       </div>
+
+      {/* Push bar: always counts the plans not in the calendar yet (or
+          the selected ones), and opens the push window pre-filled. */}
+      {onPushEvents && pushCandidates.length > 0 && (
+        <div className="m-2 mt-0 p-2 pl-3.5 rounded-2xl bg-[#182A42] border border-white/10 flex items-center justify-between gap-2">
+          <span className="text-[11px] sm:text-xs text-slate-300 min-w-0">
+            {selectedEventIds.length > 0
+              ? `${pushCandidates.length} selected ${pushCandidates.length === 1 ? 'plan' : 'plans'} · ${pushItemCount} ${pushItemCount === 1 ? 'item' : 'items'} to push`
+              : `${pushCandidates.length} ${pushCandidates.length === 1 ? 'plan' : 'plans'} not in your calendar yet`}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPushEvents(pushCandidates.map((e) => e.id))}
+            className="shrink-0 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-[#182A42] text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Push to Calendar</span>
+          </button>
+        </div>
+      )}
 
     </div>
   );

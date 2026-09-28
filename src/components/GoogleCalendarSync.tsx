@@ -40,12 +40,15 @@ import {
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from '../services/googleTasks';
 import { isServerCalendarLinked, pushEventViaServer, ServerCalendarUnavailable } from '../services/serverCalendar';
 import { formatDisplayDate } from '../utils/tminusRules';
+import { describePendingPush, isPlanPushed, pendingPushItems } from '../utils/pushStatus';
 import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
 interface GoogleCalendarSyncProps {
   events?: CalendarEvent[];
   existingEvents?: CalendarEvent[];
   selectedEventId?: string;
+  /** Opened from the Active Events push bar: push these, several at once. */
+  initialBatchIds?: string[];
   onUpdateEvent?: (updated: CalendarEvent) => void;
   onUpdateAllEvents?: (updatedEvents: CalendarEvent[]) => void;
   onSyncComplete?: (syncedEvents: CalendarEvent[]) => void;
@@ -56,6 +59,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   events: propEvents,
   existingEvents,
   selectedEventId,
+  initialBatchIds,
   onUpdateEvent,
   onUpdateAllEvents,
   onSyncComplete,
@@ -73,8 +77,18 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isBatchSyncing, setIsBatchSyncing] = useState<boolean>(false);
-  const [syncMode, setSyncMode] = useState<'single' | 'batch'>(selectedEventId ? 'single' : (events.length > 1 ? 'batch' : 'single'));
-  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>(() => events.map(e => e.id));
+  const [syncMode, setSyncMode] = useState<'single' | 'batch'>(
+    initialBatchIds?.length ? 'batch' : selectedEventId ? 'single' : (events.length > 1 ? 'batch' : 'single')
+  );
+  // Several at once lists the plans with something left to push (all
+  // events once everything is in), and starts with those selected.
+  const batchCandidates = React.useMemo(() => {
+    const open = events.filter((e) => !isPlanPushed(e) || initialBatchIds?.includes(e.id));
+    return open.length > 0 ? open : events;
+  }, [events, initialBatchIds]);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>(() =>
+    initialBatchIds?.length ? initialBatchIds : batchCandidates.map((e) => e.id)
+  );
   const [isPullingCompletions, setIsPullingCompletions] = useState<boolean>(false);
   const [completionSyncReport, setCompletionSyncReport] = useState<string | null>(null);
   const [isCleaningDuplicates, setIsCleaningDuplicates] = useState<boolean>(false);
@@ -136,11 +150,11 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
 
   // How many items (main event + milestones) a push would actually create,
   // vs. items already synced from a previous push that will be left alone.
-  const countPendingItems = (ev: CalendarEvent): number => {
-    const mainPending = !ev.googleEventId || ev.googleEventId.startsWith('local_') ? 1 : 0;
-    const milestonePending = (ev.milestones || []).filter((m) => !m.googleTaskId).length;
-    return mainPending + milestonePending;
-  };
+  const countPendingItems = pendingPushItems;
+
+  const selectedItemCount = events
+    .filter((e) => selectedBatchIds.includes(e.id))
+    .reduce((n, e) => n + pendingPushItems(e), 0);
 
   const toggleBatchId = (id: string) => {
     setSelectedBatchIds(prev => 
@@ -149,7 +163,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   };
 
   const handleSelectAllBatch = () => {
-    setSelectedBatchIds(events.map(e => e.id));
+    setSelectedBatchIds(batchCandidates.map(e => e.id));
   };
 
   const handleDeselectAllBatch = () => {
@@ -537,7 +551,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                       syncMode === mode ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >
-                    {mode === 'single' ? 'This event' : `Several (${events.length})`}
+                    {mode === 'single' ? 'This event' : `Several (${batchCandidates.length})`}
                   </button>
                 ))}
               </div>
@@ -567,7 +581,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                       href={batchSuccessResult.calendarLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-[#182A42] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>Open in Google Calendar</span>
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -587,7 +601,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
             ) : (
               <>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-500">{selectedBatchIds.length} of {events.length} selected</span>
+                  <span className="font-bold text-slate-500">{selectedBatchIds.length} of {batchCandidates.length} selected</span>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={handleSelectAllBatch} className="text-sky-700 hover:underline font-semibold cursor-pointer">All</button>
                     <span className="text-slate-300">|</span>
@@ -597,9 +611,8 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
 
                 {/* Events Checklist */}
                 <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                  {events.map((ev) => {
+                  {batchCandidates.map((ev) => {
                     const isSelected = selectedBatchIds.includes(ev.id);
-                    const evTaskCount = (ev.milestones || []).length;
                     return (
                       <div
                         key={ev.id}
@@ -620,7 +633,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                               {ev.title}
                             </div>
                             <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                              {formatDisplayDate(ev.eventDate)} · {evTaskCount} {evTaskCount === 1 ? 'task' : 'tasks'}
+                              {formatDisplayDate(ev.eventDate)} · {describePendingPush(ev)}
                             </div>
                           </div>
                         </div>
@@ -650,12 +663,15 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     {isBatchSyncing ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Pushing {selectedBatchIds.length} Events...</span>
+                        <span>Pushing {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'plan' : 'plans'}...</span>
                       </>
                     ) : (
                       <>
                         <CalendarIcon className="w-4 h-4" />
-                        <span>Push {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'event' : 'events'}</span>
+                        <span>
+                          Push {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'plan' : 'plans'}
+                          {selectedItemCount > 0 && ` · ${selectedItemCount} ${selectedItemCount === 1 ? 'item' : 'items'}`}
+                        </span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
@@ -688,7 +704,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                       href={syncSuccessResult.calendarLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-[#182A42] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>Open in Google Calendar</span>
                       <ExternalLink className="w-3.5 h-3.5" />

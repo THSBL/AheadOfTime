@@ -949,6 +949,8 @@ function App() {
   };
   const [isCustomMilestoneModalOpen, setIsCustomMilestoneModalOpen] = useState(false);
   const [isGoogleCalendarModalOpen, setIsGoogleCalendarModalOpen] = useState(false);
+  // Events the Active Events push bar opened the push window with (null = the usual single/batch choice).
+  const [pushPreselectIds, setPushPreselectIds] = useState<string[] | null>(null);
   const [isScanAgendaModalOpen, setIsScanAgendaModalOpen] = useState(false);
   const [agendaHorizonMonths, setAgendaHorizonMonths] = useState<number>(6);
   const [targetEventForMilestone, setTargetEventForMilestone] = useState<CalendarEvent | null>(null);
@@ -2046,6 +2048,10 @@ function App() {
                 onSelectAllEvents={handleSelectAllEvents}
                 onDeselectAllEvents={handleDeselectAllEvents}
                 onOpenBulkDeleteModal={() => setIsBulkDeleteModalOpen(true)}
+                onPushEvents={(ids) => {
+                  setPushPreselectIds(ids);
+                  setIsGoogleCalendarModalOpen(true);
+                }}
                 isCollapsed={isEventSidebarCollapsed}
                 onToggleCollapse={() => setIsEventSidebarCollapsed((v) => !v)}
               />
@@ -2266,9 +2272,13 @@ function App() {
             <GoogleCalendarSync
               events={events}
               selectedEventId={selectedEventId || undefined}
+              initialBatchIds={pushPreselectIds || undefined}
               onUpdateEvent={handleUpdateEvent}
               onUpdateAllEvents={(updated) => setEvents((prev) => mergeEvents(prev, updated))}
-              onClose={() => setIsGoogleCalendarModalOpen(false)}
+              onClose={() => {
+                setIsGoogleCalendarModalOpen(false);
+                setPushPreselectIds(null);
+              }}
             />
           </div>
         </div>

@@ -976,10 +976,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     <div className="flex items-center gap-1.5 shrink-0 relative">
       <button
         onClick={() => setIsPushModalOpen(true)}
-        className="bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
+        className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
         title="Push 1 event + prep tasks to Google Calendar"
       >
-        <Calendar className="w-3.5 h-3.5 text-[#182A42] shrink-0" />
+        <Calendar className="w-3.5 h-3.5 text-white shrink-0" />
         <span>Push to Cal</span>
       </button>
 
