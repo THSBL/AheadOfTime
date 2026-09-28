@@ -3,18 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
 import { usePageMeta } from '../utils/usePageMeta';
 import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
-import {
-  Clock,
-  Calendar,
-  CheckCircle2,
-  Sparkles,
-  ArrowRight,
-  Zap,
-  RefreshCw,
-  Send,
-  Globe,
-} from 'lucide-react';
-
+import { Check, MessageSquare, Send, CalendarDays, Plane, Calendar } from 'lucide-react';
 // Same "has this browser already been through onboarding or connected a
 // calendar" check ProtectedRoute/LandingRoute use - without it, "Go to
 // Dashboard" for a brand-new visitor just bounces straight back to "/"
@@ -34,185 +23,298 @@ const hasEnteredAppBefore = (): boolean => {
   }
 };
 
+/** A tick list item: sage square with a navy check, like the app's own checkmarks. */
+const Point: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <li className="flex gap-2.5 text-sm sm:text-[15px] text-slate-200">
+    <span className="w-[18px] h-[18px] mt-0.5 rounded-md bg-aot-sage text-[#182A42] flex items-center justify-center shrink-0">
+      <Check className="w-3 h-3 stroke-[3.5]" />
+    </span>
+    <span>{children}</span>
+  </li>
+);
+
+const Feature: React.FC<{ kicker: string; title: string; intro: string; points: string[]; flip?: boolean; picture: React.ReactNode }> = ({
+  kicker,
+  title,
+  intro,
+  points,
+  flip,
+  picture,
+}) => (
+  <section className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 items-center py-10 border-t border-white/10">
+    <div className={flip ? 'md:order-2' : ''}>
+      <p className="text-xs font-extrabold uppercase tracking-widest text-aot-sage">{kicker}</p>
+      <h2 className="mt-1.5 mb-2.5 text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight text-balance">{title}</h2>
+      <p className="text-slate-300 mb-3">{intro}</p>
+      <ul className="space-y-2">
+        {points.map((p) => (
+          <Point key={p}>{p}</Point>
+        ))}
+      </ul>
+    </div>
+    <div aria-hidden="true">{picture}</div>
+  </section>
+);
+
+// Small pictures of the real screens (static, illustrative).
+const Tag: React.FC<{ tone?: 'late' | 'today'; children: React.ReactNode }> = ({ tone, children }) => (
+  <span
+    className={`text-[10.5px] font-mono font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap ${
+      tone === 'late' ? 'bg-rose-100 text-rose-700' : tone === 'today' ? 'bg-[#182A42] text-white' : 'bg-slate-100 text-slate-500'
+    }`}
+  >
+    {children}
+  </span>
+);
+
+const ChatPicture = () => (
+  <div className="bg-white text-[#182A42] rounded-3xl p-4 shadow-2xl shadow-black/40 text-[13px] space-y-2">
+    <p className="ml-auto max-w-[85%] w-fit bg-[#182A42] text-white rounded-2xl px-3 py-2">Dinner with 6 friends in London on Saturday 3 Oct</p>
+    <p className="max-w-[85%] w-fit bg-slate-100 rounded-2xl px-3 py-2">
+      Done: 4 prep steps, from booking the table this week to sharing the plan on Friday. Anyone with dietary needs?
+    </p>
+    <p className="ml-auto max-w-[85%] w-fit bg-[#182A42] text-white rounded-2xl px-3 py-2">Two are vegetarian</p>
+    <p className="max-w-[85%] w-fit bg-slate-100 rounded-2xl px-3 py-2">Added "Check a vegetarian menu" before the booking. ✓</p>
+  </div>
+);
+
+const WeekPicture = () => {
+  const r = 18;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="bg-white text-[#182A42] rounded-3xl p-4 shadow-2xl shadow-black/40 text-[13px]">
+      <div className="flex items-center gap-3 pb-2">
+        <div className="relative w-11 h-11">
+          <svg width="44" height="44" className="-rotate-90">
+            <circle cx="22" cy="22" r={r} fill="none" stroke="#e6ebf0" strokeWidth="5" />
+            <circle cx="22" cy="22" r={r} fill="none" stroke="#6fa596" strokeWidth="5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - 3 / 7)} />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black">3/7</span>
+        </div>
+        <div>
+          <p className="font-black text-[15px] leading-tight">You are almost ahead</p>
+          <p className="text-xs text-slate-500">4 to wrap up this week</p>
+        </div>
+      </div>
+      <p className="mt-1 px-2 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-[10.5px] font-extrabold uppercase tracking-wider">Overdue</p>
+      {[
+        ['Restaurant table booked', <Tag tone="late">1d</Tag>],
+      ].map(([t, tag]) => (
+        <div key={t as string} className="flex items-center gap-2.5 px-1 py-2.5">
+          <span className="w-[15px] h-[15px] rounded border-[1.5px] border-slate-300" />
+          <span className="flex-1 font-semibold">{t}</span>
+          {tag}
+        </div>
+      ))}
+      <p className="px-2 py-1.5 rounded-lg bg-slate-50 text-slate-500 text-[10.5px] font-extrabold uppercase tracking-wider">This week</p>
+      {[
+        ['Invitations sent', <Tag tone="today">Today</Tag>],
+        ['Flights & hotel locked', <Tag>In 3 days</Tag>],
+      ].map(([t, tag], i) => (
+        <div key={t as string} className={`flex items-center gap-2.5 px-1 py-2.5 ${i ? 'border-t border-slate-100' : ''}`}>
+          <span className="w-[15px] h-[15px] rounded border-[1.5px] border-slate-300" />
+          <span className="flex-1 font-semibold">{t}</span>
+          {tag}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CalendarPicture = () => (
+  <div className="bg-[#22344a] border border-white/10 rounded-3xl p-3.5 shadow-2xl shadow-black/40 text-[13px] space-y-2">
+    {[
+      { title: 'Trip to Cologne', next: 'Flights and hotel', when: 'In 24 days', pushed: false, Icon: Plane },
+      { title: 'Business trip to Hungary', next: 'Corporate hotel', when: 'In 33 days', pushed: true, Icon: Plane },
+      { title: 'London Dinner Party', next: 'Table reserved', when: 'In 46 days', pushed: false, Icon: Calendar },
+    ].map(({ title, next, when, pushed, Icon }) => (
+      <div key={title} className="flex items-center gap-2.5 p-2.5 rounded-2xl bg-white/[0.05] border border-white/10">
+        <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${pushed ? 'bg-aot-sage text-[#447463]' : 'bg-white/10 text-slate-400'}`}>
+          <Icon className="w-4 h-4" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block font-semibold text-white truncate">{title}</span>
+          <span className="block text-[11px] text-slate-400">Next: {next}</span>
+        </span>
+        <span className="text-[10.5px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-white/10 text-sky-100 whitespace-nowrap">{when}</span>
+      </div>
+    ))}
+    <div className="flex items-center justify-between gap-2 rounded-2xl bg-[#0f1c2d] pl-3 pr-2 py-2 text-xs text-slate-300">
+      <span>2 plans not in your calendar yet</span>
+      <span className="bg-white text-[#182A42] font-extrabold rounded-xl px-2.5 py-1.5 whitespace-nowrap">Push to Calendar</span>
+    </div>
+  </div>
+);
+
+const UpdatesPicture = () => (
+  <div className="bg-white text-[#182A42] rounded-3xl p-4 shadow-2xl shadow-black/40 text-[13px]">
+    <p className="font-bold text-sm">Your prep update</p>
+    <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 my-2">
+      {['Off', 'Daily', 'Weekly', 'Monthly'].map((f) => (
+        <span key={f} className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold ${f === 'Weekly' ? 'bg-white shadow-xs' : 'text-slate-500'}`}>
+          {f}
+        </span>
+      ))}
+    </div>
+    <p className="text-xs text-slate-500">Mondays at 08:00 · via Telegram</p>
+    <div className="flex items-center justify-between py-2.5 mt-2 border-t border-slate-100">
+      <span className="font-semibold">Plan with AI</span>
+      <span className="relative w-10 h-6 rounded-full bg-[#447463]">
+        <span className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white" />
+      </span>
+    </div>
+    <div className="flex items-center justify-between py-2.5 border-t border-slate-100">
+      <span className="font-semibold text-rose-700">Delete account</span>
+      <span className="text-slate-400">›</span>
+    </div>
+  </div>
+);
+
 export const FeaturesPage: React.FC = () => {
   const navigate = useNavigate();
   usePageMeta(
     'Features - Ahead Of Time',
-    'See how Ahead Of Time turns any event or trip into a reverse-planned countdown of prep milestones, synced to Google Calendar and Google Tasks.'
+    'Plan any event or trip backwards from its date: in the app, on Telegram or from your Google Calendar. This week in focus, tasks in Google Tasks, updates on your schedule.'
   );
 
-  const goToAppOrOnboarding = () => navigate(hasEnteredAppBefore() ? '/dashboard' : '/onboarding');
+  const returning = hasEnteredAppBefore();
+  const goToAppOrOnboarding = () => navigate(returning ? '/dashboard' : '/onboarding');
+  const primaryLabel = returning ? 'Open my dashboard' : 'Get started free';
+  const primaryClass =
+    'px-5 py-3 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-extrabold text-sm shadow-lg shadow-black/25 transition-colors cursor-pointer';
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
-      {/* Header Bar */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+    <div className="min-h-screen bg-[#182A42] text-white flex flex-col font-sans">
+      <header className="sticky top-0 z-50 bg-[#182A42]/90 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <button type="button" onClick={() => navigate('/')} className="cursor-pointer" aria-label="Ahead Of Time home">
             <Logo variant="dark" size="sm" />
-          </div>
-          <div className="flex items-center gap-3">
+          </button>
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => navigate('/')}
-              className="text-xs sm:text-sm font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition"
+              className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-xl hover:bg-white/5 transition cursor-pointer"
             >
               Overview
             </button>
-            <button
-              onClick={goToAppOrOnboarding}
-              className="text-xs sm:text-sm font-semibold bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md"
-            >
-              {hasEnteredAppBefore() ? 'Go to Dashboard' : 'Get Started For Free'}
-              <ArrowRight className="w-4 h-4" />
+            <button type="button" onClick={goToAppOrOnboarding} className={`${primaryClass} !py-2 !px-4 !shadow-none`}>
+              {primaryLabel}
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-6xl mx-auto px-4 py-12 space-y-16">
-        {/* Hero Section */}
-        <div className="text-center space-y-4 max-w-3xl mx-auto">
-          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white">
-            Backward Planning Built For Real Life
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4">
+        <div className="text-center pt-12 pb-10 sm:pt-16">
+          <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-[1.12] text-balance">
+            Everything that gets you ready, worked out backwards.
           </h1>
-          <p className="text-slate-400 text-sm sm:text-lg leading-relaxed">
-            Ahead Of Time turns any event into a simple countdown of what to do and when. Never get caught off guard by sold-out venues, gift-shopping deadlines, or last-minute grocery runs.
+          <p className="mt-4 text-slate-300 text-base sm:text-lg max-w-2xl mx-auto">
+            Tell Ahead Of Time what's coming. It plans every step back from the date, keeps this week in focus, and puts the tasks in your
+            Google Calendar.
           </p>
-        </div>
-
-        {/* Feature Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 space-y-3 hover:border-sky-500/50 transition">
-            <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-white">A Countdown That Plans Itself</h3>
-            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-              Works backwards from your event date to figure out exactly when to book, buy, and prep - no spreadsheets required.
-            </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2.5">
+            <button type="button" onClick={goToAppOrOnboarding} className={primaryClass}>
+              {primaryLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-5 py-3 rounded-2xl bg-white hover:bg-slate-100 text-[#182A42] font-bold text-sm transition-colors cursor-pointer"
+            >
+              See how it works
+            </button>
           </div>
-
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 space-y-3 hover:border-sky-500/50 transition">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-white">Google Calendar & Tasks Sync</h3>
-            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-              Seamless 2-way synchronization with Google Calendar and Google Tasks. Milestones appear as scheduled tasks with due dates in your native workflow.
-            </p>
-          </div>
-
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 space-y-3 hover:border-sky-500/50 transition">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
-              <Zap className="w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-white">Knows What You'll Need</h3>
-            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-              Understands what your event actually needs - gifts, costumes, travel documents, bakery orders - and builds the right plan automatically.
-            </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {[
+              { Icon: MessageSquare, label: 'Chat in the app' },
+              { Icon: Send, label: 'Telegram' },
+              { Icon: CalendarDays, label: 'Scan your Google Calendar' },
+            ].map(({ Icon, label }) => (
+              <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[13px] font-semibold text-slate-200">
+                <Icon className="w-3.5 h-3.5 text-aot-sage" />
+                {label}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* Detailed Section - three steps, mirroring the three-stripe shield
-            on the sign-in/returning-user screens: tell us, we plan, you're
-            set. */}
-        <div className="bg-slate-800/40 border border-slate-800 rounded-3xl p-8 space-y-8">
-          <h2 className="text-2xl font-bold text-white text-center">How It Works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-white text-sm">Tell Us What's Coming</h4>
-                <p className="text-xs text-slate-400 mt-1">Type it in the app, message our Telegram bot, or just keep using Google Calendar.</p>
-              </div>
+        <Feature
+          kicker="Plan from anywhere"
+          title="Say it the way you'd tell a friend."
+          intro={'Type "Birthday trip to New York, Nov 17-20" in the app or on Telegram, or let Scan agenda find what\'s already in your calendar.'}
+          points={[
+            'A trip spread over hotel stays and flights becomes one trip, one plan',
+            'Something missing? "Two guests are vegetarian" updates the plan',
+            'Choose how much help: Basic, Balanced or Extensive',
+          ]}
+          picture={<ChatPicture />}
+        />
+        <Feature
+          flip
+          kicker="My Week Ahead"
+          title="Only what matters this week."
+          intro="One card with what's late and what's due in the next seven days. The ring fills as you tick things off. Everything further out waits quietly below."
+          points={[
+            'Overdue first, then this week, in full detail',
+            'Added a plan late? Catch up in one tap instead of a wall of red',
+            'Move a task to tomorrow or next week when life happens',
+          ]}
+          picture={<WeekPicture />}
+        />
+        <Feature
+          kicker="Your calendar"
+          title="In Google Calendar and Tasks, when you want it."
+          intro="Push a plan and its steps land in Google Tasks (or as calendar blocks). A green icon shows which plans are fully in your calendar; the bar counts what isn't yet."
+          points={[
+            "Ticked off in Google Tasks? The app picks it up within about 15 minutes while it's open",
+            'Nothing is added twice, and your own appointments are never deleted without asking by name',
+            'Background Sync: plans you confirm on Telegram go straight into your calendar',
+          ]}
+          picture={<CalendarPicture />}
+        />
+        <Feature
+          flip
+          kicker="Updates and privacy"
+          title="A nudge when it suits you. Your data stays yours."
+          intro="Get your prep update daily, weekly or monthly on Telegram or email, or turn it off."
+          points={[
+            'Plan with AI (Google Gemini) or switch it off and use built-in templates',
+            'Google access is stored encrypted and only used for your own calendar',
+            'Delete your account and everything stored for it, any time',
+          ]}
+          picture={<UpdatesPicture />}
+        />
+
+        <section id="how-it-works" className="scroll-mt-20 grid grid-cols-1 md:grid-cols-3 gap-3.5 py-10 border-t border-white/10" aria-label="How it works">
+          {[
+            ["Tell it what's coming", 'In the app, on Telegram, or by scanning your calendar.'],
+            ['Get the plan', 'Every step dated back from the event, sized to how much help you want.'],
+            ['Stay ahead', 'This week in focus, tasks in Google, a nudge on your schedule.'],
+          ].map(([title, text], i) => (
+            <div key={title} className="rounded-2xl bg-white/[0.04] border border-white/10 p-5">
+              <span className="w-8 h-8 rounded-full bg-aot-sage text-[#182A42] font-black flex items-center justify-center mb-2.5">{i + 1}</span>
+              <h3 className="font-bold text-base">{title}</h3>
+              <p className="text-sm text-slate-300 mt-1">{text}</p>
             </div>
+          ))}
+        </section>
 
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
-                <Calendar className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-white text-sm">We Build Your Plan</h4>
-                <p className="text-xs text-slate-400 mt-1">We line up every gift, booking, and task, and only ask if something's still unclear.</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-white text-sm">Stay Ahead, Automatically</h4>
-                <p className="text-xs text-slate-400 mt-1">Everything syncs to Google Calendar and Tasks, ready right when you need it.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Three equally-valid ways in, always kept in sync - the app
-              itself doesn't have to be where an event started life. */}
-          <div className="pt-6 border-t border-slate-800 space-y-6">
-            <p className="text-center text-sm text-slate-400 max-w-md mx-auto">
-              Add something from wherever you already are. The Website, Telegram, and Google Calendar all stay in sync automatically.
-            </p>
-            <div className="relative w-full max-w-sm mx-auto aspect-[4/3]">
-              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 220" fill="none" aria-hidden="true">
-                <line x1="150" y1="40" x2="45" y2="185" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 5" />
-                <line x1="150" y1="40" x2="255" y2="185" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 5" />
-                <line x1="45" y1="185" x2="255" y2="185" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 5" />
-              </svg>
-
-              <div className="absolute left-1/2 top-0 -translate-x-1/2 flex flex-col items-center gap-1.5">
-                <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/40 flex items-center justify-center shadow-lg">
-                  <Globe className="w-6 h-6" />
-                </div>
-                <span className="text-xs font-bold text-white whitespace-nowrap">Website</span>
-              </div>
-
-              <div className="absolute left-0 bottom-0 flex flex-col items-center gap-1.5">
-                <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shadow-lg">
-                  <Send className="w-6 h-6" />
-                </div>
-                <span className="text-xs font-bold text-white whitespace-nowrap">Telegram</span>
-              </div>
-
-              <div className="absolute right-0 bottom-0 flex flex-col items-center gap-1.5">
-                <div className="w-14 h-14 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/40 flex items-center justify-center shadow-lg">
-                  <Calendar className="w-6 h-6" />
-                </div>
-                <span className="text-xs font-bold text-white whitespace-nowrap">Google Calendar</span>
-              </div>
-
-              <div className="absolute left-1/2 top-[68%] -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-full px-3 py-1 shadow-md">
-                <RefreshCw className="w-3 h-3 text-sky-400" />
-                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wide whitespace-nowrap">Always in sync</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CTA */}
-        <div className="text-center space-y-4 py-8">
-          <h2 className="text-2xl font-bold text-white">Ready to prepare ahead of time?</h2>
-          <button
-            onClick={goToAppOrOnboarding}
-            className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition text-sm shadow-lg inline-flex items-center gap-2"
-          >
-            {hasEnteredAppBefore() ? 'Launch Ahead Of Time' : 'Get Started For Free'}
-            <ArrowRight className="w-4 h-4" />
+        <div className="text-center py-12 border-t border-white/10">
+          <h2 className="text-2xl sm:text-4xl font-black tracking-tight mb-5">Ready before it starts.</h2>
+          <button type="button" onClick={goToAppOrOnboarding} className={primaryClass}>
+            {primaryLabel}
           </button>
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800 py-8 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© {new Date().getFullYear()} Ahead Of Time. All rights reserved.</p>
+      <footer className="border-t border-white/10">
+        <div className="max-w-5xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+          <p>© {new Date().getFullYear()} Ahead Of Time</p>
           <div className="flex gap-4">
-            <button onClick={() => navigate('/privacy')} className="hover:text-slate-300 transition">Privacy Policy</button>
-            <button onClick={() => navigate('/feedback')} className="hover:text-slate-300 transition">Feedback</button>
+            <button type="button" onClick={() => navigate('/privacy')} className="hover:text-white transition cursor-pointer">Privacy Policy</button>
+            <button type="button" onClick={() => navigate('/feedback')} className="hover:text-white transition cursor-pointer">Feedback</button>
           </div>
         </div>
       </footer>
