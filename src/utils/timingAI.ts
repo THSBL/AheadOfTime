@@ -1,6 +1,5 @@
 import { MilestoneCategory } from '../types.js';
 import { lookupTaskTiming } from '../data/prepTimelineDatabase.js';
-import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
 
 export type TimeUnit = 'weeks' | 'days' | 'hours';
 
@@ -342,6 +341,10 @@ export async function fetchAITaskTiming(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6500);
 
+    // Loaded here, not at the top: the server imports this file too
+    // (inferTaskTimingLocally), and the browser-only helper must never be
+    // part of the server's module graph.
+    const { aiJsonHeaders } = await import('../services/aiRequest');
     const res = await fetch('/api/milestone/suggest-timing', {
       method: 'POST',
       headers: aiJsonHeaders(),
