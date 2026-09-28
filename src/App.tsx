@@ -2191,6 +2191,10 @@ function App() {
               >
                 Privacy Policy
               </a>
+              <span className="text-slate-500">&bull;</span>
+              <button type="button" onClick={() => navigate('/feedback')} className="hover:text-white transition-colors cursor-pointer">
+                Feedback
+              </button>
             </div>
 
           </footer>

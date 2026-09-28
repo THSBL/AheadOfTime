@@ -541,6 +541,19 @@ export const Header: React.FC<HeaderProps> = ({
                       </button>
                     )}
 
+                    {/* The header's Feedback button is hidden on phones; it lives here there. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAccountDropdownOpen(false);
+                        navigate('/feedback');
+                      }}
+                      className="sm:hidden w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Feedback</span>
+                    </button>
+
                     {onSignOut && (
                       <button
                         type="button"
