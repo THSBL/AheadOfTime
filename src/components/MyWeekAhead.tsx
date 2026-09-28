@@ -8,7 +8,9 @@ import {
   computeOverdueMilestones,
   computeWeeklyMilestonePreview,
   computeCatchUpGroups,
+  computeWeekProgress,
   spreadCatchUpDates,
+  WeekProgress,
   prepareWeekViewEvents,
   isEventOver,
   AheadLevel,
@@ -19,7 +21,6 @@ import {
   WeeklyMilestoneBucket,
   THEME_LABELS,
 } from '../utils/readiness';
-import { ROAD_3D_BEVEL_STYLE } from '../utils/useRoad3DClipPath';
 import { CatchUpCard } from './CatchUpCard';
 
 const THEME_ICONS: Record<ActionTheme, React.ElementType> = {
@@ -65,40 +66,44 @@ const AHEAD_STYLES: Record<AheadLevel, { badge: string; dot: string; iconBg: str
   ready: { badge: 'text-slate-700 bg-slate-100 border-slate-300', dot: 'bg-slate-400', iconBg: 'bg-slate-100 text-slate-500', border: 'border-l-slate-300' },
 };
 
-// Same converging-runway-stripe motif as the app logo, repurposed as a
-// "how far ahead are you" gauge: stripes fill from the bottom (now) upward,
-// in the status color, so the shape that's already the brand's own visual
-// language for "ahead of time" carries the meaning instead of a generic icon.
-const RUNWAY_STRIPE_POINTS = [
-  '38,24 102,24 94,6 46,6', // top, narrowest
-  '24,46 116,46 106,28 34,28', // middle
-  '10,68 130,68 118,50 22,50', // bottom, widest
-];
-
-const RUNWAY_FILLED_COUNT: Record<SimpleAheadLevel, number> = { ahead: 3, almost_ahead: 2, behind: 1 };
-
-const SIMPLE_STATUS_STYLES: Record<SimpleAheadLevel, { fill: string; iconBg: string; cardBg: string; cardBorder: string }> = {
-  // Solid, not translucent (no /70 alpha) - these used to sit on top of the
-  // page's own "milky-glass" panel, where a translucent pastel blended
-  // invisibly into that panel's near-white backdrop. Now that each section
-  // floats directly on the navy page background instead, that same
-  // translucency blended into a muddy grey-navy instead of a clean pastel.
-  ahead: { fill: '#059669', iconBg: 'bg-emerald-100', cardBg: 'bg-emerald-50', cardBorder: 'border-emerald-200' },
-  almost_ahead: { fill: '#d97706', iconBg: 'bg-amber-100', cardBg: 'bg-amber-50', cardBorder: 'border-amber-200' },
-  behind: { fill: '#e11d48', iconBg: 'bg-rose-100', cardBg: 'bg-rose-50', cardBorder: 'border-rose-200' },
+// Ring colour follows the week's actual progress: amber for the first
+// third, sage in the middle, the app's green once two thirds are done.
+const PROGRESS_COLORS: Record<WeekProgress['tone'], string> = {
+  low: '#d97706',
+  mid: '#6fa596',
+  high: '#447463',
+  done: '#447463',
 };
 
-const RunwayStripes: React.FC<{ level: SimpleAheadLevel; className?: string }> = ({ level, className }) => {
-  const filledCount = RUNWAY_FILLED_COUNT[level];
-  const filledColor = SIMPLE_STATUS_STYLES[level].fill;
+/** Done / total of this week's work, as a ring whose fill and colour are the real progress. */
+const WeekProgressRing: React.FC<{ progress: WeekProgress }> = ({ progress }) => {
+  const size = 52;
+  const stroke = 6;
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const color = PROGRESS_COLORS[progress.tone];
+  const label = progress.total === 0 ? 'Nothing due this week' : `${progress.done} of ${progress.total} done this week`;
   return (
-    <svg viewBox="0 0 140 70" className={className} aria-hidden="true">
-      {RUNWAY_STRIPE_POINTS.map((points, index) => {
-        // index 0 is the top (narrowest) stripe; fill from the bottom up.
-        const isFilled = index >= RUNWAY_STRIPE_POINTS.length - filledCount;
-        return <polygon key={index} points={points} fill={isFilled ? filledColor : '#e2e8f0'} />;
-      })}
-    </svg>
+    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={label} title={label}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e6ebf0" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - progress.ratio)}
+          style={{ transition: 'stroke-dashoffset 400ms ease, stroke 400ms ease' }}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black text-slate-900">
+        {progress.tone === 'done' ? <Check className="w-5 h-5 stroke-[3]" style={{ color }} /> : `${progress.done}/${progress.total}`}
+      </span>
+    </div>
   );
 };
 
@@ -243,7 +248,11 @@ const FlatMilestoneRow: React.FC<{
   };
 
   return (
-  <div className={`flex items-start gap-2 px-3 py-2.5 hover:bg-slate-50/60 transition-opacity duration-300 ${isChecking ? 'opacity-50' : ''}`}>
+  <div
+    className={`flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50/60 transition-opacity duration-300 ${isChecking ? 'opacity-50' : ''} ${
+      overdue ? 'shadow-[inset_3px_0_0_#fb7185]' : ''
+    }`}
+  >
     <button
       type="button"
       onClick={handleCheck}
@@ -272,7 +281,7 @@ const FlatMilestoneRow: React.FC<{
         <p className="text-[11px] text-slate-400 min-w-0 flex-1">{item.eventTitle}</p>
         <span
           className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
-            overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
+            overdue ? 'text-rose-800 bg-rose-100' : item.diffDays === 0 ? 'text-white bg-[#182A42]' : 'text-slate-500 bg-slate-100'
           }`}
         >
           {overdue ? formatCompactOverdueLabel(item.dueLabel) : item.dueLabel}
@@ -435,22 +444,20 @@ const WeekBucketCard: React.FC<{
   const isFarFuture = Number.isFinite(weekIndex) && weekIndex >= 3;
 
   return (
-  <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
-    <button type="button" onClick={onToggleOpen} className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer">
+  <div className="rounded-xl bg-white/[0.04] border border-white/10 overflow-hidden">
+    <button type="button" onClick={onToggleOpen} aria-expanded={isOpen} className="w-full text-left px-3.5 py-2.5 hover:bg-white/[0.05] transition-all flex items-center gap-3 cursor-pointer">
       <div className="min-w-0 flex-1">
-        <p className="text-xs sm:text-sm font-bold text-slate-900">{bucket.label}</p>
-        <p className="text-[11px] text-slate-500 truncate">
+        <p className="text-xs sm:text-sm font-semibold text-slate-200">{bucket.label}</p>
+        <p className="text-[11px] text-slate-400 truncate">
           {bucket.items.length} item{bucket.items.length === 1 ? '' : 's'}
         </p>
       </div>
-      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 bg-slate-100 border border-slate-200 shrink-0">
-        {bucket.items.length}
-      </span>
-      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">{bucket.items.length}</span>
+      <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
     </button>
 
     {isOpen && (
-      <div className="border-t border-slate-100 p-2 space-y-2 bg-slate-50/50">
+      <div className="border-t border-white/10 p-2 space-y-2">
         {bucket.clusters.map((cluster) => (
           <MilestoneClusterCard
             // A real (2+ item) cluster's identity is its theme, full stop -
@@ -590,208 +597,150 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
     (e) => !isEventOver(e.event, currentReferenceDate) && (e.status.level === 'ahead' || (e.status.level === 'ready' && e.status.totalCount > 0))
   );
 
-  const simpleStyle = SIMPLE_STATUS_STYLES[simpleStatus.level];
+  const weekProgress = computeWeekProgress(activeEvents, currentReferenceDate, overdueItems.length + (thisWeekBucket?.items.length ?? 0));
+  const bandClass = 'flex items-center justify-between gap-2 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider';
+  const quietTitle = 'flex items-center justify-between gap-2 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400';
 
   return (
-    <div className="flex-1 flex flex-col h-full milky-glass rounded-3xl overflow-hidden shadow-xs w-full">
-      {/* Tried dropping this shared "milky-glass" backdrop in favor of
-          letting the navy page show through the gaps between sections -
-          it backfired: several sections (Overdue in particular) style
-          their own border/text for contrast against a light backdrop, so
-          against navy directly they nearly disappeared instead of standing
-          out more. Restored the light backdrop; each section still keeps
-          its own card/border so they read as distinct pieces within it. */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 sm:space-y-5">
-        {/* Confirmation - one clean, non-contradictory read of "am I ahead?",
-            with the logo's own runway-stripe motif as the "how far ahead"
-            gauge: more stripes filled (in the status color) means more
-            clear. Used to borrow the stripe-nav buttons' bowed-trapezoid
-            clip-path for "cohesion" with the front page - on an element
-            this wide and short, that same curve read as wobbly/hand-cut
-            rather than deliberate (the bow was tuned for the stripes' own
-            tall, narrow proportions). A plain, precisely rounded rectangle
-            reads as considered instead; the embossed border
-            (ROAD_3D_BEVEL_STYLE) still ties it to the same 3D language
-            without needing the custom shape underneath it. */}
-        <div className="shadow-md rounded-[28px]">
-          <div
-            style={ROAD_3D_BEVEL_STYLE}
-            className={`p-4 sm:p-5 rounded-[28px] border text-left flex items-center gap-4 ${simpleStyle.cardBg} ${simpleStyle.cardBorder}`}>
-            <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shrink-0 p-3 ${simpleStyle.iconBg}`}>
-              <RunwayStripes level={simpleStatus.level} className="w-full h-full" />
-            </div>
-            <div className="min-w-0 flex-1 space-y-0.5">
-              {/* The green "N done" pill that used to sit next to this
-                  title read as a second, conflicting signal whenever the
-                  card itself was in its red "falling behind" state - a
-                  reassuring green badge inside an alarmed red card sends
-                  two different messages at once. Removed; simpleStatus.sub
-                  below already frames outstanding vs. completed. */}
-              <h2 className="text-base sm:text-xl font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
-              <p className="text-xs sm:text-sm text-slate-600">{simpleStatus.sub}</p>
+    <div className="flex-1 flex flex-col h-full w-full">
+      <div className="flex-1 overflow-y-auto space-y-5 pb-4">
+        {/* Focus: one white card on the navy page with everything that needs
+            doing now - the week's status and progress, catch up, overdue and
+            this week. White on navy is the strongest contrast in the app, so
+            it is what the eye finds first; everything further out below is
+            deliberately quiet. */}
+        <section className="bg-white rounded-3xl shadow-lg shadow-black/25 overflow-hidden" aria-label="This week">
+          <div className="flex items-center gap-3.5 px-4 py-4 border-b border-slate-100">
+            <WeekProgressRing progress={weekProgress} />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">{simpleStatus.label}</h2>
+              <p className="text-xs sm:text-sm text-slate-500">
+                {simpleStatus.sub}
+                {weekProgress.done > 0 && ` · ${weekProgress.done} done`}
+              </p>
             </div>
           </div>
-        </div>
 
-        {/* Catch up - tasks that were due before their event was even
-            added (an agenda imported a few weeks ahead). Not overdue: a
-            one-time "already done?" check per event, so a new user's first
-            view isn't a wall of red. */}
-        {catchUpGroups.length > 0 && onUpdateMilestone && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <span className="inline-flex items-center gap-1.5 text-amber-700 text-xs font-bold uppercase tracking-wide shrink-0">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Catch up
-              </span>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
-                {catchUpGroups.length} event{catchUpGroups.length === 1 ? '' : 's'}
-              </span>
+          {/* Catch up - tasks that were due before their event was even
+              added (an agenda imported a few weeks ahead). Not overdue: a
+              one-time "already done?" check per event, so a new user's first
+              view isn't a wall of red. */}
+          {catchUpGroups.length > 0 && onUpdateMilestone && (
+            <>
+              <div className={`${bandClass} bg-amber-50 text-amber-800`}>
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Catch up
+                </span>
+                <span className="font-mono">{catchUpGroups.length}</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {catchUpGroups.map((group) => (
+                  <CatchUpCard
+                    key={group.eventId}
+                    eventTitle={group.eventTitle}
+                    eventDate={group.eventDate}
+                    items={group.items}
+                    onSelectEvent={() => onSelectEvent(group.eventId)}
+                    onMarkDone={(ids) => markCatchUpDone(group.eventId, ids)}
+                    onPlanRest={(ids) => planCatchUpRest(group.eventId, ids)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Overdue - every overdue task, in full (never folded into a topic). */}
+          {overdueItems.length > 0 && (
+            <>
+              <div className={`${bandClass} bg-rose-50 text-rose-700`}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  Overdue
+                </span>
+                <span className="font-mono">{overdueItems.length}</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {overdueItems.map((item) => (
+                  <FlatMilestoneRow
+                    key={item.milestoneId}
+                    item={item}
+                    overdue
+                    onSelectEvent={onSelectEvent}
+                    onToggleMilestoneStatus={onToggleMilestoneStatus}
+                    onReschedule={onUpdateMilestone ? (target) => handleReschedule(item, target) : undefined}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* This week - same flat, detailed rows right after Overdue. */}
+          {thisWeekBucket && (
+            <>
+              <div className={`${bandClass} bg-slate-50 text-slate-500 border-t border-slate-100`}>
+                <span>This week</span>
+                <span className="font-mono">{thisWeekBucket.items.length}</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {thisWeekBucket.items.map((item) => (
+                  <FlatMilestoneRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} onToggleMilestoneStatus={onToggleMilestoneStatus} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {isFocusZoneClear && (
+            <p className="px-4 py-5 text-sm font-bold text-slate-700 text-center">{pickStableLine(EMPTY_WEEK_LINES, currentReferenceDate)}</p>
+          )}
+        </section>
+
+        {/* Looking ahead - quiet rows straight on the navy, like Active
+            Events: week (label + count) -> topic -> task, all folded until
+            opened, so it reads as optional planning, not more to-dos. */}
+        {futureBuckets.length > 0 && (
+          <section className="space-y-2" aria-label="Looking ahead">
+            <div className={quietTitle}>
+              <h3>Looking ahead</h3>
+              <span className="font-mono">{futureBuckets.reduce((sum, b) => sum + b.items.length, 0)}</span>
             </div>
-            {catchUpGroups.map((group) => (
-              <CatchUpCard
-                key={group.eventId}
-                eventTitle={group.eventTitle}
-                eventDate={group.eventDate}
-                items={group.items}
-                onSelectEvent={() => onSelectEvent(group.eventId)}
-                onMarkDone={(ids) => markCatchUpDone(group.eventId, ids)}
-                onPlanRest={(ids) => planCatchUpRest(group.eventId, ids)}
+            {futureBuckets.map((bucket) => (
+              <WeekBucketCard
+                key={bucket.key}
+                bucket={bucket}
+                isOpen={expandedWeekKey === bucket.key}
+                onToggleOpen={() => setExpandedWeekKey(expandedWeekKey === bucket.key ? null : bucket.key)}
+                expandedClusterKey={expandedClusterKey}
+                onToggleCluster={(key) => setExpandedClusterKey(expandedClusterKey === key ? null : key)}
+                onSelectEvent={onSelectEvent}
+                onToggleMilestoneStatus={onToggleMilestoneStatus}
               />
             ))}
-          </div>
+          </section>
         )}
 
-        {/* Overdue - every overdue milestone, not just the single most
-            urgent one, always shown in full detail (never folded into a
-            topic) since this is exactly what the user should focus on
-            right now. */}
-        {overdueItems.length > 0 && (
-          <div className="space-y-2">
-            {/* Structural format: a plain uppercase label + a hairline rule
-                extending to a neutral count pill, instead of the label
-                itself being a solid/filled colored pill - the severity
-                color (rose, per our own overdue-vs-due-soon rule, unchanged)
-                now shows on the pill text and the card's left-edge accent
-                below, not as a big colored block that dominates the section
-                header. Less visual weight, same signal. */}
-            <div className="flex items-center gap-2 px-1">
-              <span className="inline-flex items-center gap-1.5 text-rose-700 text-xs font-bold uppercase tracking-wide shrink-0">
-                <Clock className="w-3.5 h-3.5" />
-                Overdue
-              </span>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] font-mono font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full shrink-0">
-                {overdueItems.length} action{overdueItems.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            {/* Left-edge accent instead of a full colored border - same
-                border-l-4 language EventRow already uses elsewhere on this
-                page for status color, applied here to the container. */}
-            <div className="rounded-xl bg-white border border-slate-200/90 border-l-4 border-l-rose-400 shadow-2xs divide-y divide-slate-100">
-              {overdueItems.map((item) => (
-                <FlatMilestoneRow
-                  key={item.milestoneId}
-                  item={item}
-                  overdue
-                  onSelectEvent={onSelectEvent}
-                  onToggleMilestoneStatus={onToggleMilestoneStatus}
-                  onReschedule={onUpdateMilestone ? (target) => handleReschedule(item, target) : undefined}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* This week - directly follows Overdue, same flat/detailed
-            treatment, so "what's late" and "what's due this week" read as
-            one continuous focus zone rather than being split across
-            differently-styled sections. */}
-        {thisWeekBucket && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 shrink-0">This week</h3>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full shrink-0">
-                {thisWeekBucket.items.length} item{thisWeekBucket.items.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs divide-y divide-slate-100">
-              {thisWeekBucket.items.map((item) => (
-                <FlatMilestoneRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} onToggleMilestoneStatus={onToggleMilestoneStatus} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Nothing overdue, nothing due this week - say so, the same way
-            the fully-empty-dashboard state does, instead of leaving a
-            silent gap before "Looking ahead". */}
-        {isFocusZoneClear && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs text-center">
-            <p className="text-sm sm:text-base font-black text-slate-900">{pickStableLine(EMPTY_WEEK_LINES, currentReferenceDate)}</p>
-          </div>
-        )}
-
-        {/* Looking ahead - everything beyond this week, nested three levels
-            deep: week (collapsed to a label + item count) -> topic cluster
-            -> individual task. Framed as an opportunity to get ahead rather
-            than a pending obligation, so it reads as optional planning, not
-            more to-dos, and stays out of the way until opened. */}
-        {futureBuckets.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 shrink-0">Looking ahead</h3>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full shrink-0">
-                {futureBuckets.reduce((sum, b) => sum + b.items.length, 0)} items
-              </span>
-            </div>
-            <div className="space-y-2">
-              {futureBuckets.map((bucket) => (
-                <WeekBucketCard
-                  key={bucket.key}
-                  bucket={bucket}
-                  isOpen={expandedWeekKey === bucket.key}
-                  onToggleOpen={() => setExpandedWeekKey(expandedWeekKey === bucket.key ? null : bucket.key)}
-                  expandedClusterKey={expandedClusterKey}
-                  onToggleCluster={(key) => setExpandedClusterKey(expandedClusterKey === key ? null : key)}
-                  onSelectEvent={onSelectEvent}
-                  onToggleMilestoneStatus={onToggleMilestoneStatus}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Already Ahead */}
+        {/* Already ahead - also quiet */}
         {alreadyAhead.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-1.5 shrink-0">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Already ahead</span>
+          <section className="space-y-2" aria-label="Already ahead">
+            <div className={quietTitle}>
+              <h3 className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-aot-sage" />
+                Already ahead
               </h3>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
-                {alreadyAhead.length}
-              </span>
+              <span className="font-mono">{alreadyAhead.length}</span>
             </div>
-            <div className="space-y-2">
-              {alreadyAhead.map(({ event, status }) => (
-                <EventRow key={event.id} event={event} status={status} currentReferenceDate={currentReferenceDate} onSelectEvent={onSelectEvent} compact />
-              ))}
-            </div>
-          </div>
+            {alreadyAhead.map(({ event, status }) => (
+              <EventRow key={event.id} event={event} status={status} currentReferenceDate={currentReferenceDate} onSelectEvent={onSelectEvent} />
+            ))}
+          </section>
         )}
 
         <button
           type="button"
           onClick={onOpenNewEventModal}
-          className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 py-2.5 rounded-xl border border-dashed border-slate-300 hover:border-slate-400 transition-all cursor-pointer"
+          className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-slate-400 hover:text-white py-2.5 rounded-xl border border-dashed border-white/20 hover:border-white/40 transition-all cursor-pointer"
         >
-          <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+          <Sparkles className="w-3.5 h-3.5" />
           <span>Plan something new</span>
         </button>
       </div>
@@ -804,31 +753,21 @@ const EventRow: React.FC<{
   status: ReturnType<typeof computeAheadStatus>;
   currentReferenceDate: string;
   onSelectEvent: (eventId: string) => void;
-  compact?: boolean;
-}> = ({ event, status, currentReferenceDate, onSelectEvent, compact }) => {
+}> = ({ event, status, currentReferenceDate, onSelectEvent }) => {
   const countdown = getCountdownStatus(event.eventDate, currentReferenceDate);
-  const style = AHEAD_STYLES[status.level];
-
   return (
     <button
       type="button"
       onClick={() => onSelectEvent(event.id)}
-      className={`w-full text-left p-3 rounded-xl border border-slate-200/90 border-l-4 ${style.border} hover:border-slate-300 shadow-2xs transition-all flex items-center gap-3 cursor-pointer ${
-        // Solid bg-slate-50, not bg-white + opacity-80: whole-element
-        // opacity blends with whatever sits behind it, which used to be
-        // this page's own near-white "milky-glass" panel (invisible
-        // effect) and is now the navy page background directly (a muddy
-        // grey-navy card instead of a subtly muted white one).
-        compact ? 'bg-slate-50' : 'bg-white'
-      }`}
+      className="w-full text-left px-3.5 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-all flex items-center gap-3 cursor-pointer"
     >
       <div className="min-w-0 flex-1">
-        <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">{event.title}</p>
-        <p className="text-[11px] text-slate-500">
+        <p className="text-xs sm:text-sm font-semibold text-slate-200 truncate">{event.title}</p>
+        <p className="text-[11px] text-slate-400">
           {formatDisplayDate(event.eventDate)} · {countdown.label}
         </p>
       </div>
-      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${style.badge}`}>
+      <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
         {status.completedCount}/{status.totalCount}
       </span>
     </button>

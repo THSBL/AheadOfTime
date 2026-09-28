@@ -1,20 +1,9 @@
-import React, { useState } from 'react';
-import { 
-  Trash2, 
-  AlertTriangle, 
-  Loader2, 
-  X, 
-  CheckCircle2, 
-  ArrowRight, 
-  ShieldCheck, 
-  Smartphone, 
-  Calendar, 
-  CheckSquare, 
-  Info 
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Trash2, Loader2, X, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { getStoredAccessToken, isTokenExpired } from '../services/googleAuth';
 import { executeSafePlanDeletion } from '../services/googleCalendar';
+import { isEventInCalendar } from '../utils/pushStatus';
 
 interface BulkDeleteModalProps {
   isOpen: boolean;
@@ -23,11 +12,30 @@ interface BulkDeleteModalProps {
   events: CalendarEvent[];
   onConfirmDeleteAppOnly: (eventIds: string[]) => void;
   onConfirmDeleteAppAndCalendar: (
-    eventIds: string[], 
+    eventIds: string[],
     cleanupSummary: { calCount: number; taskCount: number },
     options?: { deleteMainEvent?: boolean; deleteTasks?: boolean }
   ) => void;
 }
+
+/**
+ * Three plain choices, safest first and selected by default:
+ *   app         - remove from Ahead Of Time only; Google is untouched
+ *   tasks       - also remove the prep tasks from Google; the event stays
+ *   everything  - also delete the event itself from Google Calendar
+ * The button says exactly what will happen, and "everything" takes a
+ * second step that names each event, so the user's own appointment is
+ * never removed by a skimmed checkbox.
+ */
+type Choice = 'app' | 'tasks' | 'everything';
+
+/** Came from the user's own calendar (Scan agenda), not created by a push from the app. */
+function isImportedFromCalendar(event: CalendarEvent): boolean {
+  return event.id.startsWith('gcal-') || (isEventInCalendar(event) && !event.syncedToGoogleAt);
+}
+
+const hasTasksInGoogle = (event: CalendarEvent) =>
+  (event.milestones || []).some((m) => Boolean(m.googleTaskId || m.googleCalendarEventId));
 
 export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
   isOpen,
@@ -37,310 +45,255 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
   onConfirmDeleteAppOnly,
   onConfirmDeleteAppAndCalendar,
 }) => {
-  // Preset defaults:
-  // - Where: BOTH App & Calendar selected (true)
-  // - Which: ONLY Tasks selected (true), Main Events is false
-  const [deleteFromApp, setDeleteFromApp] = useState<boolean>(true);
-  const [deleteFromCalendar, setDeleteFromCalendar] = useState<boolean>(true);
-  const [deleteTasks, setDeleteTasks] = useState<boolean>(true);
-  const [deleteMainEvent, setDeleteMainEvent] = useState<boolean>(false);
-
+  const [choice, setChoice] = useState<Choice>('app');
+  const [confirmingEvents, setConfirmingEvents] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionStatus, setDeletionStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Every opening starts from the safe choice.
+  useEffect(() => {
+    if (isOpen) {
+      setChoice('app');
+      setConfirmingEvents(false);
+      setErrorMessage(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen || selectedEventIds.length === 0) return null;
 
   const selectedEvents = events.filter((e) => selectedEventIds.includes(e.id));
   const count = selectedEvents.length;
-  const totalTasksCount = selectedEvents.reduce((acc, ev) => acc + (ev.milestones?.length || 0), 0);
+  const planWord = count === 1 ? 'plan' : 'plans';
+  const eventWord = count === 1 ? 'event' : 'events';
 
   const token = getStoredAccessToken();
   const isGoogleConnected = Boolean(token && !isTokenExpired());
+  const anyTasksInGoogle = selectedEvents.some(hasTasksInGoogle);
+  const eventsInCalendar = selectedEvents.filter(isEventInCalendar);
+  const importedEvents = eventsInCalendar.filter(isImportedFromCalendar);
 
-  // Validation: must select at least 1 location and at least 1 item
-  const hasLocationSelected = deleteFromApp || deleteFromCalendar;
-  const hasItemSelected = deleteTasks || deleteMainEvent;
-  const isFormValid = hasLocationSelected && hasItemSelected;
+  const options: Array<{ id: Choice; title: string; detail: string; available: boolean; unavailable?: string }> = [
+    {
+      id: 'app',
+      title: 'Remove from Ahead Of Time only',
+      detail: 'Your Google Calendar and Tasks stay exactly as they are.',
+      available: true,
+    },
+    {
+      id: 'tasks',
+      title: 'Also remove the prep tasks from Google',
+      detail: `Your ${eventWord} ${count === 1 ? 'stays' : 'stay'} in your calendar.`,
+      available: isGoogleConnected && anyTasksInGoogle,
+      unavailable: !anyTasksInGoogle ? 'No prep tasks of these plans are in Google.' : 'Connect Google Calendar to do this.',
+    },
+    {
+      id: 'everything',
+      title: `Also delete the ${eventWord} from Google Calendar`,
+      detail: 'Removes the appointment itself. You confirm each one on the next step.',
+      available: isGoogleConnected && eventsInCalendar.length > 0,
+      unavailable: eventsInCalendar.length === 0 ? `${count === 1 ? 'This event is' : 'These events are'} not in your Google Calendar.` : 'Connect Google Calendar to do this.',
+    },
+  ];
 
-  const handleExecuteBulkDelete = async () => {
-    if (!isFormValid) return;
+  const buttonLabel =
+    choice === 'app'
+      ? `Remove ${count} ${planWord} · keep calendar`
+      : choice === 'tasks'
+        ? `Remove ${planWord} + tasks · keep ${eventWord}`
+        : `Next: confirm ${eventWord}`;
 
+  const runDelete = async (deleteMainEvent: boolean) => {
     setIsDeleting(true);
     setErrorMessage(null);
+    let calCount = 0;
+    let taskCount = 0;
     try {
-      let totalCalCount = 0;
-      let totalTaskCount = 0;
-
-      if (deleteFromCalendar && isGoogleConnected && token) {
-        for (let i = 0; i < selectedEvents.length; i++) {
-          const ev = selectedEvents[i];
-          setDeletionStatus(`Cleaning up ${i + 1} of ${count}: ${ev.title}...`);
-          try {
-            const res = await executeSafePlanDeletion(token, ev, {
-              deleteFromPrimaryCalendar: deleteMainEvent,
-              deleteMainEvent: deleteMainEvent,
-              deleteTasks: deleteTasks,
-            });
-            if (res.deletedPrimaryEvent) totalCalCount += 1;
-            totalTaskCount += res.deletedTasksCount;
-          } catch (gErr) {
-            console.warn(`Failed to delete event ${ev.title} from Google Calendar:`, gErr);
-          }
+      for (let i = 0; i < selectedEvents.length; i++) {
+        const ev = selectedEvents[i];
+        setDeletionStatus(`Cleaning up ${i + 1} of ${count}: ${ev.title}…`);
+        try {
+          const res = await executeSafePlanDeletion(token!, ev, {
+            deleteFromPrimaryCalendar: deleteMainEvent,
+            deleteMainEvent,
+            deleteTasks: true,
+          });
+          if (res.deletedPrimaryEvent) calCount += 1;
+          taskCount += res.deletedTasksCount;
+        } catch (gErr) {
+          console.warn(`Failed to clean up ${ev.title} in Google:`, gErr);
         }
       }
-
-      if (deleteFromApp) {
-        onConfirmDeleteAppAndCalendar(
-          selectedEventIds, 
-          { calCount: totalCalCount, taskCount: totalTaskCount },
-          { deleteMainEvent, deleteTasks }
-        );
-      } else {
-        // Calendar only cleanup
-        onClose();
-      }
+      onConfirmDeleteAppAndCalendar(selectedEventIds, { calCount, taskCount }, { deleteMainEvent, deleteTasks: true });
       onClose();
     } catch (err: any) {
-      console.error('Bulk deletion error:', err);
-      setErrorMessage(err?.message || 'Failed to clean up Google Calendar.');
+      setErrorMessage(err?.message || 'Could not clean up Google Calendar.');
     } finally {
       setIsDeleting(false);
       setDeletionStatus(null);
     }
   };
 
-  const getSummaryDescription = () => {
-    if (!hasLocationSelected || !hasItemSelected) {
-      return 'Please choose at least one location and one item type to delete.';
+  const handlePrimary = () => {
+    if (choice === 'app') {
+      onConfirmDeleteAppOnly(selectedEventIds);
+      onClose();
+    } else if (choice === 'tasks') {
+      void runDelete(false);
+    } else {
+      setConfirmingEvents(true);
     }
-
-    const itemsText = deleteTasks && deleteMainEvent
-      ? `all ${count} events and ${totalTasksCount} prep tasks`
-      : deleteTasks
-        ? `all ${totalTasksCount} prep tasks across ${count} events`
-        : `the ${count} target event entries`;
-
-    const locationsText = deleteFromApp && deleteFromCalendar
-      ? 'Ahead of Time and Google Calendar & Tasks'
-      : deleteFromApp
-        ? 'Ahead of Time only (Google Calendar remains untouched)'
-        : 'Google Calendar & Tasks only';
-
-    const safetyNote = !deleteMainEvent
-      ? ' Your main appointments will stay safely on your calendar.'
-      : '';
-
-    return `Will delete ${itemsText} from ${locationsText}.${safetyNote}`;
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div 
-        className="bg-white border border-slate-200 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden text-slate-900 animate-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]"
+      <div
+        className="bg-white border border-slate-200 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden text-slate-900 animate-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-delete-title"
       >
         {/* Header */}
-        <div className="p-5 bg-rose-50/85 border-b border-rose-100 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 shadow-xs">
-              <Trash2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 leading-tight">
-                What do you want to delete?
-              </h3>
-              <p className="text-xs text-slate-500 font-medium">
-                Bulk cleanup for {count} selected plan{count > 1 ? 's' : ''}
-              </p>
-            </div>
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+          <div className="min-w-0">
+            <h3 id="bulk-delete-title" className="text-base font-black text-slate-900 leading-tight">
+              {confirmingEvents ? `Delete from your Google Calendar?` : `Remove ${count} ${planWord}`}
+            </h3>
+            <p className="text-xs text-slate-500 truncate">
+              {selectedEvents.map((e) => e.title).join(', ')}
+            </p>
           </div>
-
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer border border-slate-200 disabled:opacity-50"
+            aria-label="Close"
+            className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50 shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-5 overflow-y-auto">
-          
-          {/* Selected Events Preview */}
-          <div className="max-h-28 overflow-y-auto space-y-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
-              Selected Plans ({count}) &bull; {totalTasksCount} total tasks
+        <div className="p-5 space-y-3 overflow-y-auto">
+          {!confirmingEvents ? (
+            <div className="space-y-2" role="radiogroup" aria-label="What to remove">
+              {options.map((opt) => {
+                const selected = choice === opt.id;
+                return (
+                  <label
+                    key={opt.id}
+                    className={`p-3.5 rounded-2xl border flex items-start gap-3 transition-all select-none ${
+                      !opt.available
+                        ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                        : selected
+                          ? opt.id === 'everything'
+                            ? 'bg-rose-50 border-rose-300 ring-1 ring-rose-200 cursor-pointer'
+                            : 'bg-slate-50 border-[#182A42] ring-1 ring-[#182A42] cursor-pointer'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="bulk-delete-choice"
+                      checked={selected}
+                      disabled={!opt.available}
+                      onChange={() => setChoice(opt.id)}
+                      className={`w-4 h-4 mt-0.5 shrink-0 cursor-pointer ${opt.id === 'everything' ? 'accent-rose-600' : 'accent-[#182A42]'}`}
+                    />
+                    <span className="min-w-0">
+                      <span className={`block text-sm font-bold ${opt.id === 'everything' ? 'text-rose-700' : 'text-slate-900'}`}>{opt.title}</span>
+                      <span className="block text-xs text-slate-500 mt-0.5">{opt.available ? opt.detail : opt.unavailable}</span>
+                    </span>
+                  </label>
+                );
+              })}
             </div>
-            {selectedEvents.map((ev) => (
-              <div key={ev.id} className="text-xs font-bold text-slate-800 truncate flex items-center gap-2 px-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                <span className="truncate">{ev.title}</span>
-                <span className="text-[10px] text-slate-400 font-normal ml-auto shrink-0">{ev.eventDate}</span>
+          ) : (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-rose-900 leading-relaxed">
+                  {eventsInCalendar.length === 1 ? 'This appointment is' : 'These appointments are'} removed from your Google Calendar,
+                  for you and for anyone you invited. This can't be undone from Ahead Of Time.
+                </p>
               </div>
-            ))}
-          </div>
-
-          {/* Section 1: WHERE */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
-              1. Where to delete from:
-            </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <label className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-2.5 select-none ${
-                deleteFromApp 
-                  ? 'bg-rose-50/60 border-rose-300 ring-1 ring-rose-200/70' 
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={deleteFromApp}
-                  onChange={(e) => setDeleteFromApp(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 mt-0.5 cursor-pointer shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
-                    <Smartphone className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                    <span>From the App</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Ahead of Time dashboard</p>
-                </div>
-              </label>
-
-              <label className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-2.5 select-none ${
-                deleteFromCalendar 
-                  ? 'bg-rose-50/60 border-rose-300 ring-1 ring-rose-200/70' 
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={deleteFromCalendar}
-                  onChange={(e) => setDeleteFromCalendar(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 mt-0.5 cursor-pointer shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
-                    <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>From Calendar</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Google Calendar &amp; Tasks</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Section 2: WHICH */}
-          <div className="space-y-2 pt-1">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
-              2. Which items to delete:
-            </label>
-
-            <div className="space-y-2">
-              <label className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-2.5 select-none ${
-                deleteTasks 
-                  ? 'bg-rose-50/60 border-rose-300 ring-1 ring-rose-200/70' 
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={deleteTasks}
-                  onChange={(e) => setDeleteTasks(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 mt-0.5 cursor-pointer shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
-                    <CheckSquare className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                    <span>Preparation Tasks ({totalTasksCount} total)</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Removes countdown checkpoints and prep reminders</p>
-                </div>
-              </label>
-
-              <label className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-2.5 select-none ${
-                deleteMainEvent 
-                  ? 'bg-rose-50/60 border-rose-300 ring-1 ring-rose-200/70' 
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={deleteMainEvent}
-                  onChange={(e) => setDeleteMainEvent(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 mt-0.5 cursor-pointer shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
-                      <Calendar className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                      <span>Main Target Events ({count} appointments)</span>
-                    </div>
-                    {!deleteMainEvent && (
-                      <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.2 rounded-full">
-                        Kept intact
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Removes the original event entries themselves</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Dynamic Action Summary */}
-          <div className={`p-3 rounded-2xl border text-xs leading-relaxed ${
-            isFormValid ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-amber-50 border-amber-200 text-amber-900'
-          }`}>
-            <div className="flex items-start gap-2">
-              <Info className={`w-4 h-4 shrink-0 mt-0.5 ${isFormValid ? 'text-sky-600' : 'text-amber-600'}`} />
-              <p className="font-medium text-[11px]">
-                {getSummaryDescription()}
-              </p>
-            </div>
-          </div>
-
-          {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
-              {errorMessage}
+              <ul className="space-y-1.5">
+                {eventsInCalendar.map((ev) => (
+                  <li key={ev.id} className="px-3 py-2 rounded-xl border border-slate-200">
+                    <p className="text-sm font-bold text-slate-900">{ev.title}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {ev.eventDate}
+                      {isImportedFromCalendar(ev) && ' · was in your calendar before Ahead Of Time: this is your own appointment'}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              {importedEvents.length > 0 && (
+                <p className="text-xs text-slate-600">
+                  Only want the plan gone? Go back and pick "Also remove the prep tasks from Google" instead.
+                </p>
+              )}
             </div>
           )}
+
+          {errorMessage && <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">{errorMessage}</div>}
 
           {isDeleting && (
-            <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2.5 text-xs text-blue-800 font-bold animate-pulse">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
-              <span>{deletionStatus || 'Cleaning up sub-calendar tasks...'}</span>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2 text-xs text-slate-700 font-semibold">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span>{deletionStatus || 'Cleaning up…'}</span>
             </div>
           )}
         </div>
 
-        {/* Action Buttons Footer */}
-        <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
-          <button
-            onClick={onClose}
-            disabled={isDeleting}
-            className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
-          >
-            Cancel
-          </button>
+        {/* Footer: the button says what will happen */}
+        <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
+          {confirmingEvents ? (
+            <button
+              onClick={() => setConfirmingEvents(false)}
+              disabled={isDeleting}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              disabled={isDeleting}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              Cancel
+            </button>
+          )}
 
-          <button
-            onClick={handleExecuteBulkDelete}
-            disabled={!isFormValid || isDeleting}
-            className={`px-5 py-2.5 text-white font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-              deleteMainEvent ? 'bg-rose-700 hover:bg-rose-800 shadow-rose-700/25' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/25'
-            }`}
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>
-              {deleteMainEvent 
-                ? `Delete ${count} Events & Plans` 
-                : `Delete Tasks (${count} Plans)`}
-            </span>
-          </button>
+          {confirmingEvents ? (
+            <button
+              onClick={() => void runDelete(true)}
+              disabled={isDeleting}
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>
+                {eventsInCalendar.length === 1
+                  ? `Delete "${eventsInCalendar[0].title}"`
+                  : `Delete ${eventsInCalendar.length} events from calendar`}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={handlePrimary}
+              disabled={isDeleting || !options.find((o) => o.id === choice)?.available}
+              className={`px-4 py-2.5 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                choice === 'everything' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[#182A42] hover:bg-slate-800'
+              }`}
+            >
+              {choice !== 'everything' && <Trash2 className="w-4 h-4" />}
+              <span>{buttonLabel}</span>
+            </button>
+          )}
         </div>
-
       </div>
     </div>
   );
 };
-

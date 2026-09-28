@@ -778,3 +778,40 @@ export function isEventOver(event: Pick<CalendarEvent, 'eventDate' | 'endDate'>,
   const end = ((event.endDate || event.eventDate) || '').slice(0, 10);
   return Boolean(end) && end < referenceDateISO.slice(0, 10);
 }
+
+export type WeekProgressTone = 'low' | 'mid' | 'high' | 'done';
+
+export interface WeekProgress {
+  /** Tasks ticked off in the last 7 days. */
+  done: number;
+  /** done + what is still open now (overdue and due this week). */
+  total: number;
+  /** 0-1; 1 when there is nothing to do. */
+  ratio: number;
+  /** Colour band of the ring: below a third, below two thirds, above, all done. */
+  tone: WeekProgressTone;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The My Week Ahead ring: of this week's work (what's overdue or due this
+ * week, plus what was ticked off in the last 7 days), how much is done.
+ * `openCount` is what the page lists as open, so the ring and the lists
+ * always agree.
+ */
+export function computeWeekProgress(events: CalendarEvent[], referenceDateISO: string, openCount: number): WeekProgress {
+  const now = new Date(referenceDateISO).getTime();
+  let done = 0;
+  for (const event of events) {
+    for (const milestone of actionableMilestones(event.milestones)) {
+      if (milestone.status !== 'completed' || !milestone.completedAt) continue;
+      const at = new Date(milestone.completedAt).getTime();
+      if (Number.isFinite(at) && at <= now + 60_000 && now - at <= WEEK_MS) done += 1;
+    }
+  }
+  const total = done + openCount;
+  const ratio = total === 0 ? 1 : done / total;
+  const tone: WeekProgressTone = ratio >= 1 ? 'done' : ratio >= 2 / 3 ? 'high' : ratio >= 1 / 3 ? 'mid' : 'low';
+  return { done, total, ratio, tone };
+}
