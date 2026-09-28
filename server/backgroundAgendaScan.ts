@@ -14,6 +14,7 @@ import { TelegramService } from './telegramService.js';
 import { listTasksNeedingAttention, listOpenDecisions } from './dailyDigestData.js';
 import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, type DailyUpdateModel } from './dailyUpdateTemplate.js';
 import { detectEventCategory } from '../src/utils/tminusRules.js';
+import { assessCalendarEntry } from '../src/utils/eventEligibility.js';
 import { generateDeterministicMilestones } from '../src/utils/deterministicMilestoneGenerator.js';
 import type { CalendarEvent } from '../src/types.js';
 
@@ -36,6 +37,7 @@ export interface GoogleCalendarItem {
   id: string;
   summary?: string;
   description?: string;
+  end?: { date?: string; dateTime?: string };
   location?: string;
   status?: string;
   eventType?: string;
@@ -74,11 +76,6 @@ export interface AgendaScanSummary {
   previews?: string[];
 }
 
-// Same routine-entry rules as ScanAgendaModal.tsx's manual scan, minus the
-// onboarding-profile calibration (the profile lives in the browser, which a
-// cron can't read).
-const WORK_ROUTINE = /standup|1:1|sync|weekly|daily|scrum|catchup|status check|office hours|all hands|retrospective|retro\b/i;
-const PERSONAL_ROUTINE = /dentist|cleaning|doctor|vet\b|haircut|dry clean/i;
 // Google's own non-plans: working-location markers, OOO, focus blocks and
 // the automatic contact-birthday entries.
 const SKIPPED_EVENT_TYPES = new Set(['workingLocation', 'outOfOffice', 'focusTime', 'birthday']);
@@ -109,8 +106,19 @@ export function isPrepWorthy(item: GoogleCalendarItem, now: Date): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return false;
   if (daysBetween(now.toISOString(), eventDate) < MIN_DAYS_AHEAD) return false;
 
-  if (WORK_ROUTINE.test(title) || PERSONAL_ROUTINE.test(title)) return false;
-  return true;
+  // Same rules as Scan agenda in the app: only entries judged "plan" are
+  // reported (not the "not sure" ones, and never plain birthday reminders
+  // or public holidays).
+  const end = item.end?.date || item.end?.dateTime || '';
+  const durationDays = end ? Math.max(1, daysBetween(`${eventDate}T00:00:00Z`, end.slice(0, 10))) : 1;
+  return (
+    assessCalendarEntry({
+      title,
+      description: item.description,
+      daysAway: daysBetween(now.toISOString(), eventDate),
+      durationDays,
+    }).verdict === 'plan'
+  );
 }
 
 export function toCandidate(item: GoogleCalendarItem): ScanCandidate {
