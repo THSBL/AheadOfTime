@@ -347,9 +347,12 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
       </div>
 
       {/* Push bar: always counts the plans not in the calendar yet (or
-          the selected ones), and opens the push window pre-filled. */}
+          the selected ones), and opens the push window pre-filled. On
+          mobile the page itself scrolls past the list, so the bar sticks
+          to the bottom of the screen instead of waiting below the last
+          event. */}
       {onPushEvents && pushCandidates.length > 0 && (
-        <div className="m-2 mt-0 p-2 pl-3.5 rounded-2xl bg-[#182A42] border border-white/10 flex items-center justify-between gap-2">
+        <div className="sticky bottom-3 z-20 lg:static m-2 mt-0 p-2 pl-3.5 rounded-2xl bg-[#182A42] border border-white/10 shadow-lg shadow-black/30 lg:shadow-none flex items-center justify-between gap-2">
           <span className="text-[11px] sm:text-xs text-slate-300 min-w-0">
             {selectedEventIds.length > 0
               ? `${pushCandidates.length} selected ${pushCandidates.length === 1 ? 'plan' : 'plans'} · ${pushItemCount} ${pushItemCount === 1 ? 'item' : 'items'} to push`
