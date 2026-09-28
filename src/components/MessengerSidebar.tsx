@@ -21,21 +21,6 @@ import { CalendarEvent } from '../types';
 import { getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
 import { isPlanPushed, pendingPushItems } from '../utils/pushStatus';
 
-// How long an event counts as "newly added" for the sidebar's own filter
-// chip and highlight - measured against real wall-clock time (not
-// currentReferenceDate, which is this app's mockable planning reference
-// date and can be set arbitrarily far from "now"), since this is about
-// when the event record was actually created, not where it falls on the
-// calendar.
-const NEWLY_ADDED_WINDOW_MS = 48 * 60 * 60 * 1000;
-
-function isNewlyAddedEvent(event: CalendarEvent): boolean {
-  if (!event.createdAt) return false;
-  const createdAtMs = new Date(event.createdAt).getTime();
-  if (isNaN(createdAtMs)) return false;
-  return Date.now() - createdAtMs < NEWLY_ADDED_WINDOW_MS;
-}
-
 interface MessengerSidebarProps {
   events: CalendarEvent[];
   selectedEventId: string | null;
@@ -265,7 +250,6 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const displayTitle = getCleanEventTitle(evt.title, evt.category, evt.context);
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
 
-            const isNewlyAdded = isNewlyAddedEvent(evt);
             const planPushed = isPlanPushed(evt);
 
             // Month section header - only when the month actually changes
@@ -323,16 +307,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
 
                 {/* Event Details */}
                 <div className="flex-1 min-w-0 space-y-1">
-                  {/* Top Row: Title + Countdown / Unrefined Badge. The
-                      newly-added highlight is a small dot next to the
-                      title now, not a background fill - a flat row has
-                      nowhere for a colored background to sit without
-                      looking like a stray card again. */}
+                  {/* Top Row: Title + Countdown */}
                   <div className="flex items-start justify-between gap-1.5">
                     <h4 className="text-xs sm:text-sm font-bold truncate leading-tight text-white flex items-center gap-1.5">
-                      {isNewlyAdded && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] shrink-0" title="Newly added" />
-                      )}
                       <span className="truncate">{displayTitle}</span>
                     </h4>
                     <div className="flex items-center gap-1 shrink-0">
