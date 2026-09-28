@@ -1,3 +1,4 @@
+import { readAgendaHorizon, saveAgendaHorizon } from './services/agendaScanRecord';
 import { completeTripDuplicates } from './utils/tripDuplicates';
 import { refreshAiPlanningEnabled } from './services/aiSettings';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -952,7 +953,11 @@ function App() {
   // Events the Active Events push bar opened the push window with (null = the usual single/batch choice).
   const [pushPreselectIds, setPushPreselectIds] = useState<string[] | null>(null);
   const [isScanAgendaModalOpen, setIsScanAgendaModalOpen] = useState(false);
-  const [agendaHorizonMonths, setAgendaHorizonMonths] = useState<number>(6);
+  const [agendaHorizonMonths, setAgendaHorizonMonthsState] = useState<number>(readAgendaHorizon);
+  const setAgendaHorizonMonths = (months: number) => {
+    setAgendaHorizonMonthsState(months);
+    saveAgendaHorizon(months);
+  };
   const [targetEventForMilestone, setTargetEventForMilestone] = useState<CalendarEvent | null>(null);
   const [selectedBulkEventIds, setSelectedBulkEventIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);

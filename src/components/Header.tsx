@@ -23,6 +23,7 @@ import { formatDisplayDate } from '../utils/tminusRules';
 import { CalendarEvent } from '../types';
 import { Logo } from './Logo';
 import { AuthUser } from '../services/accountManager';
+import { AGENDA_SCANNED_EVENT, readAgendaScan, type AgendaScanRecord } from '../services/agendaScanRecord';
 
 interface HeaderProps {
   currentReferenceDate: string;
@@ -150,17 +151,17 @@ export const Header: React.FC<HeaderProps> = ({
     return "Dec '26";
   };
 
-  // Determine date of last update
-  const getLastUpdateText = (): string => {
-    if (lastSyncTime) {
-      return lastSyncTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    }
-    const ref = new Date(currentReferenceDate);
-    if (!isNaN(ref.getTime())) {
-      return ref.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-    return 'Today';
-  };
+  // The last real agenda scan (see agendaScanRecord.ts), kept current when
+  // a scan finishes while the header is on screen.
+  const [agendaScan, setAgendaScan] = useState<AgendaScanRecord | null>(readAgendaScan);
+  useEffect(() => {
+    const onScanned = () => setAgendaScan(readAgendaScan());
+    window.addEventListener(AGENDA_SCANNED_EVENT, onScanned);
+    return () => window.removeEventListener(AGENDA_SCANNED_EVENT, onScanned);
+  }, []);
+  const monthYear = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const formatShortDateTime = (iso: string) =>
+    new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   return (
     <header className="milky-glass border-b border-white/80 sticky top-0 z-30 shadow-xs text-slate-900" id="main-header">
@@ -206,9 +207,15 @@ export const Header: React.FC<HeaderProps> = ({
 
                       {/* Agenda label utilizing available space on mobile and desktop */}
                       <span className="font-semibold text-slate-900 text-xs sm:text-sm whitespace-nowrap leading-none flex items-baseline">
-                        <span className="hidden lg:inline">Agenda synced until </span>
-                        <span className="lg:hidden">Agenda synced · </span>
-                        <span className="text-sky-950 font-bold">{getFurthestMonth(agendaHorizonMonths)}</span>
+                        {agendaScan ? (
+                          <>
+                            <span className="hidden lg:inline">Agenda synced until </span>
+                            <span className="lg:hidden">Agenda synced · </span>
+                            <span className="text-sky-950 font-bold">{monthYear(agendaScan.until)}</span>
+                          </>
+                        ) : (
+                          <span>Scan your agenda</span>
+                        )}
                       </span>
 
                       <ChevronDown className={`w-3.5 h-3.5 text-sky-700 transition-transform duration-150 shrink-0 ${isHorizonOpen ? 'rotate-180' : ''}`} />
@@ -255,119 +262,108 @@ export const Header: React.FC<HeaderProps> = ({
                   className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 max-h-[85vh] overflow-y-auto p-4 bg-white rounded-2xl border border-slate-200/90 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 text-slate-800 space-y-3"
                 >
                   <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
-                        <Calendar className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="font-bold text-xs sm:text-sm text-slate-900 block leading-tight">Agenda Coverage &amp; Sync</span>
-                        <span className="text-[10px] text-slate-500 font-medium">
-                          {isGoogleConnected ? 'Google Calendar Active' : 'Local Planner Mode'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">
-                        {agendaHorizonMonths} Mo. Horizon
+                    <div className="min-w-0">
+                      <span className="font-bold text-sm text-slate-900 block leading-tight">Your agenda</span>
+                      <span className="text-[11px] text-slate-500">
+                        {isGoogleConnected ? 'Google Calendar connected' : 'Google Calendar not connected on this device'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setIsHorizonOpen(false)}
-                        className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                        title="Close details"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsHorizonOpen(false)}
+                      className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+                      title="Close"
+                      aria-label="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  {/* High level coverage details */}
+                  {/* Only facts: when the agenda was really scanned and how far,
+                      and when tasks last synced with Google Tasks. */}
                   <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span>Covered until:</span>
-                      <strong className="text-slate-900 font-bold">{getFurthestMonth(agendaHorizonMonths)}</strong>
+                    <div className="flex items-center justify-between gap-3 text-slate-600">
+                      <span>Last scan</span>
+                      <strong className="text-slate-900 font-bold text-right">
+                        {agendaScan ? `${formatShortDateTime(agendaScan.at)} · until ${monthYear(agendaScan.until)}` : 'Not scanned yet'}
+                      </strong>
                     </div>
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span>Last synchronized:</span>
-                      <span className="text-slate-800 font-medium">{getLastUpdateText()}</span>
-                    </div>
-                  </div>
-
-                  {/* Only Google Tasks completion sync runs automatically (App.tsx,
-                      every 15 min while the app is open); no server-side job scans
-                      the calendar, so don't claim daily/background syncing here. */}
-                  <div className="p-2.5 bg-sky-50/90 border border-sky-200/90 rounded-xl text-xs text-sky-950 flex items-start gap-2">
-                    <Clock className="w-4 h-4 text-sky-700 shrink-0 mt-0.5" />
-                    <div className="leading-snug text-[11px] space-y-1">
-                      <p>Tasks you tick off sync with Google Tasks <strong className="text-sky-950">about every 15 minutes</strong> while the app is open.</p>
-                      <p className="font-semibold text-sky-900">New calendar events are picked up when you:</p>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        <li>Scan your agenda</li>
-                        <li>Message Telegram, once a day, if Background Sync is on in Settings</li>
-                      </ul>
+                    <div className="flex items-center justify-between gap-3 text-slate-600">
+                      <span>Tasks synced with Google</span>
+                      <span className="text-slate-800 font-medium text-right">
+                        {lastSyncTime ? formatShortDateTime(lastSyncTime.toISOString()) : isGoogleConnected ? 'Not yet' : '-'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Horizon options: 3 - 6 - 12 Months */}
+                  {onOpenScanAgenda && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsHorizonOpen(false);
+                        onOpenScanAgenda();
+                      }}
+                      className="w-full py-2.5 px-3 bg-[#182A42] hover:bg-slate-800 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Scan agenda</span>
+                    </button>
+                  )}
+
+                  {/* How far ahead a scan looks: 3, 6 or 12 months */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                      <span>Coverage Horizon</span>
-                      <span className="text-sky-700 font-medium text-[11px]">3, 6, or 12 Months</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[
-                        { months: 3, label: '3 Months', sub: getFurthestMonth(3) },
-                        { months: 6, label: '6 Months', sub: getFurthestMonth(6) },
-                        { months: 12, label: '12 Months', sub: getFurthestMonth(12) },
-                      ].map(({ months, label, sub }) => {
+                    <p className="text-xs font-bold text-slate-700">Scan how far ahead</p>
+                    <div className="flex bg-slate-100 p-0.5 rounded-xl gap-0.5" role="radiogroup" aria-label="Scan how far ahead">
+                      {[3, 6, 12].map((months) => {
                         const isSelected = agendaHorizonMonths === months;
                         return (
                           <button
                             key={months}
                             type="button"
-                            onClick={() => {
-                              if (onAgendaHorizonChange) {
-                                onAgendaHorizonChange(months);
-                              }
-                            }}
-                            className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                              isSelected
-                                ? 'bg-[#182A42] text-white border-slate-900 shadow-sm'
-                                : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'
+                            role="radio"
+                            aria-checked={isSelected}
+                            onClick={() => onAgendaHorizonChange?.(months)}
+                            className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                              isSelected ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
                             }`}
                           >
-                            <span className="text-xs font-black">{label}</span>
-                            <span className={`text-[10px] truncate max-w-full font-medium ${
-                              isSelected ? 'text-slate-300' : 'text-slate-400'
-                            }`}>
-                              {sub.split(' ')[0]}
-                            </span>
-                            {isSelected && (
-                              <span className="text-[9px] mt-0.5 font-bold text-emerald-400 flex items-center gap-0.5">
-                                <Check className="w-2.5 h-2.5 stroke-[3]" /> Active
-                              </span>
-                            )}
+                            <span className="block text-xs font-bold">{months} months</span>
+                            <span className="block text-[10px] text-slate-400">until {getFurthestMonth(months).split(' ')[0]}</span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Actions & Force Sync */}
-                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onTriggerGoogleSync) onTriggerGoogleSync();
-                        setIsHorizonOpen(false);
-                      }}
-                      disabled={isSyncingWithGoogle}
-                      className="w-full py-2 px-3 bg-[#182A42] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingWithGoogle ? 'animate-spin' : ''}`} />
-                      <span>{isSyncingWithGoogle ? 'Syncing...' : 'Force Sync Now'}</span>
-                    </button>
+                  <div className="text-[11px] text-slate-600 leading-snug space-y-1 border-t border-slate-100 pt-2.5">
+                    <p>
+                      <b className="text-slate-800">New events</b> come in when you scan, or automatically with Background Sync: new
+                      events in your calendar are found and sent with your update, on the schedule you pick in Settings → Updates.
+                    </p>
+                    {isGoogleConnected && (
+                      <p>
+                        <b className="text-slate-800">Ticked-off tasks</b> sync with Google Tasks about every 15 minutes while the app is open.
+                      </p>
+                    )}
+                  </div>
 
+                  <div className="flex items-center justify-between gap-2">
+                    {isGoogleConnected && onTriggerGoogleSync ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTriggerGoogleSync();
+                          setIsHorizonOpen(false);
+                        }}
+                        disabled={isSyncingWithGoogle}
+                        className="py-1.5 px-3 bg-slate-100 hover:bg-slate-200/70 border border-[#182A42] text-[#182A42] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingWithGoogle ? 'animate-spin' : ''}`} />
+                        <span>{isSyncingWithGoogle ? 'Syncing…' : 'Sync tasks now'}</span>
+                      </button>
+                    ) : (
+                      <span />
+                    )}
                     {onOpenGoogleCalendarSync && (
                       <button
                         type="button"
@@ -375,10 +371,9 @@ export const Header: React.FC<HeaderProps> = ({
                           setIsHorizonOpen(false);
                           onOpenGoogleCalendarSync();
                         }}
-                        className="w-full py-1.5 px-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        className="text-xs font-semibold text-slate-600 hover:text-[#182A42] underline underline-offset-2 cursor-pointer"
                       >
-                        <CalendarDays className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Google Sync &amp; Account Settings</span>
+                        Settings
                       </button>
                     )}
                   </div>
@@ -417,7 +412,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenNewEventModal}
               id="btn-manual-event"
-              className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full flex items-center gap-1 sm:gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
+              className="hidden sm:flex bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
               title="Create new event using presets or assistant"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />

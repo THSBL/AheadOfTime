@@ -1,3 +1,4 @@
+import { recordAgendaScan } from '../services/agendaScanRecord';
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
@@ -256,6 +257,8 @@ export const ScanAgendaModal: React.FC<ScanAgendaModalProps> = ({
       // One trip in the calendar is often several entries (stays, transfers,
       // tours); group them so the trip gets one plan instead of one per entry.
       // Entries already in the app are left out of grouping.
+      // The calendar answered: remember how far this scan reached (header).
+      recordAgendaScan(maxDate);
       const newItems = (items || []).filter((item) => !isEventAlreadyInDashboard(item, liveDashboardEvents));
       const { trips } = groupTripEntries(newItems, {
         isTripCategory: (item) => detectEventCategory(item.summary || '', item.description || '') === 'travel_trip',
