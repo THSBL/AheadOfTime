@@ -77,7 +77,7 @@ describe('notify preferences validation', () => {
 
   it('merges valid changes and refuses invalid ones', () => {
     const merged = mergeNotifyPrefs({ channels: ['telegram', 'email'], frequency: 'weekly', hour: 18, weekday: 5, timezone: 'Europe/Brussels' }, DEFAULT_NOTIFY_PREFS);
-    expect(merged).toEqual({ channels: ['telegram', 'email'], frequency: 'weekly', hour: 18, weekday: 5, timezone: 'Europe/Brussels' });
+    expect(merged).toEqual({ channels: ['telegram', 'email'], frequency: 'weekly', hour: 18, weekday: 5, monthday: 1, timezone: 'Europe/Brussels' });
     expect(mergeNotifyPrefs({ hour: 24 }, DEFAULT_NOTIFY_PREFS)).toBeNull();
     expect(mergeNotifyPrefs({ hour: 7.5 }, DEFAULT_NOTIFY_PREFS)).toBeNull();
     expect(mergeNotifyPrefs({ frequency: 'hourly' }, DEFAULT_NOTIFY_PREFS)).toBeNull();
@@ -95,5 +95,27 @@ describe('notify preferences validation', () => {
     expect(isValidTimeZone('Europe/London')).toBe(true);
     expect(isValidTimeZone('Nope/Zone')).toBe(false);
     expect(isValidTimeZone('')).toBe(false);
+  });
+});
+
+describe('monthly and off', () => {
+  const monthly = { ...DEFAULT_NOTIFY_PREFS, frequency: 'monthly' as const, monthday: 15, hour: 8, timezone: 'UTC' };
+
+  it('monthly is due once on the chosen day of the month', () => {
+    expect(mostRecentScheduledMs(utc('2026-09-21T07:00:00Z'), monthly)).toBe(utc('2026-09-15T08:00:00Z'));
+    expect(isUpdateDue(utc('2026-09-21T07:00:00Z'), monthly, utc('2026-09-15T08:05:00Z'))).toBe(false);
+    expect(isUpdateDue(utc('2026-10-15T08:30:00Z'), monthly, utc('2026-09-15T08:05:00Z'))).toBe(true);
+    expect(lookbackMs('monthly')).toBeGreaterThan(31 * 86_400_000);
+  });
+
+  it('off is never due', () => {
+    expect(isUpdateDue(utc('2026-09-21T07:00:00Z'), { ...DEFAULT_NOTIFY_PREFS, frequency: 'off' }, null)).toBe(false);
+  });
+
+  it('accepts off/monthly and a day of the month 1-28 only', () => {
+    expect(mergeNotifyPrefs({ frequency: 'monthly', monthday: 28 }, DEFAULT_NOTIFY_PREFS)).toMatchObject({ frequency: 'monthly', monthday: 28 });
+    expect(mergeNotifyPrefs({ frequency: 'off' }, DEFAULT_NOTIFY_PREFS)?.frequency).toBe('off');
+    expect(mergeNotifyPrefs({ monthday: 31 }, DEFAULT_NOTIFY_PREFS)).toBeNull();
+    expect(mergeNotifyPrefs({ frequency: 'yearly' }, DEFAULT_NOTIFY_PREFS)).toBeNull();
   });
 });

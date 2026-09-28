@@ -190,7 +190,8 @@ async function fetchNewCalendarItems(accessToken: string, since: Date, now: Date
 interface LinkedUserRow extends NotifyPrefsColumns {
   user_id: string;
   email: string;
-  linked_at: string;
+  /** Null for users without Background Sync: they get their tasks, but no calendar scan. */
+  linked_at: string | null;
   last_agenda_scan_at: string | null;
   last_update_sent_at: string | null;
 }
@@ -235,13 +236,24 @@ export async function runBackgroundAgendaScan(
 
   await ensureBackgroundSyncSchema();
 
+  // Everyone with Background Sync, plus everyone who set up updates without
+  // it. Preferences come from the account's own row when it has one (the
+  // Updates tab), else from the older columns on the token row.
   const users = await query<LinkedUserRow>(
-    `SELECT t.user_id, u.email, t.linked_at, t.last_agenda_scan_at, t.last_update_sent_at,
-            t.notify_channel, t.notify_channels, t.notify_frequency, t.notify_hour, t.notify_weekday, t.notify_timezone
-       FROM google_oauth_tokens t
-       JOIN users u ON u.id = t.user_id
-      WHERE t.revoked_at IS NULL
-      ORDER BY t.last_update_sent_at ASC NULLS FIRST`
+    `SELECT u.id AS user_id, u.email, t.linked_at, t.last_agenda_scan_at,
+            CASE WHEN p.user_id IS NOT NULL THEN p.last_update_sent_at ELSE t.last_update_sent_at END AS last_update_sent_at,
+            CASE WHEN p.user_id IS NOT NULL THEN NULL ELSE t.notify_channel END AS notify_channel,
+            CASE WHEN p.user_id IS NOT NULL THEN COALESCE(p.notify_channels, '') ELSE t.notify_channels END AS notify_channels,
+            COALESCE(p.notify_frequency, t.notify_frequency) AS notify_frequency,
+            COALESCE(p.notify_hour, t.notify_hour) AS notify_hour,
+            COALESCE(p.notify_weekday, t.notify_weekday) AS notify_weekday,
+            p.notify_monthday,
+            COALESCE(p.notify_timezone, t.notify_timezone) AS notify_timezone
+       FROM users u
+       LEFT JOIN google_oauth_tokens t ON t.user_id = u.id AND t.revoked_at IS NULL
+       LEFT JOIN user_notify_prefs p ON p.user_id = u.id
+      WHERE t.user_id IS NOT NULL OR p.user_id IS NOT NULL
+      ORDER BY 5 ASC NULLS FIRST`
   );
 
   const summary: AgendaScanSummary = {
@@ -275,17 +287,20 @@ export async function runBackgroundAgendaScan(
         continue;
       }
 
-      const accessToken = await getValidAccessToken(user.user_id);
-      if (!accessToken) {
-        summary.skippedNoToken++;
-        continue;
+      // New calendar events need the Background Sync grant; without it the
+      // update is the user's own tasks only.
+      let candidates: ScanCandidate[] = [];
+      if (user.linked_at) {
+        const accessToken = await getValidAccessToken(user.user_id);
+        if (!accessToken) {
+          summary.skippedNoToken++;
+          continue;
+        }
+        const lastPass = Date.parse(user.last_agenda_scan_at || user.linked_at);
+        const since = new Date(Math.max(lastPass, now.getTime() - lookbackMs(prefs.frequency)));
+        const items = await fetchNewCalendarItems(accessToken, since, now);
+        candidates = items.filter((item) => isPrepWorthy(item, now)).map(toCandidate);
       }
-
-      const lastPass = Date.parse(user.last_agenda_scan_at || user.linked_at);
-      const since = new Date(Math.max(lastPass, now.getTime() - lookbackMs(prefs.frequency)));
-
-      const items = await fetchNewCalendarItems(accessToken, since, now);
-      const candidates = items.filter((item) => isPrepWorthy(item, now)).map(toCandidate);
 
       const session = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
       const { deliver, inApp } = resolveChannels(prefs.channels, session?.chatId, isEmailConfigured());
@@ -376,6 +391,7 @@ export async function runBackgroundAgendaScan(
           `UPDATE google_oauth_tokens SET last_agenda_scan_at = $2, last_update_sent_at = $2 WHERE user_id = $1`,
           [user.user_id, now.toISOString()]
         );
+        await query(`UPDATE user_notify_prefs SET last_update_sent_at = $2 WHERE user_id = $1`, [user.user_id, now.toISOString()]);
       }
     } catch (err) {
       summary.failed++;

@@ -123,7 +123,7 @@ describe('runBackgroundAgendaScan', () => {
       notify_timezone: null,
       last_update_sent_at: null,
     };
-    queryMock.mockImplementation(async (sql: string) => (sql.includes('FROM google_oauth_tokens') ? [userRow] : []));
+    queryMock.mockImplementation(async (sql: string) => (sql.includes('LEFT JOIN user_notify_prefs') ? [userRow] : []));
     getLinkedSessionMock.mockResolvedValue({ chatId: '555' });
     getValidAccessTokenMock.mockResolvedValue('tok');
     sendMessageMock.mockResolvedValue({ ok: true });
@@ -399,5 +399,26 @@ describe('runBackgroundAgendaScan', () => {
     userRow.linked_at = '2026-01-01T00:00:00.000Z';
     await runBackgroundAgendaScan({ now: NOW });
     expect(String(fetchMock.mock.calls[0][0])).toContain('updatedMin=2026-09-18T07%3A00%3A00.000Z');
+  });
+
+  it('sends users without Background Sync their tasks, without touching Google', async () => {
+    userRow.linked_at = null;
+    userRow.last_agenda_scan_at = null;
+    userRow.notify_channels = 'telegram';
+    listTasksMock.mockResolvedValue({ overdue: [], dueThisWeek: [{ title: 'Book the ferry', eventTitle: 'Trip', dueDate: '2026-09-23' }] });
+    const summary = await runBackgroundAgendaScan({ now: NOW });
+    expect(getValidAccessTokenMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(summary).toMatchObject({ usersNotified: 1, eventsReported: 0 });
+    const prefUpdates = queryMock.mock.calls.filter(([sql]) => String(sql).includes('UPDATE user_notify_prefs'));
+    expect(prefUpdates[0][1]).toEqual(['u1', NOW.toISOString()]);
+  });
+
+  it('sends nothing to a user who turned updates off', async () => {
+    userRow.notify_frequency = 'off';
+    const summary = await runBackgroundAgendaScan({ now: NOW });
+    expect(summary.usersNotDue).toBe(1);
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 });

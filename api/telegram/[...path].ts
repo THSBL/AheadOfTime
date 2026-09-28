@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { TelegramWebhookHandler } from '../../server/telegramWebhookHandler.js';
 import { TelegramService } from '../../server/telegramService.js';
 import { TelegramSessionStore } from '../../server/telegramStore.js';
+import { handleTelegramWarm } from '../../server/telegramWarm.js';
 import { handleEventsApi } from '../../server/eventsApi.js';
 import { handleProfileApi } from '../../server/userProfileStore.js';
 import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
@@ -38,6 +39,11 @@ export default async function handler(req: any, res: any) {
   }
 
   // --- /api/telegram/status ---
+  // --- /api/telegram/warm --- (wakes this function for the "Open Telegram" button)
+  if (route === 'warm') {
+    return handleTelegramWarm(req, res);
+  }
+
   if (route === 'status') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

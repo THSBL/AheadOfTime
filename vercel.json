@@ -45,6 +45,10 @@
       "destination": "/api/auth/google?action=ai-settings"
     },
     {
+      "source": "/api/auth/notify-prefs",
+      "destination": "/api/auth/google?action=notify-prefs"
+    },
+    {
       "source": "/api/auth/session",
       "destination": "/api/auth/google?action=session"
     },

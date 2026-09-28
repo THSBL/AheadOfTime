@@ -30,7 +30,7 @@ const LEVELS: PreparationLevel[] = ['essentials', 'balanced', 'extensive'];
  * Surfaces AOT's preparation-level assessment for this event and lets the
  * user override it - architecture reset Phase 6. Collapsed by default
  * (just the current level + a one-line summary), matching the same
- * progressive-disclosure pattern BackgroundSyncPanel.tsx already uses: an
+ * progressive-disclosure pattern the Settings rows use: an
  * info icon reveals what this level actually covers, a "Change" link
  * reveals the 3-way picker. Once the user picks a level, it's sticky - see
  * preparationAssessment.ts's isExplicit handling - so this never gets

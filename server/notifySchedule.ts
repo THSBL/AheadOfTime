@@ -47,12 +47,16 @@ export function zonedTimeToUtcMs(year: number, month: number, day: number, hour:
   return second;
 }
 
-/** The latest scheduled send time that is not in the future (searches back a week+). */
-export function mostRecentScheduledMs(nowMs: number, prefs: Pick<NotifyPrefs, 'frequency' | 'hour' | 'weekday' | 'timezone'>): number {
+type SchedulePrefs = Pick<NotifyPrefs, 'frequency' | 'hour' | 'weekday' | 'timezone'> & { monthday?: number };
+
+/** The latest scheduled send time that is not in the future (searches back a month+). */
+export function mostRecentScheduledMs(nowMs: number, prefs: SchedulePrefs): number {
   const today = localParts(nowMs, prefs.timezone);
-  for (let back = 0; back <= 8; back++) {
+  const monthday = prefs.monthday ?? 1;
+  for (let back = 0; back <= 32; back++) {
     const d = new Date(Date.UTC(today.year, today.month - 1, today.day - back));
     if (prefs.frequency === 'weekly' && d.getUTCDay() !== prefs.weekday) continue;
+    if (prefs.frequency === 'monthly' && d.getUTCDate() !== monthday) continue;
     const scheduled = zonedTimeToUtcMs(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), prefs.hour, prefs.timezone);
     if (scheduled <= nowMs) return scheduled;
   }
@@ -60,16 +64,14 @@ export function mostRecentScheduledMs(nowMs: number, prefs: Pick<NotifyPrefs, 'f
   return nowMs - DAY_MS;
 }
 
-export function isUpdateDue(
-  nowMs: number,
-  prefs: Pick<NotifyPrefs, 'frequency' | 'hour' | 'weekday' | 'timezone'>,
-  lastSentMs: number | null
-): boolean {
+export function isUpdateDue(nowMs: number, prefs: SchedulePrefs, lastSentMs: number | null): boolean {
+  if (prefs.frequency === 'off') return false;
   const scheduled = mostRecentScheduledMs(nowMs, prefs);
   return lastSentMs === null || lastSentMs < scheduled;
 }
 
 /** How far back "new" calendar events count: a full period plus a day of slack. */
 export function lookbackMs(frequency: NotifyPrefs['frequency']): number {
+  if (frequency === 'monthly') return 32 * DAY_MS;
   return frequency === 'weekly' ? 8 * DAY_MS : 3 * DAY_MS;
 }

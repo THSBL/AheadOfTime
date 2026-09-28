@@ -225,6 +225,19 @@ ALTER TABLE milestones
 -- New calendar events the daily scan found, kept so the app can show them
 -- as a notice when the user has no Telegram/email delivery (notified_via is
 -- NULL until an external channel actually delivered them).
+-- Update preferences per account (Settings -> Updates); work without Background Sync.
+CREATE TABLE IF NOT EXISTS user_notify_prefs (
+  user_id             UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  notify_channels     TEXT,
+  notify_frequency    TEXT,
+  notify_hour         SMALLINT,
+  notify_weekday      SMALLINT,
+  notify_monthday     SMALLINT,
+  notify_timezone     TEXT,
+  last_update_sent_at TIMESTAMPTZ,
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS agenda_scan_findings (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

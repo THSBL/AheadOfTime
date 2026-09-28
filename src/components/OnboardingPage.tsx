@@ -46,7 +46,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
     if (initialProfile?.family_structure === 'single' || initialProfile?.familyStatus === 'Single') {
       return 'Single';
     }
-    return 'Family with kids';
+    return 'Single';
   });
   const [calendarType, setCalendarType] = useState<CalendarType>(() => {
     if (initialProfile?.calendar_type === 'personal' || initialProfile?.calendarType === 'Personal' || initialProfile?.calendarType === 'Personal only') {

@@ -24,7 +24,7 @@ import {
   GoogleCalendarProfile
 } from '../services/googleCalendar';
 import { CalendarEvent } from '../types';
-import { BackgroundSyncPanel, type NotifyPrefsDTO } from './BackgroundSyncPanel';
+import { SettingsRow, SettingsPill, rowButtonClass, rowPrimaryClass } from './SettingsRow';
 import { trackEvent } from '../services/analytics';
 import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 
@@ -60,17 +60,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   // background sync needs. Until then (or if it isn't set up) the card is
   // hidden, rather than offering a button that ends in a raw config error.
   const [isBackgroundSyncConfigured, setIsBackgroundSyncConfigured] = useState<boolean>(false);
-  // The daily digest goes out over Telegram, so background sync does nothing
-  // visible until Telegram is paired - the card says so instead of implying it works.
-  const [isTelegramLinked, setIsTelegramLinked] = useState<boolean>(false);
-  // Which channel carries the daily update: Telegram, email (only offered once
-  // the deployment can send it) or just a notice inside the app.
-  const [isEmailAvailable, setIsEmailAvailable] = useState<boolean>(false);
-  const [accountEmail, setAccountEmail] = useState<string>('');
-  const [notifyPrefs, setNotifyPrefs] = useState<NotifyPrefsDTO | null>(null);
-  const [prefsSaved, setPrefsSaved] = useState<boolean>(false);
   const [isLinkingBackgroundSync, setIsLinkingBackgroundSync] = useState<boolean>(false);
-  const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [backgroundSyncNotice, setBackgroundSyncNotice] = useState<string | null>(null);
   // False when Background Sync was linked without ticking Google Tasks.
   const [tasksGranted, setTasksGranted] = useState<boolean | null>(null);
@@ -88,12 +78,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
         if (data.ok) {
           setIsBackgroundSyncLinked(data.linked);
           setIsBackgroundSyncConfigured(data.configured === true);
-          setIsTelegramLinked(data.telegramLinked === true);
-          setIsEmailAvailable(data.emailConfigured === true);
-          setAccountEmail(typeof data.email === 'string' ? data.email : '');
           setTasksGranted(typeof data.tasksGranted === 'boolean' ? data.tasksGranted : null);
-          setNotifyPrefs(data.prefs ?? null);
-          setPrefsSaved(data.prefsSaved === true);
         }
       } catch (err) {
         console.warn('Background sync status check notice:', err);
@@ -111,7 +96,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     if (params.get('setup') !== 'background_sync') return;
     setBackgroundSyncNotice(
       isConnected
-        ? 'Turn on Background Sync below: plans you confirm with "Looks Good" in Telegram are then added to your Google Calendar automatically.'
+        ? 'Turn on Background Sync: plans you confirm with "Looks Good" in Telegram are then added to your Google Calendar automatically.'
         : 'Connect Google Calendar first, then turn on Background Sync: plans you confirm with "Looks Good" in Telegram are then added to your calendar automatically.'
     );
     setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
@@ -129,7 +114,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     if (!result) return;
 
     const messages: Record<string, string> = {
-      connected: 'Background sync connected. Choose when and where you want your update below.',
+      connected: 'Background Sync is on. Choose when and where you get your update under Settings → Updates.',
       partial: 'Background sync is connected, but Google Tasks wasn\'t ticked on Google\'s screen, so prep tasks can\'t be added. Disconnect and connect again, and tick every box.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
@@ -162,63 +147,6 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     } catch (err: any) {
       setBackgroundSyncNotice(err?.message || 'Could not start background sync setup.');
       setIsLinkingBackgroundSync(false);
-    }
-  };
-
-  // Saves as you choose (optimistic, reverted if the server refuses). The
-  // browser's own time zone rides along so "07:00" means the user's 07:00.
-  const handleChangePrefs = async (partial: Partial<NotifyPrefsDTO>) => {
-    if (!accessToken) return;
-    const previous = notifyPrefs;
-    const previousSaved = prefsSaved;
-    let timezone = 'UTC';
-    try {
-      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    } catch {
-      // keep UTC
-    }
-    const base: NotifyPrefsDTO = notifyPrefs ?? { channels: [], frequency: 'daily', hour: 7, weekday: 1, timezone };
-    setNotifyPrefs({ ...base, ...partial, timezone });
-    setPrefsSaved(true);
-    try {
-      const res = await fetch('/api/auth/google/status', {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefs: { ...partial, timezone } }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Could not save that choice.');
-      if (data.prefs) setNotifyPrefs(data.prefs);
-    } catch (err: any) {
-      setNotifyPrefs(previous);
-      setPrefsSaved(previousSaved);
-      setBackgroundSyncNotice(err?.message || 'Could not save that choice.');
-    }
-  };
-
-  const handleSendTestUpdate = async () => {
-    if (!accessToken) return;
-    setIsSendingTest(true);
-    setBackgroundSyncNotice(null);
-    try {
-      const res = await fetch('/api/auth/google/status', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sendTest: true }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        const sentTo = (data.results || []).map((r: { channel: string }) => (r.channel === 'email' ? `your inbox (${accountEmail})` : 'Telegram'));
-        setBackgroundSyncNotice(
-          `Test sent to ${sentTo.join(' and ')}${data.usedSample ? ', with sample content since nothing needs attention yet' : ''}. Check spam if it doesn't show up.`
-        );
-      } else {
-        setBackgroundSyncNotice(data.error || 'Could not send the test update.');
-      }
-    } catch (err: any) {
-      setBackgroundSyncNotice(err?.message || 'Could not send the test update.');
-    } finally {
-      setIsSendingTest(false);
     }
   };
 
@@ -336,199 +264,114 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     }
   };
 
+  const calendarIcon = <Calendar className="w-[18px] h-[18px]" />;
+  const dismissableNotice = (text: string, onDismiss: () => void, tone: 'info' | 'error' | 'success' = 'info') => (
+    <div
+      className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
+        tone === 'error'
+          ? 'bg-rose-50 border border-rose-200 text-rose-800'
+          : tone === 'success'
+            ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+            : 'bg-slate-50 border border-slate-200 text-slate-700'
+      }`}
+    >
+      {tone === 'error' ? <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : tone === 'success' ? <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : null}
+      <span className="flex-1">{text}</span>
+      <button type="button" onClick={onDismiss} className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0" aria-label="Dismiss">
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+
   return (
-    <div ref={cardRef} className="scroll-mt-20 bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-200 space-y-5">
-      {/* Card Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 shadow-2xs">
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 4H5C3.89543 4 3 4.89543 3 6V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V6C21 4.89543 20.1046 4 19 4Z" fill="#4285F4" fillOpacity="0.12" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M16 2V6" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M8 2V6" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M3 10H21" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="8" cy="15" r="1.25" fill="#2563EB" />
-              <circle cx="12" cy="15" r="1.25" fill="#2563EB" />
-              <circle cx="16" cy="15" r="1.25" fill="#2563EB" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-slate-900 leading-snug">
-              Google Calendar & Tasks
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-              Scans upcoming events and syncs your lead-up milestones.
-            </p>
-          </div>
-        </div>
-
-        {/* Status Badge */}
-        <div className="self-start sm:self-center shrink-0">
-          {isConnected ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-              Connected
-            </span>
+    <>
+      {/* Google Calendar */}
+      <SettingsRow
+        icon={calendarIcon}
+        title="Google Calendar"
+        subtitle={isConnected ? calendarProfile?.id || calendarProfile?.summary || 'Connected' : 'Scan your agenda and push plans'}
+        open={Boolean(error || successMessage)}
+        right={
+          isConnected ? (
+            <SettingsPill on>Connected</SettingsPill>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-              Not Connected
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* The Telegram setup hint also needs to show before Google is
-          connected (the connected state has its own notice spot below). */}
-      {!isConnected && backgroundSyncNotice && (
-        <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-xs text-slate-700 flex items-start gap-2 animate-in fade-in duration-200">
-          <span className="flex-1">{backgroundSyncNotice}</span>
-          <button type="button" onClick={() => setBackgroundSyncNotice(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Body State */}
-      {isConnected ? (
-        /* STATE B: Connected */
-        <div className="space-y-4 pt-1">
-          {/* Account Detail Box */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-900">
-                  {calendarProfile?.id || calendarProfile?.summary || 'Connected Google Account'}
-                </span>
-                {calendarProfile?.timeZone && (
-                  <span className="text-[11px] text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                    {calendarProfile.timeZone}
-                  </span>
-                )}
-              </div>
-              <p className="text-slate-500 text-[11px] flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                Read/Write access authorized for Calendar & Google Tasks
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleResync}
-                disabled={isResyncing}
-                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isResyncing ? 'animate-spin text-sky-600' : ''}`} />
-                <span>{isResyncing ? 'Verifying...' : 'Re-sync'}</span>
+            <button type="button" onClick={handleConnect} disabled={isConnecting} className={rowPrimaryClass}>
+              {isConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              <span>{isConnecting ? 'Connecting…' : 'Connect'}</span>
+            </button>
+          )
+        }
+      >
+        {isConnected ? (
+          <>
+            <p className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#447463] shrink-0" />
+              <span>
+                Calendar &amp; Tasks access{calendarProfile?.timeZone ? ` · ${calendarProfile.timeZone}` : ''}
+              </span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={handleResync} disabled={isResyncing} className={rowButtonClass}>
+                <RefreshCw className={`w-3.5 h-3.5 ${isResyncing ? 'animate-spin' : ''}`} />
+                <span>{isResyncing ? 'Checking…' : 'Re-sync'}</span>
               </button>
-
-              <button
-                type="button"
-                onClick={handleDisconnect}
-                className="px-3 py-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 font-medium rounded-lg text-xs transition flex items-center gap-1 cursor-pointer"
-              >
+              <button type="button" onClick={handleDisconnect} className={rowButtonClass}>
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Disconnect</span>
               </button>
             </div>
-          </div>
+          </>
+        ) : (
+          <p>Finds upcoming trips and events in your Google Calendar and adds your prep tasks to Google Tasks.</p>
+        )}
+        {successMessage && dismissableNotice(successMessage, () => setSuccessMessage(null), 'success')}
+        {error && dismissableNotice(error, () => setError(null), 'error')}
+      </SettingsRow>
 
-          {/* Auto Sync & Notify: background sync needs a SEPARATE consent
-              grant (offline access) from the one above - only offered once
-              the deployment has what it needs. */}
-          {isBackgroundSyncConfigured && (
-            <BackgroundSyncPanel
-              linked={isBackgroundSyncLinked}
-              isLinking={isLinkingBackgroundSync}
-              onConnect={handleConnectBackgroundSync}
-              onDisconnect={handleDisconnectBackgroundSync}
-              telegramLinked={isTelegramLinked}
-              emailAvailable={isEmailAvailable}
-              accountEmail={accountEmail}
-              prefs={notifyPrefs}
-              prefsSaved={prefsSaved}
-              onChangePrefs={handleChangePrefs}
-              onSendTest={handleSendTestUpdate}
-              isSendingTest={isSendingTest}
-            />
-          )}
-
-          {isBackgroundSyncLinked && tasksGranted === false && !backgroundSyncNotice && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-              Prep tasks can't be added to Google Tasks: that permission wasn't ticked when Background Sync was connected. Disconnect and connect again, and tick every box on Google's screen.
-            </div>
-          )}
-
-          {backgroundSyncNotice && (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 flex items-start gap-2 animate-in fade-in duration-200">
-              <span className="flex-1">{backgroundSyncNotice}</span>
-              <button
-                type="button"
-                onClick={() => setBackgroundSyncNotice(null)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* STATE A: Not Connected */
-        <div className="space-y-4 pt-1">
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Link your Google Calendar to automatically scan upcoming trips, flights, and events, and publish synchronized preparation checklists directly into your Google Tasks.
-          </p>
-
-          <div>
-            <button
-              type="button"
-              onClick={handleConnect}
-              disabled={isConnecting}
-              className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-semibold rounded-xl text-xs sm:text-sm transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2.5 cursor-pointer"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                  <span>Connecting with Google...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                  </svg>
-                  <span>Connect Google Calendar</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Notifications / Feedback */}
-      {successMessage && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2 animate-in fade-in duration-200">
-          <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successMessage}</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2 animate-in fade-in duration-200">
-          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          <span className="flex-1">{error}</span>
-          <button 
-            type="button" 
-            onClick={() => setError(null)}
-            className="text-rose-500 hover:text-rose-900 font-bold"
+      {/* Background Sync: a separate, long-lived Google grant (offline access) */}
+      {(isBackgroundSyncConfigured || !isConnected) && (
+        <div ref={cardRef} className="scroll-mt-24">
+          <SettingsRow
+            icon={<Zap className="w-[18px] h-[18px]" />}
+            title="Background Sync"
+            subtitle={
+              !isConnected
+                ? 'Connect Google Calendar first'
+                : isBackgroundSyncLinked
+                  ? 'Adds confirmed plans automatically'
+                  : 'Add plans even when the app is closed'
+            }
+            open={Boolean(backgroundSyncNotice) || (isBackgroundSyncLinked === true && tasksGranted === false)}
+            right={<SettingsPill on={Boolean(isConnected && isBackgroundSyncLinked)}>{isConnected && isBackgroundSyncLinked ? 'On' : 'Off'}</SettingsPill>}
           >
-            ✕
-          </button>
+            <p>
+              Plans you confirm in Telegram ("Looks Good") go straight into your Google Calendar and Tasks, and your agenda is checked for new
+              events every day, even when the app is closed.
+            </p>
+            {isConnected && isBackgroundSyncConfigured && (
+              <div className="flex flex-wrap gap-2">
+                {isBackgroundSyncLinked ? (
+                  <button type="button" onClick={handleDisconnectBackgroundSync} className={rowButtonClass}>
+                    Turn off
+                  </button>
+                ) : (
+                  <button type="button" onClick={handleConnectBackgroundSync} disabled={isLinkingBackgroundSync} className={rowPrimaryClass}>
+                    {isLinkingBackgroundSync ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    <span>{isLinkingBackgroundSync ? 'Opening Google…' : 'Turn on'}</span>
+                  </button>
+                )}
+              </div>
+            )}
+            {isBackgroundSyncLinked && tasksGranted === false && !backgroundSyncNotice && (
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                Prep tasks can't be added to Google Tasks: that permission wasn't ticked when Background Sync was turned on. Turn it off and on
+                again, and tick every box on Google's screen.
+              </div>
+            )}
+            {backgroundSyncNotice && dismissableNotice(backgroundSyncNotice, () => setBackgroundSyncNotice(null))}
+          </SettingsRow>
         </div>
       )}
-    </div>
+    </>
   );
 };

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Trash2, Loader2 } from 'lucide-react';
+import { SettingsRow } from './SettingsRow';
 import { aiJsonHeaders } from '../services/aiRequest';
 import { getCurrentUser, logoutAndClearAccountSession, normalizeUserId } from '../services/accountManager';
 import { clearGoogleSession } from '../services/googleAuth';
 
 /**
- * Settings -> Credentials: delete the account and everything stored for it
+ * Settings -> Account: delete the account and everything stored for it
  * (server: DELETE /api/auth/account). Two steps, the second asks the user
  * to type DELETE. Nothing in their own Google Calendar is touched.
  */
@@ -50,25 +51,22 @@ export const DeleteAccountCard: React.FC = () => {
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-rose-200 shadow-xs p-5 sm:p-6 space-y-3">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-700 shrink-0">
-          <Trash2 className="w-5 h-5" />
-        </div>
-        <div className="min-w-0">
-          <h2 className="text-base font-bold text-slate-900">Delete account</h2>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Permanently deletes your plans and tasks, profile, Telegram link, Background Sync access (also revoked at Google),
-            feedback and settings. Events already pushed to your Google Calendar stay there.
-          </p>
-        </div>
-      </div>
-
+    <SettingsRow
+      tone="danger"
+      icon={<Trash2 className="w-[18px] h-[18px]" />}
+      title="Delete account"
+      subtitle="Plans, profile, links and settings"
+      open={Boolean(error)}
+    >
+      <p>
+        Permanently deletes your plans and tasks, profile, Telegram link, Background Sync access (also revoked at Google), feedback and
+        settings. Events already in your Google Calendar stay there.
+      </p>
       {step === 'idle' ? (
         <button
           type="button"
           onClick={() => setStep('confirm')}
-          className="px-4 py-2 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold cursor-pointer"
+          className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold cursor-pointer"
         >
           Delete my account...
         </button>
@@ -92,7 +90,7 @@ export const DeleteAccountCard: React.FC = () => {
                 setTyped('');
                 setError(null);
               }}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold cursor-pointer"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold cursor-pointer"
             >
               Cancel
             </button>
@@ -100,15 +98,15 @@ export const DeleteAccountCard: React.FC = () => {
               type="button"
               onClick={deleteAccount}
               disabled={typed.trim() !== 'DELETE' || isDeleting}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
               {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Delete everything
             </button>
           </div>
-          {error && <p className="text-xs text-rose-700">{error}</p>}
         </div>
       )}
-    </div>
+      {error && <p className="text-xs text-rose-700">{error}</p>}
+    </SettingsRow>
   );
 };

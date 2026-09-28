@@ -1,14 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { GoogleCalendarIntegrationCard } from './GoogleCalendarIntegrationCard';
 import { TelegramIntegrationCard } from './TelegramIntegrationCard';
 import { RecentlyDeletedEventsCard } from './RecentlyDeletedEventsCard';
-import { ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, Settings2, Check } from 'lucide-react';
+import { ArrowLeft, Check } from 'lucide-react';
 import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { AiPlanningCard } from './AiPlanningCard';
 import { DeleteAccountCard } from './DeleteAccountCard';
+import { SettingsGroup } from './SettingsRow';
+import { UpdatesSettings } from './UpdatesSettings';
+
+export type SettingsTab = 'connections' | 'account' | 'updates';
+const TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'connections', label: 'Connections' },
+  { id: 'account', label: 'Account' },
+  { id: 'updates', label: 'Updates' },
+];
+
+/** /settings/account and /settings/updates; everything else (incl. the old /settings/credentials) is Connections. */
+export function settingsTabFromPath(pathname: string): SettingsTab {
+  if (pathname.startsWith('/settings/account')) return 'account';
+  if (pathname.startsWith('/settings/updates')) return 'updates';
+  return 'connections';
+}
 
 interface SettingsCredentialsPageProps {
   onSyncComplete?: (events: CalendarEvent[]) => void;
@@ -20,6 +36,8 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
   events: propEvents 
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const tab = settingsTabFromPath(location.pathname);
   const currentUser = getCurrentUser();
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
     if (propEvents && propEvents.length > 0) return propEvents;
@@ -61,171 +79,135 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
     setTimeout(() => setSavedSuccessMessage(false), 3000);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased selection:bg-sky-100 selection:text-sky-900">
-      {/* Top Header Bar */}
-      <header className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 px-3 py-1.5 rounded-xl transition font-semibold cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Dashboard</span>
-          </button>
+  const fieldLabel = 'block text-xs font-bold text-slate-600 mb-1';
+  const fieldControl =
+    'w-full text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-slate-400';
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-sky-800 bg-sky-50 border border-sky-200/70 px-2.5 py-1 rounded-full uppercase tracking-wider">
-              Connected Ways to Plan
-            </span>
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+      {/* Header: back, title, and the three tabs */}
+      <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-xl mx-auto px-4 pt-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 px-3 py-1.5 rounded-xl transition font-semibold cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+            <h1 className="text-lg font-extrabold text-slate-900 tracking-tight">Settings</h1>
           </div>
+          <nav className="flex mt-2" role="tablist" aria-label="Settings sections">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => navigate(`/settings/${t.id}${location.search}`, { replace: true })}
+                className={`flex-1 py-2.5 text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+                  tab === t.id ? 'text-[#182A42] border-[#182A42]' : 'text-slate-500 border-transparent hover:text-slate-800'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
-      {/* Main Container: max-w-xl mx-auto px-4 py-8 */}
-      <main className="flex-1 max-w-xl mx-auto px-4 py-8 sm:py-10 w-full space-y-6">
-        {/* Page Title & Intro */}
-        <div className="space-y-1.5 text-center sm:text-left">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Connect Your Services
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 max-w-lg leading-relaxed">
-            Plan and adjust your prep schedule from Google Calendar or Telegram — pick whichever's in front of you.
-          </p>
-        </div>
+      <main className="flex-1 max-w-xl mx-auto px-4 py-5 w-full space-y-3">
+        {tab === 'connections' && (
+          <SettingsGroup>
+            <GoogleCalendarIntegrationCard
+              events={events}
+              onSyncComplete={(synced) => {
+                setEvents(synced);
+                onSyncComplete?.(synced);
+              }}
+            />
+            <TelegramIntegrationCard userId={currentUser?.id} />
+            <AiPlanningCard />
+          </SettingsGroup>
+        )}
 
-        {/* 2 Streamlined Cards */}
-        <div className="space-y-4">
-          {/* CARD 1: GOOGLE CALENDAR & TASKS */}
-          <GoogleCalendarIntegrationCard
-            events={events}
-            onSyncComplete={(synced) => {
-              setEvents(synced);
-              onSyncComplete?.(synced);
-            }}
-          />
-
-          {/* CARD 2: TELEGRAM ASSISTANT BOT */}
-          <TelegramIntegrationCard userId={currentUser?.id} />
-
-          {/* AI planning switch (Google Gemini) - linked from the chat's notice */}
-          <AiPlanningCard />
-
-          {/* Undo for accidental deletes (soft-deleted for 30 days) */}
-          <RecentlyDeletedEventsCard />
-
-          {/* Delete the account and all data stored for it */}
-          {currentUser?.id && <DeleteAccountCard />}
-
-          {/* CARD 3: QUESTIONNAIRE PROFILE & PRESET HEURISTICS */}
-          <div className="bg-white border border-sky-200/90 rounded-2xl p-5 shadow-xs">
-            <div className="flex items-center gap-3 mb-3">
-              <span className="p-2 rounded-xl bg-sky-100 text-sky-900 border border-sky-200">
-                <Settings2 className="w-5 h-5" />
-              </span>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Questionnaire Profile &amp; Preset Heuristics</h3>
-                <p className="text-xs text-slate-500">
-                  Update your questionnaire details below. Changes will immediately adjust your active preset templates and workflow rules.
-                </p>
-              </div>
-            </div>
-
-            {savedSuccessMessage && (
-              <div className="mb-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span>Profile updated successfully! Presets adjusted accordingly.</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveQuestionnaireChanges} className="space-y-3 pt-2 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Family Structure</label>
-                <select
-                  value={editFamilyStructure}
-                  onChange={(e) => setEditFamilyStructure(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-slate-900"
-                >
-                  <option value="single">Single / Solo</option>
-                  <option value="couple">Couple / Partner</option>
-                  <option value="family_with_kids">Family with Kids</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Calendar Scope</label>
-                <select
-                  value={editCalendarScope}
-                  onChange={(e) => setEditCalendarScope(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-slate-900"
-                >
-                  <option value="personal">Personal Only</option>
-                  <option value="mixed">Mixed (Personal &amp; Work)</option>
-                  <option value="business">Business / Professional</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Home Base / Location</label>
-                <input
-                  type="text"
-                  value={editHomeLocation}
-                  onChange={(e) => setEditHomeLocation(e.target.value)}
-                  placeholder="e.g. London, UK or 94107"
-                  className="w-full text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Do You Own Animals That Are Dependent on You?</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([true, false] as const).map((val) => (
-                    <button
-                      key={String(val)}
-                      type="button"
-                      onClick={() => setEditHasPet(val)}
-                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                        editHasPet === val
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      {val ? 'Yes' : 'No'}
-                    </button>
-                  ))}
+        {tab === 'account' && (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1">Profile</p>
+            <form onSubmit={handleSaveQuestionnaireChanges} className="space-y-3">
+              <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs divide-y divide-slate-100">
+                <div className="p-3.5">
+                  <label className={fieldLabel} htmlFor="profile-household">Household</label>
+                  <select id="profile-household" value={editFamilyStructure} onChange={(e) => setEditFamilyStructure(e.target.value)} className={fieldControl}>
+                    <option value="single">Single / Solo</option>
+                    <option value="couple">Couple / Partner</option>
+                    <option value="family_with_kids">Family with kids</option>
+                  </select>
+                </div>
+                <div className="p-3.5">
+                  <label className={fieldLabel} htmlFor="profile-calendar">Calendar</label>
+                  <select id="profile-calendar" value={editCalendarScope} onChange={(e) => setEditCalendarScope(e.target.value)} className={fieldControl}>
+                    <option value="personal">Personal only</option>
+                    <option value="mixed">Personal &amp; work</option>
+                    <option value="business">Work only</option>
+                  </select>
+                </div>
+                <div className="p-3.5">
+                  <label className={fieldLabel} htmlFor="profile-home">Home base</label>
+                  <input
+                    id="profile-home"
+                    type="text"
+                    value={editHomeLocation}
+                    onChange={(e) => setEditHomeLocation(e.target.value)}
+                    placeholder="e.g. London, UK"
+                    className={fieldControl}
+                  />
+                </div>
+                <div className="p-3.5">
+                  <p className={fieldLabel}>Pets that depend on you</p>
+                  <div className="flex bg-slate-100 p-0.5 rounded-xl gap-0.5">
+                    {([true, false] as const).map((val) => (
+                      <button
+                        key={String(val)}
+                        type="button"
+                        onClick={() => setEditHasPet(val)}
+                        aria-pressed={editHasPet === val}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          editHasPet === val ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        {val ? 'Yes' : 'No'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <div className="pt-2 flex justify-end">
+              <div className="flex items-center justify-end gap-3">
+                {savedSuccessMessage && (
+                  <span className="text-xs font-semibold text-[#447463] flex items-center gap-1 animate-in fade-in">
+                    <Check className="w-3.5 h-3.5" /> Saved
+                  </span>
+                )}
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95"
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Update Profile &amp; Adjust Presets</span>
+                  Save profile
                 </button>
               </div>
             </form>
-          </div>
-        </div>
 
-        {/* Done / Return to Dashboard Action */}
-        <div className="pt-4 flex flex-col items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="w-full py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-2xl text-sm transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Return to Dashboard</span>
-          </button>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1 pt-2">Data</p>
+            <SettingsGroup>
+              <RecentlyDeletedEventsCard />
+              {currentUser?.id && <DeleteAccountCard />}
+            </SettingsGroup>
+          </>
+        )}
 
-          <p className="text-[11px] text-slate-400 flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-            <span>Your authentication tokens are stored securely and never shared.</span>
-          </p>
-        </div>
+        {tab === 'updates' && <UpdatesSettings />}
       </main>
     </div>
   );

@@ -2524,6 +2524,9 @@ export default function AppWithRouter() {
             <Route path="/events/:id" element={<App />} />
             <Route path="/events/:id/edit" element={<App />} />
             <Route path="/settings/credentials" element={<SettingsCredentialsPage />} />
+            <Route path="/settings/connections" element={<SettingsCredentialsPage />} />
+            <Route path="/settings/account" element={<SettingsCredentialsPage />} />
+            <Route path="/settings/updates" element={<SettingsCredentialsPage />} />
             <Route path="/settings/profile" element={<SettingsProfilePage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             {/* Not linked from any nav - real access control is the

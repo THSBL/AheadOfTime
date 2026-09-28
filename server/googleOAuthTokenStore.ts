@@ -1,7 +1,7 @@
 import { query } from './db.js';
 import { encryptSecret, decryptSecret } from './cryptoUtil.js';
 import { getGoogleClientId } from './googleClientId.js';
-import { DEFAULT_NOTIFY_PREFS, isValidTimeZone, parseChannelList, type NotifyPrefs } from './notifyPrefs.js';
+import { DEFAULT_NOTIFY_PREFS, NOTIFY_FREQUENCIES, isValidTimeZone, parseChannelList, type NotifyFrequency, type NotifyPrefs } from './notifyPrefs.js';
 
 /**
  * Server-side counterpart to src/services/googleAuth.ts's browser-only
@@ -71,6 +71,22 @@ export function ensureBackgroundSyncSchema(): Promise<void> {
       await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_link TEXT`);
       await query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS synced_to_google_at TIMESTAMPTZ`);
       await query(`ALTER TABLE milestones ADD COLUMN IF NOT EXISTS google_task_id TEXT`);
+      // Update preferences per account, so they work without Background
+      // Sync too (they used to live on the token row above, which is only
+      // there once Background Sync is linked - still read as a fallback).
+      await query(
+        `CREATE TABLE IF NOT EXISTS user_notify_prefs (
+           user_id             UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+           notify_channels     TEXT,
+           notify_frequency    TEXT,
+           notify_hour         SMALLINT,
+           notify_weekday      SMALLINT,
+           notify_monthday     SMALLINT,
+           notify_timezone     TEXT,
+           last_update_sent_at TIMESTAMPTZ,
+           updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+         )`
+      );
       await query(
         `CREATE TABLE IF NOT EXISTS agenda_scan_findings (
            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -170,6 +186,7 @@ export interface NotifyPrefsColumns {
   notify_frequency?: string | null;
   notify_hour?: number | null;
   notify_weekday?: number | null;
+  notify_monthday?: number | null;
   notify_timezone?: string | null;
 }
 
@@ -180,9 +197,10 @@ export function prefsFromRow(row: NotifyPrefsColumns | undefined): StoredNotifyP
     row.notify_channels != null ? parseChannelList(row.notify_channels) : parseChannelList(row.notify_channel);
   const prefs: NotifyPrefs = {
     channels,
-    frequency: row.notify_frequency === 'weekly' ? 'weekly' : 'daily',
+    frequency: NOTIFY_FREQUENCIES.includes(row.notify_frequency as NotifyFrequency) ? (row.notify_frequency as NotifyFrequency) : 'daily',
     hour: Number.isInteger(row.notify_hour) ? (row.notify_hour as number) : DEFAULT_NOTIFY_PREFS.hour,
     weekday: Number.isInteger(row.notify_weekday) ? (row.notify_weekday as number) : DEFAULT_NOTIFY_PREFS.weekday,
+    monthday: Number.isInteger(row.notify_monthday) ? (row.notify_monthday as number) : DEFAULT_NOTIFY_PREFS.monthday,
     timezone: isValidTimeZone(row.notify_timezone) ? row.notify_timezone : DEFAULT_NOTIFY_PREFS.timezone,
   };
   const saved = row.notify_channels != null || row.notify_channel != null || row.notify_frequency != null;
@@ -191,6 +209,12 @@ export function prefsFromRow(row: NotifyPrefsColumns | undefined): StoredNotifyP
 
 export async function getNotifyPrefs(userId: string): Promise<StoredNotifyPrefs> {
   await ensureBackgroundSyncSchema();
+  const own = await query<NotifyPrefsColumns>(
+    `SELECT notify_channels, notify_frequency, notify_hour, notify_weekday, notify_monthday, notify_timezone
+       FROM user_notify_prefs WHERE user_id = $1`,
+    [userId]
+  );
+  if (own[0]) return { prefs: prefsFromRow(own[0]).prefs, saved: true };
   const rows = await query<NotifyPrefsColumns>(
     `SELECT notify_channel, notify_channels, notify_frequency, notify_hour, notify_weekday, notify_timezone
        FROM google_oauth_tokens WHERE user_id = $1`,
@@ -201,11 +225,22 @@ export async function getNotifyPrefs(userId: string): Promise<StoredNotifyPrefs>
 
 export async function setNotifyPrefs(userId: string, prefs: NotifyPrefs): Promise<void> {
   await ensureBackgroundSyncSchema();
+  // Carry the last send time over from the token row the first time, so
+  // moving the preferences never makes an update go out twice.
   await query(
-    `UPDATE google_oauth_tokens
-        SET notify_channels = $2, notify_frequency = $3, notify_hour = $4, notify_weekday = $5, notify_timezone = $6
-      WHERE user_id = $1`,
-    [userId, prefs.channels.join(','), prefs.frequency, prefs.hour, prefs.weekday, prefs.timezone]
+    `INSERT INTO user_notify_prefs
+       (user_id, notify_channels, notify_frequency, notify_hour, notify_weekday, notify_monthday, notify_timezone, last_update_sent_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7,
+             (SELECT last_update_sent_at FROM google_oauth_tokens WHERE user_id = $1), now())
+     ON CONFLICT (user_id) DO UPDATE SET
+       notify_channels = EXCLUDED.notify_channels,
+       notify_frequency = EXCLUDED.notify_frequency,
+       notify_hour = EXCLUDED.notify_hour,
+       notify_weekday = EXCLUDED.notify_weekday,
+       notify_monthday = EXCLUDED.notify_monthday,
+       notify_timezone = EXCLUDED.notify_timezone,
+       updated_at = now()`,
+    [userId, prefs.channels.join(','), prefs.frequency, prefs.hour, prefs.weekday, prefs.monthday, prefs.timezone]
   );
 }
 

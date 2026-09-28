@@ -1,12 +1,13 @@
 /**
  * How and when a user wants their update: which channels (any combination),
- * how often (daily / weekly), and at what local time. Pure types and
+ * how often (off / daily / weekly / monthly), and at what local time. Pure types and
  * validation, shared by the API, the scheduler and the tests.
  */
 
 export type NotifyChannel = 'telegram' | 'email' | 'in_app';
 export const NOTIFY_CHANNELS: readonly NotifyChannel[] = ['telegram', 'email', 'in_app'];
-export type NotifyFrequency = 'daily' | 'weekly';
+export type NotifyFrequency = 'off' | 'daily' | 'weekly' | 'monthly';
+export const NOTIFY_FREQUENCIES: readonly NotifyFrequency[] = ['off', 'daily', 'weekly', 'monthly'];
 
 export interface NotifyPrefs {
   /** Empty = automatic: Telegram if paired, otherwise the in-app notice. */
@@ -16,6 +17,8 @@ export interface NotifyPrefs {
   hour: number;
   /** Weekly only: 0 = Sunday ... 6 = Saturday. */
   weekday: number;
+  /** Monthly only: day of the month, 1-28 (so every month has it). */
+  monthday: number;
   /** IANA time zone the hour is in, e.g. Europe/London. */
   timezone: string;
 }
@@ -26,6 +29,7 @@ export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   frequency: 'daily',
   hour: 7,
   weekday: 1,
+  monthday: 1,
   timezone: 'UTC',
 };
 
@@ -64,7 +68,7 @@ export function mergeNotifyPrefs(input: any, current: NotifyPrefs): NotifyPrefs 
     next.channels = parseChannelList(input.channels);
   }
   if (input.frequency !== undefined) {
-    if (input.frequency !== 'daily' && input.frequency !== 'weekly') return null;
+    if (!NOTIFY_FREQUENCIES.includes(input.frequency)) return null;
     next.frequency = input.frequency;
   }
   if (input.hour !== undefined) {
@@ -74,6 +78,10 @@ export function mergeNotifyPrefs(input: any, current: NotifyPrefs): NotifyPrefs 
   if (input.weekday !== undefined) {
     if (!Number.isInteger(input.weekday) || input.weekday < 0 || input.weekday > 6) return null;
     next.weekday = input.weekday;
+  }
+  if (input.monthday !== undefined) {
+    if (!Number.isInteger(input.monthday) || input.monthday < 1 || input.monthday > 28) return null;
+    next.monthday = input.monthday;
   }
   if (input.timezone !== undefined) {
     if (!isValidTimeZone(input.timezone)) return null;

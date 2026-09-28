@@ -52,7 +52,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
     if (profile?.family_structure === 'single' || profile?.familyStatus === 'Single') {
       return 'Single';
     }
-    return 'Family with kids';
+    return 'Single';
   });
   const [calendarType, setCalendarType] = useState<CalendarType>(() => {
     if (profile?.calendar_type === 'personal' || profile?.calendarType === 'Personal' || profile?.calendarType === 'Personal only') {

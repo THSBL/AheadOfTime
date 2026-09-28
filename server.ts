@@ -46,6 +46,8 @@ import { handleProfileApi } from "./server/userProfileStore";
 import { handleSessionApi } from "./server/sessionRoutes";
 import { verifyRequestUser } from "./server/requestAuth";
 import { handleAiSettings } from "./server/aiSettingsRoute";
+import { handleNotifyPrefs } from "./server/notifyPrefsRoute";
+import { handleTelegramWarm } from "./server/telegramWarm";
 import { handleAccountDeletion } from "./server/accountDeletion";
 import { guardAiRequest, AI_LIMITS, OffTopicRequestError, OFF_TOPIC_REPLY, AI_SCOPE_RULE, capPlannerOutput, capText, capTimingSuggestion } from "./server/aiGuard";
 import { handleCalendarPush, handleCalendarEvents } from "./server/googleCalendarServerApi";
@@ -1006,6 +1008,8 @@ app.get("/webhook/telegram", (req: Request, res: Response) => {
 });
 
 // 2. Telegram Integration Status
+// Twin of api/telegram/[...path].ts route=warm.
+app.get("/api/telegram/warm", (req: Request, res: Response) => handleTelegramWarm(req, res));
 app.get("/api/telegram/status", async (req: Request, res: Response) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
@@ -1396,6 +1400,8 @@ function getAppOrigin(req: Request): string {
 app.all("/api/auth/session", (req: Request, res: Response) => handleSessionApi(req, res));
 // Twin of api/auth/google/index.ts action=ai-settings.
 app.all("/api/auth/ai-settings", (req: Request, res: Response) => handleAiSettings(req, res));
+// Twin of api/auth/google/index.ts action=notify-prefs.
+app.all("/api/auth/notify-prefs", (req: Request, res: Response) => handleNotifyPrefs(req, res));
 // Twin of api/auth/google/index.ts action=delete-account.
 app.all("/api/auth/account", (req: Request, res: Response) => handleAccountDeletion(req, res));
 

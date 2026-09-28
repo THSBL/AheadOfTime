@@ -1,4 +1,6 @@
 import { canUseAppSession, bearerHeader } from '../services/appSession';
+import { SettingsRow, SettingsPill, rowButtonClass } from './SettingsRow';
+import { OpenTelegramButton } from './OpenTelegramButton';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2,
@@ -344,88 +346,44 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
 
   const formattedUsername = username.startsWith('@') ? username : `@${username}`;
 
+  const telegramIcon = (
+    <svg className="w-[18px] h-[18px] text-[#229ED9]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M21.5 4.2 2.9 11.4c-1.2.5-1.2 1.2 0 1.6l4.8 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.4l2.3-2.2 4.7 3.5c.9.5 1.5.2 1.7-.8l3.1-14.6c.3-1.3-.5-1.9-1.5-1.2z" />
+    </svg>
+  );
+
   return (
-    <div id="telegram-integration-card" className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-200 space-y-5">
-      {/* Card Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center shrink-0 shadow-2xs">
-            {/* Telegram Plane Vector */}
-            <svg className="w-6 h-6 text-[#2AABEE]" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" fill="#2AABEE" fillOpacity="0.12" />
-              <path
-                d="M17.5 7.5L6.5 11.5L10.5 13.5L14.5 9.5L11.5 14.5L16.5 17.5L17.5 7.5Z"
-                fill="#2AABEE"
-              />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-slate-900 leading-snug">
-              Telegram Assistant
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-              Plan and adjust your prep schedule by chatting — on the go, not just here.
-            </p>
-          </div>
-        </div>
-
-        {/* Status Badge */}
-        <div className="self-start sm:self-center shrink-0">
-          {isLinked ? (
-            <span id="telegram-status-active" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Active</span>
-            </span>
-          ) : (
-            <span id="telegram-status-unlinked" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-              Not Linked
-            </span>
-          )}
-        </div>
-      </div>
-
+    <SettingsRow
+      id="telegram-integration-card"
+      icon={telegramIcon}
+      title="Telegram"
+      subtitle={isLinked ? formattedUsername : 'Plan and adjust by chatting, on the go'}
+      open={Boolean(feedback) || Boolean(pairingLink)}
+      right={isLinked ? <OpenTelegramButton /> : <SettingsPill on={false}>Not linked</SettingsPill>}
+    >
       {/* Body Content */}
       {isLinked ? (
         /* STATE: Active / Linked */
-        <div className="space-y-4 pt-1 animate-in fade-in duration-200">
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span id="telegram-connected-user" className="font-semibold text-slate-900 text-sm">
-                  {formattedUsername}
-                </span>
-                {chatId ? (
-                  <span className="text-[11px] text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                    ID: {chatId}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-slate-500 text-[11px] flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                Live calendar assistant linked and listening for natural scheduling prompts
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                id="btn-disconnect-telegram"
-                type="button"
-                onClick={handleUnlink}
-                disabled={isUnlinking}
-                className="px-3 py-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 font-medium rounded-lg text-xs transition flex items-center gap-1 cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Disconnect</span>
-              </button>
-            </div>
-          </div>
+        <div className="space-y-2.5">
+          <p>
+            <b>Open</b> jumps straight into the chat with the bot and wakes it up at the same moment, so your first message gets a quick answer.
+          </p>
+          <button
+            id="btn-disconnect-telegram"
+            type="button"
+            onClick={handleUnlink}
+            disabled={isUnlinking}
+            className={rowButtonClass}
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Disconnect</span>
+          </button>
         </div>
       ) : (
         /* STATE: Not Linked */
         <div className="space-y-4 pt-1">
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Message the bot naturally like <span className="font-medium text-slate-800 italic">"Trip to Scottish Highlands Oct 14-18 with 4 friends"</span>. The assistant extracts dates, checks calendar availability, and generates reverse T-Minus preparation runways.
+          <p>
+            Message the bot like <span className="italic">"Trip to the Highlands Oct 14-18 with 4 friends"</span> and it writes your prep plan.
           </p>
 
           <div className="space-y-3">
@@ -589,6 +547,6 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
           </button>
         </div>
       )}
-    </div>
+    </SettingsRow>
   );
 };

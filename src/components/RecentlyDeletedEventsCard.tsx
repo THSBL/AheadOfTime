@@ -1,3 +1,4 @@
+import { SettingsRow, rowPrimaryClass } from './SettingsRow';
 import { canUseAppSession } from '../services/appSession';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Trash2, Undo2, Loader2, ChevronDown } from 'lucide-react';
@@ -65,60 +66,32 @@ export const RecentlyDeletedEventsCard: React.FC = () => {
   if (!items || items.length === 0) return notice ? <NoticeOnly text={notice} onClose={() => setNotice(null)} /> : null;
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
-      <button
-        type="button"
-        onClick={() => setIsExpanded((v) => !v)}
-        aria-expanded={isExpanded}
-        className="w-full flex items-center gap-3 cursor-pointer"
-      >
-        <span className="p-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
-          <Trash2 className="w-5 h-5" />
-        </span>
-        <div className="text-left flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-slate-900">Recently deleted ({items.length})</h3>
-          <p className="text-xs text-slate-500">Kept for {RETENTION_DAYS} days, then removed for good. Restore brings back the event and its tasks.</p>
-        </div>
-        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-      </button>
-
-      {notice && <p className="text-xs text-slate-600 mt-3">{notice}</p>}
-
-      {isExpanded && (
-        <ul className="divide-y divide-slate-100 mt-3">
-          {items.map((item) => (
-            <li key={item.id} className="py-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {item.eventDate} · removed for good in {daysLeft(item.deletedAt)} days
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void restore(item)}
-                  disabled={restoringId === item.id}
-                  className="shrink-0 px-3 py-1.5 rounded-xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-60"
-                >
-                  {restoringId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Undo2 className="w-3.5 h-3.5" />}
-                  <span>Restore</span>
-                </button>
+    <SettingsRow
+      icon={<Undo2 className="w-[18px] h-[18px]" />}
+      title={`Recently deleted (${items.length})`}
+      subtitle={`Restorable for ${RETENTION_DAYS} days`}
+      open={Boolean(notice)}
+    >
+      {notice && <p className="text-slate-700">{notice}</p>}
+      <ul className="divide-y divide-slate-100">
+        {items.map((item) => (
+          <li key={item.id} className="py-2 first:pt-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                <p className="text-[11px] text-slate-500">
+                  {item.eventDate} · removed for good in {daysLeft(item.deletedAt)} days
+                </p>
               </div>
-              {item.milestoneTitles.length > 0 && (
-                <ul className="mt-1.5 pl-3 border-l-2 border-slate-100 space-y-0.5">
-                  {item.milestoneTitles.map((title, idx) => (
-                    <li key={idx} className="text-[11px] text-slate-500 truncate">
-                      {title}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+              <button type="button" onClick={() => void restore(item)} disabled={restoringId === item.id} className={`shrink-0 ${rowPrimaryClass}`}>
+                {restoringId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Undo2 className="w-3.5 h-3.5" />}
+                <span>Restore</span>
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </SettingsRow>
   );
 };
 
