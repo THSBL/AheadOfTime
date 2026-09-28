@@ -1,3 +1,4 @@
+import { completeTripDuplicates } from './utils/tripDuplicates';
 import { refreshAiPlanningEnabled } from './services/aiSettings';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
@@ -1662,8 +1663,8 @@ function App() {
     let targetMilestone: TMinusMilestone | null = null;
     let newStatus: 'completed' | 'pending' = 'completed';
 
-    setEvents((prev) =>
-      prev.map((evt) => {
+    setEvents((prev) => {
+      const next = prev.map((evt) => {
         if (evt.id !== eventId) return evt;
         targetEventTitle = evt.title;
         return {
@@ -1679,8 +1680,13 @@ function App() {
             return targetMilestone;
           }),
         };
-      })
-    );
+      });
+      // The same once-per-trip task in another event of the same trip
+      // (e.g. travel documents under two hotel stays) is done too.
+      return targetMilestone && (targetMilestone as TMinusMilestone).status === 'completed'
+        ? completeTripDuplicates(next, eventId, targetMilestone as TMinusMilestone)
+        : next;
+    });
 
     if (targetMilestone) {
       trackMilestoneToggle((targetMilestone as TMinusMilestone).title, newStatus === 'completed', (targetMilestone as TMinusMilestone).category);
@@ -1760,8 +1766,8 @@ function App() {
 
   // Update existing milestone
   const handleUpdateMilestone = (eventId: string, updatedMilestone: TMinusMilestone) => {
-    setEvents((prev) =>
-      prev.map((evt) => {
+    setEvents((prev) => {
+      const next = prev.map((evt) => {
         if (evt.id !== eventId) return evt;
         return {
           ...evt,
@@ -1771,8 +1777,9 @@ function App() {
               (a, b) => new Date(a.calculatedDate).getTime() - new Date(b.calculatedDate).getTime()
             ),
         };
-      })
-    );
+      });
+      return updatedMilestone.status === 'completed' ? completeTripDuplicates(next, eventId, updatedMilestone) : next;
+    });
   };
 
   // Delete individual milestone

@@ -14,6 +14,7 @@
  */
 import { CalendarEvent, TMinusMilestone, MilestoneCategory } from '../types';
 import { getCountdownStatus, calculateOffsetDate } from './tminusRules';
+import { isShadowedByTripDuplicate } from './tripDuplicates';
 
 export type ActionImportance = 'critical' | 'important' | 'routine';
 
@@ -741,4 +742,39 @@ export function computeNextBestAction(events: CalendarEvent[], referenceDateISO:
   });
 
   return candidates[0];
+}
+
+/**
+ * The events My Week Ahead works with, as of the reference date:
+ * - an event that is over (its end date has passed) is left out, except
+ *   for its still-open tasks planned for after it (e.g. filing expenses);
+ * - a once-per-trip task that another event of the same trip already shows
+ *   (or has done) is hidden here, so a trip stored as several events never
+ *   lists the same thing twice (see utils/tripDuplicates.ts).
+ * Returned events are view copies: never write them back.
+ */
+export function prepareWeekViewEvents(events: CalendarEvent[], referenceDateISO: string): CalendarEvent[] {
+  const today = referenceDateISO.slice(0, 10);
+  const open = events.filter((e) => e.status !== 'completed');
+  return open
+    .map((event) => {
+      const end = ((event.endDate || event.eventDate) || '').slice(0, 10);
+      const isOver = Boolean(end) && end < today;
+      const milestones = (event.milestones || []).map((m) => {
+        if (m.isActive === false || m.status === 'completed' || m.status === 'skipped') return m;
+        const afterEvent = typeof m.tMinusOffsetMinutes === 'number' && m.tMinusOffsetMinutes > 0;
+        if (isOver && !afterEvent) return { ...m, isActive: false };
+        if (isShadowedByTripDuplicate(m, event, open)) return { ...m, isActive: false };
+        return m;
+      });
+      return { event: { ...event, milestones }, isOver };
+    })
+    .filter(({ event, isOver }) => !isOver || actionableMilestones(event.milestones).some((m) => m.status !== 'completed'))
+    .map(({ event }) => event);
+}
+
+/** Whether the event itself is over (its end date has passed). */
+export function isEventOver(event: Pick<CalendarEvent, 'eventDate' | 'endDate'>, referenceDateISO: string): boolean {
+  const end = ((event.endDate || event.eventDate) || '').slice(0, 10);
+  return Boolean(end) && end < referenceDateISO.slice(0, 10);
 }

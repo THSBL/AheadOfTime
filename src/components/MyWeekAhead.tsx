@@ -9,6 +9,8 @@ import {
   computeWeeklyMilestonePreview,
   computeCatchUpGroups,
   spreadCatchUpDates,
+  prepareWeekViewEvents,
+  isEventOver,
   AheadLevel,
   ActionTheme,
   SimpleAheadLevel,
@@ -488,7 +490,10 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 }) => {
   const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
   const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
-  const activeEvents = events.filter((e) => e.status !== 'completed');
+  // What the page shows (past events and duplicate trip tasks left out);
+  // updates always go to the real event data in `liveEvents`.
+  const liveEvents = events.filter((e) => e.status !== 'completed');
+  const activeEvents = prepareWeekViewEvents(liveEvents, currentReferenceDate);
 
   if (activeEvents.length === 0) {
     const line = pickStableLine(EMPTY_WEEK_LINES, currentReferenceDate);
@@ -525,7 +530,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   // "Already done" / "Plan the rest" for a catch-up card (see CatchUpCard).
   const markCatchUpDone = (eventId: string, milestoneIds: string[]) => {
     if (!onUpdateMilestone) return;
-    const event = activeEvents.find((e) => e.id === eventId);
+    const event = liveEvents.find((e) => e.id === eventId);
     const completedAt = new Date().toISOString();
     for (const id of milestoneIds) {
       const milestone = event?.milestones?.find((m) => m.id === id);
@@ -534,7 +539,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   };
   const planCatchUpRest = (eventId: string, milestoneIds: string[]) => {
     if (!onUpdateMilestone) return;
-    const event = activeEvents.find((e) => e.id === eventId);
+    const event = liveEvents.find((e) => e.id === eventId);
     if (!event) return;
     const dates = spreadCatchUpDates(milestoneIds.length, event.eventDate, currentReferenceDate);
     milestoneIds.forEach((id, index) => {
@@ -553,7 +558,7 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
 
   const handleReschedule = (item: UpcomingMilestoneItem, target: 'tomorrow' | 'next_week') => {
     if (!onUpdateMilestone) return;
-    const event = activeEvents.find((e) => e.id === item.eventId);
+    const event = liveEvents.find((e) => e.id === item.eventId);
     const milestone = event?.milestones?.find((m) => m.id === item.milestoneId);
     if (!milestone) return;
 
@@ -580,8 +585,9 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   // nothing to show here at all. Excluding totalCount === 0 here (rather
   // than changing computeAheadStatus's own shared classification, which
   // other callers/tests rely on) keeps this a display-only fix.
+  // An event that's over isn't "ahead" of anything anymore.
   const alreadyAhead = perEvent.filter(
-    (e) => e.status.level === 'ahead' || (e.status.level === 'ready' && e.status.totalCount > 0)
+    (e) => !isEventOver(e.event, currentReferenceDate) && (e.status.level === 'ahead' || (e.status.level === 'ready' && e.status.totalCount > 0))
   );
 
   const simpleStyle = SIMPLE_STATUS_STYLES[simpleStatus.level];
