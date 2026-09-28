@@ -35,11 +35,12 @@ interface MessengerSidebarProps {
   onPushEvents?: (eventIds: string[]) => void;
   isCollapsed?: boolean;
   /**
-   * Which events to list up front. 'fold': the rest sit under a closed
-   * "Later (N)" section (List view: the next 30 days first). 'hide': the
-   * rest are only counted (Calendar view: what's in the month/week shown).
+   * Which events get the full card. 'fold': the rest sit under a closed
+   * "Later (N)" section, as one-line rows (List view: the next 30 days).
+   * 'compact': the rest stay in the list as one-line rows with just the
+   * title (Calendar view: full cards for what's in the month/week shown).
    */
-  partition?: { ids: Set<string>; mode: 'fold' | 'hide'; hiddenNote: string } | null;
+  partition?: { ids: Set<string>; mode: 'fold' | 'compact'; hiddenNote: string } | null;
   onToggleCollapse?: () => void;
 }
 
@@ -238,6 +239,16 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             )}
           </div>
         )}
+        {events.length > 0 && (
+          <p className="flex items-center gap-3 text-[11px] text-slate-400 pt-0.5">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-aot-sage" /> In your calendar
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-white/15" /> Not in your calendar yet
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Each event sits on a light card of its own (a faint tint of the
@@ -255,7 +266,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         ) : (
           (() => {
             let lastMonthKey = '';
-            const renderRow = (evt: CalendarEvent) => {
+            const renderRow = (evt: CalendarEvent, compact = false) => {
             const isSelected = selectedEventId === evt.id;
             const isCheckedForBulk = selectedEventIds.includes(evt.id);
             const countdown = getCountdownStatus(evt.eventDate, currentReferenceDate);
@@ -290,7 +301,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               )}
               <div
                 onClick={() => onSelectEvent(evt.id)}
-                className={`mx-2 px-3 py-2.5 rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group border ${
+                className={`mx-2 px-3 ${compact ? 'py-1.5' : 'py-2.5'} rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group border ${
                   isSelected
                     ? 'bg-white/10 border-white/25'
                     : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.07]'
@@ -309,7 +320,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   aria-pressed={isCheckedForBulk}
                   aria-label={`Select ${displayTitle} (${planPushed ? 'plan in calendar' : 'plan not pushed yet'})`}
                   title={isCheckedForBulk ? 'Selected' : planPushed ? 'Plan in your calendar - tap to select' : 'Plan not in your calendar yet - tap to select'}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                  className={`${compact ? 'w-7 h-7 rounded-lg [&_svg]:w-3.5 [&_svg]:h-3.5' : 'w-10 h-10 rounded-xl'} flex items-center justify-center shrink-0 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
                     isCheckedForBulk
                       ? 'bg-white text-[#182A42] ring-2 ring-aot-sage'
                       : planPushed
@@ -324,7 +335,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 <div className="flex-1 min-w-0 space-y-1">
                   {/* Top Row: Title + Countdown */}
                   <div className="flex items-start justify-between gap-1.5">
-                    <h4 className="text-xs sm:text-sm font-bold truncate leading-tight text-white flex items-center gap-1.5">
+                    <h4 className={`${compact ? 'text-xs font-semibold text-slate-300' : 'text-xs sm:text-sm font-bold text-white'} truncate leading-tight flex items-center gap-1.5`}>
                       <span className="truncate">{displayTitle}</span>
                     </h4>
                     <div className="flex items-center gap-1 shrink-0">
@@ -334,7 +345,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     </div>
                   </div>
 
-                  {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
+                  {!compact && (evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
                       {(evt.recurrence?.isRecurring || evt.context?.isRecurring) && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#bae6fd] bg-white/10 px-1.5 py-0.2 rounded-md">
@@ -346,7 +357,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   )}
 
                   {/* Bottom Row: Next Preparation Task */}
-                  {nextTask && (
+                  {nextTask && !compact && (
                     <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate flex items-center gap-1 pt-0.5">
                       <span className="text-slate-500 font-bold">•</span>
                       <span className="truncate">Next: <span className="text-slate-300 font-semibold">{nextTask.title}</span></span>
@@ -357,15 +368,18 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               </React.Fragment>
             );
             };
-            const main = mainEvents.map(renderRow);
+            // Calendar: every event in date order, full cards for the period
+            // on screen and one-line rows for the rest.
+            if (partitionActive && partition!.mode === 'compact') {
+              return filteredEvents.map((evt) => renderRow(evt, !mainEvents.includes(evt)));
+            }
+            const main = mainEvents.map((evt) => renderRow(evt));
             lastMonthKey = '';
             return (
               <>
                 {main}
                 {partitionActive && mainEvents.length === 0 && (
-                  <p className="px-4 py-3 text-xs text-slate-400">
-                    {partition!.mode === 'hide' ? 'Nothing to prepare in this period.' : 'Nothing coming up in the next 30 days.'}
-                  </p>
+                  <p className="px-4 py-3 text-xs text-slate-400">Nothing coming up in the next 30 days.</p>
                 )}
                 {restEvents.length > 0 &&
                   (partition!.mode === 'fold' ? (
@@ -381,13 +395,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                         </span>
                         <span className="text-[11px] font-semibold text-slate-400">{showLater ? 'Hide' : partition!.hiddenNote}</span>
                       </button>
-                      {showLater && restEvents.map(renderRow)}
+                      {showLater && restEvents.map((evt) => renderRow(evt, true))}
                     </>
-                  ) : (
-                    <p className="px-4 py-2 text-[11px] text-slate-400">
-                      {restEvents.length} other {restEvents.length === 1 ? 'event' : 'events'} {partition!.hiddenNote}
-                    </p>
-                  ))}
+                  ) : null)}
               </>
             );
           })()

@@ -33,8 +33,9 @@ export function eventTouchesRange(event: CalendarEvent, start: string, end: stri
   if (from <= end && to >= start) return true;
   return shownTasks(event).some((m) => {
     const d = dayKey(m.calculatedDate);
-    // Late tasks also show on today, so they count for the period containing today.
-    if (isOpen(m) && d < today && start <= today && today <= end) return true;
+    // Late tasks also show on today (while the event is still ahead), so
+    // they count for the period containing today.
+    if (isOpen(m) && d < today && to >= today && start <= today && today <= end) return true;
     return d >= start && d <= end;
   });
 }
@@ -57,8 +58,8 @@ export type CalendarItem =
 
 /**
  * What one calendar day shows: events spanning it first, then its tasks.
- * Today also carries every open task that is already late, so a missed task
- * from an earlier week is never out of sight.
+ * Today also carries every open task that is already late (for events
+ * still ahead), so a missed task from an earlier week is never out of sight.
  */
 export function itemsForDay(events: CalendarEvent[], day: string, today: string): CalendarItem[] {
   const out: CalendarItem[] = [];
@@ -68,11 +69,13 @@ export function itemsForDay(events: CalendarEvent[], day: string, today: string)
   }
   const tasks: CalendarItem[] = [];
   for (const event of events) {
+    // An event that's over doesn't carry its late tasks to today.
+    const stillAhead = eventSpan(event)[1] >= today;
     for (const m of shownTasks(event)) {
       const d = dayKey(m.calculatedDate);
       const late = isOpen(m) && d < today;
       if (d === day) tasks.push({ kind: 'task', event, milestone: m, key: `t-${m.id}`, late, carried: false });
-      else if (late && day === today) tasks.push({ kind: 'task', event, milestone: m, key: `t-${m.id}`, late, carried: true });
+      else if (late && stillAhead && day === today) tasks.push({ kind: 'task', event, milestone: m, key: `t-${m.id}`, late, carried: true });
     }
   }
   // Late first, then open, then done - the order that needs attention.

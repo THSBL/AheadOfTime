@@ -1,3 +1,4 @@
+import { isEventOver } from './utils/readiness';
 import { TimelineCalendar, type CalendarSpan } from './components/TimelineCalendar';
 import { eventTouchesRange, isComingUp } from './utils/calendarView';
 import { readAgendaHorizon, saveAgendaHorizon } from './services/agendaScanRecord';
@@ -343,9 +344,10 @@ function App() {
   }, []);
   const [timelineView, setTimelineViewState] = useState<'list' | 'calendar'>(() => {
     try {
-      return localStorage.getItem('aot_timeline_view') === 'calendar' ? 'calendar' : 'list';
+      // Calendar is the default; only an explicit earlier choice of List keeps it.
+      return localStorage.getItem('aot_timeline_view') === 'list' ? 'list' : 'calendar';
     } catch {
-      return 'list';
+      return 'calendar';
     }
   });
   const setTimelineView = (view: 'list' | 'calendar') => {
@@ -378,7 +380,13 @@ function App() {
   const [focusMilestone, setFocusMilestone] = useState<{ milestoneId: string; at: number } | null>(null);
   const isCalendarShown = isDesktop && activeTab === 'tasks' && timelineView === 'calendar';
 
-  // Active Events: in Calendar view only what's in the period on screen; in
+  // Past events (over and done with) aren't listed in Active Events.
+  const activeSidebarEvents = useMemo(
+    () => sortedEvents.filter((e) => !isEventOver(e, currentReferenceDate)),
+    [sortedEvents, currentReferenceDate]
+  );
+
+  // Active Events: in Calendar view full cards for what's in the period on screen; in
   // List view the next 30 days first, the rest folded under "Later".
   const sidebarPartition = useMemo(() => {
     if (activeTab !== 'tasks') return null;
@@ -387,7 +395,7 @@ function App() {
       if (!calendarRange) return null;
       return {
         ids: new Set(sortedEvents.filter((e) => eventTouchesRange(e, calendarRange.start, calendarRange.end, today)).map((e) => e.id)),
-        mode: 'hide' as const,
+        mode: 'compact' as const,
         hiddenNote: `outside this ${calendarSpan}`,
       };
     }
@@ -2106,7 +2114,7 @@ function App() {
               activeTab === 'feed' || activeTab === 'chat' ? 'hidden' : mobileDashboardView === 'detail' ? 'hidden lg:flex' : 'flex'
             } ${isEventSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-5 xl:col-span-4'} h-[calc(100vh-140px)] flex-col w-full`}>
               <MessengerSidebar
-                events={sortedEvents}
+                events={activeSidebarEvents}
                 selectedEventId={isCalendarShown ? calendarHighlightId : selectedEventId}
                 partition={sidebarPartition}
                 onSelectEvent={(id) => {

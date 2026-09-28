@@ -35,6 +35,12 @@ describe('calendar view', () => {
     expect(isComingUp(ev('hidden', '2027-01-10', [ms('b', '2026-10-15', { isActive: false })]), today)).toBe(false);
   });
 
+  it('a past event does not carry its late tasks to today', () => {
+    const over = ev('over', '2026-09-25', [ms('late', '2026-09-24')]);
+    expect(itemsForDay([over], today, today)).toEqual([]);
+    expect(eventTouchesRange(over, '2026-09-28', '2026-10-04', today)).toBe(false);
+  });
+
   it('events first, then late, open and done tasks', () => {
     const e = ev('e1', '2026-10-01', [ms('done', '2026-10-01', { status: 'completed' }), ms('open', '2026-10-01')]);
     expect(itemsForDay([e], '2026-10-01', today).map((i) => i.key)).toEqual(['e-e1', 't-open', 't-done']);
