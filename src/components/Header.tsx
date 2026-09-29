@@ -548,7 +548,7 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
                       >
                         <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Switch Google Account</span>
+                        <span>Switch account</span>
                       </button>
                     )}
 

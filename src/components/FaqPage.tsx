@@ -12,7 +12,7 @@ const FAQ_ENTRIES: FaqEntry[] = [
   {
     question: "Does it work with Apple Calendar or Outlook?",
     answer:
-      "Yes. Google Calendar works fully: scan your agenda and sync the tasks. For Apple Calendar, Outlook or any other calendar, turn on the calendar feed in Settings → Connections and subscribe to it once. Your tasks then show up as all-day entries in a separate \"Ahead Of Time tasks\" calendar. The How it works page shows the steps for each calendar.",
+      "Yes. Google Calendar works fully: scan your agenda and sync the tasks. For Apple Calendar, Outlook or any other calendar, sign in with your email (no Google account needed), turn on the calendar feed in Settings → Connections and subscribe to it once. Your tasks then show up as all-day entries in a separate \"Ahead Of Time tasks\" calendar. The How it works page shows the steps for each calendar.",
   },
   {
     question: "The calendar feed is read-only. How do I tick off or remove tasks there?",

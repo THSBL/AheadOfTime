@@ -49,6 +49,7 @@ import { handleSessionApi } from "./server/sessionRoutes";
 import { verifyRequestUser } from "./server/requestAuth";
 import { handleAiSettings } from "./server/aiSettingsRoute";
 import { handleNotifyPrefs } from "./server/notifyPrefsRoute";
+import { handleEmailLink } from "./server/emailLogin";
 import { handleCalendarFeed, handleCalendarDone, handleCalendarFeedSettings, handleCalendarPlan } from "./server/calendarFeed";
 import { handleTelegramWarm } from "./server/telegramWarm";
 import { handleAccountDeletion } from "./server/accountDeletion";
@@ -1410,6 +1411,8 @@ app.all("/api/auth/session", (req: Request, res: Response) => handleSessionApi(r
 app.all("/api/auth/ai-settings", (req: Request, res: Response) => handleAiSettings(req, res));
 // Twin of api/auth/google/index.ts action=notify-prefs.
 app.all("/api/auth/notify-prefs", (req: Request, res: Response) => handleNotifyPrefs(req, res));
+// Twin of api/auth/google/index.ts action=email-link.
+app.all("/api/auth/email-link", (req: Request, res: Response) => handleEmailLink(req, res));
 // Twins of api/auth/google/index.ts action=ics-feed / feed-done / calendar-feed.
 app.get("/api/calendar/feed/:token", (req: Request, res: Response) => handleCalendarFeed(req, res, String(req.params.token)));
 app.all("/api/calendar/done", (req: Request, res: Response) => handleCalendarDone(req, res));

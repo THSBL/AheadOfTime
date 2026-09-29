@@ -6,7 +6,7 @@ export interface AuthUser {
   name?: string;
   avatar?: string;
   timeZone?: string;
-  provider: 'google' | 'oidc' | 'guest';
+  provider: 'google' | 'email' | 'oidc' | 'guest';
   connectedAt: string;
 }
 

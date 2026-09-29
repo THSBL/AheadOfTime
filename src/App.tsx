@@ -38,6 +38,7 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { PrivacyPage } from './components/PrivacyPage';
 import { FeaturesPage } from './components/FeaturesPage';
 import { HowItWorksPage } from './components/HowItWorksPage';
+import { SignInModal, OPEN_SIGN_IN_EVENT } from './components/SignInModal';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -711,6 +712,43 @@ function App() {
   }, [events, currentUser?.id, isInitializing]);
 
   // Account switching and clean logout actions
+  // Sign in: Google, or a one-time email link (for Apple Calendar / Outlook users).
+  const [signIn, setSignIn] = useState<{ open: boolean; reason?: string }>({ open: false });
+  useEffect(() => {
+    const onOpen = (e: Event) => setSignIn({ open: true, reason: (e as CustomEvent<{ reason?: string }>).detail?.reason });
+    window.addEventListener(OPEN_SIGN_IN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SIGN_IN_EVENT, onOpen);
+  }, []);
+
+  // Back from the email link: the server already started the session.
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    if (sp.get('signin') === 'email') {
+      setSignIn({ open: true });
+    }
+    if (sp.get('signed_in') !== 'email') return;
+    void checkAppSession().then((email) => {
+      if (!email) return;
+      const userEmail = email.toLowerCase().trim();
+      const user: AuthUser = { id: userEmail, email: userEmail, name: userEmail.split('@')[0], provider: 'email', connectedAt: new Date().toISOString() };
+      try {
+        localStorage.setItem('aot_onboarding_completed', 'true');
+      } catch {
+        // storage blocked: the session still works for this visit
+      }
+      setGlobalCurrentUser(user);
+      setCurrentUser(user);
+      setEvents(loadUserEvents(user.id));
+      setMessages(loadUserMessages(user.id, user.name));
+      trackAccountAction('login', user.id);
+      setHasCompletedOnboarding(true);
+      setCurrentView('dashboard');
+      setSyncToast({ id: Date.now(), title: 'Signed in', message: `Signed in as ${userEmail}.` });
+      navigate('/dashboard', { replace: true });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
+
   const handleSignIn = async () => {
     try {
       const res = await requestGoogleCalendarToken(getStoredClientId());
@@ -1295,7 +1333,7 @@ function App() {
   // Google Bidirectional Sync state
   const [isSyncingWithGoogle, setIsSyncingWithGoogle] = useState(false);
   const [lastGoogleSyncTime, setLastGoogleSyncTime] = useState<Date | null>(null);
-  const [syncToast, setSyncToast] = useState<{ id: number; message: string; count?: number } | null>(null);
+  const [syncToast, setSyncToast] = useState<{ id: number; message: string; count?: number; title?: string } | null>(null);
   // Surfaces the agent's own understanding of a freeform/chat-submitted
   // event ("FOCUS: ..." from the backend) as a visible confirmation -
   // previously that text was only ever appended to the `messages` array,
@@ -2024,6 +2062,7 @@ function App() {
     navigate(`/events/${newEvents[0].id}`);
     setSyncToast({
       id: Date.now(),
+      title: 'Plans added',
       message: `Added ${newEvents.length} ${newEvents.length === 1 ? 'plan' : 'plans'}.`,
       count: newEvents.length,
     });
@@ -2083,9 +2122,9 @@ function App() {
               agendaHorizonMonths={agendaHorizonMonths}
               onAgendaHorizonChange={setAgendaHorizonMonths}
               currentUser={currentUser}
-              onSwitchAccount={handleSwitchAccount}
+              onSwitchAccount={() => setSignIn({ open: true, reason: 'Sign in with another account.' })}
               onSignOut={handleSignOut}
-              onSignIn={handleSignIn}
+              onSignIn={() => setSignIn({ open: true })}
             />
           </div>
 
@@ -2442,7 +2481,7 @@ function App() {
               <Check className="w-4 h-4 stroke-[3]" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-200">Google Calendar Sync</p>
+              <p className="text-xs font-bold text-slate-200">{syncToast.title || 'Google Calendar Sync'}</p>
               <p className="text-xs text-slate-400 font-medium">{syncToast.message}</p>
             </div>
             <button
@@ -2520,6 +2559,16 @@ function App() {
         onOpenGoogleCalendarSync={() => {
           setIsScanAgendaModalOpen(false);
           setIsGoogleCalendarModalOpen(true);
+        }}
+      />
+
+      <SignInModal
+        isOpen={signIn.open}
+        reason={signIn.reason}
+        onClose={() => setSignIn({ open: false })}
+        onGoogle={() => {
+          setSignIn({ open: false });
+          void handleSignIn();
         }}
       />
 

@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/auth/email-link",
+      "destination": "/api/auth/google?action=email-link"
+    },
+    {
       "source": "/api/calendar/feed/:token",
       "destination": "/api/auth/google?action=ics-feed&t=:token"
     },

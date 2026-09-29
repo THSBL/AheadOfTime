@@ -209,6 +209,11 @@ interface Step {
   picture?: React.ReactNode;
 }
 
+const EMAIL_STEP: Step = {
+  title: 'Sign in with your email',
+  text: 'No Google account needed: enter your email and tap the sign-in link we send you. It works once, for 15 minutes.',
+};
+
 const TELL_STEP: Step = {
   title: "Tell it what's coming",
   text: 'Type "Birthday trip to New York, Nov 17-20" in the app or on Telegram. Ahead Of Time plans every step back from the date.',
@@ -229,24 +234,26 @@ const STEPS: Record<CalendarId, { intro: string; steps: Step[]; note: string }> 
   outlook: {
     intro: 'Outlook gets your tasks through a calendar feed: subscribe once, and your prep tasks show up in Outlook as their own calendar.',
     steps: [
+      EMAIL_STEP,
       TELL_STEP,
       { title: 'Turn on the calendar feed', text: 'In Settings → Connections → Calendar feed, turn it on and copy your private link.', picture: <FeedSettingsMock subscribe={false} /> },
       { title: 'Subscribe in Outlook', text: 'Outlook on the web: Add calendar → Subscribe from web, paste the link and name it "Ahead Of Time tasks". Outlook for Windows and Mac pick it up from your account.', picture: <OutlookSubscribeMock /> },
       { title: 'Your tasks in Outlook', text: 'Each task is an all-day entry on its date, in its own colour, so it never blocks your time.', picture: <FeedDayMock app="Outlook" /> },
       { title: 'Tick off from Outlook', text: 'Open a task: one tap marks it done, marks the whole plan done, or removes a plan that is no longer happening. No sign-in needed, and there is always an Undo.', picture: <FeedNotesMock /> },
     ],
-    note: 'Outlook refreshes subscribed calendars on its own schedule, which can take a few hours. The calendar feed needs an account; signing in is with a Google account for now, and scanning your agenda works with Google Calendar only.',
+    note: 'Outlook refreshes subscribed calendars on its own schedule, which can take a few hours. Scanning your agenda works with Google Calendar only for now.',
   },
   apple: {
     intro: 'Apple Calendar gets your tasks through a calendar feed: subscribe once, and your prep tasks show up on your iPhone, iPad and Mac.',
     steps: [
+      EMAIL_STEP,
       TELL_STEP,
       { title: 'Turn on the calendar feed', text: 'In Settings → Connections → Calendar feed, turn it on and tap "Subscribe in my calendar".', picture: <FeedSettingsMock subscribe /> },
       { title: 'Confirm in Apple Calendar', text: 'Your iPhone or Mac asks to subscribe. Tap Subscribe. On a Mac you can also use File → New Calendar Subscription and paste the link.', picture: <AppleSubscribeMock /> },
       { title: 'Your tasks in Apple Calendar', text: 'Each task is an all-day entry on its date, in a separate calendar you can show or hide with one tick.', picture: <FeedDayMock app="Apple Calendar" /> },
       { title: 'Tick off from your calendar', text: 'Open a task and tap the link in its notes: done for this task, done for the whole plan, or remove the plan. The page confirms it, with an Undo.', picture: <DonePageMock /> },
     ],
-    note: 'Apple Calendar usually refreshes subscribed calendars within the hour. The calendar feed needs an account; signing in is with a Google account for now, and scanning your agenda works with Google Calendar only.',
+    note: 'Apple Calendar usually refreshes subscribed calendars within the hour. Scanning your agenda works with Google Calendar only for now.',
   },
 };
 

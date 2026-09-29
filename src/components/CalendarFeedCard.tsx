@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CalendarPlus, Copy, Check, RefreshCw } from 'lucide-react';
 import { SettingsRow, SettingsPill } from './SettingsRow';
 import { aiJsonHeaders } from '../services/aiRequest';
+import { openSignIn } from './SignInModal';
 
 interface FeedState {
   enabled: boolean;
@@ -18,10 +19,15 @@ export const CalendarFeedCard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/calendar-feed', { headers: aiJsonHeaders(), cache: 'no-store' })
       .then(async (r) => {
+        if (r.status === 401) {
+          setNeedsSignIn(true);
+          return;
+        }
         const data = await r.json().catch(() => null);
         if (!r.ok || !data?.ok) throw new Error(data?.error || 'Could not load the calendar feed.');
         setState({ enabled: data.enabled, url: data.url });
@@ -72,6 +78,15 @@ export const CalendarFeedCard: React.FC = () => {
         Subscribe once and your tasks appear in your own calendar. Each task has a <b>✓ Mark done</b> link: tap it and the task is done here
         too, no sign-in needed. Done in the app or Telegram? Your calendar shows it at its next refresh (usually within an hour).
       </p>
+      {needsSignIn && (
+        <button
+          type="button"
+          onClick={() => openSignIn('Sign in to turn on the calendar feed. No Google account? Use the email link.')}
+          className="px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+        >
+          Sign in to use the calendar feed
+        </button>
+      )}
       {error && <p className="text-rose-600 font-semibold">{error}</p>}
       {state && !enabled && (
         <button

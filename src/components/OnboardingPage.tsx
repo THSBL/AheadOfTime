@@ -1,3 +1,4 @@
+import { openSignIn } from './SignInModal';
 import { getCachedAiPlanningEnabled, saveAiPlanningEnabled } from '../services/aiSettings';
 import React, { useState, useEffect } from 'react';
 import { CalendarPreferencePoll } from './CalendarPreferencePoll';
@@ -426,6 +427,17 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                 className="text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
               >
                 Or explore empty agenda overview first &rarr;
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSubmit('go_dashboard');
+                  // The sign-in window lives in the app; open it once the dashboard is up.
+                  window.setTimeout(() => openSignIn('No Google account? Get a sign-in link by email, then subscribe to your tasks in Apple Calendar or Outlook.'), 400);
+                }}
+                className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
+              >
+                Use Apple Calendar or Outlook? Sign in with email &rarr;
               </button>
             </div>
           </div>

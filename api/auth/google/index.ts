@@ -24,6 +24,7 @@ import { handleCalendarPush, handleCalendarEvents, handleCalendarDelete } from '
 import { handleAiSettings } from '../../../server/aiSettingsRoute.js';
 import { handleNotifyPrefs } from '../../../server/notifyPrefsRoute.js';
 import { handleAccountDeletion } from '../../../server/accountDeletion.js';
+import { handleEmailLink } from '../../../server/emailLogin.js';
 import { handleCalendarFeed, handleCalendarDone, handleCalendarFeedSettings, handleCalendarPlan } from '../../../server/calendarFeed.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
@@ -190,6 +191,10 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   if (action === 'session') {
     return handleSessionApi(req, res);
+  }
+  // Sign in without Google: a one-time link by email.
+  if (action === 'email-link') {
+    return handleEmailLink(req, res);
   }
   if (action === 'findings') {
     return handleFindings(req, res);

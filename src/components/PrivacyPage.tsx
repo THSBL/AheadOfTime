@@ -302,6 +302,12 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
               <li className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span className="text-xs leading-snug">
+                  <strong>Email Sign-in (optional):</strong> Sign in without Google by a one-time link sent to your email address. We keep a scrambled copy of each link for one day, to stop misuse; the link itself works once, for 15 minutes.
+                </span>
+              </li>
+              <li className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span className="text-xs leading-snug">
                   <strong>Calendar Feed (optional):</strong> A private link that lets Apple Calendar, Outlook or another calendar show your prep tasks. Anyone with the link can see those tasks and mark them done, so keep it private; you can make a new link or turn it off any time in Settings.
                 </span>
               </li>

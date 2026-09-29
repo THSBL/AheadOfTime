@@ -349,3 +349,15 @@ CREATE TABLE IF NOT EXISTS calendar_feeds (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_fetched_at TIMESTAMPTZ
 );
+
+-- Sign in without Google (server/emailLogin.ts): one-time email links.
+-- Only a hash of each token is stored; rows are kept a day for rate limits.
+CREATE TABLE IF NOT EXISTS email_login_links (
+  token_hash  TEXT PRIMARY KEY,
+  email       TEXT NOT NULL,
+  ip          TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_email_login_links_email ON email_login_links (email, created_at);
