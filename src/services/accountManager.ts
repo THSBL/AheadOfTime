@@ -266,6 +266,15 @@ export function logoutAndClearAccountSession(): void {
     localStorage.removeItem('tminus_events_v2');
     localStorage.removeItem('tminus_events_v2:guest');
     localStorage.removeItem('tminus_events');
+    // Per-browser caches that belong to the signed-in account.
+    localStorage.removeItem('aot_telegram_linked');
+    localStorage.removeItem('aot_telegram_user');
+    localStorage.removeItem('aot_telegram_chat_id');
+    localStorage.removeItem('aot_telegram_owner');
+    localStorage.removeItem('aot_telegram_pair_code');
+    localStorage.removeItem('aot_last_agenda_scan');
+    localStorage.removeItem('aot_scan_prefs');
+    localStorage.removeItem('onboarding_profile');
 
     // 3. Dispatch account switch event with null user
     window.dispatchEvent(new CustomEvent('aot_account_switched', { detail: { user: null } }));

@@ -69,7 +69,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clearGoogleSession, getStoredClientId } from './services/googleAuth';
-import { hasAppSession, checkAppSession, endAppSession } from './services/appSession';
+import { hasAppSession, checkAppSession, endAppSession, appSessionChecked } from './services/appSession';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
 import { trackEventCreation, trackMilestoneToggle, trackAccountAction } from './services/analytics';
@@ -240,6 +240,35 @@ function App() {
     // account was reachable (onboarding) and picks up the server's value.
     if (currentUser?.id) void checkAppSession().then(() => refreshAiPlanningEnabled());
   }, [currentUser?.id]);
+
+  // Privacy: the account remembered in this browser is only shown when it
+  // is really signed in (a live Google token, or a server session for that
+  // same email). Otherwise it's a leftover from an earlier sign-in: sign out
+  // locally, so nobody sees that account's name, plans or connections.
+  const [identityChecking, setIdentityChecking] = useState<boolean>(() => {
+    const cached = getCurrentUser();
+    return Boolean(cached && !(getStoredAccessToken() && !isTokenExpired()));
+  });
+  useEffect(() => {
+    if (!identityChecking) return;
+    let settled = false;
+    const done = () => {
+      settled = true;
+      setIdentityChecking(false);
+    };
+    // Offline or a hanging request: don't lock the app, keep what's there.
+    const timer = window.setTimeout(() => !settled && done(), 8000);
+    void checkAppSession().then((sessionEmail) => {
+      window.clearTimeout(timer);
+      const cached = getCurrentUser();
+      const googleLive = Boolean(getStoredAccessToken() && !isTokenExpired());
+      const sameAccount = Boolean(cached && sessionEmail && sessionEmail.toLowerCase().trim() === cached.email.toLowerCase().trim());
+      if (cached && appSessionChecked() && !googleLive && !sameAccount) handleSignOut();
+      done();
+    });
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist events to user-scoped storage whenever events change
   useEffect(() => {
@@ -1978,7 +2007,7 @@ function App() {
   };
 
   // 2. Prevent Layout Flash: Show neutral centered loading spinner while checking storage / session
-  if (isInitializing) {
+  if (isInitializing || identityChecking) {
     return (
       <div className="min-h-screen bg-[#f1f7fe] flex flex-col items-center justify-center p-4 text-slate-600 font-sans">
         <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-center mb-3">

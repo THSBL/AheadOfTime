@@ -1,3 +1,4 @@
+import { getCurrentUser } from '../services/accountManager';
 import { canUseAppSession, bearerHeader } from '../services/appSession';
 import { SettingsRow, SettingsPill, rowButtonClass } from './SettingsRow';
 import { OpenTelegramButton } from './OpenTelegramButton';
@@ -57,23 +58,21 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
   const [isVerifyingManual, setIsVerifyingManual] = useState<boolean>(false);
   const [isUnlinking, setIsUnlinking] = useState<boolean>(false);
 
-  const [isLinked, setIsLinked] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('aot_telegram_linked') === 'true';
-    }
-    return false;
-  });
+  // The cached link belongs to the account that stored it; another account
+  // in this browser starts from "not linked" until the server says otherwise.
+  const cacheIsMine = typeof window !== 'undefined' && localStorage.getItem('aot_telegram_owner') === (getCurrentUser()?.email || '').toLowerCase();
+  const [isLinked, setIsLinked] = useState<boolean>(() => cacheIsMine && localStorage.getItem('aot_telegram_linked') === 'true');
 
   const [username, setUsername] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('aot_telegram_user') || 'Telegram User';
+      return (cacheIsMine && localStorage.getItem('aot_telegram_user')) || 'Telegram User';
     }
     return 'Telegram User';
   });
 
   const [chatId, setChatId] = useState<string | number>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('aot_telegram_chat_id') || '';
+      return (cacheIsMine && localStorage.getItem('aot_telegram_chat_id')) || '';
     }
     return '';
   });
@@ -130,6 +129,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
 
         if (typeof window !== 'undefined') {
           localStorage.setItem('aot_telegram_linked', 'true');
+          localStorage.setItem('aot_telegram_owner', (getCurrentUser()?.email || '').toLowerCase());
           localStorage.setItem('aot_telegram_user', detectedUser);
           if (detectedChat) {
             localStorage.setItem('aot_telegram_chat_id', String(detectedChat));

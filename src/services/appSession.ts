@@ -27,6 +27,11 @@ export function hasAppSession(expectedEmail?: string | null): boolean {
   return !expectedEmail || confirmedEmail === expectedEmail.toLowerCase().trim();
 }
 
+/** True once the server answered the session check on this page load (false while offline). */
+export function appSessionChecked(): boolean {
+  return checkedOnce;
+}
+
 export function getAppSessionEmail(): string | null {
   return confirmedEmail;
 }
