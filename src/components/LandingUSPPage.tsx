@@ -53,6 +53,18 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             )}
 
             <a
+              href="/how-it-works"
+              onClick={(e) => {
+                e.preventDefault();
+                trackButtonClick('How it works', 'landing_header');
+                navigate('/how-it-works');
+              }}
+              className="bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-xl transition-all cursor-pointer hidden md:flex items-center gap-1.5"
+            >
+              <span>How it works</span>
+            </a>
+
+            <a
               href="/features"
               onClick={(e) => {
                 e.preventDefault();
@@ -242,6 +254,27 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             intro="Works with Google Calendar, Apple Calendar and Outlook. Which one do you use? We'll show you how it works with yours."
             offerNotifyEmail
           />
+          <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+            <span className="font-semibold">See how it works with</span>
+            {[
+              ['google', 'Google Calendar'],
+              ['outlook', 'Outlook'],
+              ['apple', 'Apple Calendar'],
+            ].map(([id, label]) => (
+              <a
+                key={id}
+                href={`/how-it-works?calendar=${id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  trackButtonClick(`How it works ${label}`, 'landing_calendar');
+                  navigate(`/how-it-works?calendar=${id}`);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white font-bold transition-colors"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
       {/* Bottom Closing Banner - a lighter navy + border so it still reads as

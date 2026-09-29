@@ -36,6 +36,7 @@ import { CookiePreferencesModal } from './components/CookiePreferencesModal';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { PrivacyPage } from './components/PrivacyPage';
 import { FeaturesPage } from './components/FeaturesPage';
+import { HowItWorksPage } from './components/HowItWorksPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -2708,6 +2709,7 @@ export default function AppWithRouter() {
           <Route path="/" element={<LandingRoute />} />
           <Route path="/onboarding" element={<OnboardingRoute />} />
           <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/faq" element={<FaqPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />

@@ -9,7 +9,7 @@ import { Check, MessageSquare, Send, CalendarDays, Plane, Calendar } from 'lucid
 // Dashboard" for a brand-new visitor just bounces straight back to "/"
 // (ProtectedRoute redirects an unonboarded visitor away from /dashboard),
 // which looked identical to clicking "Overview".
-const hasEnteredAppBefore = (): boolean => {
+export const hasEnteredAppBefore = (): boolean => {
   if (typeof window === 'undefined') return false;
   try {
     return (
@@ -313,6 +313,7 @@ export const FeaturesPage: React.FC = () => {
         <div className="max-w-5xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
           <p>© {new Date().getFullYear()} Ahead Of Time</p>
           <div className="flex gap-4">
+            <button type="button" onClick={() => navigate('/how-it-works')} className="hover:text-white transition cursor-pointer">How it works</button>
             <button type="button" onClick={() => navigate('/privacy')} className="hover:text-white transition cursor-pointer">Privacy Policy</button>
             <button type="button" onClick={() => navigate('/feedback')} className="hover:text-white transition cursor-pointer">Feedback</button>
           </div>
