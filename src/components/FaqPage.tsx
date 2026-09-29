@@ -10,9 +10,19 @@ interface FaqEntry {
 
 const FAQ_ENTRIES: FaqEntry[] = [
   {
+    question: "Does it work with Apple Calendar or Outlook?",
+    answer:
+      "Yes. Google Calendar works fully: scan your agenda and sync the tasks. For Apple Calendar, Outlook or any other calendar, turn on the calendar feed in Settings → Connections and subscribe to it once. Your tasks then show up as all-day entries in a separate \"Ahead Of Time tasks\" calendar. The How it works page shows the steps for each calendar.",
+  },
+  {
+    question: "The calendar feed is read-only. How do I tick off or remove tasks there?",
+    answer:
+      "Every task in the feed has one-tap links in its notes: mark this task done, mark all tasks of the plan done, or remove the plan when the event isn't happening anymore. No sign-in needed, and each has an Undo. Tasks of events that are over leave the feed by themselves. Your calendar shows changes at its next refresh: Apple usually within the hour, Outlook can take a few hours.",
+  },
+  {
     question: "I deleted an event, but it still shows up in Google Calendar or Tasks - why?",
     answer:
-      "The delete confirmation lets you choose what to remove: \"From the App\", \"From Calendar\", or both, and separately whether to remove just the prep tasks or the main event itself (the main event is kept intact by default, as a safety net against accidentally wiping a real appointment). Make sure \"From Calendar\" is checked if you want Google Calendar/Tasks cleaned up too - the summary box at the bottom of the delete dialog always spells out exactly what will happen before you confirm.",
+      "The delete window offers three choices: remove it from Ahead Of Time only (Google stays as it is), also remove the prep tasks from Google, or also delete the event itself from Google Calendar. The first is picked by default, so check which one you chose. The button always says exactly what will happen.",
   },
   {
     question: "Can prep tasks show up as Google Calendar events instead of Google Tasks?",

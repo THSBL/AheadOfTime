@@ -259,7 +259,7 @@ export const FeedbackPage: React.FC = () => {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs">
           <CalendarPreferencePoll
             source="feedback"
-            intro="Ahead Of Time syncs with Google Calendar today. Which calendar would you most like it to work with?"
+            intro="Google Calendar works fully; Apple Calendar and Outlook work through the calendar feed. Which calendar do you use most?"
           />
         </div>
       </main>

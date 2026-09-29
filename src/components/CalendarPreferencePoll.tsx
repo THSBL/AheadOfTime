@@ -185,7 +185,7 @@ export const CalendarPreferencePoll: React.FC<CalendarPreferencePollProps> = ({
               type="email"
               value={notifyEmail}
               onChange={(e) => setNotifyEmail(e.target.value)}
-              placeholder={`Email me when ${pending === 'other' ? 'it' : CALENDAR_CHOICE_LABELS[pending]} is supported (optional)`}
+              placeholder={`Email me when full ${pending === 'other' ? '' : `${CALENDAR_CHOICE_LABELS[pending]} `}sync is ready (optional)`}
               className={input}
             />
           )}
@@ -204,11 +204,14 @@ export const CalendarPreferencePoll: React.FC<CalendarPreferencePollProps> = ({
       {answer && !isSaving && (
         <p className={`text-xs flex items-center gap-1.5 ${muted}`}>
           <Check className={`w-3.5 h-3.5 ${dark ? 'text-aot-sage' : 'text-emerald-600'}`} />
-          {answer === 'google'
-            ? 'Thanks! Google Calendar sync is ready for you.'
-            : emailSaved
-              ? "Thanks! We'll email you when it's supported."
-              : 'Thanks - this helps us decide which calendar to support next.'}
+          <span>
+            {answer === 'google'
+              ? 'Thanks! Google Calendar works fully: scan your agenda and sync your tasks.'
+              : `Thanks! Your tasks already work in ${answer === 'other' ? 'most calendars' : CALENDAR_CHOICE_LABELS[answer]} through the calendar feed${emailSaved ? ", and we'll email you when full sync is ready" : ''}. `}
+            <a href={`/how-it-works?calendar=${answer === 'other' ? 'apple' : answer}`} className="font-semibold underline underline-offset-2">
+              See how it works
+            </a>
+          </span>
         </p>
       )}
 

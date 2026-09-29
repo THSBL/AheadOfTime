@@ -317,19 +317,19 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               </p>
             </div>
 
-            {/* Which calendar - demand research for calendars beyond Google.
-                Saves on its own; never blocks finishing onboarding. */}
+            {/* Which calendar - tailors the tip below. Saves on its own; never
+                blocks finishing onboarding. */}
             <div className="space-y-2 pt-1 border-t border-slate-100">
               <CalendarPreferencePoll
                 source="onboarding"
                 formLabel
                 question="Which calendar do you use day to day?"
-                intro="Sync works with Google Calendar today. Your answer helps us decide what to add next."
+                intro="Google Calendar works fully. Apple Calendar and Outlook get your tasks through a calendar feed."
                 onAnswered={setPrimaryCalendar}
               />
               {primaryCalendar && primaryCalendar !== 'google' && (
                 <p className="text-[11px] text-slate-500 leading-normal">
-                  You can still use Ahead Of Time: plans live in the app, and every event can be downloaded as an .ics file for your own calendar.
+                  Good to go: after setup, turn on the calendar feed in Settings → Connections and subscribe to it in your calendar. Your tasks show up there, and you can tick them off right from the calendar.
                 </p>
               )}
             </div>

@@ -207,9 +207,9 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             },
             {
               image: '/assets/usp-calendar.jpg',
-              alt: 'Google Calendar',
-              title: 'Syncs with Google Calendar',
-              body: 'Link your calendar and every event that needs prep gets its own countdown of milestones, without cluttering the events themselves.',
+              alt: 'A calendar app icon',
+              title: 'Works with your calendar',
+              body: 'Google Calendar: scan your agenda and sync the tasks. Apple Calendar, Outlook and others: subscribe once and tick tasks off right from your calendar.',
             },
           ].map(({ image, alt, title, body }) => (
             <div
@@ -234,13 +234,12 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           ))}
         </div>
 
-        {/* Demand research for calendars beyond Google - sits right under
-            the "Syncs with Google Calendar" card it relates to. */}
+        {/* Which calendar do you use - and how it works with that one. */}
         <div className="mt-8 max-w-2xl mx-auto bg-[#22344a] border border-white/10 rounded-3xl p-5 sm:p-6 shadow-md shadow-slate-900/20">
           <CalendarPreferencePoll
             source="landing"
             variant="dark"
-            intro="Ahead Of Time syncs with Google Calendar today. Tell us which one you use, so we know what to support next."
+            intro="Works with Google Calendar, Apple Calendar and Outlook. Which one do you use? We'll show you how it works with yours."
             offerNotifyEmail
           />
         </div>

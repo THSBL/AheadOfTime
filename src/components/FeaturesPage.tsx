@@ -174,7 +174,7 @@ export const FeaturesPage: React.FC = () => {
   const navigate = useNavigate();
   usePageMeta(
     'Features - Ahead Of Time',
-    'Plan any event or trip backwards from its date: in the app, on Telegram or from your Google Calendar. This week in focus, tasks in Google Tasks, updates on your schedule.'
+    'Plan any event or trip backwards from its date: in the app, on Telegram or from your calendar. This week in focus, tasks in Google Calendar, Apple Calendar or Outlook, updates on your schedule.'
   );
 
   const returning = hasEnteredAppBefore();
@@ -212,7 +212,7 @@ export const FeaturesPage: React.FC = () => {
           </h1>
           <p className="mt-4 text-slate-300 text-base sm:text-lg max-w-2xl mx-auto">
             Tell Ahead Of Time what's coming. It plans every step back from the date, keeps this week in focus, and puts the tasks in your
-            Google Calendar.
+            calendar: Google, Apple or Outlook.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2.5">
             <button type="button" onClick={goToAppOrOnboarding} className={primaryClass}>
@@ -220,7 +220,7 @@ export const FeaturesPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => navigate('/how-it-works')}
               className="px-5 py-3 rounded-2xl bg-white hover:bg-slate-100 text-[#182A42] font-bold text-sm transition-colors cursor-pointer"
             >
               See how it works
@@ -230,7 +230,7 @@ export const FeaturesPage: React.FC = () => {
             {[
               { Icon: MessageSquare, label: 'Chat in the app' },
               { Icon: Send, label: 'Telegram' },
-              { Icon: CalendarDays, label: 'Scan your Google Calendar' },
+              { Icon: CalendarDays, label: 'Google, Apple or Outlook' },
             ].map(({ Icon, label }) => (
               <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[13px] font-semibold text-slate-200">
                 <Icon className="w-3.5 h-3.5 text-aot-sage" />
@@ -265,12 +265,12 @@ export const FeaturesPage: React.FC = () => {
         />
         <Feature
           kicker="Your calendar"
-          title="In Google Calendar and Tasks, when you want it."
-          intro="Sync a plan and its steps land in Google Tasks (or as calendar blocks). A green icon shows which plans are synced; the rest are pending sync."
+          title="In the calendar you already use."
+          intro="Google Calendar: sync a plan and its steps land in Google Tasks (or as calendar blocks). Apple Calendar, Outlook and others: subscribe to your tasks once, and tick them off right from the calendar."
           points={[
             "Ticked off in Google Tasks? The app picks it up within about 15 minutes while it's open",
+            'In Apple Calendar or Outlook, one tap marks a task done, all tasks of a plan done, or removes a plan that is no longer happening',
             'Nothing is added twice, and your own appointments are never deleted without asking by name',
-            'Background Sync: plans you confirm on Telegram go straight into your calendar',
           ]}
           picture={<CalendarPicture />}
         />
@@ -281,7 +281,7 @@ export const FeaturesPage: React.FC = () => {
           intro="Get your prep update daily, weekly or monthly on Telegram or email, or turn it off."
           points={[
             'Plan with AI (Google Gemini) or switch it off and use built-in templates',
-            'Google access is stored encrypted and only used for your own calendar',
+            'Calendar access is stored encrypted and only used for your own calendar',
             'Delete your account and everything stored for it, any time',
           ]}
           picture={<UpdatesPicture />}
@@ -291,7 +291,7 @@ export const FeaturesPage: React.FC = () => {
           {[
             ["Tell it what's coming", 'In the app, on Telegram, or by scanning your calendar.'],
             ['Get the plan', 'Every step dated back from the event, sized to how much help you want.'],
-            ['Stay ahead', 'This week in focus, tasks in Google, a nudge on your schedule.'],
+            ['Stay ahead', 'This week in focus, tasks in your calendar, a nudge on your schedule.'],
           ].map(([title, text], i) => (
             <div key={title} className="rounded-2xl bg-white/[0.04] border border-white/10 p-5">
               <span className="w-8 h-8 rounded-full bg-aot-sage text-[#182A42] font-black flex items-center justify-center mb-2.5">{i + 1}</span>
