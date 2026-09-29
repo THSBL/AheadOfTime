@@ -32,3 +32,14 @@ export function describePendingPush(event: CalendarEvent): string {
   if (!isEventInCalendar(event)) return tasks > 0 ? `${taskText} + the event` : 'the event';
   return tasks > 0 ? `${taskText} · event already in calendar` : 'In calendar';
 }
+
+/**
+ * Tasks added after the plan was synced: the plan has tasks in Google
+ * already, and these ones aren't. 0 when the plan was never synced (then
+ * the whole plan is simply "pending sync").
+ */
+export function newTasksPendingSync(event: CalendarEvent): number {
+  const shown = (event.milestones || []).filter((m) => m.isActive !== false);
+  if (!shown.some((m) => m.googleTaskId)) return 0;
+  return shown.filter((m) => !m.googleTaskId).length;
+}

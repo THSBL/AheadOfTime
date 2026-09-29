@@ -30,6 +30,8 @@ import { celebrateTask } from '../utils/celebrate';
 import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel } from '../types';
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
+import { SyncStatusIcon } from './SyncStatusIcon';
+import { isPlanPushed, newTasksPendingSync } from '../utils/pushStatus';
 import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStart, spreadCatchUpDates } from '../utils/readiness';
 import { CatchUpCard } from './CatchUpCard';
@@ -820,6 +822,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       });
     };
     const completedDelivCount = hasDeliverables ? ms.deliverables!.filter((d) => d.is_completed).length : 0;
+    const partlySynced = newTasksPendingSync(activeEvent) > 0;
 
     return (
       <div
@@ -896,6 +899,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               <span className="hidden sm:inline text-[10px] font-mono font-bold text-slate-400 shrink-0 whitespace-nowrap">
                 {formatDisplayDate(ms.calculatedDate)}
               </span>
+              {/* Added after the plan was synced: this one isn't in the calendar yet. */}
+              {partlySynced && !ms.googleTaskId && ms.isActive !== false && !isSkipped && (
+                <SyncStatusIcon synced={false} tone="light" size={15} />
+              )}
             </div>
           </div>
 
@@ -993,7 +1000,11 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         title="Sync this event + prep tasks to Google Calendar"
       >
         <Calendar className="w-3.5 h-3.5 text-white shrink-0" />
-        <span>Sync to Calendar</span>
+        <span>
+          {activeEvent && newTasksPendingSync(activeEvent) > 0
+            ? `Sync ${newTasksPendingSync(activeEvent)} new ${newTasksPendingSync(activeEvent) === 1 ? 'task' : 'tasks'}`
+            : 'Sync to Calendar'}
+        </span>
       </button>
 
       {/* More Actions Menu */}
@@ -1144,6 +1155,14 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   }
                 </span>
               </div>
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 shrink-0">
+                <SyncStatusIcon synced={isPlanPushed(activeEvent)} tone="light" size={16} />
+                {isPlanPushed(activeEvent)
+                  ? 'Synced'
+                  : newTasksPendingSync(activeEvent) > 0
+                    ? `${newTasksPendingSync(activeEvent)} new ${newTasksPendingSync(activeEvent) === 1 ? 'task' : 'tasks'} pending sync`
+                    : 'Pending sync'}
+              </span>
               {activeEvent.eventTime && (
                 <div className="flex items-center gap-1 font-mono text-slate-500 text-[11px]">
                   <Clock className="w-3 h-3 text-slate-400 shrink-0" />

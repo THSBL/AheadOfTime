@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { CalendarEvent } from '../types';
 import { getCountdownStatus, getCleanEventTitle, getEventTopicLabel, sortEventsUpcomingFirst } from '../utils/tminusRules';
-import { isPlanPushed, pendingPushItems } from '../utils/pushStatus';
+import { isPlanPushed, newTasksPendingSync, pendingPushItems } from '../utils/pushStatus';
+import { SyncStatusIcon } from './SyncStatusIcon';
 
 interface MessengerSidebarProps {
   events: CalendarEvent[];
@@ -171,7 +172,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
               <CalendarDays className="w-4 h-4 text-[#7dd3fc]" />
             </div>
             <h3 className="text-sm font-bold text-white">
-              Active Events
+              Active Plans
             </h3>
           </div>
 
@@ -181,7 +182,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 type="button"
                 onClick={onToggleCollapse}
                 className="hidden lg:flex p-2 rounded-full bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white shadow-xs items-center justify-center cursor-pointer transition-all"
-                title="Collapse event list"
+                title="Collapse plan list"
               >
                 <PanelLeftClose className="w-4 h-4" />
               </button>
@@ -196,7 +197,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search events..."
+            placeholder="Search plans..."
             className="w-full bg-white/10 text-white text-xs sm:text-sm pl-9 pr-4 py-2 rounded-full border border-white/10 focus:outline-none focus:border-white/30 focus:bg-white/15 placeholder:text-slate-400"
           />
         </div>
@@ -266,7 +267,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     on ? 'bg-white text-[#182A42]' : 'text-slate-300 hover:bg-white/10'
                   }`}
                 >
-                  <span className={`w-3 h-3 rounded ${chip.swatch} ${on && chip.key === 'toPush' ? 'bg-slate-300' : ''}`} />
+                  <SyncStatusIcon synced={chip.key === 'pushed'} tone={on ? 'light' : 'dark'} size={15} />
                   <span>{chip.label}</span>
                   <span className={on ? 'text-[#182A42]' : 'text-slate-400'}>· {chip.count}</span>
                 </button>
@@ -279,13 +280,13 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
       {/* Each event sits on a light card of its own (a faint tint of the
           panel, not the old white cards) so events stand apart; the open
           event gets a brighter outline. */}
-      <div className="flex-1 overflow-y-auto py-1 space-y-1.5">
+      <div className="flex-1 overflow-y-auto py-1 space-y-1.5 bg-[#2c3f57]">
         {filteredEvents.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-xs sm:text-sm flex flex-col items-center justify-center gap-2">
             <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-slate-300">
               <Calendar className="w-5 h-5" />
             </div>
-            <p className="font-bold text-slate-300">No active events</p>
+            <p className="font-bold text-slate-300">No active plans</p>
             <p className="text-xs text-slate-400 max-w-[200px]">Create an event or sync your Google Calendar to see your preparation runways.</p>
           </div>
         ) : (
@@ -300,6 +301,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
             const topicLabel = getEventTopicLabel(evt.category, evt.context);
 
             const planPushed = isPlanPushed(evt);
+            const newTasks = newTasksPendingSync(evt);
 
             // Month section header - only when the month actually changes
             // from the previous (already date-sorted) event, so scanning a
@@ -327,13 +329,15 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 className={`mx-2 px-3 ${compact ? 'py-1.5' : 'py-2.5'} rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group ${
                   // Small rows (not prepping in this period) have fill only, no border,
                   // so the full cards stand out.
+                  // Two blues: the list is the lighter blue, plan cards the darker
+                  // navy; rows further out are plain text on the list.
                   compact
                     ? isSelected
                       ? 'bg-white/10'
-                      : 'bg-white/[0.04] hover:bg-white/[0.07]'
+                      : 'hover:bg-white/[0.06]'
                     : isSelected
-                      ? 'border bg-white/10 border-white/25'
-                      : 'border bg-white/[0.04] border-white/10 hover:bg-white/[0.07]'
+                      ? 'border bg-[#16263b] border-white/30'
+                      : 'border bg-[#1d2e45] border-white/[0.06] hover:border-white/15'
                 }`}
               >
                 {/* The icon is the tick box: tap to select (it shows a
@@ -367,7 +371,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     <h4 className={`${compact ? 'text-xs font-semibold text-slate-300' : 'text-xs sm:text-sm font-bold text-white'} truncate leading-tight flex items-center gap-1.5`}>
                       <span className="truncate">{displayTitle}</span>
                     </h4>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <SyncStatusIcon synced={planPushed} size={compact ? 16 : 18} />
                       <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-[#bae6fd] bg-white/10 px-1.5 py-0.5 rounded-md">
                         {countdown.label}
                       </span>
@@ -389,6 +394,9 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                   {!compact && (
                     <p className="text-[10px] sm:text-[11px] text-slate-300 font-medium truncate pt-0.5">
                       {new Date(`${evt.eventDate.slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+                      {newTasks > 0 && (
+                        <span className="text-amber-300"> · {newTasks} new {newTasks === 1 ? 'task' : 'tasks'} pending sync</span>
+                      )}
                     </p>
                   )}
                 </div>
