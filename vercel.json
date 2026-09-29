@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/calendar/feed/:token",
+      "destination": "/api/auth/google?action=ics-feed&t=:token"
+    },
+    {
+      "source": "/api/calendar/done",
+      "destination": "/api/auth/google?action=feed-done"
+    },
+    {
+      "source": "/api/auth/calendar-feed",
+      "destination": "/api/auth/google?action=calendar-feed"
+    },
+    {
       "source": "/api/feedback/eligibility",
       "destination": "/api/feedback"
     },

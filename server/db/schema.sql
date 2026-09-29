@@ -339,3 +339,13 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   revoked_at    TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions (user_id);
+
+-- Calendar feed (server/calendarFeed.ts): one row per user who turned it on.
+-- The feed link and its Mark done links are HMACs over user id + version;
+-- "Reset link" bumps the version.
+CREATE TABLE IF NOT EXISTS calendar_feeds (
+  user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  version         INTEGER NOT NULL DEFAULT 1,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_fetched_at TIMESTAMPTZ
+);

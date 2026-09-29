@@ -23,6 +23,7 @@ import { handleCalendarPush, handleCalendarEvents, handleCalendarDelete } from '
 import { handleAiSettings } from '../../../server/aiSettingsRoute.js';
 import { handleNotifyPrefs } from '../../../server/notifyPrefsRoute.js';
 import { handleAccountDeletion } from '../../../server/accountDeletion.js';
+import { handleCalendarFeed, handleCalendarDone, handleCalendarFeedSettings } from '../../../server/calendarFeed.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -206,6 +207,21 @@ export default async function handler(req: any, res: any) {
   }
   if (action === 'delete-account') {
     return handleAccountDeletion(req, res);
+  }
+  // Calendar feed (Apple, Outlook, any calendar): the feed and its Mark done
+  // links carry their own signed token; the settings need a sign-in.
+  if (action === 'ics-feed') {
+    return handleCalendarFeed(req, res, String(req.query?.t || ''));
+  }
+  if (action === 'feed-done') {
+    return handleCalendarDone(req, res);
+  }
+  if (action === 'calendar-feed') {
+    const verified = await verifyRequestUser(req);
+    if (!verified) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    return handleCalendarFeedSettings(req, res, await findOrCreateUserByEmail(verified.email));
   }
   // Push to Cal / Scan agenda through the stored Background Sync grant.
   if (action === 'calendar-push' || action === 'calendar-events' || action === 'calendar-delete') {

@@ -12,6 +12,7 @@ import { DeleteAccountCard } from './DeleteAccountCard';
 import { SettingsGroup } from './SettingsRow';
 import { UpdatesSettings } from './UpdatesSettings';
 import { CalendarHabitsCard } from './CalendarHabitsCard';
+import { CalendarFeedCard } from './CalendarFeedCard';
 
 export type SettingsTab = 'connections' | 'account' | 'updates';
 const TABS: Array<{ id: SettingsTab; label: string }> = [
@@ -129,6 +130,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
                 onSyncComplete?.(synced);
               }}
             />
+            <CalendarFeedCard />
             <TelegramIntegrationCard userId={currentUser?.id} />
             <AiPlanningCard />
           </SettingsGroup>
