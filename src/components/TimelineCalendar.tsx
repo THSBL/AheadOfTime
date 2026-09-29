@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CalendarEvent } from '../types';
-import { addDaysKey, dayKey, itemsForDay, type CalendarItem } from '../utils/calendarView';
+import { addDaysKey, dayKey, eventBarsForWeek, itemsForDay, type CalendarItem, type EventBar } from '../utils/calendarView';
 import { formatDisplayDate } from '../utils/tminusRules';
 import { CalendarPeek, type PeekTarget } from './CalendarPeek';
 
@@ -27,6 +27,9 @@ interface TimelineCalendarProps {
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTH_ITEMS = 3;
+// Event bars: one row each, the same row across every day of the event.
+const LANE_PX = 26;
+const DAY_HEADER_PX = 26;
 
 /** Monday on or before the given day. */
 function mondayOf(key: string): string {
@@ -174,7 +177,38 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
     );
   };
 
-  const cells = Array.from({ length: days }, (_, i) => addDaysKey(start, i));
+  const renderBar = (bar: EventBar) => {
+    const ev = bar.event;
+    const lit = highlightEventId !== null && ev.id === highlightEventId;
+    const compact = dimming && !lit;
+    const peeked = peek !== null && peek.eventId === ev.id && !peek.milestoneId;
+    return (
+      <button
+        key={`${ev.id}-${bar.startCol}`}
+        type="button"
+        onClick={(e) => openPeek(e, ev.id)}
+        aria-haspopup="dialog"
+        title={`${ev.title} · ${formatDisplayDate(ev.eventDate)}${ev.endDate && ev.endDate !== ev.eventDate ? ` – ${formatDisplayDate(ev.endDate)}` : ''}`}
+        style={{ gridColumn: `${bar.startCol + 1} / span ${bar.span}`, gridRow: bar.lane + 1 }}
+        className={`pointer-events-auto mx-1 h-[22px] self-center px-1.5 text-left text-[11.5px] font-bold leading-[22px] truncate transition-all cursor-pointer ${
+          bar.continuesBefore ? 'rounded-l-none -ml-px' : 'rounded-l-md'
+        } ${bar.continuesAfter ? 'rounded-r-none -mr-px' : 'rounded-r-md'} ${
+          peeked ? 'outline outline-2 outline-offset-1 outline-[#447463]' : ''
+        } ${
+          lit
+            ? 'bg-[#182A42] text-white ring-2 ring-aot-sage ring-offset-1'
+            : compact
+              ? 'bg-slate-200 text-slate-500 opacity-60'
+              : 'bg-[#182A42] text-white hover:bg-slate-800'
+        }`}
+      >
+        {bar.continuesBefore ? '← ' : ''}
+        {ev.title}
+        {ev.eventTime && !bar.continuesBefore ? <span className="ml-1 font-semibold opacity-70">{ev.eventTime}</span> : null}
+      </button>
+    );
+  };
+
   const inMonth = (key: string) => span === 'week' || key.slice(0, 7) === cursor.slice(0, 7);
 
   return (
@@ -224,41 +258,60 @@ export const TimelineCalendar: React.FC<TimelineCalendarProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-7 gap-px bg-slate-100 border-t border-slate-100">
-          {cells.map((key) => {
-            const items = itemsForDay(events, key, today);
-            // In month view, keep the highlighted event's items and cap the rest.
-            const lit = items.filter(isHighlighted);
-            const rest = items.filter((i) => !isHighlighted(i));
-            const limit = span === 'week' ? Infinity : Math.max(0, MONTH_ITEMS - lit.length);
-            const shown = [...lit, ...rest.slice(0, limit)];
-            const hidden = items.length - shown.length;
+        <div className="border-t border-slate-100">
+          {Array.from({ length: days / 7 }, (_, w) => {
+            const weekStart = addDaysKey(start, w * 7);
+            const weekCells = Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i));
+            const bars = eventBarsForWeek(events, weekStart);
+            const lanes = bars.reduce((n, b) => Math.max(n, b.lane + 1), 0);
             return (
-              <div
-                key={key}
-                className={`p-1.5 space-y-1 ${span === 'week' ? 'min-h-[460px]' : 'min-h-[112px]'} ${inMonth(key) ? 'bg-white' : 'bg-slate-50/70'}`}
-              >
-                <div className="px-1 flex items-center justify-between">
-                  <span
-                    className={`text-xs font-bold ${
-                      key === today ? 'bg-[#182A42] text-white rounded-full px-1.5' : inMonth(key) ? 'text-slate-600' : 'text-slate-300'
-                    }`}
+              <div key={weekStart} className="relative grid grid-cols-7 gap-px bg-slate-100 border-b border-slate-100">
+                {weekCells.map((key) => {
+                  // Events are the bars above; the day itself lists its tasks.
+                  const tasks = itemsForDay(events, key, today).filter((i) => i.kind === 'task');
+                  const lit = tasks.filter(isHighlighted);
+                  const rest = tasks.filter((i) => !isHighlighted(i));
+                  const limit = span === 'week' ? Infinity : Math.max(0, MONTH_ITEMS - lit.length);
+                  const shown = [...lit, ...rest.slice(0, limit)];
+                  const hidden = tasks.length - shown.length;
+                  return (
+                    <div
+                      key={key}
+                      className={`p-1.5 space-y-1 ${span === 'week' ? 'min-h-[460px]' : 'min-h-[112px]'} ${inMonth(key) ? 'bg-white' : 'bg-slate-50/70'}`}
+                    >
+                      <div className="px-1 flex items-center justify-between" style={{ height: DAY_HEADER_PX - 6 }}>
+                        <span
+                          className={`text-xs font-bold ${
+                            key === today ? 'bg-[#182A42] text-white rounded-full px-1.5' : inMonth(key) ? 'text-slate-600' : 'text-slate-300'
+                          }`}
+                        >
+                          {Number(key.slice(8, 10))}
+                        </span>
+                      </div>
+                      {lanes > 0 && <div aria-hidden="true" style={{ height: lanes * LANE_PX }} />}
+                      {shown.map(renderItem)}
+                      {hidden > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCursor(key);
+                            onSpanChange('week');
+                          }}
+                          className="px-1.5 text-[11px] font-bold text-slate-500 hover:text-[#182A42] cursor-pointer"
+                        >
+                          +{hidden} more
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {bars.length > 0 && (
+                  <div
+                    className="absolute inset-x-0 grid grid-cols-7 gap-px pointer-events-none"
+                    style={{ top: DAY_HEADER_PX + 2, gridAutoRows: `${LANE_PX}px` }}
                   >
-                    {Number(key.slice(8, 10))}
-                  </span>
-                </div>
-                {shown.map(renderItem)}
-                {hidden > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCursor(key);
-                      onSpanChange('week');
-                    }}
-                    className="px-1.5 text-[11px] font-bold text-slate-500 hover:text-[#182A42] cursor-pointer"
-                  >
-                    +{hidden} more
-                  </button>
+                    {bars.map(renderBar)}
+                  </div>
                 )}
               </div>
             );

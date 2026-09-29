@@ -83,3 +83,43 @@ export function itemsForDay(events: CalendarEvent[], day: string, today: string)
   tasks.sort((a, b) => rank(a) - rank(b));
   return [...out, ...tasks];
 }
+
+export interface EventBar {
+  event: CalendarEvent;
+  /** 0 = Monday column of the week. */
+  startCol: number;
+  span: number;
+  /** Row within the week; the same event keeps one row across its days. */
+  lane: number;
+  /** The event started before / goes on after this week. */
+  continuesBefore: boolean;
+  continuesAfter: boolean;
+}
+
+/**
+ * Events of one week (or any run of days) as bars: a multi-day event is one
+ * bar across its days on a single row, like any calendar app. Longer and
+ * earlier events get the top rows; later ones fill the first free row.
+ */
+export function eventBarsForWeek(events: CalendarEvent[], weekStart: string, days = 7): EventBar[] {
+  const weekEnd = addDaysKey(weekStart, days - 1);
+  const col = (day: string) => Math.round((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${weekStart}T12:00:00Z`)) / 86_400_000);
+  const bars = events
+    .map((event) => {
+      const [from, to] = eventSpan(event);
+      if (from > weekEnd || to < weekStart) return null;
+      const start = from < weekStart ? weekStart : from;
+      const end = to > weekEnd ? weekEnd : to;
+      return { event, startCol: col(start), span: col(end) - col(start) + 1, lane: 0, continuesBefore: from < weekStart, continuesAfter: to > weekEnd };
+    })
+    .filter((b): b is EventBar => b !== null)
+    .sort((a, b) => a.startCol - b.startCol || b.span - a.span || a.event.title.localeCompare(b.event.title));
+  const laneEnds: number[] = [];
+  for (const bar of bars) {
+    let lane = laneEnds.findIndex((end) => end < bar.startCol);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = bar.startCol + bar.span - 1;
+    bar.lane = lane;
+  }
+  return bars;
+}
