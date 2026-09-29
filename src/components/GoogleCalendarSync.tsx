@@ -199,8 +199,8 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
 
     const pendingCount = eventsToPush.reduce((sum, ev) => sum + countPendingItems(ev), 0);
     const confirmMessage = pendingCount === 0
-      ? 'These events are already fully synced to Google Calendar - there is nothing new to push. Push again anyway?'
-      : `We found ${pendingCount} new ${pendingCount === 1 ? 'item' : 'items'} to push across ${eventsToPush.length} event${eventsToPush.length === 1 ? '' : 's'} (already-synced items won't be duplicated). Push this now?`;
+      ? 'These events are already fully synced to Google Calendar - there is nothing new to sync. Sync again anyway?'
+      : `We found ${pendingCount} new ${pendingCount === 1 ? 'item' : 'items'} to sync across ${eventsToPush.length} event${eventsToPush.length === 1 ? '' : 's'} (already-synced items won't be duplicated). Sync now?`;
     if (!window.confirm(confirmMessage)) return;
 
     setIsBatchSyncing(true);
@@ -240,7 +240,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
         clearGoogleSession();
         setAuthError('Google session expired. Please sign in again.');
       } else {
-        setAuthError(`Failed to push to calendar: ${err?.message || 'Unknown error'}`);
+        setAuthError(`Failed to sync to calendar: ${err?.message || 'Unknown error'}`);
       }
     } finally {
       setIsBatchSyncing(false);
@@ -341,8 +341,8 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
 
     const pendingCount = countPendingItems(activeEvent);
     const confirmMessage = pendingCount === 0
-      ? 'This event is already fully synced to Google Calendar - there is nothing new to push. Push again anyway?'
-      : `We found ${pendingCount} new ${pendingCount === 1 ? 'item' : 'items'} to push (already-synced items won't be duplicated). Push this now?`;
+      ? 'This event is already fully synced to Google Calendar - there is nothing new to sync. Sync again anyway?'
+      : `We found ${pendingCount} new ${pendingCount === 1 ? 'item' : 'items'} to sync (already-synced items won't be duplicated). Sync now?`;
     if (!window.confirm(confirmMessage)) return;
 
     setIsSyncing(true);
@@ -369,7 +369,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
         clearGoogleSession();
         setAuthError('Google session expired. Please sign in again.');
       } else {
-        setAuthError(`Failed to push to calendar: ${err?.message || 'Unknown error'}`);
+        setAuthError(`Failed to sync to calendar: ${err?.message || 'Unknown error'}`);
       }
     } finally {
       setIsSyncing(false);
@@ -442,7 +442,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
   if (!activeEvent) {
     return (
       <div className="p-6 bg-white rounded-3xl border border-slate-200 text-center space-y-4">
-        <p className="text-sm text-slate-500 font-medium">No active event selected to push.</p>
+        <p className="text-sm text-slate-500 font-medium">No active event selected to sync.</p>
         {onClose && (
           <button
             onClick={onClose}
@@ -466,7 +466,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-900 leading-tight">
-              Push to Google Calendar
+              Sync to Google Calendar
             </h3>
             {syncMode === 'single' && activeEvent && (
               <p className="text-xs text-slate-500 truncate">{activeEvent.title}</p>
@@ -505,7 +505,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           </div>
         )}
 
-        {/* Account and what to push: one compact row each */}
+        {/* Account and what to sync: one compact row each */}
         <div className="divide-y divide-slate-100 border-y border-slate-100">
           {settingRow(
             'Account',
@@ -539,7 +539,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
           )}
           {events.length > 1 &&
             settingRow(
-              'Push',
+              'Sync',
               <div className="flex bg-slate-100 p-0.5 rounded-xl gap-0.5">
                 {(['single', 'batch'] as const).map((mode) => (
                   <button
@@ -568,7 +568,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-base font-bold text-emerald-950">
-                    Batch Push Successful!
+                    Synced to Google Calendar!
                   </h4>
                   <p className="text-xs sm:text-sm text-emerald-800 max-w-sm mx-auto">
                     Successfully synced <strong>{batchSuccessResult.eventCount} events</strong> and added <strong>{batchSuccessResult.taskCount} preparation tasks</strong> to Google Calendar & Tasks!
@@ -663,13 +663,13 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     {isBatchSyncing ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Pushing {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'plan' : 'plans'}...</span>
+                        <span>Syncing {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'plan' : 'plans'}...</span>
                       </>
                     ) : (
                       <>
                         <CalendarIcon className="w-4 h-4" />
                         <span>
-                          Push {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'plan' : 'plans'}
+                          Sync {selectedBatchIds.length} {selectedBatchIds.length === 1 ? 'plan' : 'plans'}
                           {selectedItemCount > 0 && ` · ${selectedItemCount} ${selectedItemCount === 1 ? 'item' : 'items'}`}
                         </span>
                         <ArrowRight className="w-4 h-4" />
@@ -691,7 +691,7 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-base font-bold text-emerald-950">
-                    Pushed Successfully!
+                    Synced to Google Calendar!
                   </h4>
                   <p className="text-xs sm:text-sm text-emerald-800 max-w-sm mx-auto">
                     Created <strong>1 Target Deadline Event</strong> ({syncSuccessResult.eventTitle}) on your calendar and added <strong>{syncSuccessResult.taskCount} checkable tasks</strong> to Google Tasks (no duplicate event blocks).
@@ -744,12 +744,12 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
                     {isSyncing ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Pushing to Calendar...</span>
+                        <span>Syncing to Calendar...</span>
                       </>
                     ) : (
                       <>
                         <CalendarIcon className="w-4 h-4" />
-                        <span>Push event + {taskCount} {milestoneSyncFormat === 'tasks_only' ? 'tasks' : 'blocks'}</span>
+                        <span>Sync event + {taskCount} {milestoneSyncFormat === 'tasks_only' ? 'tasks' : 'blocks'}</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}

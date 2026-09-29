@@ -35,7 +35,6 @@ import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStar
 import { CatchUpCard } from './CatchUpCard';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
-import { DeleteEventModal } from './DeleteEventModal';
 import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
 import { getStoredAccessToken } from '../services/googleAuth';
@@ -102,6 +101,8 @@ interface EventTimelineRadarProps {
   onDeleteEvent: (eventId: string) => void;
   onDeleteEventFromCalendarOnly?: (eventId: string, cleanupSummary?: { calCount: number; taskCount: number }) => void;
   onDeleteEventAndCalendar?: (eventId: string, cleanupSummary?: { calCount: number; taskCount: number }) => void;
+  /** Opens the delete window (the same three safe choices as deleting from the list). */
+  onRequestDelete?: (eventId: string) => void;
   onAddCustomMilestone: (eventId: string) => void;
   /** Opened from the calendar by clicking a task: open and highlight it. `at` re-triggers on a repeat click. */
   focusMilestone?: { milestoneId: string; at: number } | null;
@@ -127,6 +128,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   onDeleteEvent,
   onDeleteEventFromCalendarOnly,
   onDeleteEventAndCalendar,
+  onRequestDelete,
   onAddCustomMilestone,
   focusMilestone,
   onUpdateMilestone,
@@ -142,7 +144,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<TMinusMilestone | null>(null);
   const [isEditingEvent, setIsEditingEvent] = useState(false);
@@ -698,7 +699,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         </div>
         <h3 className="text-base font-bold text-slate-900 mb-1">No Active Event Selected</h3>
         <p className="text-xs sm:text-sm text-slate-500 mb-4 max-w-xs leading-relaxed">
-          Create or select an event from the list to review, adjust, and push its prep schedule.
+          Create or select an event from the list to review, adjust, and sync its prep schedule.
         </p>
         <button
           onClick={onOpenNewEventModal}
@@ -989,10 +990,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       <button
         onClick={() => setIsPushModalOpen(true)}
         className="bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
-        title="Push 1 event + prep tasks to Google Calendar"
+        title="Sync this event + prep tasks to Google Calendar"
       >
         <Calendar className="w-3.5 h-3.5 text-white shrink-0" />
-        <span>Push to Cal</span>
+        <span>Sync to Calendar</span>
       </button>
 
       {/* More Actions Menu */}
@@ -1070,8 +1071,9 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
               <button
                 onClick={() => {
-                  setIsDeleteModalOpen(true);
                   setIsMoreMenuOpen(false);
+                  if (activeEvent && onRequestDelete) onRequestDelete(activeEvent.id);
+                  else if (activeEvent && window.confirm(`Delete "${activeEvent.title}" from Ahead Of Time?`)) onDeleteEvent(activeEvent.id);
                 }}
                 className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
               >
@@ -1717,34 +1719,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </div>
         </div>
       )}
-
-      {/* Delete Event & Google Calendar Cleanup Modal */}
-      {isDeleteModalOpen && activeEvent && (
-        <DeleteEventModal
-          event={activeEvent}
-          isOpen={isDeleteModalOpen}
-          onClose={() => setIsDeleteModalOpen(false)}
-          onConfirmDeleteAppOnly={(id) => {
-            onDeleteEvent(id);
-            setIsDeleteModalOpen(false);
-          }}
-          onConfirmDeleteCalendarOnly={(id, summary) => {
-            if (onDeleteEventFromCalendarOnly) {
-              onDeleteEventFromCalendarOnly(id, summary);
-            }
-            setIsDeleteModalOpen(false);
-          }}
-          onConfirmDeleteAppAndCalendar={(id, summary) => {
-            if (onDeleteEventAndCalendar) {
-              onDeleteEventAndCalendar(id, summary);
-            } else {
-              onDeleteEvent(id);
-            }
-            setIsDeleteModalOpen(false);
-          }}
-        />
-      )}
-
 
       {/* Refine Deliverable Modal - milestone-level only. The deliverable-
           level "Decide" button/popup (architecture reset Phase 8) was

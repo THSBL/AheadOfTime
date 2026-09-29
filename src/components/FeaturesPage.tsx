@@ -140,8 +140,8 @@ const CalendarPicture = () => (
       </div>
     ))}
     <div className="flex items-center justify-between gap-2 rounded-2xl bg-[#0f1c2d] pl-3 pr-2 py-2 text-xs text-slate-300">
-      <span>2 plans not in your calendar yet</span>
-      <span className="bg-white text-[#182A42] font-extrabold rounded-xl px-2.5 py-1.5 whitespace-nowrap">Push to Calendar</span>
+      <span>2 plans pending sync</span>
+      <span className="bg-white text-[#182A42] font-extrabold rounded-xl px-2.5 py-1.5 whitespace-nowrap">Sync to Calendar</span>
     </div>
   </div>
 );
@@ -266,7 +266,7 @@ export const FeaturesPage: React.FC = () => {
         <Feature
           kicker="Your calendar"
           title="In Google Calendar and Tasks, when you want it."
-          intro="Push a plan and its steps land in Google Tasks (or as calendar blocks). A green icon shows which plans are fully in your calendar; the bar counts what isn't yet."
+          intro="Sync a plan and its steps land in Google Tasks (or as calendar blocks). A green icon shows which plans are synced; the rest are pending sync."
           points={[
             "Ticked off in Google Tasks? The app picks it up within about 15 minutes while it's open",
             'Nothing is added twice, and your own appointments are never deleted without asking by name',

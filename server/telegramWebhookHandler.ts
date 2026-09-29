@@ -530,7 +530,7 @@ export class TelegramWebhookHandler {
     if (result.status === 'failed') {
       await TelegramService.sendMessage(
         chatId,
-        "⚠️ I couldn't add that to your Google Calendar just now. Nothing is lost - open the app and tap Push to Cal whenever you like."
+        "⚠️ I couldn't add that to your Google Calendar just now. Nothing is lost - open the app and tap Sync to Calendar whenever you like."
       );
       return;
     }
@@ -551,7 +551,7 @@ export class TelegramWebhookHandler {
       });
       return;
     }
-    if (result.error) parts.push(`(${result.error} Open the app and tap Push to Cal to finish.)`);
+    if (result.error) parts.push(`(${result.error} Open the app and tap Sync to Calendar to finish.)`);
     if (parts.length > 0) await TelegramService.sendMessage(chatId, parts.join('\n'));
   }
 

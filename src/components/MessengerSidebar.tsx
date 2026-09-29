@@ -60,7 +60,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
   onToggleCollapse,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  // The legend doubles as the filter: tap "In your calendar" or "Not in
+  // The legend doubles as the filter: tap "Synced" or "Pending
   // calendar yet" to show only those plans, tap again for all.
   const [pushFilter, setPushFilter] = useState<'all' | 'pushed' | 'toPush'>('all');
   const showOnlyToPush = pushFilter === 'toPush';
@@ -163,7 +163,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
     <div className="flex flex-col h-full bg-[#223349] border border-white/10 rounded-3xl overflow-clip shadow-xs">
 
       {/* Sidebar Header */}
-      {/* On phones the page scrolls, so this header (with the Push button) stays pinned to the top. */}
+      {/* On phones the page scrolls, so this header (with the Sync button) stays pinned to the top. */}
       <div className="sticky top-0 z-20 lg:static bg-[#223349] p-3.5 sm:p-4 border-b border-white/10 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -201,7 +201,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
           />
         </div>
 
-        {/* Select All (+ Delete for a selection) and the one Push button. */}
+        {/* Select All (+ Delete for a selection) and the one Sync button. */}
         {events.length > 0 && (
           <div className="flex items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
@@ -234,14 +234,14 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 >
                   <Calendar className="w-3.5 h-3.5" />
                   <span>
-                    Push {pushCandidates.length}
+                    Sync {pushCandidates.length}
                     {selectedEventIds.length > 0 ? ' selected' : ''} to Calendar
                   </span>
                 </button>
               ) : (
                 <span className="shrink-0 text-[11px] font-semibold text-slate-400 flex items-center gap-1">
                   <Check className="w-3.5 h-3.5 text-aot-sage" />
-                  {selectedEventIds.length > 0 ? 'Selection in your calendar' : 'All in your calendar'}
+                  {selectedEventIds.length > 0 ? 'Selection synced' : 'All synced'}
                 </span>
               ))}
           </div>
@@ -251,8 +251,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
         {events.length > 0 && (
           <div className="flex items-center gap-1.5 text-[11px]" role="group" aria-label="Show plans">
             {([
-              { key: 'pushed', label: 'In your calendar', count: pushedCount, swatch: 'bg-aot-sage' },
-              { key: 'toPush', label: 'Not in calendar yet', count: toPushCount, swatch: 'bg-white/25' },
+              { key: 'pushed', label: 'Synced', count: pushedCount, swatch: 'bg-aot-sage' },
+              { key: 'toPush', label: 'Pending sync', count: toPushCount, swatch: 'bg-white/25' },
             ] as const).map((chip) => {
               const on = pushFilter === chip.key;
               return (
@@ -339,7 +339,7 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                 {/* The icon is the tick box: tap to select (it shows a
                     check), tap the rest of the row to open the event. Its
                     colour is the push status: sage = the whole plan is in
-                    Google Calendar, grey = something still to push. */}
+                    Google Calendar, grey = something still to sync. */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -347,8 +347,8 @@ export const MessengerSidebar: React.FC<MessengerSidebarProps> = ({
                     onToggleSelectEvent(evt.id);
                   }}
                   aria-pressed={isCheckedForBulk}
-                  aria-label={`Select ${displayTitle} (${planPushed ? 'plan in calendar' : 'plan not pushed yet'})`}
-                  title={isCheckedForBulk ? 'Selected' : planPushed ? 'Plan in your calendar - tap to select' : 'Plan not in your calendar yet - tap to select'}
+                  aria-label={`Select ${displayTitle} (${planPushed ? 'synced' : 'pending sync'})`}
+                  title={isCheckedForBulk ? 'Selected' : planPushed ? 'Synced to your calendar - tap to select' : 'Pending sync - tap to select'}
                   className={`${compact ? 'w-7 h-7 rounded-lg [&_svg]:w-3.5 [&_svg]:h-3.5' : 'w-10 h-10 rounded-xl'} flex items-center justify-center shrink-0 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
                     isCheckedForBulk
                       ? 'bg-white text-[#182A42] ring-2 ring-aot-sage'

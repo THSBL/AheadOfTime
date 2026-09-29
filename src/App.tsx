@@ -1037,6 +1037,8 @@ function App() {
   };
   const [targetEventForMilestone, setTargetEventForMilestone] = useState<CalendarEvent | null>(null);
   const [selectedBulkEventIds, setSelectedBulkEventIds] = useState<string[]>([]);
+  // Deleting one event from its own page (⋯ menu) uses the same delete window.
+  const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   // Defaults to 'detail' so refreshing/landing on the dashboard shows the
   // workspace (My Week Ahead, since activeTab also defaults to 'feed')
@@ -1221,7 +1223,7 @@ function App() {
     setSelectedBulkEventIds([]);
     setSyncToast({
       id: Date.now(),
-      message: `Deleted ${ids.length} events from app. Wiped ${cleanup.calCount} Google Calendar events & ${cleanup.taskCount} tasks.`,
+      message: `Deleted ${ids.length === 1 ? "1 event" : `${ids.length} events`} from the app. Removed ${cleanup.calCount} Google Calendar entries & ${cleanup.taskCount} tasks.`,
     });
   };
 
@@ -2255,6 +2257,7 @@ function App() {
                     setMobileDashboardView('list');
                   }}
                   onDeleteEventFromCalendarOnly={handleDeleteEventFromCalendarOnly}
+                  onRequestDelete={setSingleDeleteId}
                   onDeleteEventAndCalendar={(id, cleanup) => {
                     handleDeleteEvent(id);
                     setMobileDashboardView('list');
@@ -2452,12 +2455,27 @@ function App() {
 
       {/* Bulk Delete Confirmation Modal */}
       <BulkDeleteModal
-        isOpen={isBulkDeleteModalOpen}
-        onClose={() => setIsBulkDeleteModalOpen(false)}
-        selectedEventIds={selectedBulkEventIds}
+        isOpen={isBulkDeleteModalOpen || singleDeleteId !== null}
+        onClose={() => {
+          setIsBulkDeleteModalOpen(false);
+          setSingleDeleteId(null);
+        }}
+        selectedEventIds={singleDeleteId ? [singleDeleteId] : selectedBulkEventIds}
         events={events}
-        onConfirmDeleteAppOnly={handleBulkDeleteAppOnly}
-        onConfirmDeleteAppAndCalendar={handleBulkDeleteAppAndCalendar}
+        onConfirmDeleteAppOnly={(ids) => {
+          handleBulkDeleteAppOnly(ids);
+          if (singleDeleteId) {
+            setSingleDeleteId(null);
+            setMobileDashboardView('list');
+          }
+        }}
+        onConfirmDeleteAppAndCalendar={(ids, cleanup) => {
+          handleBulkDeleteAppAndCalendar(ids, cleanup);
+          if (singleDeleteId) {
+            setSingleDeleteId(null);
+            setMobileDashboardView('list');
+          }
+        }}
       />
 
       {/* Preferences & Heuristics Calibration Modal */}

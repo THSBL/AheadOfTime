@@ -296,7 +296,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
               <li className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span className="text-xs leading-snug">
-                  <strong>Calendar Synchronization:</strong> Pushing confirmed milestones and tasks directly to your connected Google accounts.
+                  <strong>Calendar Synchronization:</strong> Syncing confirmed milestones and tasks directly to your connected Google accounts.
                 </span>
               </li>
               <li className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5">
@@ -396,7 +396,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 <p className="text-xs text-slate-600">
                   Settings &rarr; Credentials &rarr; <strong>Delete account</strong> permanently deletes your account and everything we store
                   for it: plans and tasks, profile, Telegram link, Background Sync access (also revoked at Google), feedback and settings.
-                  Events already pushed to your own Google Calendar stay there. Your own words kept in our error logs are removed after 90 days.
+                  Events already synced to your own Google Calendar stay there. Your own words kept in our error logs are removed after 90 days.
                 </p>
               </div>
             </div>

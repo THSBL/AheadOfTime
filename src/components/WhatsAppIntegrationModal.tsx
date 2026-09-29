@@ -561,12 +561,12 @@ export const WhatsAppIntegrationModal: React.FC<WhatsAppIntegrationModalProps> =
                                 {isBot && activeSession.status === 'MILESTONES_PENDING_CONFIRMATION' && idx === activeSession.messagesTranscript.length - 1 && (
                                   <div className="mt-2 w-full max-w-[88%] space-y-1.5">
                                     <button
-                                      onClick={() => handleSimulateIncoming('Push to Calendar', `BTN_PUSH_CALENDAR:${activeSession.eventId}`)}
+                                      onClick={() => handleSimulateIncoming('Sync to Calendar', `BTN_PUSH_CALENDAR:${activeSession.eventId}`)}
                                       disabled={isSimulatingReply}
                                       className="w-full py-2.5 px-3 bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-semibold text-xs rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-colors"
                                     >
                                       <CheckCircle2 className="w-4 h-4" />
-                                      [ Push to Calendar ]
+                                      [ Sync to Calendar ]
                                     </button>
                                     <button
                                       onClick={() => handleSimulateIncoming('Adjust', `BTN_ADJUST:${activeSession.eventId}`)}

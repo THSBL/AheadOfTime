@@ -153,10 +153,10 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
             type="button"
             onClick={onOpenGoogleCalendarSync}
             className="text-xs sm:text-sm px-3.5 py-1.5 rounded-full bg-[#182A42] hover:bg-slate-800 text-white font-semibold flex items-center gap-1.5 transition-all shrink-0 shadow-xs cursor-pointer"
-            title="Push 1 Target Deadline + Preparation Tasks to Google Calendar"
+            title="Sync this event + prep tasks to Google Calendar"
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Push to Calendar</span>
+            <span>Sync to Calendar</span>
           </button>
         )}
       </div>

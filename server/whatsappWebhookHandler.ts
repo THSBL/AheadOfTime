@@ -195,7 +195,7 @@ export class WhatsAppWebhookHandler {
           fromPhone,
           summaryText,
           [
-            { id: `BTN_PUSH_CALENDAR:${session.eventId}`, title: 'Push to Calendar' },
+            { id: `BTN_PUSH_CALENDAR:${session.eventId}`, title: 'Sync to Calendar' },
             { id: `BTN_ADJUST:${session.eventId}`, title: 'Adjust' },
           ]
         );
@@ -307,7 +307,7 @@ export class WhatsAppWebhookHandler {
         fromPhone,
         summaryText,
         [
-          { id: `BTN_PUSH_CALENDAR:${session.eventId}`, title: 'Push to Calendar' },
+          { id: `BTN_PUSH_CALENDAR:${session.eventId}`, title: 'Sync to Calendar' },
           { id: `BTN_ADJUST:${session.eventId}`, title: 'Adjust' },
         ]
       );

@@ -17,7 +17,7 @@ const FAQ_ENTRIES: FaqEntry[] = [
   {
     question: "Can prep tasks show up as Google Calendar events instead of Google Tasks?",
     answer:
-      "Yes. When you push an event to Google, you'll see a \"Show preparation tasks in Google as\" choice: Google Tasks (recommended - they're checkable to-dos that don't crowd your calendar grid) or Calendar Events (30-minute blocks on the date they're due). Your choice is remembered for next time. You can also set it as part of your profile in Settings.",
+      "Yes. When you sync an event to Google, you'll see a \"Show preparation tasks in Google as\" choice: Google Tasks (recommended - they're checkable to-dos that don't crowd your calendar grid) or Calendar Events (30-minute blocks on the date they're due). Your choice is remembered for next time. You can also set it as part of your profile in Settings.",
   },
   {
     question: "What's the difference between \"Overdue\", \"This week\", and \"Looking ahead\"?",
