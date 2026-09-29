@@ -1976,18 +1976,21 @@ function App() {
       return updated;
     });
 
-    if (newEvents.length > 0) {
-      setSelectedEventId(newEvents[0].id);
-      setActiveTab('tasks');
-      setFocusMode('adjust-event');
-      setMobileDashboardView('detail');
-      setCurrentView('dashboard');
-      setSyncToast({
-        id: Date.now(),
-        message: `Imported ${newEvents.length} event${newEvents.length > 1 ? 's' : ''} from Ahead Of Time Evaluation!`,
-        count: newEvents.length,
-      });
-    }
+  };
+
+  // The guided scan flow ended: show the new plans.
+  const showImportedPlans = (newEvents: CalendarEvent[]) => {
+    if (!newEvents || newEvents.length === 0) return;
+    setSelectedEventId(newEvents[0].id);
+    setActiveTab('tasks');
+    setFocusMode('adjust-event');
+    setCurrentView('dashboard');
+    navigate(`/events/${newEvents[0].id}`);
+    setSyncToast({
+      id: Date.now(),
+      message: `Added ${newEvents.length} ${newEvents.length === 1 ? 'plan' : 'plans'}.`,
+      count: newEvents.length,
+    });
   };
 
   // Reset to bare minimum state
@@ -2472,6 +2475,8 @@ function App() {
         onClose={() => setIsScanAgendaModalOpen(false)}
         currentReferenceDate={currentReferenceDate}
         onImportTrackedEvents={handleImportTrackedEvents}
+        onEventsUpdated={(updated) => setEvents((prev) => prev.map((e) => updated.find((u) => u.id === e.id) || e))}
+        onFlowFinished={showImportedPlans}
         isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
         existingEvents={events}
         onboardingProfile={onboardingProfile}
