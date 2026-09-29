@@ -23,7 +23,7 @@ import { handleCalendarPush, handleCalendarEvents, handleCalendarDelete } from '
 import { handleAiSettings } from '../../../server/aiSettingsRoute.js';
 import { handleNotifyPrefs } from '../../../server/notifyPrefsRoute.js';
 import { handleAccountDeletion } from '../../../server/accountDeletion.js';
-import { handleCalendarFeed, handleCalendarDone, handleCalendarFeedSettings } from '../../../server/calendarFeed.js';
+import { handleCalendarFeed, handleCalendarDone, handleCalendarFeedSettings, handleCalendarPlan } from '../../../server/calendarFeed.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -215,6 +215,9 @@ export default async function handler(req: any, res: any) {
   }
   if (action === 'feed-done') {
     return handleCalendarDone(req, res);
+  }
+  if (action === 'feed-plan') {
+    return handleCalendarPlan(req, res);
   }
   if (action === 'calendar-feed') {
     const verified = await verifyRequestUser(req);

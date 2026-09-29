@@ -9,6 +9,10 @@
       "destination": "/api/auth/google?action=feed-done"
     },
     {
+      "source": "/api/calendar/plan",
+      "destination": "/api/auth/google?action=feed-plan"
+    },
+    {
       "source": "/api/auth/calendar-feed",
       "destination": "/api/auth/google?action=calendar-feed"
     },

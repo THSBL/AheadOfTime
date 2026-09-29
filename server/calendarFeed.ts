@@ -65,6 +65,21 @@ export function parseDoneToken(token: string): { userId: string; version: number
 
 // ---- storage --------------------------------------------------------------
 
+/** One plan (event) of one user: "all tasks done" and "remove the plan" links. */
+export function signPlanToken(userId: string, version: number, eventId: string): string | null {
+  const key = secret();
+  if (!key) return null;
+  return `${userId}.${version}.${eventId}.${hmac(`plan.${userId}.${version}.${eventId}`, key)}`;
+}
+
+export function parsePlanToken(token: string): { userId: string; version: number; eventId: string } | null {
+  const key = secret();
+  const m = /^([0-9a-f-]{36})\.(\d{1,9})\.([0-9a-f-]{36})\.([A-Za-z0-9_-]{32})$/i.exec(token || '');
+  if (!key || !m || !UUID_RE.test(m[1]) || !UUID_RE.test(m[3])) return null;
+  const version = Number(m[2]);
+  return safeEqual(m[4], hmac(`plan.${m[1]}.${version}.${m[3]}`, key)) ? { userId: m[1], version, eventId: m[3] } : null;
+}
+
 let ready: Promise<void> | null = null;
 export function ensureCalendarFeedSchema(): Promise<void> {
   if (!ready) {
@@ -118,22 +133,26 @@ export interface FeedTask {
   eventTitle: string;
   eventDate: string;
   eventPublicId: string;
+  /** The event's database id, for the plan links. */
+  eventId: string;
   updatedAt: string;
 }
 
 async function loadFeedTasks(userId: string, now: Date): Promise<FeedTask[]> {
   const from = new Date(now.getTime() - PAST_DAYS * DAY_MS).toISOString().slice(0, 10);
   const rows = await query<any>(
-    `SELECT m.id, m.title, m.description, m.calculated_date, m.status, m.confirmed_at,
+    `SELECT m.id, m.title, m.description, m.calculated_date, m.status, m.confirmed_at, e.id AS event_id,
             e.title AS event_title, e.event_date, COALESCE(e.client_id, e.id::text) AS event_public_id,
             COALESCE(e.client_updated_at, e.updated_at) AS event_updated_at
        FROM milestones m JOIN events e ON e.id = m.event_id
       WHERE e.user_id = $1 AND e.deleted_at IS NULL
         AND COALESCE(m.is_active, true) AND m.status IN ('pending', 'completed')
         AND m.calculated_date >= $2::date
+        -- An event that's over takes its tasks with it: nothing left to prepare.
+        AND COALESCE(e.end_date, e.event_date) >= $3::date
       ORDER BY m.calculated_date
       LIMIT 500`,
-    [userId, from]
+    [userId, from, now.toISOString().slice(0, 10)]
   );
   const day = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10);
   const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : now.toISOString());
@@ -146,6 +165,7 @@ async function loadFeedTasks(userId: string, now: Date): Promise<FeedTask[]> {
     eventTitle: r.event_title,
     eventDate: day(r.event_date),
     eventPublicId: r.event_public_id,
+    eventId: r.event_id,
     updatedAt: iso(r.confirmed_at || r.event_updated_at),
   }));
 }
@@ -204,7 +224,14 @@ const nextDay = (day: string) => new Date(Date.parse(`${day}T12:00:00Z`) + DAY_M
 const longDate = (day: string) =>
   new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 
-export function buildFeedIcs(input: { tasks: FeedTask[]; appUrl: string; doneUrl: (taskId: string) => string | null; now?: Date }): string {
+export function buildFeedIcs(input: {
+  tasks: FeedTask[];
+  appUrl: string;
+  doneUrl: (taskId: string) => string | null;
+  /** Plan links (all done / remove the plan) for the task's event. */
+  planUrl?: (eventId: string, action: 'done' | 'remove') => string | null;
+  now?: Date;
+}): string {
   const now = input.now || new Date();
   const lines = [
     'BEGIN:VCALENDAR',
@@ -224,7 +251,9 @@ export function buildFeedIcs(input: { tasks: FeedTask[]; appUrl: string; doneUrl
     const notes = [
       `Part of ${t.eventTitle} (${longDate(t.eventDate)}).`,
       t.description || '',
-      done ? '✓ Done.' : doneUrl ? `✓ Mark done: ${doneUrl}` : '',
+      done ? '✓ Done.' : doneUrl ? `✓ Mark this task done: ${doneUrl}` : '',
+      !done && input.planUrl?.(t.eventId, 'done') ? `✓✓ All tasks for ${t.eventTitle} done: ${input.planUrl(t.eventId, 'done')}` : '',
+      !done && input.planUrl?.(t.eventId, 'remove') ? `✕ ${t.eventTitle} not happening? Remove the plan: ${input.planUrl(t.eventId, 'remove')}` : '',
       `Open the plan: ${planUrl}`,
     ]
       .filter(Boolean)
@@ -280,6 +309,10 @@ export async function handleCalendarFeed(req: any, res: any, rawToken: string) {
       const token = signDoneToken(parsed.userId, version, taskId);
       return token ? `${appUrl}/api/calendar/done?t=${token}` : null;
     },
+    planUrl: (eventId, action) => {
+      const token = signPlanToken(parsed.userId, version, eventId);
+      return token ? `${appUrl}/api/calendar/plan?a=${action}&t=${token}` : null;
+    },
   });
   query(`UPDATE calendar_feeds SET last_fetched_at = now() WHERE user_id = $1`, [parsed.userId]).catch(() => undefined);
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -290,6 +323,20 @@ export async function handleCalendarFeed(req: any, res: any, rawToken: string) {
 
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
+}
+
+const PAGE_STYLE = `<style>body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#182A42;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px}
+.card{background:#fff;color:#182A42;border-radius:24px;padding:28px 24px;max-width:380px;width:100%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+h1{font-size:20px;margin:0 0 8px}p{color:#475569;font-size:14px;margin:0 0 20px;line-height:1.5}
+button{width:100%;padding:14px;border-radius:14px;border:0;background:#182A42;color:#fff;font-weight:700;font-size:15px;cursor:pointer;margin-top:8px}
+button.ghost{background:#f1f5f9;color:#182A42}button.rose{background:#e11d48}.link{display:block;margin-top:14px;color:#182A42;font-weight:600;font-size:14px}
+ul{list-style:none;padding:10px 12px;margin:0 0 16px;text-align:left;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#334155}li{padding:3px 0}
+.brand{font-weight:900;color:#95BFB5;margin-bottom:16px;font-size:14px}</style>`;
+
+function page(inner: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Ahead Of Time</title>${PAGE_STYLE}</head>
+<body><div class="card"><div class="brand">Ahead Of Time</div>${inner}</div></body></html>`;
 }
 
 function donePage(input: { title: string; body: string; token?: string; state?: 'confirm' | 'done' | 'undone'; planUrl?: string }): string {
@@ -388,4 +435,148 @@ export async function handleCalendarFeedSettings(req: any, res: any, userId: str
     }
   }
   res.status(400).json({ ok: false, error: 'Unknown request' });
+}
+
+// ---- plan links ------------------------------------------------------------
+
+interface PlanInfo {
+  title: string;
+  publicId: string;
+  deleted: boolean;
+  open: string[];
+}
+
+async function loadPlan(userId: string, eventId: string): Promise<PlanInfo | null> {
+  await ensureCalendarFeedSchema();
+  const rows = await query<{ title: string; public_id: string; deleted_at: string | null }>(
+    `SELECT title, COALESCE(client_id, id::text) AS public_id, deleted_at FROM events WHERE id = $1 AND user_id = $2`,
+    [eventId, userId]
+  );
+  if (!rows[0]) return null;
+  const open = await query<{ title: string }>(
+    `SELECT title FROM milestones WHERE event_id = $1 AND status = 'pending' AND COALESCE(is_active, true) ORDER BY calculated_date`,
+    [eventId]
+  );
+  return { title: rows[0].title, publicId: rows[0].public_id, deleted: Boolean(rows[0].deleted_at), open: open.map((r) => r.title) };
+}
+
+const touchEvent = (eventId: string) => query(`UPDATE events SET updated_at = now(), client_updated_at = now() WHERE id = $1`, [eventId]);
+
+/** Every open task of the plan done; "undo" puts back exactly those. */
+export async function setPlanDoneFromFeed(userId: string, eventId: string, done: boolean): Promise<number> {
+  await ensureCalendarFeedSchema();
+  const rows = done
+    ? await query(
+        `UPDATE milestones m SET status = 'completed', confirmed_at = now(), confirmed_via = 'calendar-plan',
+                client_payload = CASE WHEN m.client_payload IS NULL THEN NULL ELSE m.client_payload || '{"status":"completed"}'::jsonb END
+           FROM events e
+          WHERE m.event_id = $2 AND e.id = m.event_id AND e.user_id = $1 AND e.deleted_at IS NULL
+            AND m.status = 'pending' AND COALESCE(m.is_active, true)
+          RETURNING m.id`,
+        [userId, eventId]
+      )
+    : await query(
+        `UPDATE milestones m SET status = 'pending', confirmed_at = NULL, confirmed_via = NULL,
+                client_payload = CASE WHEN m.client_payload IS NULL THEN NULL ELSE m.client_payload || '{"status":"pending"}'::jsonb END
+           FROM events e
+          WHERE m.event_id = $2 AND e.id = m.event_id AND e.user_id = $1 AND m.confirmed_via = 'calendar-plan'
+          RETURNING m.id`,
+        [userId, eventId]
+      );
+  await touchEvent(eventId);
+  return rows.length;
+}
+
+/** Removing the plan is the app's own delete: kept 30 days in Recently deleted. */
+export async function setPlanRemovedFromFeed(userId: string, eventId: string, removed: boolean): Promise<boolean> {
+  await ensureCalendarFeedSchema();
+  const rows = await query(
+    `UPDATE events SET deleted_at = ${removed ? 'now()' : 'NULL'}, updated_at = now(), client_updated_at = now()
+      WHERE id = $1 AND user_id = $2 RETURNING id`,
+    [eventId, userId]
+  );
+  return rows.length > 0;
+}
+
+function planForm(token: string, action: string, label: string, cls = ''): string {
+  return `<form method="post"><input type="hidden" name="t" value="${escapeHtml(token)}"><input type="hidden" name="a" value="${action}"><button class="${cls}">${label}</button></form>`;
+}
+
+function taskList(titles: string[]): string {
+  const shown = titles.slice(0, 4).map((t) => `<li>• ${escapeHtml(t)}</li>`).join('');
+  return `<ul>${shown}${titles.length > 4 ? `<li>• +${titles.length - 4} more</li>` : ''}</ul>`;
+}
+
+/**
+ * /api/calendar/plan?a=done|remove&t=<token>
+ * GET asks for a confirm (several tasks change at once, and link previews
+ * must never change anything); POST does it, with Undo on the result page.
+ */
+export async function handleCalendarPlan(req: any, res: any) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  const body = typeof req.body === 'string' ? Object.fromEntries(new URLSearchParams(req.body)) : req.body || {};
+  const token = String((req.method === 'POST' ? body.t : req.query?.t) || '');
+  const action = String((req.method === 'POST' ? body.a : req.query?.a) || '');
+  const parsed = parsePlanToken(token);
+  const version = parsed ? await getFeedVersion(parsed.userId) : null;
+  const plan = parsed && version === parsed.version ? await loadPlan(parsed.userId, parsed.eventId) : null;
+  if (!parsed || !plan) {
+    res.status(404).send(page(`<h1>Link no longer active</h1><p>Open Ahead Of Time to update this plan.</p>`));
+    return;
+  }
+  const appUrl = appUrlFor(req);
+  const openApp = `<a class="link" href="${escapeHtml(`${appUrl}/events/${encodeURIComponent(plan.publicId)}`)}">Open Ahead Of Time</a>`;
+  const name = escapeHtml(plan.title);
+  const n = plan.open.length;
+  const tasksWord = (k: number) => `${k} ${k === 1 ? 'task' : 'tasks'}`;
+
+  if (req.method !== 'POST') {
+    if (action === 'remove') {
+      if (plan.deleted) {
+        res.status(200).send(page(`<h1>Plan already removed</h1><p>${name} is in Recently deleted for 30 days.</p>${planForm(token, 'restore', 'Undo', 'ghost')}`));
+        return;
+      }
+      res.status(200).send(
+        page(
+          `<h1>Remove the plan for ${name}?</h1><p>Its tasks disappear from your calendar at its next refresh. You can undo this for 30 days.</p>${
+            n ? taskList(plan.open) : ''
+          }${planForm(token, 'remove', `Remove plan${n ? ` (${tasksWord(n)})` : ''}`, 'rose')}<button class="ghost" onclick="history.back()">Keep it</button>`
+        )
+      );
+      return;
+    }
+    if (action === 'done') {
+      if (n === 0) {
+        res.status(200).send(page(`<h1>All done for ${name}</h1><p>There are no open tasks left.</p>${openApp}`));
+        return;
+      }
+      res.status(200).send(
+        page(`<h1>Mark all ${tasksWord(n)} for ${name} done?</h1>${taskList(plan.open)}${planForm(token, 'done', `✓ Mark ${tasksWord(n)} done`)}${openApp}`)
+      );
+      return;
+    }
+    res.status(400).send(page(`<h1>Unknown link</h1>${openApp}`));
+    return;
+  }
+
+  if (action === 'done' || action === 'undone') {
+    const count = await setPlanDoneFromFeed(parsed.userId, parsed.eventId, action === 'done');
+    res.status(200).send(
+      action === 'done'
+        ? page(`<h1>✓ ${tasksWord(count)} done</h1><p>Nice work on <b>${name}</b>. Your calendar shows them as done at its next refresh.</p>${planForm(token, 'undone', 'Undo', 'ghost')}${openApp}`)
+        : page(`<h1>Back on your list</h1><p>${tasksWord(count)} for <b>${name}</b> are open again.</p>${openApp}`)
+    );
+    return;
+  }
+  if (action === 'remove' || action === 'restore') {
+    await setPlanRemovedFromFeed(parsed.userId, parsed.eventId, action === 'remove');
+    res.status(200).send(
+      action === 'remove'
+        ? page(`<h1>Plan removed</h1><p><b>${name}</b> and its tasks leave your calendar at its next refresh (Apple: usually within the hour, Outlook: can take a few hours). It stays in Recently deleted for 30 days.</p>${planForm(token, 'restore', 'Undo', 'ghost')}`)
+        : page(`<h1>Plan restored</h1><p><b>${name}</b> is back, with its tasks.</p>${openApp}`)
+    );
+    return;
+  }
+  res.status(400).send(page(`<h1>Unknown request</h1>${openApp}`));
 }
