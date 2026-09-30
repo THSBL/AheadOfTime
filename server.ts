@@ -42,7 +42,7 @@ import { verifyEventDeepLink } from "./server/deepLinkToken";
 import { TelegramService } from "./server/telegramService";
 import { logQualityEvent, QualitySignalType } from "./server/qualityStore";
 import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from "./server/feedbackStore";
-import { recordCalendarVote, summarizeCalendarVotes } from "./server/calendarPollStore";
+import { recordCalendarVote, pollClientHash, summarizeCalendarVotes } from "./server/calendarPollStore";
 import { parseCalendarVote } from "./src/utils/calendarPoll";
 import { handleProfileApi } from "./server/userProfileStore";
 import { handleSessionApi } from "./server/sessionRoutes";
@@ -1310,7 +1310,7 @@ app.post("/api/feedback/calendar-poll", async (req: Request, res: Response) => {
   try {
     const verified = await verifyRequestUser(req);
     const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
-    await recordCalendarVote(parsed.vote, userId);
+    await recordCalendarVote(parsed.vote, userId, pollClientHash(req));
     res.json({ ok: true });
   } catch (err: any) {
     console.error("calendar poll error:", err);

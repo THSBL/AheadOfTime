@@ -85,7 +85,7 @@ export async function recordAiCall(userId: string): Promise<boolean> {
        )
        SELECT (SELECT calls FROM bumped) AS hour_calls,
               (SELECT COALESCE(SUM(calls), 0) FROM ai_usage
-                WHERE user_id = $1 AND window_start > now() - interval '24 hours'
+                WHERE user_id = $1 AND window_start >= date_trunc('hour', now() - interval '24 hours')
                   AND window_start < date_trunc('hour', now())) AS day_calls`,
       [userId]
     );
@@ -107,8 +107,11 @@ export async function isAiPlanningEnabled(userId: string): Promise<boolean> {
     await ensureAiUsageSchema();
     const rows = await query<{ ai_planning_enabled: boolean }>(`SELECT ai_planning_enabled FROM users WHERE id = $1`, [userId]);
     return rows[0]?.ai_planning_enabled !== false;
-  } catch {
-    return true;
+  } catch (err) {
+    // Unknown means off: someone who switched AI off must never have their
+    // text sent to Gemini because the setting couldn't be read.
+    console.warn('AI setting unavailable (planning without AI):', err);
+    return false;
   }
 }
 
@@ -151,7 +154,10 @@ export async function guardAiRequest(
     }
   }
   const userId = await findOrCreateUserByEmail(verified.email);
-  const aiEnabled = await isAiPlanningEnabled(userId);
+  // A device that switched AI off but couldn't save it yet says so on every
+  // request (src/services/aiRequest.ts); that can only turn AI off, never on.
+  const offOnThisDevice = String(req.headers?.['x-ai-planning'] || '').toLowerCase() === 'off';
+  const aiEnabled = !offOnThisDevice && (await isAiPlanningEnabled(userId));
   if (aiEnabled && !(await recordAiCall(userId))) {
     res.status(429).json({ ok: false, error: 'rate_limited', message: "You've made a lot of AI requests in a short time - please try again in a little while." });
     return null;

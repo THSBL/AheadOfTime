@@ -2,7 +2,7 @@ import { verifyRequestUser } from '../../server/requestAuth.js';
 import { extractBearerToken, verifyGoogleAccessToken, isAdminEmail } from '../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
 import { getFeedbackEligibility, submitFeedback, listRecentFeedback } from '../../server/feedbackStore.js';
-import { recordCalendarVote, summarizeCalendarVotes } from '../../server/calendarPollStore.js';
+import { recordCalendarVote, pollClientHash, summarizeCalendarVotes } from '../../server/calendarPollStore.js';
 import { parseCalendarVote } from '../../src/utils/calendarPoll.js';
 
 // Consolidated Vercel function for /api/feedback/eligibility (GET) and
@@ -29,7 +29,7 @@ async function handleCalendarPoll(req: any, res: any) {
   try {
     const verified = await verifyRequestUser(req);
     const userId = verified ? await findOrCreateUserByEmail(verified.email) : null;
-    await recordCalendarVote(parsed.vote, userId);
+    await recordCalendarVote(parsed.vote, userId, pollClientHash(req));
     return res.status(200).json({ ok: true });
   } catch (err: any) {
     console.error('calendar poll error:', err);

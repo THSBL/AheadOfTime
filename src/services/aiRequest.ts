@@ -1,5 +1,6 @@
 import { getStoredAccessToken, isTokenExpired } from './googleAuth';
 import { bearerHeader } from './appSession';
+import { getCachedAiPlanningEnabled } from './aiSettings';
 
 /**
  * Headers for the app's AI routes (/api/agent, /api/event/deep-refine,
@@ -9,7 +10,12 @@ import { bearerHeader } from './appSession';
  */
 export function aiJsonHeaders(): Record<string, string> {
   const token = getStoredAccessToken();
-  return { 'Content-Type': 'application/json', ...bearerHeader(token && !isTokenExpired() ? token : null) };
+  return {
+    'Content-Type': 'application/json',
+    ...bearerHeader(token && !isTokenExpired() ? token : null),
+    // Switched off here but not saved on the server yet: still off.
+    ...(getCachedAiPlanningEnabled() ? {} : { 'X-AI-Planning': 'off' }),
+  };
 }
 
 /**

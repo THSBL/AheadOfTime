@@ -1,6 +1,9 @@
-import { query } from './db.js';
+import { query, getPool } from './db.js';
 
 const CSAT_CADENCE_DAYS = 30;
+/** Written feedback per user per 24 hours, and its length. */
+const MAX_FEEDBACK_PER_DAY = 10;
+const MAX_FEEDBACK_CHARS = 4000;
 
 // Short fixed taxonomy, matched via keyword rules rather than a Gemini call
 // per submission - CSAT/feedback text is short and low-volume, so a
@@ -118,18 +121,47 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<{ id: 
   }
 
   const tags = tagFeedbackText(input.feedbackText);
-  const rows = await query<{ id: string }>(
-    `INSERT INTO csat_responses (user_id, response_type, score, feedback_text, tags, source_channel)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id`,
-    [
-      input.userId,
-      input.responseType,
-      input.responseType === 'csat' ? input.score : null,
-      input.feedbackText || null,
-      tags,
-      input.sourceChannel || 'web',
-    ]
-  );
-  return { id: rows[0].id, tags };
+  // One submission per user at a time (a transaction-scoped lock), so two
+  // requests sent together can't both pass the checks below.
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('feedback:' || $1))`, [input.userId]);
+    if (input.responseType === 'csat') {
+      const recent = await client.query(
+        `SELECT 1 FROM csat_responses WHERE user_id = $1 AND response_type = 'csat'
+           AND created_at > now() - make_interval(days => $2) LIMIT 1`,
+        [input.userId, CSAT_CADENCE_DAYS]
+      );
+      if (recent.rowCount) throw new Error('CSAT already submitted this month.');
+    } else {
+      const today = await client.query<{ n: string }>(
+        `SELECT count(*) AS n FROM csat_responses WHERE user_id = $1 AND created_at > now() - interval '24 hours'`,
+        [input.userId]
+      );
+      if (Number(today.rows[0]?.n || 0) >= MAX_FEEDBACK_PER_DAY) {
+        throw new Error("Thanks - you've sent a lot of feedback today. Please try again tomorrow.");
+      }
+    }
+    const rows = await client.query<{ id: string }>(
+      `INSERT INTO csat_responses (user_id, response_type, score, feedback_text, tags, source_channel)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        input.userId,
+        input.responseType,
+        input.responseType === 'csat' ? input.score : null,
+        (input.feedbackText || '').slice(0, MAX_FEEDBACK_CHARS) || null,
+        tags,
+        input.sourceChannel || 'web',
+      ]
+    );
+    await client.query('COMMIT');
+    return { id: rows.rows[0].id, tags };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

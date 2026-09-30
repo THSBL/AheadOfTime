@@ -1,4 +1,5 @@
 import { aiJsonHeaders } from './aiRequest';
+import { getCurrentUser } from './accountManager';
 
 /**
  * The user's "plan with AI (Google Gemini)" switch. The server holds the
@@ -23,6 +24,37 @@ function writeFlag(key: string, value: boolean | null) {
   try {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, String(value));
+  } catch {
+    // Private mode: the server value still applies.
+  }
+}
+
+/**
+ * A choice not saved yet belongs to the account that made it (or to the
+ * first account after onboarding, when there was none yet): it's never
+ * applied to a different account signing in on this browser later.
+ */
+function readPending(): boolean | null {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const me = getCurrentUser()?.email?.toLowerCase() || null;
+    if (typeof parsed?.value !== 'boolean') return null;
+    if (parsed.owner && parsed.owner !== me) {
+      localStorage.removeItem(PENDING_KEY);
+      return null;
+    }
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function writePending(value: boolean | null) {
+  try {
+    if (value === null) localStorage.removeItem(PENDING_KEY);
+    else localStorage.setItem(PENDING_KEY, JSON.stringify({ value, owner: getCurrentUser()?.email?.toLowerCase() || null }));
   } catch {
     // Private mode: the server value still applies.
   }
@@ -55,9 +87,9 @@ async function putSetting(value: boolean): Promise<boolean> {
 /** Saves the choice (locally at once, on the server when reachable). */
 export async function saveAiPlanningEnabled(value: boolean): Promise<boolean> {
   publish(value);
-  writeFlag(PENDING_KEY, value);
+  writePending(value);
   const saved = await putSetting(value);
-  if (saved) writeFlag(PENDING_KEY, null);
+  if (saved) writePending(null);
   return saved;
 }
 
@@ -66,8 +98,8 @@ export async function saveAiPlanningEnabled(value: boolean): Promise<boolean> {
  * couldn't be saved yet, then reads the server's value.
  */
 export async function refreshAiPlanningEnabled(): Promise<boolean> {
-  const pending = readFlag(PENDING_KEY);
-  if (pending !== null && (await putSetting(pending))) writeFlag(PENDING_KEY, null);
+  const pending = readPending();
+  if (pending !== null && (await putSetting(pending))) writePending(null);
   try {
     const res = await fetch('/api/auth/ai-settings', { headers: aiJsonHeaders(), cache: 'no-store' });
     const data = await res.json().catch(() => null);

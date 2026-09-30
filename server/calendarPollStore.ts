@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { query } from './db.js';
 import type { CalendarVoteInput } from '../src/utils/calendarPoll.js';
 
@@ -25,6 +26,7 @@ export function ensureCalendarPollSchema(): Promise<void> {
            UNIQUE (visitor_id, source)
          )`
       );
+      await query(`ALTER TABLE calendar_preference_votes ADD COLUMN IF NOT EXISTS client_hash TEXT`);
     })().catch((err) => {
       schemaReady = null;
       throw err;
@@ -33,19 +35,41 @@ export function ensureCalendarPollSchema(): Promise<void> {
   return schemaReady;
 }
 
-export async function recordCalendarVote(vote: CalendarVoteInput, userId?: string | null): Promise<void> {
+/** New answers per network (IP) per day: the poll is anonymous, so this keeps one person from filling it. */
+const MAX_VOTES_PER_CLIENT_PER_DAY = 5;
+
+/** A one-way hash of the caller's IP (never stored as-is). */
+export function pollClientHash(req: any): string | null {
+  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = forwarded || req?.socket?.remoteAddress || '';
+  if (!ip) return null;
+  const salt = process.env.NOTIFY_LINK_SECRET || process.env.CRON_SECRET || 'aot-poll';
+  return crypto.createHmac('sha256', salt).update(ip).digest('hex').slice(0, 32);
+}
+
+/** False when this network already sent its share of answers today. */
+export async function recordCalendarVote(vote: CalendarVoteInput, userId?: string | null, clientHash?: string | null): Promise<boolean> {
   await ensureCalendarPollSchema();
+  if (clientHash) {
+    const rows = await query<{ n: string }>(
+      `SELECT count(*) AS n FROM calendar_preference_votes
+        WHERE client_hash = $1 AND created_at > now() - interval '24 hours' AND visitor_id <> $2`,
+      [clientHash, vote.visitorId]
+    );
+    if (Number(rows[0]?.n || 0) >= MAX_VOTES_PER_CLIENT_PER_DAY) return false;
+  }
   await query(
-    `INSERT INTO calendar_preference_votes (visitor_id, source, calendar, other_text, notify_email, user_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO calendar_preference_votes (visitor_id, source, calendar, other_text, notify_email, user_id, client_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (visitor_id, source) DO UPDATE SET
        calendar = EXCLUDED.calendar,
        other_text = EXCLUDED.other_text,
        notify_email = COALESCE(EXCLUDED.notify_email, calendar_preference_votes.notify_email),
        user_id = COALESCE(EXCLUDED.user_id, calendar_preference_votes.user_id),
        updated_at = now()`,
-    [vote.visitorId, vote.source, vote.calendar, vote.otherText || null, vote.notifyEmail || null, userId || null]
+    [vote.visitorId, vote.source, vote.calendar, vote.otherText || null, vote.notifyEmail || null, userId || null, clientHash || null]
   );
+  return true;
 }
 
 export interface CalendarPollSummary {
