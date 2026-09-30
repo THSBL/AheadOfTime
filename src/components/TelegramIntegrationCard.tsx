@@ -358,7 +358,7 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       id="telegram-integration-card"
       icon={telegramIcon}
       title="Telegram"
-      subtitle={isLinked ? formattedUsername : 'Plan and adjust by chatting, on the go'}
+      subtitle={isLinked ? `${formattedUsername} · ${getCurrentUser()?.email || 'this account'}` : 'Plan and adjust by chatting, on the go'}
       open={Boolean(feedback) || Boolean(pairingLink)}
       right={isLinked ? <OpenTelegramButton /> : <SettingsPill on={false}>Not linked</SettingsPill>}
     >
@@ -367,7 +367,11 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
         /* STATE: Active / Linked */
         <div className="space-y-2.5">
           <p>
-            <b>Open</b> jumps straight into the chat with the bot and wakes it up at the same moment, so your first message gets a quick answer.
+            Linked to <b>{getCurrentUser()?.email || 'this account'}</b>. Plans you make in Telegram go to this account. <b>Open</b> jumps into the chat,
+            and the bot starts by telling you which account it uses.
+          </p>
+          <p className="text-slate-500">
+            One Telegram chat works with one account. Connecting it from another account asks you in Telegram to confirm the switch.
           </p>
           <button
             id="btn-disconnect-telegram"

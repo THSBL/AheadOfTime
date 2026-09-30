@@ -1,5 +1,6 @@
 import { extractBearerToken, verifyGoogleAccessToken } from './googleAuthVerify.js';
 import { findOrCreateUserByEmail } from './telegramStore.js';
+import { bindGoogleSubject } from './googleIdentity.js';
 import {
   createSession,
   verifySession,
@@ -44,6 +45,8 @@ async function handleSessionApiInner(req: any, res: any) {
     // Replacing any previous session on this browser (e.g. switching accounts).
     await revokeSession(readSessionCookie(req)).catch(() => {});
     const userId = await findOrCreateUserByEmail(verified.email);
+    // New account: remember which Google account it belongs to (googleIdentity.ts).
+    await bindGoogleSubject(userId, verified.sub).catch(() => undefined);
     const token = await createSession(userId, verified.email, req.headers?.['user-agent']);
     res.setHeader('Set-Cookie', buildSessionCookie(token));
     return res.status(200).json({ ok: true, email: verified.email });

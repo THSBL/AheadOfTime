@@ -49,6 +49,15 @@ export async function canUseAppSession(expectedEmail?: string | null): Promise<b
 export function checkAppSession(): Promise<string | null> {
   if (!checkInFlight) {
     checkInFlight = (async () => {
+      // An earlier sign-out didn't reach the server: finish it first, and
+      // never treat that old session as signed in.
+      if (hasPendingSignOut()) {
+        await deleteServerSession();
+        confirmedEmail = null;
+        checkedOnce = true;
+        notify();
+        return null;
+      }
       try {
         const res = await fetch('/api/auth/session', { cache: 'no-store' });
         const data = await res.json().catch(() => null);
@@ -67,7 +76,19 @@ export function checkAppSession(): Promise<string | null> {
 }
 
 /** Trades a fresh Google access token for an app session (one Google check). */
-export async function startAppSession(googleAccessToken: string): Promise<boolean> {
+// Session starts run one after another, so when two start close together
+// (switching accounts) the last one requested is the one left standing.
+let startChain: Promise<unknown> = Promise.resolve();
+
+export function startAppSession(googleAccessToken: string): Promise<boolean> {
+  const run = startChain.then(() => startAppSessionNow(googleAccessToken));
+  startChain = run.catch(() => undefined);
+  return run;
+}
+
+async function startAppSessionNow(googleAccessToken: string): Promise<boolean> {
+  // A new sign-in supersedes a sign-out that hadn't reached the server yet.
+  clearPendingSignOut();
   try {
     const res = await fetch('/api/auth/session', {
       method: 'POST',
@@ -91,11 +112,69 @@ export async function startAppSession(googleAccessToken: string): Promise<boolea
 export async function endAppSession(): Promise<void> {
   confirmedEmail = null;
   notify();
+  // Remembered until the server confirms: a sign-out that failed (offline,
+  // server hiccup) must not leave a working session cookie behind.
+  markPendingSignOut();
+  await deleteServerSession();
+}
+
+const PENDING_SIGN_OUT_KEY = 'aot_pending_sign_out';
+
+function markPendingSignOut(): void {
   try {
-    await fetch('/api/auth/session', { method: 'DELETE', cache: 'no-store' });
+    localStorage.setItem(PENDING_SIGN_OUT_KEY, '1');
   } catch {
-    // The cookie still expires on its own.
+    // storage blocked: best effort below
   }
+}
+
+// Back from an email sign-in link: the server just started a new session,
+// which an older unfinished sign-out must not revoke. Checked as soon as
+// this module loads, before any component asks about the session.
+try {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('signed_in') === 'email') {
+    localStorage.removeItem('aot_pending_sign_out');
+  }
+} catch {
+  // no window/storage (tests)
+}
+
+/** A fresh sign-in (e.g. back from an email link) replaces an unfinished sign-out. */
+export function forgetPendingSignOut(): void {
+  clearPendingSignOut();
+}
+
+function clearPendingSignOut(): void {
+  try {
+    localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function hasPendingSignOut(): boolean {
+  try {
+    return localStorage.getItem(PENDING_SIGN_OUT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Revokes the server session, retrying a few times; true once the server confirmed. */
+async function deleteServerSession(): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('/api/auth/session', { method: 'DELETE', cache: 'no-store' });
+      if (res.ok) {
+        clearPendingSignOut();
+        return true;
+      }
+    } catch {
+      // offline: try again shortly
+    }
+    await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+  }
+  return false;
 }
 
 /** Authorization header when a live Google token exists; otherwise the cookie alone does the work. */

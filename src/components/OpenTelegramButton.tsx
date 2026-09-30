@@ -11,13 +11,15 @@ export const OpenTelegramButton: React.FC<{ className?: string; label?: string }
   className = 'px-3 py-1.5 bg-[#182A42] hover:bg-slate-800 text-white font-semibold rounded-lg text-xs transition inline-flex items-center gap-1.5 shrink-0',
   label = 'Open',
 }) => {
-  const [href, setHref] = useState<string>(cachedBotLink);
+  // "?start=open": the bot then begins with which account this chat uses.
+  const withOpen = (link: string) => (link.includes('?') ? link : `${link}?start=open`);
+  const [href, setHref] = useState<string>(() => withOpen(cachedBotLink()));
 
   // Learn the bot's link, and warm it up already while the page is open.
   useEffect(() => {
     let cancelled = false;
     warmTelegramBot().then((link) => {
-      if (!cancelled) setHref(link);
+      if (!cancelled) setHref(withOpen(link));
     });
     return () => {
       cancelled = true;

@@ -13,6 +13,20 @@
 
 export interface VerifiedGoogleUser {
   email: string;
+  /** Google's permanent account id, when Google reports it (see googleIdentity.ts). */
+  sub?: string;
+}
+
+/** The token's Google account id (tokeninfo), or null when Google doesn't say. */
+async function fetchGoogleSubject(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.sub === 'string' && data.sub ? data.sub : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -27,9 +41,13 @@ export async function verifyGoogleAccessToken(accessToken: string | undefined | 
   }
 
   try {
-    const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary', {
-      headers: { Authorization: `Bearer ${accessToken.trim()}` },
-    });
+    const token = accessToken.trim();
+    const [response, sub] = await Promise.all([
+      fetch('https://www.googleapis.com/calendar/v3/calendars/primary', {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetchGoogleSubject(token),
+    ]);
 
     if (!response.ok) {
       return null;
@@ -41,7 +59,14 @@ export async function verifyGoogleAccessToken(accessToken: string | undefined | 
       return null;
     }
 
-    return { email };
+    // A reassigned address (same email, different Google account) is refused.
+    const { checkGoogleSubject } = await import('./googleIdentity.js');
+    if (!(await checkGoogleSubject(email, sub).catch(() => true))) {
+      console.warn('Google sign-in refused: this address belongs to a different Google account than before.');
+      return null;
+    }
+
+    return { email, ...(sub ? { sub } : {}) };
   } catch {
     return null;
   }

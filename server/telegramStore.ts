@@ -137,6 +137,10 @@ function isLikelyEmail(value?: string | null): value is string {
  * see the class doc comment below ("Ownership fallback") for why this
  * exists and what its limitations are.
  */
+export function isPlaceholderEmail(email: string | null | undefined): boolean {
+  return Boolean(email && /@unlinked\.aheadoftime\.local$/i.test(email));
+}
+
 function placeholderEmailForChat(chatId: number | string): string {
   return `telegram-${String(chatId)}@unlinked.aheadoftime.local`;
 }
@@ -384,8 +388,9 @@ export class TelegramSessionStore {
   public static async linkUserByPairingCode(
     chatId: number | string,
     pairingCode: string,
-    from?: { id?: number | string; username?: string; first_name?: string; last_name?: string }
-  ): Promise<{ success: boolean; session?: TelegramUserSession; error?: string }> {
+    from?: { id?: number | string; username?: string; first_name?: string; last_name?: string },
+    options: { allowMove?: boolean } = {}
+  ): Promise<{ success: boolean; session?: TelegramUserSession; error?: string; needsSwitch?: { currentEmail: string; newEmail: string } }> {
     const normalizedCode = pairingCode.trim();
     const username = from?.username || from?.first_name || 'Telegram User';
 
@@ -431,6 +436,19 @@ export class TelegramSessionStore {
     // per-chat placeholder used elsewhere so pairing_codes.user_id always
     // resolves back to a queryable account. See class doc comment.
     const resolvedUserId = record.user_id || (await getOrCreatePlaceholderUserId(chatId));
+
+    // One Telegram chat belongs to one account. When it is already linked to
+    // another real account (someone with two calendars and one Telegram),
+    // it only moves after the user confirms it in the chat.
+    if (!options.allowMove) {
+      const current = await this.getAccountRow(chatId);
+      if (current?.is_linked && current.user_id && current.user_id !== resolvedUserId && current.user_email && !isPlaceholderEmail(current.user_email)) {
+        const target = await query<{ email: string }>(`SELECT email FROM users WHERE id = $1`, [resolvedUserId]);
+        if (target[0]?.email && !isPlaceholderEmail(target[0].email)) {
+          return { success: false, needsSwitch: { currentEmail: current.user_email, newEmail: target[0].email } };
+        }
+      }
+    }
 
     await query(
       `INSERT INTO pairing_codes (code, user_id, channel, status, created_at, expires_at)

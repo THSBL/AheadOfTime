@@ -6,6 +6,7 @@ import { TelegramService, buildEventDeepLink } from './telegramService.js';
 import { CalendarEvent } from '../src/types.js';
 import { GeminiCalendarAgent } from './geminiCalendarAgent.js';
 import { signEventDeepLink } from './deepLinkToken.js';
+import { isPlaceholderEmail } from './telegramStore.js';
 import { logQualityEvent, checkAndLogRapidCorrection } from './qualityStore.js';
 import { pushEventToGoogleInBackground, isAutoPushEnabledForUser } from './googleBackgroundPush.js';
 import { formatDisplayDate } from '../src/utils/tminusRules.js';
@@ -21,6 +22,16 @@ const REFINEMENT_STALE_MS = 12 * 60 * 60 * 1000;
 // Legacy Telegram Markdown: dynamic text (Gemini's questions, options) must
 // not accidentally open a bold/italic/code span and make Telegram reject it.
 const escapeMd = (text: string) => text.replace(/([_*`\[])/g, '\\$1');
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** "someone@gmail.com" -> "someone@…" so button labels stay short. */
+function shortEmail(email: string): string {
+  const [name] = email.split('@');
+  return name.length > 18 ? `${name.slice(0, 17)}…` : `${name}@…`;
+}
 
 export class TelegramWebhookHandler {
   // Deduplication cache: stores update_id -> timestamp (ms)
@@ -212,16 +223,43 @@ export class TelegramWebhookHandler {
 
     // Command: /start (with or without pairing code)
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start=')) {
-      // Extract optional payload after /start (e.g., "/start pair_987xyz")
+      // Extract optional payload after /start (e.g., "/start pair_987xyz", "/start open")
       const parts = text.split(/[\s=]+/);
-      const pairCode = parts.length > 1 ? parts[1].trim() : '';
+      const payload = parts.length > 1 ? parts[1].trim() : '';
+      let linkedNote = '';
 
-      if (pairCode) {
-        console.log(`[Telegram Webhook] Received pairing attempt for code:`, pairCode);
-        await TelegramSessionStore.linkUserByPairingCode(chatId, pairCode, from);
+      if (payload.startsWith('pair_')) {
+        console.log(`[Telegram Webhook] Received pairing attempt for code:`, payload);
+        const result = await TelegramSessionStore.linkUserByPairingCode(chatId, payload, from);
+        if (result.needsSwitch) {
+          // Already linked to another account: switching is the user's call.
+          await TelegramService.sendMessage(
+            chatId,
+            `👤 This chat is linked to <b>${escapeHtml(result.needsSwitch.currentEmail)}</b>.\n\nSwitch it to <b>${escapeHtml(result.needsSwitch.newEmail)}</b>? Plans you make here then go to that account.`,
+            {
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: `🔄 Switch to ${shortEmail(result.needsSwitch.newEmail)}`, callback_data: `ACCT:switch:${payload}`.slice(0, 64) }],
+                  [{ text: `Keep ${shortEmail(result.needsSwitch.currentEmail)}`, callback_data: 'ACCT:keep' }],
+                ],
+              },
+            }
+          );
+          return;
+        }
+        if (result.success && result.session?.webUserEmail) linkedNote = `✅ Linked to ${result.session.webUserEmail}.`;
+        else if (result.error) linkedNote = `⚠️ ${result.error}`;
+      }
+
+      // Opened from the app ("Open" in Settings): just which account this is.
+      if (payload === 'open') {
+        await this.sendAccountCheck(chatId, appBaseUrl);
+        return;
       }
 
       const welcome = [
+        ...(linkedNote ? [linkedNote, ``] : []),
         `*Ahead Of Time*`,
         ``,
         `Tell me what you're planning and I'll work backward from the date to build your prep checklist.`,
@@ -236,11 +274,19 @@ export class TelegramWebhookHandler {
         ``,
         `*Commands*:`,
         `• /events — View your active events and checklists`,
+        `• /account — Which account this chat uses`,
         `• /status — Check bot and calendar connectivity`,
         `• /help — Tips for scheduling and reverse planning`,
       ].join('\n');
 
       await TelegramService.sendMessage(chatId, welcome, { parse_mode: 'Markdown' });
+      if (!linkedNote) await this.sendAccountCheck(chatId, appBaseUrl);
+      return;
+    }
+
+    // Command: /account - which account this chat plans into.
+    if (text === '/account') {
+      await this.sendAccountCheck(chatId, appBaseUrl);
       return;
     }
 
@@ -634,10 +680,65 @@ export class TelegramWebhookHandler {
   /**
    * Handle callback query (inline button clicks)
    */
+  /**
+   * "You're using this account": one Telegram chat plans into one account,
+   * so every time the chat is opened from the app it says which one, with
+   * a way to keep it or switch.
+   */
+  private static async sendAccountCheck(chatId: number | string, appBaseUrl: string): Promise<void> {
+    const session = await TelegramSessionStore.getOrCreateSession(chatId);
+    const email = session.isLinked && session.webUserEmail && !isPlaceholderEmail(session.webUserEmail) ? session.webUserEmail : '';
+    const settings = `${appBaseUrl.replace(/\/$/, '')}/settings/connections`;
+    if (!email) {
+      await TelegramService.sendMessage(
+        chatId,
+        `👤 This chat isn't linked to an account yet.\n\nOpen Ahead Of Time → Settings → Connections → Telegram → Connect, signed in with the account you want to use.`,
+        { reply_markup: { inline_keyboard: [[{ text: 'Open Settings', url: settings }]] } }
+      );
+      return;
+    }
+    await TelegramService.sendMessage(chatId, `👤 You're using <b>${escapeHtml(email)}</b>.\n\nPlans you make here go to this account.`, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[{ text: "✓ That's me", callback_data: 'ACCT:ok' }, { text: '🔄 Use another account', callback_data: 'ACCT:other' }]],
+      },
+    });
+  }
+
   private static async handleCallbackQuery(callbackQuery: any, appBaseUrl: string): Promise<void> {
     const callbackId = callbackQuery.id;
     const data = callbackQuery.data || '';
     const chatId = callbackQuery.message?.chat?.id;
+
+    if (data.startsWith('ACCT:')) {
+      const [, action, code] = data.split(':');
+      if (action === 'ok' || action === 'keep') {
+        await TelegramService.answerCallbackQuery(callbackId, action === 'ok' ? '👍' : 'Kept');
+        if (action === 'keep') await TelegramService.sendMessage(chatId, '👍 This chat stays with the account it had.');
+        return;
+      }
+      if (action === 'switch' && code) {
+        const result = await TelegramSessionStore.linkUserByPairingCode(chatId, code, callbackQuery.from, { allowMove: true });
+        await TelegramService.answerCallbackQuery(callbackId, result.success ? 'Switched' : 'Could not switch');
+        await TelegramService.sendMessage(
+          chatId,
+          result.success && result.session?.webUserEmail
+            ? `✅ This chat now uses <b>${escapeHtml(result.session.webUserEmail)}</b>. Plans you make here go to that account.`
+            : `⚠️ ${escapeHtml(result.error || 'Could not switch. Make a new link in the app and try again.')}`,
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+      if (action === 'other') {
+        await TelegramService.answerCallbackQuery(callbackId);
+        await TelegramService.sendMessage(
+          chatId,
+          'To use another account: open Ahead Of Time signed in with that account → Settings → Connections → Telegram → Connect. I\'ll ask you here to confirm the switch.',
+          { reply_markup: { inline_keyboard: [[{ text: 'Open Settings', url: `${appBaseUrl.replace(/\/$/, '')}/settings/connections` }]] } }
+        );
+        return;
+      }
+    }
 
     if (data.startsWith('RQ:')) {
       // "RQ:<questionIndex>:<optionIndex|s>" - an answer to a refinement
