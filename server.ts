@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import { appOrigin } from "./server/appOrigin";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
@@ -1032,9 +1033,7 @@ app.get("/api/telegram/status", async (req: Request, res: Response) => {
     }
   }
 
-  const host = req.get("host") || "localhost:3000";
-  const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
-  const inferredWebhookUrl = `${protocol}://${host}/api/telegram/webhook`;
+  const inferredWebhookUrl = `${appOrigin(req)}/api/telegram/webhook`;
 
   // Reveals a real linked account's username/chatId - never resolve to a
   // client-supplied or default userId. See api/telegram/[...path].ts for
@@ -1096,7 +1095,7 @@ app.post("/api/telegram/set-webhook", async (req: Request, res: Response) => {
     return;
   }
   try {
-    res.json(await TelegramService.setWebhook(TelegramService.ownWebhookUrl(req.get("host") || undefined)));
+    res.json(await TelegramService.setWebhook(TelegramService.ownWebhookUrl(new URL(appOrigin(req)).host)));
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message || "Failed to set webhook" });
   }
@@ -1208,9 +1207,7 @@ app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
       return;
     }
 
-    const host = req.get("host") || "localhost:3000";
-    const protocol = req.protocol === "https" || host.includes("run.app") ? "https" : "http";
-    const appBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+    const appBaseUrl = appOrigin(req);
 
     const result = await TelegramService.sendRefinementPrompt(targetChatId, event, appBaseUrl);
     res.json(result);
@@ -1388,14 +1385,11 @@ const BACKGROUND_SYNC_SCOPES = [
 ].join(" ");
 
 function getOAuthRedirectUri(req: Request): string {
-  const configured = process.env.APP_URL?.trim();
-  const origin = configured || `${req.protocol}://${req.get("host")}`;
-  return `${origin.replace(/\/$/, "")}/api/auth/google/callback`;
+  return `${appOrigin(req)}/api/auth/google/callback`;
 }
 
 function getAppOrigin(req: Request): string {
-  const configured = process.env.APP_URL?.trim();
-  return (configured || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+  return appOrigin(req);
 }
 
 // The app's own login session (local-dev twin of the Vercel route).

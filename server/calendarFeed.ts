@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { appOrigin } from './appOrigin.js';
 import { query } from './db.js';
 import { ensureEventSyncSchema } from './eventSyncSchema.js';
 
@@ -279,13 +280,7 @@ export function buildFeedIcs(input: {
 
 // ---- routes ---------------------------------------------------------------
 
-function appUrlFor(req: any): string {
-  const configured = process.env.APP_URL?.trim();
-  if (configured) return configured.replace(/\/$/, '');
-  const host = req.headers?.['x-forwarded-host'] || req.headers?.host || 'localhost:3000';
-  const proto = req.headers?.['x-forwarded-proto'] || (String(host).startsWith('localhost') ? 'http' : 'https');
-  return `${proto}://${host}`;
-}
+const appUrlFor = (req: any): string => appOrigin(req);
 
 export function feedUrlFor(appUrl: string, userId: string, version: number): string | null {
   const token = signFeedToken(userId, version);

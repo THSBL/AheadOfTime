@@ -1,17 +1,13 @@
 import { findOrCreateUserByEmail } from '../../../server/telegramStore.js';
+import { appOrigin } from '../../../server/appOrigin.js';
 import { verifyOAuthState } from '../../../server/notifyActionToken.js';
 import { exchangeAuthorizationCode, storeRefreshToken, grantIncludesTasks } from '../../../server/googleOAuthTokenStore.js';
 
 function getRedirectUri(req: any): string {
-  const configured = process.env.APP_URL?.trim();
-  const origin = configured || `https://${req.headers?.host}`;
-  return `${origin.replace(/\/$/, '')}/api/auth/google/callback`;
+  return `${appOrigin(req)}/api/auth/google/callback`;
 }
 
-function getAppOrigin(req: any): string {
-  const configured = process.env.APP_URL?.trim();
-  return (configured || `https://${req.headers?.host}`).replace(/\/$/, '');
-}
+const getAppOrigin = (req: any): string => appOrigin(req);
 
 /**
  * Step 2 of the authorization-code flow: Google redirects the browser

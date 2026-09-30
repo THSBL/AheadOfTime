@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { appOrigin } from './appOrigin.js';
 import { CalendarEvent, TMinusMilestone } from '../src/types.js';
 import { signEventDeepLink } from './deepLinkToken.js';
 import { formatDisplayDate } from '../src/utils/tminusRules.js';
@@ -279,8 +280,8 @@ export class TelegramService {
 
   /** This app's own webhook URL (APP_URL, else the host this request came to). */
   public static ownWebhookUrl(host?: string): string {
-    const base = process.env.APP_URL?.trim() || `https://${host || 'aheadoftime.app'}`;
-    return `${base.replace(/\/$/, '')}/api/telegram/webhook`;
+    // Only APP_URL or one of our own hosts (see appOrigin): the Host header is caller-controlled.
+    return `${appOrigin({ headers: { host: host || '' } })}/api/telegram/webhook`;
   }
 
   /**

@@ -1,4 +1,5 @@
 import { verifyRequestUser } from '../../../server/requestAuth.js';
+import { appOrigin } from '../../../server/appOrigin.js';
 import { handleSessionApi } from '../../../server/sessionRoutes.js';
 import { extractBearerToken, verifyGoogleAccessToken } from '../../../server/googleAuthVerify.js';
 import { findOrCreateUserByEmail, TelegramSessionStore } from '../../../server/telegramStore.js';
@@ -51,9 +52,7 @@ const CALENDAR_SCOPES = [
 ].join(' ');
 
 function getRedirectUri(req: any): string {
-  const configured = process.env.APP_URL?.trim();
-  const origin = configured || `https://${req.headers?.host}`;
-  return `${origin.replace(/\/$/, '')}/api/auth/google/callback`;
+  return `${appOrigin(req)}/api/auth/google/callback`;
 }
 
 async function handleAuthorize(req: any, res: any) {

@@ -1,4 +1,35 @@
-import * as XLSX from 'xlsx';
+import readXlsxFile from 'read-excel-file/browser';
+import Papa from 'papaparse';
+
+type Cell = string | number | boolean;
+
+/** A cell as plain data: dates as YYYY-MM-DD, empty cells as ''. */
+function cellValue(value: unknown): Cell {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  return String(value);
+}
+
+/**
+ * Every sheet of an uploaded file as row grids. .xlsx through read-excel-file,
+ * .csv through Papa Parse (both maintained, without the known issues of the
+ * old SheetJS npm package). Legacy .xls is not supported: save it as .xlsx.
+ */
+async function readWorkbook(file: File): Promise<{ name: string; rows: Cell[][] }[]> {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xls')) {
+    throw new Error('Old .xls files are not supported. Save it as .xlsx or .csv and try again.');
+  }
+  if (name.endsWith('.csv') || file.type === 'text/csv') {
+    const text = await file.text();
+    const parsed = Papa.parse<string[]>(text, { skipEmptyLines: false });
+    return [{ name: file.name.replace(/\.csv$/i, ''), rows: (parsed.data || []).map((row) => row.map(cellValue)) }];
+  }
+  const sheets = await readXlsxFile(file);
+  return sheets.map((s) => ({ name: s.sheet, rows: s.data.map((row) => row.map(cellValue)) }));
+}
+
 import { CustomPreset, CustomPresetMilestone, SpreadsheetColumnMapping, TMinusMilestone, MilestoneCategory } from '../types.js';
 
 const STORAGE_KEY = 'ahead_custom_presets_v1';
@@ -364,46 +395,22 @@ export const DEFAULT_CUSTOM_PRESETS: CustomPreset[] = [
 ];
 
 /**
- * Parses uploaded spreadsheet file (.csv, .xlsx, .xls)
+ * Parses an uploaded spreadsheet file (.csv, .xlsx): the first sheet, its
+ * first row as headers, every other row as an object keyed by header.
  */
 export async function parseSpreadsheetFile(file: File): Promise<{ headers: string[]; rows: any[] }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-          throw new Error('Spreadsheet contains no visible worksheets.');
-        }
-
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        // Convert to JSON array of row objects
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-
-        if (!rawJson || rawJson.length === 0) {
-          throw new Error('No readable data rows found in this sheet.');
-        }
-
-        // Extract headers from keys of the first non-empty row
-        const headers = Object.keys(rawJson[0]);
-
-        resolve({ headers, rows: rawJson });
-      } catch (err: any) {
-        reject(new Error(err?.message || 'Failed to parse spreadsheet file'));
-      }
-    };
-
-    reader.onerror = () => {
-      reject(new Error('File reading failed. Please check permissions and file format.'));
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
+  let sheets: { name: string; rows: Cell[][] }[];
+  try {
+    sheets = await readWorkbook(file);
+  } catch (err: any) {
+    throw new Error(err?.message || 'Failed to parse spreadsheet file');
+  }
+  if (sheets.length === 0) throw new Error('Spreadsheet contains no visible worksheets.');
+  const grid = sheets[0].rows.filter((row) => row.some((cell) => String(cell).trim() !== ''));
+  if (grid.length < 2) throw new Error('No readable data rows found in this sheet.');
+  const headers = grid[0].map((h, i) => String(h).trim() || `Column ${i + 1}`);
+  const rows = grid.slice(1).map((row) => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])));
+  return { headers, rows };
 }
 
 /**
@@ -413,39 +420,20 @@ export async function parseSpreadsheetFile(file: File): Promise<{ headers: strin
  * single clean table starting at row 1.
  */
 export async function parseSpreadsheetForAI(file: File): Promise<{ sheets: { name: string; rows: any[][] }[] }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-          throw new Error('Spreadsheet contains no visible worksheets.');
-        }
-
-        const MAX_ROWS_PER_SHEET = 200;
-        const sheets = workbook.SheetNames.map((name) => {
-          const worksheet = workbook.Sheets[name];
-          const allRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-          // Drop fully-blank rows and cap length so the payload stays bounded
-          const nonEmptyRows = allRows.filter((row) => row.some((cell) => String(cell).trim() !== ''));
-          return { name, rows: nonEmptyRows.slice(0, MAX_ROWS_PER_SHEET) };
-        });
-
-        resolve({ sheets });
-      } catch (err: any) {
-        reject(new Error(err?.message || 'Failed to parse spreadsheet file'));
-      }
-    };
-
-    reader.onerror = () => {
-      reject(new Error('File reading failed. Please check permissions and file format.'));
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
+  let workbook: { name: string; rows: Cell[][] }[];
+  try {
+    workbook = await readWorkbook(file);
+  } catch (err: any) {
+    throw new Error(err?.message || 'Failed to parse spreadsheet file');
+  }
+  if (workbook.length === 0) throw new Error('Spreadsheet contains no visible worksheets.');
+  const MAX_ROWS_PER_SHEET = 200;
+  const sheets = workbook.map(({ name, rows }) => ({
+    name,
+    // Drop fully-blank rows and cap length so the payload stays bounded
+    rows: rows.filter((row) => row.some((cell) => String(cell).trim() !== '')).slice(0, MAX_ROWS_PER_SHEET),
+  }));
+  return { sheets };
 }
 
 /**

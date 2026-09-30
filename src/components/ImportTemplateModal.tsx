@@ -166,7 +166,7 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
     }
   };
 
-  const SPREADSHEET_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
+  const SPREADSHEET_EXTENSIONS = ['.csv', '.xlsx', '.xls']; // .xls gets a 'save as .xlsx' message
   const DOCUMENT_EXTENSIONS = ['.docx', '.pdf'];
   const isSpreadsheetFile = (name: string) => SPREADSHEET_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
   const isDocumentFile = (name: string) => DOCUMENT_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
@@ -229,7 +229,7 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
       if (isSpreadsheetFile(file.name) || isDocumentFile(file.name)) {
         handleFile(file);
       } else {
-        setParseError('Please upload a valid .csv, .xlsx, .xls, .docx, or .pdf file.');
+        setParseError('Please upload a valid .csv, .xlsx, .docx, or .pdf file.');
       }
     }
   };
@@ -488,7 +488,7 @@ export const ImportTemplateModal: React.FC<ImportTemplateModalProps> = ({
                       : 'Click to upload or drag & drop a file'}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Supports Excel (.xlsx, .xls), CSV, Word (.docx), and PDF
+                    Supports Excel (.xlsx), CSV, Word (.docx), and PDF
                   </p>
                 </div>
 

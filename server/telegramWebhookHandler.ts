@@ -1,4 +1,5 @@
 import { AI_LIMITS, OFF_TOPIC_REPLY, isAiPlanningEnabled, recordAiCall } from './aiGuard.js';
+import { appOrigin } from './appOrigin.js';
 import { Request, Response } from 'express';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService, buildEventDeepLink } from './telegramService.js';
@@ -112,12 +113,7 @@ export class TelegramWebhookHandler {
       }
 
       // 4. Resolve application base URL
-      const appBaseUrl =
-        process.env.APP_URL ||
-        process.env.PUBLIC_URL ||
-        (req.headers['x-forwarded-host'] ? `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host']}` : '') ||
-        (req.get('host') ? `https://${req.get('host')}` : '') ||
-        'https://aheadoftime.app';
+      const appBaseUrl = process.env.PUBLIC_URL?.trim() && !process.env.APP_URL ? process.env.PUBLIC_URL.trim() : appOrigin(req);
 
       console.log('📥 Telegram update received:', {
         update_id: update.update_id,

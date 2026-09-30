@@ -215,7 +215,8 @@ export const TelegramIntegrationCard: React.FC<TelegramIntegrationCardProps> = (
       }
       const data = await res.json();
       randomToken = data.pairingCode || data.pairCode;
-      pairingUrl = data.deepLink;
+      // Only ever open a Telegram link, whatever the response says.
+      pairingUrl = typeof data.deepLink === 'string' && /^https:\/\/t\.me\/[A-Za-z0-9_]+(\?start=[A-Za-z0-9_-]+)?$/.test(data.deepLink) ? data.deepLink : '';
     } catch (err) {
       setIsLinking(false);
       setFeedback({ type: 'error', message: 'Could not reach the server to start Telegram pairing. Please try again.' });

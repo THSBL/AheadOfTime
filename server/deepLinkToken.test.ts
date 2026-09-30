@@ -32,7 +32,10 @@ describe('deepLinkToken', () => {
 
   it('rejects a tampered token value', () => {
     const signed = signEventDeepLink('event-123');
-    expect(verifyEventDeepLink('event-123', signed!.token.slice(0, -2) + 'ff', String(signed!.expiresAt))).toBe(false);
+    // Always a real change: flip the last hex digit (setting it to a fixed value was a no-op 1 in 256 runs).
+    const last = signed!.token.slice(-1);
+    const tampered = signed!.token.slice(0, -1) + (last === '0' ? '1' : '0');
+    expect(verifyEventDeepLink('event-123', tampered, String(signed!.expiresAt))).toBe(false);
   });
 
   it('rejects an expired token', () => {
