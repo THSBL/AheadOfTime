@@ -182,7 +182,7 @@ describe('processWithGemini - preserving existing milestones when the model omit
 
     expect(result.event.eventDate).toBe('2026-10-19');
     expect(result.event.endDate).toBe('2026-10-23');
-    expect(result.event.title).toBe('Business Trip to New York – 19–23 Oct');
+    expect(result.event.title).toBe('New York – Business Trip – 19–23 Oct');
   });
 
   it('reads a single picked date from the refinement answers', async () => {
@@ -332,5 +332,40 @@ describe('processWithGemini - preparation level (architecture reset Phase 6)', (
     expect(result.event.preparationLevel).toBe('extensive');
     expect(result.event.preparationLevelSetBy).toBe('user');
     expect(result.event.preparationLevelReasons).toEqual(['You chose this.']);
+  });
+
+  it('a change in the chat keeps the dates and level, and renames only when asked (live: July trip moved to 30 Oct)', async () => {
+    mockResponseText = JSON.stringify({
+      mode: 'RESOLVE_MILESTONES',
+      target_event_id: 'evt-dinner-curacao',
+      macro_event: { title: 'Vacation & Holiday Getaway', start_date: '2026-10-30', end_date: '2026-11-01', destination: 'Portugal' },
+      focus: 'Added.',
+      addition: '',
+      milestones: [
+        { tMinusLabel: 'T-14d', tMinusOffsetMinutes: -20160, title: 'Invites & confirm dietary requirements Sent', category: 'booking' },
+      ],
+    });
+    const trip = { ...makeExistingEvent(), eventDate: '2027-07-01', endDate: '2027-07-14', preparationLevel: 'extensive' as const, preparationLevelSetBy: 'aot' as const };
+    const renamed = await processWithGemini({
+      message: 'Rename it to Family trip to Portugal and add itinerary and packing steps',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      existingEvent: trip,
+      activeEvents: [trip],
+    });
+    expect(renamed.event.title).toBe('Family trip to Portugal');
+    expect(renamed.event.eventDate).toBe('2027-07-01');
+    expect(renamed.event.endDate).toBe('2027-07-14');
+    expect(renamed.event.preparationLevel).toBe('extensive');
+
+    const kept = await processWithGemini({
+      message: 'add a step to buy sunscreen',
+      currentReferenceDate: REF_DATE_ISO,
+      refDateStr: REF_DATE_STR,
+      existingEvent: trip,
+      activeEvents: [trip],
+    });
+    expect(kept.event.title).toBe('Dinner in Curacao');
+    expect(kept.event.eventDate).toBe('2027-07-01');
   });
 });

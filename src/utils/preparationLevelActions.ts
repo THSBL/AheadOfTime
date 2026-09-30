@@ -1,5 +1,5 @@
 import { CalendarEvent, PreparationLevel, TMinusMilestone } from '../types.js';
-import { isRunUp, withDecisionRunUps } from './decisionRunUps.js';
+import { isRunUp, restoreDecisionTitles, withDecisionRunUps } from './decisionRunUps.js';
 
 const TIER_RANK: Record<PreparationLevel, number> = { essentials: 0, balanced: 1, extensive: 2 };
 
@@ -54,6 +54,11 @@ export function applyPreparationLevelChange(
     hasContentAtTargetTier &&
     targetTierMilestones.some((m) => m.generatedFromContextVersion && m.generatedFromContextVersion !== currentPlanningContextVersion)
   );
-  const withRunUps = targetLevel === 'extensive' && runUps ? withDecisionRunUps(runUps.event, updated, runUps.referenceDate) : updated;
+  const withRunUps =
+    targetLevel === 'extensive' && runUps
+      ? withDecisionRunUps(runUps.event, updated, runUps.referenceDate)
+      : targetLevel === 'extensive'
+        ? updated
+        : restoreDecisionTitles(updated);
   return { milestones: withRunUps, needsReplan: !hasContentAtTargetTier || isStale };
 }

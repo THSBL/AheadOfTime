@@ -158,8 +158,10 @@ describe('parseNaturalDateRange', () => {
     expect(result?.startDate).toBe('2027-03-01');
   });
 
-  it('does not mistake a bare "<Month> <year>" (no day at all) for a date', () => {
-    expect(parseNaturalDateRange('March 2027', REF_DATE_ISO)).toBeNull();
+  it('reads a bare "<Month> <year>" as that month (not a day made from the year)', () => {
+    expect(parseNaturalDateRange('March 2027', REF_DATE_ISO)).toMatchObject({ startDate: '2027-03-01', precision: 'month' });
+    expect(parseNaturalDateRange('Family trip to Portugal in July 2027', REF_DATE_ISO)).toMatchObject({ startDate: '2027-07-01', precision: 'month' });
+    expect(parseNaturalDateRange('I may need a hand', REF_DATE_ISO)).toBeNull();
   });
 
   it('still parses "<Month> <day> <year>" when the day is a real 2-digit day', () => {

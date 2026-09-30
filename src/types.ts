@@ -171,6 +171,9 @@ export interface TMinusMilestone {
   // See StructuredMilestone.slotKey - same field, carried through once a
   // milestone is finalized into the app's persisted shape.
   slotKey?: string;
+  // Extensive help renames a booking "Decide & book: ..." (decisionRunUps.ts);
+  // its own title is kept here and comes back on a switch down.
+  decisionBaseTitle?: string;
   // Architecture reset (Phases 4-6) - which PreparationLevel this milestone
   // belongs to, and whether it's currently shown. Optional so old
   // in-memory/Telegram-sourced objects from before this migration stay

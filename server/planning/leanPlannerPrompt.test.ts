@@ -87,7 +87,7 @@ describe('lean planner prompt', () => {
     const planCall = calls[calls.length - 1];
     expect(planCall.config.systemInstruction.length).toBeLessThan(4000);
     expect(JSON.stringify(planCall.config.responseSchema)).not.toMatch(/sub_events|watchpoint|eventTitle/);
-    expect(result.event.title).toBe('Business Trip to New York – 19–23 Oct');
+    expect(result.event.title).toBe('New York – Business Trip – 19–23 Oct');
     expect(result.event.eventDate).toBe('2026-10-19');
     expect(result.event.endDate).toBe('2026-10-23');
     const titles = result.event.milestones.map((m) => m.title);

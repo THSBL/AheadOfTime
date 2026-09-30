@@ -39,7 +39,7 @@ describe('processWithDeterministicRules', () => {
       refDateStr: REF_DATE_STR,
       refDateISO: REF_DATE_ISO,
     });
-    expect(result.event.title).toBe('Trip to New York – Thu 15 Oct');
+    expect(result.event.title).toBe('New York – Trip – Thu 15 Oct');
     expect(result.event.title).not.toBe('Travel Trip');
   });
 
@@ -445,7 +445,7 @@ describe('fallback planning from a composed conversation brief', () => {
 
   it('keeps the real title and date instead of a generic or hen-party title', () => {
     const result = processWithDeterministicRules({ message: brief, refDateStr: '2026-09-24', refDateISO: '2026-09-24T10:00:00.000Z' });
-    expect(result.event.title).toBe('Divetrip to Egypt – 12–19 Nov');
+    expect(result.event.title).toBe('Egypt – Divetrip – 12–19 Nov');
     expect(result.event.category).toBe('travel_trip');
     expect(result.event.eventDate).toBe('2026-11-12');
   });

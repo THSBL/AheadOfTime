@@ -232,7 +232,7 @@ export function formatDestinationName(dest: string): string {
 export function parseNaturalDateRange(
   text: string,
   referenceDateISO: string = new Date().toISOString()
-): { startDate: string; endDate?: string; matchedText?: string; alternatives?: string[] } | null {
+): { startDate: string; endDate?: string; matchedText?: string; alternatives?: string[]; precision?: 'month' } | null {
   if (!text) return null;
   const raw = text.trim();
   const baseRef = new Date(referenceDateISO);
@@ -274,7 +274,7 @@ export function parseNaturalDateRange(
   // 1b. Relative phrasing (today, tomorrow, weekend, weekdays). Only used
   // when the text holds no explicit date: checked first, "weekend" in
   // "Weekend trip to Paris 23 to 25 October" won over the real dates.
-  const parseRelative = (): { startDate: string; endDate?: string; matchedText?: string; alternatives?: string[] } | null => {
+  const parseRelative = (): { startDate: string; endDate?: string; matchedText?: string; alternatives?: string[]; precision?: 'month' } | null => {
     if (/\btomorrow\b/i.test(raw)) {
       return { startDate: toISODate(addDays(todayMidnight, 1)), matchedText: 'tomorrow' };
     }
@@ -312,6 +312,42 @@ export function parseNaturalDateRange(
         return { startDate: nearer, matchedText: weekdayMatch[0], alternatives: [nearer, toISODate(addDays(todayMidnight, days + 7))] };
       }
       return { startDate: nearer, matchedText: weekdayMatch[0] };
+    }
+    // "next week": its Monday.
+    const nextWeek = raw.match(/\bnext\s+week\b/i);
+    if (nextWeek) {
+      const daysToMonday = ((1 - todayMidnight.getDay() + 7) % 7) || 7;
+      return { startDate: toISODate(addDays(todayMidnight, daysToMonday)), matchedText: nextWeek[0] };
+    }
+    // A month without a day: "in July 2027", "late March", "next month".
+    // Anchored on the 1st (15th for "mid", 20th for "late"/"end of") and
+    // marked precision 'month', so titles say "Jul 2027", not a made-up day.
+    const dayFor = (q: string) => (/mid/i.test(q) ? 15 : /late|end/i.test(q) ? 20 : 1);
+    const nextMonth = raw.match(/\b(early|mid|late|end of)?\s*next\s+month\b/i);
+    if (nextMonth) {
+      const d = new Date(todayMidnight.getFullYear(), todayMidnight.getMonth() + 1, dayFor(nextMonth[1] || ''));
+      return { startDate: toISODate(d), matchedText: nextMonth[0].trim(), precision: 'month' };
+    }
+    // Needs a year or a lead-in word, so "may" the verb isn't read as May.
+    const monthOnly = raw.match(
+      new RegExp(`\\b(?:(in|during|around|early|mid|late|end of|this|next)\\s+)(${monthRegexPart})${monthEnd}(?:\\s+(\\d{4}))?|\\b(${monthRegexPart})${monthEnd}\\s+(\\d{4})\\b`, 'i')
+    );
+    if (monthOnly) {
+      const monthKey = (monthOnly[2] || monthOnly[4]).toLowerCase();
+      const month = monthMap[monthKey];
+      if (month !== undefined) {
+        const yearText = monthOnly[3] || monthOnly[5];
+        const qualifier = monthOnly[1] || '';
+        const day = dayFor(qualifier);
+        let year = yearText ? Number(yearText) : currentYear;
+        if (!yearText) {
+          // Earlier this year (or this month already under way for a plain
+          // "in <month>"): the next one.
+          if (month < todayMidnight.getMonth()) year += 1;
+          if (/next/i.test(qualifier) && month <= todayMidnight.getMonth()) year = currentYear + 1;
+        }
+        return { startDate: toISODate(new Date(year, month, day)), matchedText: monthOnly[0].trim(), precision: 'month' };
+      }
     }
     return null;
   };
@@ -2378,7 +2414,9 @@ export function decomposeComplexTripIntent(
   const monthStopWords =
     'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
   const destMatch = message.match(
-    new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z ]{2,20}?)(?:\\s+(?:from|with|for|on|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|[ \\t]*\\n|$)`)
+    // "in/at/during/this/next/around/early/mid/late" also end the place:
+    // "to Portugal in July 2027" is Portugal, not "Portugal in".
+    new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z ]{2,20}?)(?:\\s+(?:from|with|for|on|in|at|during|this|next|around|early|mid|late|and|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|[ \\t]*[,.!?]|[ \\t]*\\n|$)`)
   );
   // A lowercase place right after a trip word ("trip to mallorca") is
   // still a destination - only there, so ordinary lowercase words elsewhere

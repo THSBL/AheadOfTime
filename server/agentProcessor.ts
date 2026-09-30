@@ -1,4 +1,4 @@
-import { newEventTitle } from '../src/utils/eventTitle.js';
+import { detectRename, isGenericTitle, newEventTitle } from '../src/utils/eventTitle.js';
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   CalendarEvent,
@@ -28,6 +28,7 @@ import {
 } from "../src/utils/tminusRules.js";
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
 import { withDecisionRunUps } from "../src/utils/decisionRunUps.js";
+import { withTripBasics } from "../src/utils/tripBasics.js";
 import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment, deriveOutstandingGaps, detectStatedResponsibility } from "../src/utils/preparationAssessment.js";
 import {
   mergePlanningContext,
@@ -81,8 +82,18 @@ function resolveEffectivePreparationLevel(
   };
   const assessment = getActiveAssessor().assessPreparationLevel(input);
   const isUserLocked = existingEvent?.preparationLevelSetBy === 'user' && Boolean(existingEvent.preparationLevel);
+  // A change asked for in the chat ("add packing steps") never lowers the
+  // level the plan already has: re-assessed from that short message alone,
+  // an Extensive trip dropped to Balanced and lost its explore/check steps.
+  const rank: Record<string, number> = { essentials: 0, balanced: 1, extensive: 2 };
+  const kept = existingEvent?.preparationLevel as PreparationLevel | undefined;
+  const level = isUserLocked
+    ? (kept as PreparationLevel)
+    : kept && (rank[kept] ?? 0) > (rank[assessment.level] ?? 0)
+      ? kept
+      : assessment.level;
   return {
-    level: isUserLocked ? (existingEvent!.preparationLevel as PreparationLevel) : assessment.level,
+    level,
     assessment,
     setBy: isUserLocked ? 'user' : 'aot',
   };
@@ -590,6 +601,7 @@ When processing free-text user plans:
    - Generate operational runway milestones for the whole event/trip (Track A: Macro Logistics - the category-standard track, e.g., T-30d book travel/stay, T-3d packing & logistics - only add T-14d collecting shared funds/headcount if the input actually names a wider group per the CONTEXT LEADS rule above).
    - Generate specific preparation milestones for embedded sub-events with their own required lead-times (Track B: Micro Specifics - e.g., activity booking lead times need 2-3 weeks, not just night-before, e.g., T-21d shortlist & reserve Day 2 activity, T-7d confirm the booking).
    - Generate a milestone for each narrative-derived obligation found in step 2 (Track C: Narrative-Inferred - tag these with source: "narrative_inferred" in the output so the app can show the user "this came from what you typed" rather than presenting it as a generic default).
+   - Rhythm for things to arrange (flights, a place to stay, a car, a table, a sitter, a venue): each one is ONE decide-and-book milestone, e.g. "Book flights & lodging". The app itself adds "Explore & share options" before it and "Check & verify" after it at the Extensive level - do not write those yourself, and never put an outcome word (Secured, Verified, Confirmed, Booked) into a step that is still about looking at options. One-step things (packing, buying, ordering, documents) stay a single milestone. A trip always has one itinerary milestone and one packing milestone.
 4. Interactive Clarification: If details are missing (e.g., location, group size, budget for the activity), proactively propose 2-3 tailored options while drafting the initial milestone structure.
 
 WHICH JSON FIELD TO USE: Put all of the above (every layer/track, every milestone from any event type) into the "runway" array - it is REQUIRED and must contain at least one entry on every single turn, with zero exceptions, including a plain-text correction to an existing event that only changes or adds one small thing. Never respond with mode/focus/addition alone and an empty or missing runway - that is an incomplete, invalid response even if your conversational reply describes what changed. Only use the separate top-level "milestones" field (alongside "macro_event") for a genuine multi-day trip/macro-event decomposition with its own start_date/end_date and sub_events - never as a substitute for runway on an ordinary turn.
@@ -1063,8 +1075,16 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   const modelDate = (value: unknown): string | undefined =>
     typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : undefined;
   const macroEvent = (modelDate(parsed.macro_event?.start_date) ? parsed.macro_event : undefined) || structuredPayload?.macro_event || parsed.macro_event;
-  const eventDate = explicitMessageDate || modelDate(macroEvent?.start_date) || modelDate(parsed.target_date) || modelDate(parsed.eventDate) || existingEvent?.eventDate || params.refDateStr;
-  const endDate = modelDate(macroEvent?.end_date) || existingEvent?.endDate || undefined;
+  // A change to an existing event keeps its dates unless the message itself
+  // names new ones: the model's macro_event dates on a refine turn are often
+  // its own guess (live: a July trip moved to 30 Oct - 1 Nov after "add
+  // packing steps").
+  const eventDate = existingEvent
+    ? explicitMessageDate || existingEvent.eventDate
+    : explicitMessageDate || modelDate(macroEvent?.start_date) || modelDate(parsed.target_date) || modelDate(parsed.eventDate) || params.refDateStr;
+  const endDate = existingEvent
+    ? (explicitMessageDate ? parsedMessageDate?.endDate : existingEvent.endDate) || undefined
+    : (explicitMessageDate ? parsedMessageDate?.endDate : undefined) || modelDate(macroEvent?.end_date) || undefined;
   const eventTime = parsed.eventTime || existingEvent?.eventTime || "19:00";
 
   // A refinement turn's macro_event.title/event_title is often just the
@@ -1088,7 +1108,23 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     ...(existingEvent?.context || {}),
     destination: macroEvent?.destination || existingEvent?.context?.destination,
   });
-  // A new event is named What – When – Where (src/utils/eventTitle.ts):
+  // An existing event keeps its title unless the user asks for a new one
+  // ("rename it to Family trip to Portugal"), or its title is still a
+  // template label, which is rebuilt the new-event way.
+  const renamedTo = existingEvent ? detectRename(params.message) : null;
+  if (renamedTo) {
+    title = renamedTo;
+  } else if (existingEvent && isGenericTitle(existingEvent.title)) {
+    title = newEventTitle({
+      modelTitle: existingEvent.title,
+      message: existingEvent.rawInputSnippet || params.message,
+      location: existingEvent.location || existingEvent.context?.destination,
+      eventDate,
+      endDate,
+      referenceIso: params.currentReferenceDate,
+    });
+  }
+  // A new event is named Where – What – When (src/utils/eventTitle.ts):
   // never the bare category label getCleanEventTitle falls back to.
   if (!existingEvent) {
     title = newEventTitle({
@@ -1279,7 +1315,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
         tMinusLabel: formatTMinusLabel(tMinusDays),
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: calcDate,
-        title: m.task,
+        title: m.task || m.title || "Prep step",
         slotKey: sanitizeSlotKey(m.slot_key),
         // Was "Track A • Macro Logistics runway task" / "Track B • Micro
         // Specifics in-trip milestone" - internal planning-model vocabulary
@@ -1503,7 +1539,7 @@ export function processWithDeterministicRules(params: {
         tMinusLabel: `T-${m.t_minus_days}d`,
         tMinusOffsetMinutes: offsetMinutes,
         calculatedDate: m.target_date,
-        title: m.task,
+        title: m.task || (m as any).title || "Prep step",
         description: m.description || '',
         category: mCat,
         status: 'pending',
@@ -1676,6 +1712,21 @@ export function processWithDeterministicRules(params: {
       endDate: naturalRange?.endDate,
       referenceIso: params.refDateISO,
     });
+  } else {
+    // Same rules as the AI planner: an explicit rename wins; a template
+    // label is rebuilt; otherwise the title stays.
+    const renamedTo = detectRename(params.message);
+    if (renamedTo) title = renamedTo;
+    else if (isGenericTitle(params.existingEvent.title)) {
+      title = newEventTitle({
+        modelTitle: params.existingEvent.title,
+        message: params.existingEvent.rawInputSnippet || params.message,
+        location: params.existingEvent.location || params.existingEvent.context?.destination,
+        eventDate,
+        endDate: params.existingEvent.endDate,
+        referenceIso: params.refDateISO,
+      });
+    }
   }
 
   const explicitDecisionKeys = new Set<string>();
@@ -1986,6 +2037,10 @@ export function processWithDeterministicRules(params: {
  */
 export function applyExtensiveRunUps(result: ProcessAgentResponsePayload, referenceDateIso: string): ProcessAgentResponsePayload {
   const event = result.event;
-  if (!event || event.preparationLevel !== 'extensive' || !event.milestones?.length) return result;
-  return { ...result, event: { ...event, milestones: withDecisionRunUps(event, event.milestones, referenceDateIso) } };
+  if (!event || !event.milestones?.length) return result;
+  // Trips always get an itinerary and a packing step (tripBasics.ts).
+  const withBasics = withTripBasics(event, event.milestones, referenceDateIso);
+  const milestones = event.preparationLevel === 'extensive' ? withDecisionRunUps(event, withBasics, referenceDateIso) : withBasics;
+  if (milestones === event.milestones) return result;
+  return { ...result, event: { ...event, milestones } };
 }
