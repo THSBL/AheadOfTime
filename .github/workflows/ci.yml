@@ -20,3 +20,25 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Fails on a known high or critical issue in anything that ships.
+      - name: Package vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+      # Fails when any commit holds a password, key or token. The revoked
+      # secrets in old history are listed in .gitleaksignore.
+      - name: Secret scan
+        run: >
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0
+          git /repo --redact --no-banner --exit-code 1

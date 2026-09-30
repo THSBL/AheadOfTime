@@ -1,0 +1,6 @@
+# Secrets found in old history that have been revoked (30 Sep 2026):
+# the Firebase web key (deleted in Google Cloud) and the old OAuth client
+# secret (client deleted). Anything new still fails the CI secret scan.
+c973360eeb69a07d7dd66d5a5b285ff118b09cac:firebase-applet-config.json:gcp-api-key:4
+31af45082eea8e2c043e038f33c572cae48530a9:firebase-applet-config.json:gcp-api-key:4
+31af45082eea8e2c043e038f33c572cae48530a9:credentials.json:generic-api-key:8
