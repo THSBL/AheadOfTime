@@ -25,16 +25,29 @@ export interface AgendaFinding {
 export async function recordFindings(userId: string, findings: FindingInput[]): Promise<void> {
   if (findings.length === 0) return;
   await ensureBackgroundSyncSchema();
-  for (const f of findings) {
-    // Re-finding the same event (a retry after a failed delivery) is a no-op.
-    await query(
-      `INSERT INTO agenda_scan_findings (user_id, google_event_id, title, event_date, prep_steps)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, google_event_id) DO NOTHING`,
-      [userId, f.googleEventId, f.title, f.eventDate, f.prepSteps]
-    );
-  }
+  // Bounded per scan and per field: a calendar full of (shared or invited)
+  // events can't fill the table or keep the scan busy. One statement, not
+  // one round trip per event.
+  const batch = findings.slice(0, MAX_FINDINGS_PER_SCAN);
+  // Re-finding the same event (a retry after a failed delivery) is a no-op.
+  await query(
+    `INSERT INTO agenda_scan_findings (user_id, google_event_id, title, event_date, prep_steps)
+     SELECT $1, f.id, f.title, f.day, f.steps
+       FROM unnest($2::text[], $3::text[], $4::text[], $5::int[]) AS f(id, title, day, steps)
+     ON CONFLICT (user_id, google_event_id) DO NOTHING`,
+    [
+      userId,
+      batch.map((f) => String(f.googleEventId).slice(0, 1024)),
+      batch.map((f) => String(f.title || '').slice(0, 200)),
+      batch.map((f) => f.eventDate),
+      batch.map((f) => Math.max(0, Math.min(100, Math.round(Number(f.prepSteps) || 0)))),
+    ]
+  );
+  // Old findings (events long past) are only clutter.
+  await query(`DELETE FROM agenda_scan_findings WHERE user_id = $1 AND event_date < to_char(now() - interval '60 days', 'YYYY-MM-DD')`, [userId]).catch(() => {});
 }
+
+const MAX_FINDINGS_PER_SCAN = 50;
 
 /** Marks these events as delivered over an external channel (no in-app notice needed). */
 export async function markFindingsNotified(userId: string, googleEventIds: string[], via: 'telegram' | 'email'): Promise<void> {

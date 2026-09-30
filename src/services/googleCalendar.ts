@@ -445,7 +445,7 @@ export async function syncEventToGoogleCalendar(
     const mainEventBody = {
       summary: `🎯 ${event.title}`,
       description: `Target Event organized with Ahead Of Time.\nCategory: ${event.category}\n\nPreparation Countdown:\n${
-        event.milestones?.map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
+        event.milestones?.filter((m) => m.isActive !== false).map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
       }`,
       location: event.location || '',
       start: {
@@ -613,6 +613,8 @@ export async function deleteEventFromGoogleCalendar(
 ): Promise<{ deletedCalendarEvents: number; deletedTasks: number; success: boolean }> {
   let deletedCalendarEvents = 0;
   let deletedTasks = 0;
+  // Anything Google didn't confirm removing: the caller must not report a clean delete.
+  let failures = 0;
 
   const shouldDeleteMain = options.deleteMainEvent !== false;
   const shouldDeleteTasks = options.deleteTasks !== false;
@@ -624,6 +626,7 @@ export async function deleteEventFromGoogleCalendar(
       deletedCalendarEvents++;
     } catch (e) {
       console.warn('Could not delete main event by direct ID:', e);
+      failures++;
     }
   }
 
@@ -636,6 +639,7 @@ export async function deleteEventFromGoogleCalendar(
           deletedCalendarEvents++;
         } catch (e) {
           console.warn('Could not delete milestone calendar event by direct ID:', e);
+      failures++;
         }
       }
       if (ms.googleTaskId) {
@@ -644,6 +648,7 @@ export async function deleteEventFromGoogleCalendar(
           deletedTasks++;
         } catch (e) {
           console.warn('Could not delete google task by direct ID:', e);
+      failures++;
         }
       }
     }
@@ -660,18 +665,20 @@ export async function deleteEventFromGoogleCalendar(
             deletedTasks++;
           } catch (delTaskErr) {
             console.warn('Could not delete matched Google Task:', delTaskErr);
+      failures++;
           }
         }
       }
     } catch (taskScanErr) {
       console.warn('Notice scanning tasks for matching items:', taskScanErr);
+      failures++;
     }
   }
 
   return {
     deletedCalendarEvents,
     deletedTasks,
-    success: true,
+    success: failures === 0,
   };
 }
 

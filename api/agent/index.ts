@@ -47,6 +47,7 @@ async function handleProcess(req: any, res: any) {
     return;
   }
 
+  let userIdForLog: string | undefined;
   try {
     const aiUser = await guardAiRequest(req, res, {
       message: AI_LIMITS.messageChars,
@@ -54,6 +55,7 @@ async function handleProcess(req: any, res: any) {
       activeEvents: 400_000,
     });
     if (!aiUser) return;
+    userIdForLog = aiUser.userId;
     const payload: ProcessAgentInputPayload = req.body;
     let {
       message = "",
@@ -129,6 +131,7 @@ async function handleProcess(req: any, res: any) {
         // Note: web-chat events use client-generated ids (evt-...), not
         // Postgres UUIDs, so eventId is intentionally omitted here.
         await logQualityEvent({
+          userId: aiUser.userId,
           sourceChannel: 'web',
           signalType: 'gemini_fallback',
           severity: 'medium',
@@ -167,12 +170,13 @@ async function handleProcess(req: any, res: any) {
   } catch (error: any) {
     console.error("Agent process handler error:", error);
     await logQualityEvent({
+      userId: userIdForLog,
       sourceChannel: 'web',
       signalType: 'gemini_error',
       severity: 'high',
       errorDetail: error?.message || String(error),
     });
-    res.status(500).json({ error: error.message || "Failed to process request" });
+    res.status(500).json({ error: "Something went wrong planning that. Please try again." });
   }
 }
 

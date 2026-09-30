@@ -1600,8 +1600,8 @@ app.delete("/api/auth/google/status", async (req: Request, res: Response) => {
     return;
   }
   const userId = await findOrCreateUserByEmail(verified.email);
-  await unlinkBackgroundSync(userId);
-  res.json({ ok: true, linked: false });
+  const googleRevoked = await unlinkBackgroundSync(userId);
+  res.json({ ok: true, linked: false, googleRevoked });
 });
 
 // Setup Vite middleware for development or static serving for production

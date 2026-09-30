@@ -6,6 +6,7 @@ import { RecentlyDeletedEventsCard } from './RecentlyDeletedEventsCard';
 import { ArrowLeft, Check } from 'lucide-react';
 import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
+import { useAccountKey } from '../hooks/useAccountKey';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { AiPlanningCard } from './AiPlanningCard';
 import { DeleteAccountCard } from './DeleteAccountCard';
@@ -40,6 +41,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
   const navigate = useNavigate();
   const location = useLocation();
   const tab = settingsTabFromPath(location.pathname);
+  const accountKey = useAccountKey();
   const currentUser = getCurrentUser();
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
     if (propEvents && propEvents.length > 0) return propEvents;
@@ -130,7 +132,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
                 onSyncComplete?.(synced);
               }}
             />
-            <CalendarFeedCard />
+            <CalendarFeedCard key={accountKey} />
             <TelegramIntegrationCard userId={currentUser?.id} />
             <AiPlanningCard />
           </SettingsGroup>
@@ -207,7 +209,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
 
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1 pt-2">Data</p>
             <SettingsGroup>
-              <RecentlyDeletedEventsCard />
+              <RecentlyDeletedEventsCard key={accountKey} />
               {currentUser?.id && <DeleteAccountCard />}
             </SettingsGroup>
           </>

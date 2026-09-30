@@ -1,6 +1,7 @@
 import { query } from './db.js';
 import { verifyRequestUser } from './requestAuth.js';
 import { decryptSecret } from './cryptoUtil.js';
+import { revokeGoogleGrant } from './googleOAuthTokenStore.js';
 import { buildClearedSessionCookie } from './sessionStore.js';
 
 /**
@@ -31,6 +32,9 @@ export async function handleAccountDeletion(req: any, res: any) {
 
   const rows = await query<{ id: string }>(`SELECT id FROM users WHERE lower(email) = lower($1)`, [verified.email]);
   const userId = rows[0]?.id;
+  // False when Google didn't confirm: the user is told to remove access in
+  // their Google Account themselves (the app's copy is deleted either way).
+  let googleRevoked = true;
   if (userId) {
     // Revoke the Background Sync grant at Google first (best effort), so the
     // stored refresh token can't be used even if a copy existed somewhere.
@@ -39,21 +43,18 @@ export async function handleAccountDeletion(req: any, res: any) {
       [userId]
     ).catch(() => []);
     for (const row of tokenRows) {
+      let ok = false;
       try {
-        const token = decryptSecret(row.encrypted_refresh_token);
-        await fetch('https://oauth2.googleapis.com/revoke', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ token }),
-        });
-      } catch (err) {
-        console.warn('Google grant revoke during account deletion failed (continuing):', err);
+        ok = await revokeGoogleGrant(decryptSecret(row.encrypted_refresh_token));
+      } catch {
+        ok = false;
       }
+      if (!ok) googleRevoked = false;
     }
     await query(`DELETE FROM calendar_preference_votes WHERE user_id = $1`, [userId]).catch(() => {});
     await query(`DELETE FROM users WHERE id = $1`, [userId]);
   }
 
   res.setHeader('Set-Cookie', buildClearedSessionCookie());
-  res.status(200).json({ ok: true, deleted: Boolean(userId) });
+  res.status(200).json({ ok: true, deleted: Boolean(userId), googleRevoked });
 }

@@ -1,5 +1,6 @@
 import { verifyRequestUser } from '../../server/requestAuth.js';
 import { logQualityEvent, QualitySignalType } from '../../server/qualityStore.js';
+import { findOrCreateUserByEmail } from '../../server/telegramStore.js';
 
 const ALLOWED_SIGNAL_TYPES: QualitySignalType[] = ['explicit_failure_reply', 'gemini_error'];
 
@@ -19,7 +20,8 @@ export default async function handler(req: any, res: any) {
 
   // Signed-in users only: each report alerts the owner, and an open
   // endpoint let anyone write to the database and spam that alert.
-  if (!(await verifyRequestUser(req))) {
+  const verified = await verifyRequestUser(req);
+  if (!verified) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
@@ -30,6 +32,8 @@ export default async function handler(req: any, res: any) {
       : 'explicit_failure_reply';
 
     await logQualityEvent({
+      // Tied to the account, so deleting the account deletes these too.
+      userId: await findOrCreateUserByEmail(verified.email),
       sourceChannel: 'web',
       signalType: safeSignalType,
       severity: 'high',

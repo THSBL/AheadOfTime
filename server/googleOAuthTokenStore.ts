@@ -114,8 +114,42 @@ export function resetSchemaCheckForTests(): void {
   schemaReady = null;
 }
 
+/**
+ * Ends a grant at Google itself (the refresh token and its access tokens
+ * stop working), not just in our database. True once Google confirmed.
+ */
+export async function revokeGoogleGrant(refreshToken: string): Promise<boolean> {
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: refreshToken }),
+    });
+    // 400 invalid_token: already revoked or expired - nothing left to end.
+    return res.ok || res.status === 400;
+  } catch (err) {
+    console.warn('Google grant revoke failed:', (err as any)?.message || err);
+    return false;
+  }
+}
+
+async function storedRefreshToken(userId: string): Promise<string | null> {
+  const rows = await query<{ encrypted_refresh_token: string }>(
+    `SELECT encrypted_refresh_token FROM google_oauth_tokens WHERE user_id = $1`,
+    [userId]
+  ).catch(() => []);
+  try {
+    return rows[0] ? decryptSecret(rows[0].encrypted_refresh_token) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function storeRefreshToken(userId: string, refreshToken: string, scope: string): Promise<void> {
   await ensureBackgroundSyncSchema();
+  // Relinking: the old grant is ended, not left working next to the new one.
+  const previous = await storedRefreshToken(userId);
+  if (previous && previous !== refreshToken) await revokeGoogleGrant(previous);
   const encrypted = encryptSecret(refreshToken);
   await query(
     `INSERT INTO google_oauth_tokens (user_id, encrypted_refresh_token, scope, linked_at, last_refreshed_at, revoked_at)
@@ -244,10 +278,14 @@ export async function setNotifyPrefs(userId: string, prefs: NotifyPrefs): Promis
   );
 }
 
-export async function unlinkBackgroundSync(userId: string): Promise<void> {
+/** Disconnects Background Sync; false when Google didn't confirm ending the grant. */
+export async function unlinkBackgroundSync(userId: string): Promise<boolean> {
   await ensureBackgroundSyncSchema();
+  const token = await storedRefreshToken(userId);
+  const revoked = token ? await revokeGoogleGrant(token) : true;
   await query(`DELETE FROM agenda_scan_findings WHERE user_id = $1`, [userId]);
   await query(`DELETE FROM google_oauth_tokens WHERE user_id = $1`, [userId]);
+  return revoked;
 }
 
 async function markRevoked(userId: string): Promise<void> {

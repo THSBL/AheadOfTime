@@ -67,9 +67,22 @@ const truncate = (s: string | null | undefined, max = MAX_MESSAGE_LEN): string |
  * happy-path tail, and a failure to log a quality signal must never change
  * what the AI pipeline actually returns to the user.
  */
+// Owner alerts per signal type: at most one every 10 minutes per instance.
+const lastAlertAt = new Map<string, number>();
+const ALERT_GAP_MS = 10 * 60 * 1000;
+/** Logged signals per user per hour; beyond this one person can't fill the table. */
+const MAX_EVENTS_PER_USER_PER_HOUR = 30;
+
 export async function logQualityEvent(input: LogQualityEventInput): Promise<string | null> {
   const severity = input.severity || 'medium';
   try {
+    if (input.userId) {
+      const recent = await query<{ n: string }>(
+        `SELECT count(*) AS n FROM ai_quality_events WHERE user_id = $1 AND created_at > now() - interval '1 hour'`,
+        [input.userId]
+      );
+      if (Number(recent[0]?.n || 0) >= MAX_EVENTS_PER_USER_PER_HOUR) return null;
+    }
     const rows = await query<{ id: string }>(
       `INSERT INTO ai_quality_events
          (user_id, event_id, source_channel, signal_type, severity, raw_user_message, error_detail, model_used, context)
@@ -97,7 +110,9 @@ export async function logQualityEvent(input: LogQualityEventInput): Promise<stri
       ).catch(() => {});
     }
 
-    if (severity === 'high') {
+    const alertDue = Date.now() - (lastAlertAt.get(input.signalType) || 0) > ALERT_GAP_MS;
+    if (severity === 'high' && alertDue) {
+      lastAlertAt.set(input.signalType, Date.now());
       const lines = [
         `🚨 High-severity AI quality signal`,
         `Type: ${input.signalType}`,

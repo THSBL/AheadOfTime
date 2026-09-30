@@ -135,7 +135,7 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
         setDeletionStatus(`Cleaning up ${i + 1} of ${count}: ${ev.title}…`);
         const options = { deleteMainEvent, deleteTasks: true };
         try {
-          let res: { deletedTasksCount: number; deletedPrimaryEvent: boolean } | null = null;
+          let res: { deletedTasksCount: number; deletedPrimaryEvent: boolean; success?: boolean } | null = null;
           if (useServer) {
             try {
               res = await deletePlanViaServer(ev, options);
@@ -145,6 +145,11 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
             }
           }
           if (!res) res = await executeSafePlanDeletion(await browserToken_(), ev, { ...options, deleteFromPrimaryCalendar: deleteMainEvent });
+          // Part of it couldn't be removed from Google: keep the plan so it can be retried.
+          if (res.success === false) {
+            failed.push(ev.title);
+            continue;
+          }
           if (res.deletedPrimaryEvent) calCount += 1;
           taskCount += res.deletedTasksCount;
         } catch (gErr: any) {

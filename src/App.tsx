@@ -71,6 +71,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clearGoogleSession, getStoredClientId } from './services/googleAuth';
+import { useAccountKey } from './hooks/useAccountKey';
 import { hasAppSession, checkAppSession, endAppSession, appSessionChecked } from './services/appSession';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
 import { updateMilestoneCompletionOnGoogle, fetchPrimaryCalendarProfile } from './services/googleCalendar';
@@ -2685,7 +2686,7 @@ function LandingRoute() {
   // user (neither flag set) still gets the exact LandingUSPPage flow below,
   // unchanged. hasDeepLinkEvent already short-circuited above this point.
   if (hasCompleted || isConnected) {
-    return <RecurringUserLanding />;
+    return <AccountScopedLanding />;
   }
 
   return (
@@ -2754,7 +2755,7 @@ export default function AppWithRouter() {
                 LandingRoute below), but also reachable directly here so the
                 header's own logo/wordmark has somewhere real to link back
                 to instead of just toggling app state in place. */}
-            <Route path="/summary" element={<RecurringUserLanding />} />
+            <Route path="/summary" element={<AccountScopedLanding />} />
             <Route path="/dashboard" element={<App />} />
             <Route path="/events" element={<App />} />
             <Route path="/events/new" element={<App />} />
@@ -2778,4 +2779,10 @@ export default function AppWithRouter() {
       </BrowserRouter>
     </UserProfileProvider>
   );
+}
+
+/** The summary page starts over when the account is switched (it reads that account's events). */
+function AccountScopedLanding() {
+  const accountKey = useAccountKey();
+  return <RecurringUserLanding key={accountKey} />;
 }

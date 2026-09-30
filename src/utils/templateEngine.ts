@@ -30,9 +30,30 @@ async function readWorkbook(file: File): Promise<{ name: string; rows: Cell[][] 
   return sheets.map((s) => ({ name: s.sheet, rows: s.data.map((row) => row.map(cellValue)) }));
 }
 
+import { getCurrentUser, normalizeUserId } from '../services/accountManager.js';
 import { CustomPreset, CustomPresetMilestone, SpreadsheetColumnMapping, TMinusMilestone, MilestoneCategory } from '../types.js';
 
-const STORAGE_KEY = 'ahead_custom_presets_v1';
+const LEGACY_STORAGE_KEY = 'ahead_custom_presets_v1';
+
+/**
+ * Custom presets belong to the signed-in account: two accounts on one
+ * browser each see their own, and deleting an account removes them (its
+ * keys end in the account id). Presets saved before this (one shared list)
+ * go to the first account that opens them.
+ */
+function presetsKey(): string {
+  const key = `${LEGACY_STORAGE_KEY}:${normalizeUserId(getCurrentUser()?.id)}`;
+  try {
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy !== null) {
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, legacy);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+  } catch {
+    // no storage
+  }
+  return key;
+}
 
 /**
  * Built-in default presets for domain-specific workflows
@@ -691,7 +712,7 @@ export function projectPresetToMilestones(
  */
 export function loadCustomPresets(): CustomPreset[] {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(presetsKey());
     if (saved) {
       const parsed: CustomPreset[] = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -727,7 +748,7 @@ export function saveCustomPreset(preset: CustomPreset): CustomPreset[] {
       ];
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(presetsKey(), JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.error('Failed to save custom preset:', err);
@@ -737,7 +758,7 @@ export function saveCustomPreset(preset: CustomPreset): CustomPreset[] {
 
 export function saveCustomPresets(presets: CustomPreset[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+    localStorage.setItem(presetsKey(), JSON.stringify(presets));
   } catch (err) {
     console.error('Failed to save custom presets array:', err);
   }
@@ -747,7 +768,7 @@ export function deleteCustomPreset(presetId: string): CustomPreset[] {
   try {
     const current = loadCustomPresets();
     const updated = current.filter((p) => p.id !== presetId);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(presetsKey(), JSON.stringify(updated));
     return updated;
   } catch (err) {
     console.error('Failed to delete custom preset:', err);

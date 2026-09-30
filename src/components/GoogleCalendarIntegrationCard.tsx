@@ -26,7 +26,8 @@ import {
 import { CalendarEvent } from '../types';
 import { SettingsRow, SettingsPill, rowButtonClass, rowPrimaryClass } from './SettingsRow';
 import { trackEvent } from '../services/analytics';
-import { setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
+import { setCurrentUser as setGlobalCurrentUser, AuthUser, logoutAndClearAccountSession } from '../services/accountManager';
+import { endAppSession } from '../services/appSession';
 
 interface GoogleCalendarIntegrationCardProps {
   events?: CalendarEvent[];
@@ -154,14 +155,25 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
   const handleDisconnectBackgroundSync = async () => {
     if (!accessToken) return;
     try {
-      await fetch('/api/auth/google/status', {
+      const res = await fetch('/api/auth/google/status', {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        // Still connected on the server: say so instead of pretending.
+        setBackgroundSyncNotice("Couldn't disconnect background sync just now - please try again.");
+        return;
+      }
       setIsBackgroundSyncLinked(false);
-      setBackgroundSyncNotice('Background sync disconnected.');
+      setBackgroundSyncNotice(
+        data.googleRevoked === false
+          ? 'Background sync disconnected here. Google didn\'t confirm removing access, so to be sure remove "Ahead Of Time" at myaccount.google.com/permissions.'
+          : 'Background sync disconnected.'
+      );
     } catch (err) {
       console.warn('Failed to disconnect background sync:', err);
+      setBackgroundSyncNotice("Couldn't disconnect background sync just now - please try again.");
     }
   };
 
@@ -236,8 +248,11 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
     // Same gap as connect, in reverse: clears this card's own display but
     // previously left the app-wide identity (and its cached events)
     // sitting there as if still connected. This app has no non-Google
-    // identity to fall back to, so disconnecting Google IS signing out.
-    setGlobalCurrentUser(null);
+    // identity to fall back to, so disconnecting Google IS signing out -
+    // the same full sign-out as the header's (account caches on this
+    // browser and the server session too).
+    logoutAndClearAccountSession();
+    void endAppSession();
     setSuccessMessage('Google account disconnected.');
     setTimeout(() => setSuccessMessage(null), 3000);
   };

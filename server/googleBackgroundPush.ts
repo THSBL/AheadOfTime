@@ -59,7 +59,7 @@ async function createMainCalendarEvent(
   const body = {
     summary: `🎯 ${event.title}`,
     description: `Target Event organized with Ahead Of Time.\nCategory: ${event.category}\n\nPreparation Countdown:\n${
-      event.milestones?.map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
+      event.milestones?.filter((m) => m.isActive !== false).map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
     }`,
     location: event.location || '',
     start: { dateTime: startDateTime, timeZone },

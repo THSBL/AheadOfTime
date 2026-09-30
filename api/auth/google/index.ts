@@ -153,8 +153,8 @@ async function handleStatus(req: any, res: any) {
   }
 
   if (req.method === 'DELETE') {
-    await unlinkBackgroundSync(userId);
-    return res.status(200).json({ ok: true, linked: false });
+    const googleRevoked = await unlinkBackgroundSync(userId);
+    return res.status(200).json({ ok: true, linked: false, googleRevoked });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
