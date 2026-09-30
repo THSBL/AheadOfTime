@@ -66,7 +66,9 @@ const CATEGORIES_WHERE_ROLE_MATTERS = new Set<EventCategory>([
 
 const INDEPENDENT_RE = /\b(on (his|her|their|my) own|by (him|her|them|my)self|independently|doesn'?t need me|does not need me|no help needed|just (attending|going|taking part)|i'?m (just )?(a guest|attending|invited))\b/i;
 const PRIMARY_ORGANIZER_RE = /\b(i'?m organi[sz]ing|i am organi[sz]ing|i'?m running|i'?m hosting|i'?m planning|i'?m in charge of|as the organi[sz]er|my responsibility to organi[sz]e)\b/i;
-const CO_RESPONSIBLE_RE = /\b(i'?m taking|i'?ll be taking|driving (him|her|them)|i'?m helping|co-?organi[sz]ing|helping (out )?with|responsible for (my|our) (kid|child|son|daughter))\b/i;
+/** Not a stated role, but enough to know they arrange it themselves - only used to skip asking. */
+const IMPLIED_ORGANIZER_RE = /\b(we need|we have to|i need to (book|arrange|sort|find|plan)|plan (my|our)|help me plan|(my|our) (trip|holiday|vacation|weekend|party|dinner|visit)|family (trip|holiday|vacation|weekend)|we'?re going|we are going|we'?re flying|i'?m going|i am going|i'?m flying|book (the |a |our |my )?(flights?|hotel|stay|table|venue))\b/i;
+const CO_RESPONSIBLE_RE =/\b(i'?m taking|i'?ll be taking|driving (him|her|them)|i'?m helping|co-?organi[sz]ing|helping (out )?with|responsible for (my|our) (kid|child|son|daughter))\b/i;
 
 // Questions we asked are not things the user said. A message can carry
 // the question it answers ("...helping out, or just taking part? I'm
@@ -235,6 +237,9 @@ export class AOTPreparationAssessment implements PreparationAssessor {
   identifyInformationGaps(input: AssessmentInput): InformationGap[] {
     const { responsibility } = inferUserResponsibility(input);
     if (responsibility !== 'unknown') return [];
+    // Never ask what the message already says: "we need flights", "our
+    // trip", "family trip to Portugal" - they're the one arranging it.
+    if (IMPLIED_ORGANIZER_RE.test(textBlob(input))) return [];
     return [{
       key: 'user_responsibility',
       question: "Who's actually responsible for this - are you the one organizing it, helping out, or just taking part?",
@@ -283,9 +288,54 @@ export function getActiveAssessor(): PreparationAssessor {
 // most events should end up with zero, which is the correct default.
 function looksLikeAGenuineOpenDecision(title: string, options: string[] | undefined): boolean {
   if (options && options.length >= 2) return true;
-  if (/\bor\b/i.test(title)) return true;
+  // An "or" inside examples ("(e.g. Brooklyn Museum or comedy show)") is not
+  // a fork - asking "Decide: <the task>" just repeated the task.
+  if (/\bor\b/i.test(withoutExamples(title))) return true;
   return false;
 }
+
+const EXAMPLES_RE = /\s*\((?:e\.?\s?g\.?|eg|for example|such as|like)[^)]*\)|\s*[,-–]?\s*(?:e\.?\s?g\.?|for example|such as)\s+[^.;]*$/i;
+
+function withoutExamples(title: string): string {
+  return title.replace(EXAMPLES_RE, '').trim();
+}
+
+/** "Book timed tickets for group outings (e.g. Brooklyn Museum or comedy show)" -> ['Brooklyn Museum', 'Comedy show']. */
+function examplesIn(title: string): string[] {
+  const m = title.match(/\((?:e\.?\s?g\.?|eg|for example|such as|like)[,:]?\s*([^)]*)\)/i) || title.match(/(?:e\.?\s?g\.?|for example|such as)[,:]?\s+([^.;)]*)$/i);
+  if (!m) return [];
+  return m[1]
+    .split(/,|\bor\b|\/|\band\b/i)
+    .map((s) => s.trim().replace(/\.$/, ''))
+    .filter((s) => s.length > 1 && s.length <= 40)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .slice(0, 3);
+}
+
+const LEADING_TASK_VERB = /^(book|reserve|buy|order|purchase|choose|select|pick|find|arrange|plan|organi[sz]e|get|secure)\s+/i;
+
+/**
+ * A question that sharpens a task the plan already has ("what kind of group
+ * outing?"), built from the examples in it - never the task repeated back.
+ * Skipped when the user already named one of the examples.
+ */
+function refiningQuestion(id: string, title: string, rawText: string): InformationGap | null {
+  const examples = examplesIn(title);
+  if (examples.length < 2) return null;
+  const said = rawText.toLowerCase();
+  if (examples.some((e) => said.includes(e.toLowerCase()))) return null;
+  const subject = withoutExamples(title).replace(LEADING_TASK_VERB, '').trim();
+  if (!subject) return null;
+  return {
+    key: `refine:${id}`,
+    question: `${subject.charAt(0).toUpperCase() + subject.slice(1)}: what would you like?`,
+    impact: 'low',
+    requiredBeforePlanning: false,
+    options: [...examples, 'Something else'],
+  };
+}
+
+const MAX_REFINING_QUESTIONS = 2;
 
 /**
  * Architecture reset Phase 8 - everything still open on this event: the
@@ -303,8 +353,23 @@ export function deriveOutstandingGaps(
   assessmentInput: AssessmentInput
 ): InformationGap[] {
   const gaps: InformationGap[] = [...getActiveAssessor().identifyInformationGaps(assessmentInput)];
+  const rawText = `${assessmentInput.rawText || ''} ${assessmentInput.context?.customNote || ''}`;
+  let refining = 0;
+  const addRefining = (id: string, title: string, status?: string) => {
+    if (refining >= MAX_REFINING_QUESTIONS || (status && status !== 'pending')) return;
+    const q = refiningQuestion(id, title, rawText);
+    if (q && !gaps.some((g) => g.question === q.question)) {
+      gaps.push(q);
+      refining += 1;
+    }
+  };
 
   for (const m of milestones) {
+    if (m.isActive === false) continue;
+    if (!m.needsRefinement || !looksLikeAGenuineOpenDecision(m.title, m.refinementOptions)) addRefining(m.id, m.title, m.status);
+    for (const d of m.deliverables || []) {
+      if (!d.needsRefinement || !looksLikeAGenuineOpenDecision(d.title, d.refinementOptions)) addRefining(d.deliverable_id, d.title, d.is_completed ? 'completed' : 'pending');
+    }
     if (m.needsRefinement && looksLikeAGenuineOpenDecision(m.title, m.refinementOptions)) {
       gaps.push({
         key: m.id,

@@ -231,6 +231,40 @@ export function withDecisionRunUps(event: CalendarEvent, milestones: TMinusMiles
   return [...named, ...added].sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate));
 }
 
+/**
+ * Plans saved before the three-stage rhythm had "Look at options: X Secured"
+ * and a separate "Share X options with the group". Open ones become one
+ * "Explore & share options: X" step (the share step is folded in), and the
+ * booking itself becomes "Decide & book: X". Done or ticked-off steps stay as
+ * they were. Returns the same array when there is nothing to upgrade.
+ */
+export function upgradeLegacyRunUps(event: CalendarEvent): CalendarEvent {
+  const milestones = event.milestones || [];
+  const legacy = milestones.some((m) => isRunUp(m) && m.status === 'pending' && /^(Look at options: |Share .* options with the group$)/.test(m.title));
+  if (!legacy) return event;
+  const keepCase = `${event.title || ''} ${event.location || ''} ${event.context?.destination || ''}`;
+  const share = involvesOthers(event);
+  const byId = new Map(milestones.map((m) => [m.id, m]));
+  const upgraded = milestones.map((m) => {
+    if (!isRunUp(m) || m.status !== 'pending') return m;
+    const [, decisionId, key] = (m.slotKey || '').match(/^runup:(.+):(look|share)$/) || [];
+    if (!decisionId) return m;
+    const decision = byId.get(decisionId);
+    const topic = decisionTopic(decision?.decisionBaseTitle || decision?.title || m.title.replace(/^Look at options: /, ''), keepCase);
+    if (key === 'share') return { ...m, isActive: false, status: 'skipped' as const };
+    return { ...m, title: share ? `Explore & share options: ${topic}` : `Explore options: ${topic}` };
+  });
+  const decisionIds = new Set(
+    upgraded.filter((m) => isRunUp(m) && m.slotKey?.endsWith(':look')).map((m) => (m.slotKey || '').replace(/^runup:|:look$/g, ''))
+  );
+  const named = upgraded.map((m) =>
+    decisionIds.has(m.id) && !m.decisionBaseTitle && m.status === 'pending'
+      ? { ...m, decisionBaseTitle: m.title, title: `${DECIDE_PREFIX}${decisionTopic(m.title, keepCase)}` }
+      : m
+  );
+  return { ...event, milestones: named };
+}
+
 /** Back from Extensive: decisions get their own titles again. */
 export function restoreDecisionTitles(milestones: TMinusMilestone[]): TMinusMilestone[] {
   return milestones.map((m) => {

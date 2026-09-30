@@ -299,3 +299,37 @@ describe('assessPreparationLevel - trips are never a self-contained task', () =>
     expect(result.level).not.toBe('essentials');
   });
 });
+
+describe('questions: fill a gap or sharpen a task, never repeat one', () => {
+  const plan = [
+    {
+      id: 'm1', eventId: 'e', tMinusLabel: 'T', tMinusOffsetMinutes: 0, calculatedDate: '2026-10-14', category: 'booking', status: 'pending',
+      title: 'Brooklyn Dining & Group Activities Reserved',
+      deliverables: [
+        { deliverable_id: 'd2', title: 'Book timed tickets for group outings (e.g. Brooklyn Museum or comedy show)', type: 'booking', is_completed: false, needsRefinement: true },
+      ],
+    },
+  ] as unknown as TMinusMilestone[];
+  const base = { category: 'travel_trip' as const, title: 'Trip to Brooklyn', context: {} };
+
+  it('does not ask the role when the message already shows they arrange it', () => {
+    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'Family vacation to Brooklyn, we need flights and a place to stay' });
+    expect(gaps.some((g) => g.key === 'user_responsibility')).toBe(false);
+  });
+
+  it('turns examples in a task into a sharpening question, not "Decide: <task>"', () => {
+    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'our trip to Brooklyn' });
+    expect(gaps.map((g) => g.question)).toEqual(['Timed tickets for group outings: what would you like?']);
+    expect(gaps[0].options).toEqual(['Brooklyn Museum', 'Comedy show', 'Something else']);
+  });
+
+  it('asks nothing about a task once the user named what they want', () => {
+    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'our trip to Brooklyn', context: { customNote: 'Comedy show please' } });
+    expect(gaps).toEqual([]);
+  });
+
+  it('still asks the role when nothing says it', () => {
+    const gaps = deriveOutstandingGaps([], { ...base, rawText: 'Brooklyn end of October' });
+    expect(gaps.map((g) => g.key)).toEqual(['user_responsibility']);
+  });
+});

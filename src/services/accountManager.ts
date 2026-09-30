@@ -1,4 +1,5 @@
 import { CalendarEvent, AgentMessage, OnboardingProfile } from '../types';
+import { upgradeLegacyRunUps } from '../utils/decisionRunUps';
 
 export interface AuthUser {
   id: string; // Normalized unique ID / email, e.g. "th.blanckaert@gmail.com"
@@ -118,7 +119,9 @@ export function loadUserEvents(userId?: string | null): CalendarEvent[] {
     const scopedSaved = localStorage.getItem(scopedKey);
     if (scopedSaved) {
       const parsed = JSON.parse(scopedSaved);
-      if (Array.isArray(parsed)) return parsed;
+      // Plans saved before the Explore & share / Decide / Check rhythm get
+      // their open look/share steps renamed on load (decisionRunUps.ts).
+      if (Array.isArray(parsed)) return parsed.map(upgradeLegacyRunUps);
     }
 
     // Never preload dummy or sample events when not logged in or with no saved events

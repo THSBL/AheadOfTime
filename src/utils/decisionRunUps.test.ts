@@ -111,3 +111,18 @@ describe('the rhythm for arranging things: Explore & share -> Decide & book -> C
     expect(visible.map((m) => m.title)).toEqual(['Book flights and hotel']);
   });
 });
+
+describe('plans saved before the rhythm', () => {
+  it('rename open look/share steps into one Explore & share step and the booking into Decide & book', async () => {
+    const { upgradeLegacyRunUps } = await import('./decisionRunUps');
+    const ev = event([
+      ms('a', 'Flights & Brooklyn Lodging Secured', '2026-10-05', { category: 'booking' }),
+      ms('a-runup-look', 'Look at options: flights & Brooklyn Lodging Secured', '2026-10-01', { slotKey: 'runup:a:look' }),
+      ms('a-runup-share', 'Share flights & Brooklyn Lodging Secured options with the group', '2026-10-03', { slotKey: 'runup:a:share' }),
+    ], { title: 'Trip to Brooklyn with friends', location: 'Brooklyn, New York' });
+    const titles = upgradeLegacyRunUps(ev).milestones.filter((m) => m.isActive !== false).map((m) => m.title).sort();
+    expect(titles).toEqual(['Decide & book: flights & Brooklyn lodging', 'Explore & share options: flights & Brooklyn lodging']);
+    const fresh = event([ms('b', 'Book flights', '2026-10-05')]);
+    expect(upgradeLegacyRunUps(fresh)).toBe(fresh);
+  });
+});

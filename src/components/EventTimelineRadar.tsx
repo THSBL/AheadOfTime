@@ -1,3 +1,4 @@
+import { deriveOutstandingGaps } from '../utils/preparationAssessment';
 import React, { useEffect, useState } from 'react';
 import { 
   Calendar, 
@@ -729,7 +730,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const microCount = rawMilestones.filter((m) => m.scope === 'micro').length;
   // One combined count for the "N suggestions from us" toggle: the AI's own
   // one-off proactive follow-up plus every still-open decision.
-  const openGaps = (activeEvent.outstandingGaps || []).filter((gap) => !answeredGapKeys.has(gap.key));
+  // Recomputed from the plan as it is now (same rules as the planner), so a
+  // question the tasks already answer, or one saved by an older version,
+  // isn't asked again.
+  const openGaps = deriveOutstandingGaps(rawMilestones, {
+    category: activeEvent.category,
+    title: activeEvent.title,
+    location: activeEvent.location,
+    context: activeEvent.context,
+    rawText: activeEvent.rawInputSnippet || '',
+  }).filter((gap) => !answeredGapKeys.has(gap.key));
   const suggestionCount = (pendingSuggestion ? 1 : 0) + openGaps.length;
   // Always starts collapsed, even when a suggestion is waiting - live
   // feedback was that auto-opening the moment a suggestion existed still
