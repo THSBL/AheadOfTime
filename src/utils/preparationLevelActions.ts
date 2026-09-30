@@ -1,5 +1,5 @@
 import { CalendarEvent, PreparationLevel, TMinusMilestone } from '../types.js';
-import { isRunUp, restoreDecisionTitles, withDecisionRunUps } from './decisionRunUps.js';
+import { applyStaging, isRunUp, restoreDecisionTitles } from './decisionRunUps.js';
 
 const TIER_RANK: Record<PreparationLevel, number> = { essentials: 0, balanced: 1, extensive: 2 };
 
@@ -30,7 +30,7 @@ export function applyPreparationLevelChange(
   milestones: TMinusMilestone[],
   targetLevel: PreparationLevel,
   currentPlanningContextVersion?: string,
-  /** With these, switching to Extensive also adds a run-up before each decision (see decisionRunUps.ts). */
+  /** With these, the stages the user picked stay in line with the plan (see decisionRunUps.ts). */
   runUps?: { event: CalendarEvent; referenceDate: string }
 ): ApplyPreparationLevelChangeResult {
   const targetRank = TIER_RANK[targetLevel];
@@ -54,11 +54,10 @@ export function applyPreparationLevelChange(
     hasContentAtTargetTier &&
     targetTierMilestones.some((m) => m.generatedFromContextVersion && m.generatedFromContextVersion !== currentPlanningContextVersion)
   );
-  const withRunUps =
-    targetLevel === 'extensive' && runUps
-      ? withDecisionRunUps(runUps.event, updated, runUps.referenceDate)
-      : targetLevel === 'extensive'
-        ? updated
-        : restoreDecisionTitles(updated);
+  // Stages come from the user's own picks (decisionRunUps.ts), never from
+  // the level alone; a switch down only undoes what older versions staged
+  // automatically at Extensive.
+  const staged = runUps ? applyStaging(runUps.event, updated, runUps.referenceDate) : updated;
+  const withRunUps = targetLevel === 'extensive' ? staged : restoreDecisionTitles(staged);
   return { milestones: withRunUps, needsReplan: !hasContentAtTargetTier || isStale };
 }

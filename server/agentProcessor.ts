@@ -27,7 +27,7 @@ import {
   formatTMinusLabel
 } from "../src/utils/tminusRules.js";
 import { generateDeterministicMilestones } from "../src/utils/deterministicMilestoneGenerator.js";
-import { withDecisionRunUps } from "../src/utils/decisionRunUps.js";
+import { applyStaging } from "../src/utils/decisionRunUps.js";
 import { withTripBasics } from "../src/utils/tripBasics.js";
 import { getActiveAssessor, AssessmentInput, PreparationLevelAssessment, deriveOutstandingGaps, detectStatedResponsibility } from "../src/utils/preparationAssessment.js";
 import {
@@ -601,7 +601,7 @@ When processing free-text user plans:
    - Generate operational runway milestones for the whole event/trip (Track A: Macro Logistics - the category-standard track, e.g., T-30d book travel/stay, T-3d packing & logistics - only add T-14d collecting shared funds/headcount if the input actually names a wider group per the CONTEXT LEADS rule above).
    - Generate specific preparation milestones for embedded sub-events with their own required lead-times (Track B: Micro Specifics - e.g., activity booking lead times need 2-3 weeks, not just night-before, e.g., T-21d shortlist & reserve Day 2 activity, T-7d confirm the booking).
    - Generate a milestone for each narrative-derived obligation found in step 2 (Track C: Narrative-Inferred - tag these with source: "narrative_inferred" in the output so the app can show the user "this came from what you typed" rather than presenting it as a generic default).
-   - Rhythm for things to arrange (flights, a place to stay, a car, a table, a sitter, a venue): each one is ONE decide-and-book milestone, e.g. "Book flights & lodging". The app itself adds "Explore & share options" before it and "Check & verify" after it at the Extensive level - do not write those yourself, and never put an outcome word (Secured, Verified, Confirmed, Booked) into a step that is still about looking at options. One-step things (packing, buying, ordering, documents) stay a single milestone. A trip always has one itinerary milestone and one packing milestone.
+   - Rhythm for things to arrange (flights, a place to stay, a car, a table, a sitter, a venue): each one is ONE decide-and-book milestone, e.g. "Book flights & lodging". The app asks the user which bookings they want to decide with the group (or give more headroom) and adds "Explore & share options" / "Check & verify" steps only for those - do not write those yourself, and never put an outcome word (Secured, Verified, Confirmed, Booked) into a step that is still about looking at options. One-step things (packing, buying, ordering, documents) stay a single milestone. A trip always has one itinerary milestone and one packing milestone.
 4. Interactive Clarification: If details are missing (e.g., location, group size, budget for the activity), proactively propose 2-3 tailored options while drafting the initial milestone structure.
 
 WHICH JSON FIELD TO USE: Put all of the above (every layer/track, every milestone from any event type) into the "runway" array - it is REQUIRED and must contain at least one entry on every single turn, with zero exceptions, including a plain-text correction to an existing event that only changes or adds one small thing. Never respond with mode/focus/addition alone and an empty or missing runway - that is an incomplete, invalid response even if your conversational reply describes what changed. Only use the separate top-level "milestones" field (alongside "macro_event") for a genuine multi-day trip/macro-event decomposition with its own start_date/end_date and sub_events - never as a substitute for runway on an ordinary turn.
@@ -2031,16 +2031,18 @@ export function processWithDeterministicRules(params: {
 }
 
 /**
- * Extensive help = time to decide: every plan at the Extensive level gets
- * a run-up (look at options, share with the group) before each decision.
- * Applied to every planner result, AI or built-in, so both agree.
+ * The last shaping step for every planner result, AI or built-in, so both
+ * agree: trip basics, and the stages for bookings the user picked.
+ * (Name kept for the callers; it no longer stages by level.)
  */
 export function applyExtensiveRunUps(result: ProcessAgentResponsePayload, referenceDateIso: string): ProcessAgentResponsePayload {
   const event = result.event;
   if (!event || !event.milestones?.length) return result;
-  // Trips always get an itinerary and a packing step (tripBasics.ts).
+  // Trips always get an itinerary, a whole-trip check and a packing step
+  // (tripBasics.ts). Bookings are only staged (explore / decide / check)
+  // when the user picked them (decisionRunUps.ts) - never by level alone.
   const withBasics = withTripBasics(event, event.milestones, referenceDateIso);
-  const milestones = event.preparationLevel === 'extensive' ? withDecisionRunUps(event, withBasics, referenceDateIso) : withBasics;
+  const milestones = applyStaging(event, withBasics, referenceDateIso);
   if (milestones === event.milestones) return result;
   return { ...result, event: { ...event, milestones } };
 }

@@ -1,3 +1,4 @@
+import { involvesOthers, stageableBookings } from './decisionRunUps.js';
 import { CalendarEvent, EventCategory, PreparationLevel, TMinusMilestone, UserResponsibility } from '../types.js';
 
 /**
@@ -33,6 +34,10 @@ export interface InformationGap {
   requiredBeforePlanning: boolean;
   /** Architecture reset Phase 8 - 2-3 concrete choices for a chip UI; absent means "answer free text." */
   options?: string[];
+  /** Pick any number of the options, then confirm (the staging question). */
+  multiSelect?: boolean;
+  /** Stable keys for the options, same order (staging: what each booking is about). */
+  optionKeys?: string[];
 }
 
 export interface PreparationLevelAssessment {
@@ -337,6 +342,36 @@ function refiningQuestion(id: string, title: string, rawText: string): Informati
 
 const MAX_REFINING_QUESTIONS = 2;
 
+export const STAGING_GAP_KEY = 'staging';
+export const STAGING_NONE = 'None, keep it simple';
+
+/**
+ * Which bookings get the Explore -> Decide -> Check rhythm is the user's
+ * call: asked once, after the plan is built, with the plan's own bookings
+ * as options. With others involved it's about deciding together; solo it's
+ * about headroom.
+ */
+function stagingQuestion(milestones: TMinusMilestone[], input: AssessmentInput): InformationGap | null {
+  if (input.context?.stagingAnswered) return null;
+  const bookings = stageableBookings({ title: input.title, location: input.location, context: input.context }, milestones);
+  if (bookings.length === 0) return null;
+  const group = involvesOthers({
+    title: `${input.title || ''} ${input.rawText || ''}`,
+    context: input.context,
+    category: input.category,
+    userRole: input.context?.userRole,
+  } as any);
+  return {
+    key: STAGING_GAP_KEY,
+    question: group ? 'Which of these do you want to decide together with the group?' : 'Which of these do you want more headroom for?',
+    impact: 'low',
+    requiredBeforePlanning: false,
+    options: [...bookings.map((b) => b.label), STAGING_NONE],
+    optionKeys: [...bookings.map((b) => b.key), ''],
+    multiSelect: true,
+  };
+}
+
 /**
  * Architecture reset Phase 8 - everything still open on this event: the
  * role gap (routed through the active assessor, same JEV-safe seam as
@@ -391,6 +426,9 @@ export function deriveOutstandingGaps(
       }
     }
   }
+
+  const staging = stagingQuestion(milestones, assessmentInput);
+  if (staging) gaps.push(staging);
 
   return gaps;
 }

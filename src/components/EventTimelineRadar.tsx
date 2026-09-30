@@ -1,4 +1,5 @@
-import { deriveOutstandingGaps } from '../utils/preparationAssessment';
+import { deriveOutstandingGaps, type InformationGap } from '../utils/preparationAssessment';
+import { applyStaging, involvesOthers, isDecisionMilestone, stageModeFor, stagingKey, type StageMode } from '../utils/decisionRunUps';
 import React, { useEffect, useState } from 'react';
 import { 
   Calendar, 
@@ -171,6 +172,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // chip can't be tapped again (and "added" again) while - or after - the
   // planner works it in.
   const [answeredGapKeys, setAnsweredGapKeys] = useState<Set<string>>(new Set());
+  // The staging question (which bookings to decide with the group / give
+  // more headroom): picks are collected, then applied in one go.
+  const [stagingPicks, setStagingPicks] = useState<Set<string>>(new Set());
+  const toggleStagingPick = (key: string) =>
+    setStagingPicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const correctionInFlight = React.useRef(false);
   // Overdue rows are open by default; this holds the ones the user closed.
   const [collapsedOverdueIds, setCollapsedOverdueIds] = useState<Set<string>>(new Set());
@@ -291,6 +302,21 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     } finally {
       setIsDeepRefining(false);
     }
+  };
+
+  // Applies the user's picks for the staging question (or a per-booking
+  // switch): stored on the event, stages added or removed right away - no
+  // planner call, nothing else in the plan changes.
+  const setStagedBookings = (stagedBookings: Record<string, StageMode>) => {
+    if (!activeEvent || !onUpdateEvent) return;
+    const withChoice: CalendarEvent = { ...activeEvent, context: { ...(activeEvent.context || {}), stagedBookings, stagingAnswered: true } };
+    onUpdateEvent({ ...withChoice, milestones: applyStaging(withChoice, activeEvent.milestones || [], new Date().toISOString()) });
+  };
+  const applyStagingAnswer = (gap: InformationGap, keys: string[]) => {
+    const mode: StageMode = /together with the group/i.test(gap.question) ? 'group' : 'headroom';
+    setStagedBookings(Object.fromEntries(keys.map((k) => [k, mode])));
+    setAnsweredGapKeys((prev) => new Set(prev).add(gap.key));
+    setStagingPicks(new Set());
   };
 
   // Lets the user correct a fault they spot (a wrong assumption, missing
@@ -818,7 +844,10 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     // Filler text the planner used to attach ("2 deliverable(s) attached to
     // satisfy checkpoint.") says nothing - only real descriptions show.
     const hasDescription = Boolean(ms.description && ms.description.trim() && !BOILERPLATE_DESCRIPTION.test(ms.description.trim()));
-    const isExpandable = hasDeliverables || hasDescription;
+    // A pending booking can be switched to the explore / decide / check
+    // rhythm (or back) from its details.
+    const canStage = ms.status === 'pending' && isDecisionMilestone(ms);
+    const isExpandable = hasDeliverables || hasDescription || canStage;
     // Overdue tasks start open: their personalised sub-tasks are what
     // needs doing now. Other sections start closed.
     const isExpanded = tone === 'overdue' ? !collapsedOverdueIds.has(ms.id) : expandedMilestoneIds.has(ms.id);
@@ -992,6 +1021,39 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {canStage && activeEvent && (
+              <div className="pt-0.5">
+                {stageModeFor(activeEvent, ms) ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = { ...((activeEvent.context?.stagedBookings || {}) as Record<string, StageMode>) };
+                      delete next[stagingKey(ms)];
+                      setStagedBookings(next);
+                    }}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                  >
+                    Keep this one simple (one step)
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const group = involvesOthers(activeEvent);
+                      setStagedBookings({
+                        ...((activeEvent.context?.stagedBookings || {}) as Record<string, StageMode>),
+                        [stagingKey(ms)]: group ? 'group' : 'headroom',
+                      });
+                    }}
+                    className="text-[11px] font-semibold text-[#34507A] hover:text-[#182A42] underline cursor-pointer"
+                  >
+                    {involvesOthers(activeEvent) ? 'Decide this with the group' : 'Give this more headroom'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1398,7 +1460,41 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                     {openGaps.map((gap) => (
                       <div key={gap.key} className="space-y-1.5">
                         <p className="text-[11px] font-bold text-slate-700">{gap.question}</p>
-                        {gap.options && gap.options.length > 0 ? (
+                        {gap.multiSelect && gap.options ? (
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap gap-1.5">
+                              {gap.options.map((opt, i) => {
+                                const key = gap.optionKeys?.[i] || '';
+                                const picked = key !== '' && stagingPicks.has(key);
+                                return (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    aria-pressed={picked}
+                                    onClick={() => (key === '' ? applyStagingAnswer(gap, []) : toggleStagingPick(key))}
+                                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                                      picked
+                                        ? 'bg-[#34507A] text-white border-[#34507A]'
+                                        : 'bg-amber-50 hover:bg-amber-100 text-amber-950 border-amber-200'
+                                    }`}
+                                  >
+                                    {picked ? '✓ ' : ''}
+                                    {opt}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {stagingPicks.size > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => applyStagingAnswer(gap, [...stagingPicks])}
+                                className="text-[11px] font-bold px-3 py-1 rounded-lg bg-[#34507A] text-white hover:bg-[#2a4166] cursor-pointer"
+                              >
+                                Done - add the steps for {stagingPicks.size === 1 ? 'this one' : `these ${stagingPicks.size}`}
+                              </button>
+                            )}
+                          </div>
+                        ) : gap.options && gap.options.length > 0 ? (
                           <div className="flex flex-wrap gap-1.5">
                             {gap.options.map((opt) => (
                               <button

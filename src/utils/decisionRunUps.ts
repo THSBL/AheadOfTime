@@ -1,19 +1,23 @@
 import type { CalendarEvent, TMinusMilestone } from '../types.js';
 
 /**
- * Extensive help = the rhythm for things you have to arrange. Every booking
- * or arrangement (flights, a place to stay, a table, a sitter) goes through
+ * The rhythm for things you arrange - only where the user asks for it.
+ * A plan starts lean: each booking (flights, a place to stay, a table, a
+ * sitter) is one step. The app then asks which bookings to decide together
+ * with the group (or, solo, which need more headroom), and only those get
  * three stages:
  *
  *   1. Explore & share  look at options; send a shortlist when others have a say
  *   2. Decide & book    revisit the options and make the final choice
  *   3. Check & verify   arrival times, check-in, transport - how it fits the rest
  *
- * One-step things (packing, buying, ordering) aren't staged. Stages 1 and 3
- * are added here as run-ups (tier 'extensive', so switching down hides them);
- * the decision itself is renamed "Decide & book: ..." and gets its old title
- * back on a switch down. Adding them twice is a no-op (slotKey).
+ * The choice lives on the event (context.stagedBookings, keyed by what is
+ * booked, so it survives the planner rewording a step); applyStaging adds
+ * or removes the stages to match it. One-step things (packing, buying,
+ * ordering) are never staged. Adding stages twice is a no-op (slotKey).
  */
+
+export type StageMode = 'group' | 'headroom';
 
 const DECISION_WORDS =
   /\b(book|booked|booking|reserve|reserved|reservation|hire|hired|rent|rental|arrange|arranged|secure|secured|lock|locked|sign up|register|decide)\b/i;
@@ -28,7 +32,7 @@ const EXPLORE_WORDS = /\b(options|compare|shortlist|research|look at|browse|expl
 const CHECK_WORDS = /\b(check|verify|confirm times|double-check|reconfirm)\b/i;
 
 const RUNUP_PREFIX = 'runup:';
-const MAX_DECISIONS = 4;
+const MAX_DECISIONS = 5;
 const DECIDE_PREFIX = 'Decide & book: ';
 
 export function isRunUp(m: TMinusMilestone): boolean {
@@ -63,7 +67,7 @@ export function involvesOthers(event: Pick<CalendarEvent, 'title' | 'context' | 
  */
 export function decisionTopic(title: string, keepCase = ''): string {
   let clean = title.replace(new RegExp(`^${DECIDE_PREFIX}`), '').replace(/^[^:]{1,30}:\s*/, '').trim();
-  clean = clean.replace(LEADING_VERB, '').trim();
+  clean = clean.replace(LEADING_VERB, '').replace(/^(?:the|a|an|our|my|your)\s+/i, '').trim();
   clean = clean
     .replace(STATE_WORDS, ' ')
     .replace(/\s+/g, ' ')
@@ -119,11 +123,45 @@ const shiftDay = (iso: string, days: number) => new Date(Date.parse(`${dayOf(iso
  * there is: a roomy decision gets a week, a close one a day or two. Null
  * when there's no room at all.
  */
-export function runUpSpacing(daysUntilDecision: number): { look: number } | null {
-  if (daysUntilDecision >= 10) return { look: 7 };
-  if (daysUntilDecision >= 5) return { look: 4 };
+export function runUpSpacing(daysUntilDecision: number, headroom = false): { look: number } | null {
+  if (daysUntilDecision >= 17 && headroom) return { look: 14 };
+  if (daysUntilDecision >= 10) return { look: headroom ? 9 : 7 };
+  if (daysUntilDecision >= 5) return { look: headroom ? 4 : 4 };
   if (daysUntilDecision >= 2) return { look: 2 };
   return null;
+}
+
+/** What a booking is about, as a stable key ("flights & lodging") - survives rewording and new ids. */
+export function stagingKey(m: Pick<TMinusMilestone, 'title' | 'decisionBaseTitle'>): string {
+  return decisionTopic(m.decisionBaseTitle || m.title)
+    .toLowerCase()
+    .replace(/[^a-z0-9&\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** How the user wants this booking handled, if they picked it. */
+export function stageModeFor(event: Pick<CalendarEvent, 'context'>, m: TMinusMilestone): StageMode | undefined {
+  const map = (event.context?.stagedBookings || {}) as Record<string, StageMode>;
+  return map[stagingKey(m)];
+}
+
+/** The plan's bookings the user can choose to stage: key, label ("Flights & lodging"), id. */
+export function stageableBookings(event: Pick<CalendarEvent, 'title' | 'location' | 'context'>, milestones: TMinusMilestone[]): Array<{ key: string; label: string; id: string }> {
+  const keepCase = `${event.title || ''} ${event.location || ''} ${event.context?.destination || ''}`;
+  const seen = new Set<string>();
+  return milestones
+    // A booking that is still an open choice is asked about on its own first.
+    .filter((m) => m.isActive !== false && isDecisionMilestone(m) && !m.needsRefinement)
+    .sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate))
+    .flatMap((m) => {
+      const key = stagingKey(m);
+      if (!key || seen.has(key)) return [];
+      seen.add(key);
+      const topic = decisionTopic(m.decisionBaseTitle || m.title, keepCase);
+      return [{ key, label: topic.charAt(0).toUpperCase() + topic.slice(1), id: m.id }];
+    })
+    .slice(0, MAX_DECISIONS);
 }
 
 /**
@@ -140,15 +178,17 @@ export function checkOffset(daysFromDecisionToEvent: number): number | null {
 export function buildDecisionRunUps(event: CalendarEvent, milestones: TMinusMilestone[], referenceDate: string): TMinusMilestone[] {
   const today = dayOf(new Date(referenceDate).toISOString());
   const existing = new Set(milestones.filter(isRunUp).map((m) => m.slotKey));
-  const share = involvesOthers(event);
   const keepCase = `${event.title || ''} ${event.location || ''} ${event.context?.destination || ''}`;
+  // Only the bookings the user picked.
   const decisions = milestones
-    .filter(isDecisionMilestone)
+    .filter((m) => isDecisionMilestone(m) && stageModeFor(event, m))
     .sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate))
     .slice(0, MAX_DECISIONS);
 
   const added: TMinusMilestone[] = [];
   for (const d of decisions) {
+    const mode = stageModeFor(event, d);
+    const share = mode === 'group';
     const topic = decisionTopic(d.decisionBaseTitle || d.title, keepCase);
     const step = (key: 'look' | 'check', date: string, title: string, description: string) => {
       const slotKey = `${RUNUP_PREFIX}${d.id}:${key}`;
@@ -164,7 +204,8 @@ export function buildDecisionRunUps(event: CalendarEvent, milestones: TMinusMile
         tMinusOffsetMinutes: -daysToEvent * 1440,
         tMinusLabel: `T-${daysToEvent}d`,
         calculatedDate: `${date}${d.calculatedDate.slice(10) || 'T09:00:00'}`,
-        tier: 'extensive',
+        // The user asked for these, so they show at every help level.
+        tier: d.tier,
         isActive: true,
         slotKey,
         kind: 'milestone',
@@ -174,7 +215,7 @@ export function buildDecisionRunUps(event: CalendarEvent, milestones: TMinusMile
     };
 
     // 1. Explore & share - only while there's time before the decision.
-    const spacing = daysBetween(today, d.calculatedDate) >= 2 ? runUpSpacing(daysBetween(today, d.calculatedDate)) : null;
+    const spacing = daysBetween(today, d.calculatedDate) >= 2 ? runUpSpacing(daysBetween(today, d.calculatedDate), mode === 'headroom') : null;
     if (spacing) {
       step(
         'look',
@@ -187,7 +228,9 @@ export function buildDecisionRunUps(event: CalendarEvent, milestones: TMinusMile
     }
 
     // 3. Check & verify - after booking, in time to fix what doesn't fit.
-    const after = checkOffset(daysBetween(d.calculatedDate, event.eventDate));
+    // A trip has one "Check the whole trip" step for all bookings together
+    // (tripBasics.ts); other events check each picked booking.
+    const after = event.category === 'travel_trip' ? null : checkOffset(daysBetween(d.calculatedDate, event.eventDate));
     if (after !== null) {
       const points = checkPoints(topic);
       step(
@@ -215,7 +258,7 @@ export function withDecisionRunUps(event: CalendarEvent, milestones: TMinusMiles
   const keepCase = `${event.title || ''} ${event.location || ''} ${event.context?.destination || ''}`;
   const decisionIds = new Set(
     milestones
-      .filter(isDecisionMilestone)
+      .filter((m) => isDecisionMilestone(m) && stageModeFor(event, m))
       .sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate))
       .slice(0, MAX_DECISIONS)
       .map((m) => m.id)
@@ -265,10 +308,39 @@ export function upgradeLegacyRunUps(event: CalendarEvent): CalendarEvent {
   return { ...event, milestones: named };
 }
 
-/** Back from Extensive: decisions get their own titles again. */
+/**
+ * Makes the plan match the user's picks (context.stagedBookings): open stages
+ * of bookings no longer picked are removed and those bookings get their own
+ * titles back; picked bookings get their stages. Only once the user has
+ * answered (context.stagingAnswered) - older plans are left as they are.
+ */
+export function applyStaging(event: CalendarEvent, milestones: TMinusMilestone[], referenceDate: string): TMinusMilestone[] {
+  if (!event.context?.stagingAnswered) return milestones;
+  const byId = new Map(milestones.map((m) => [m.id, m]));
+  const staged = (m: TMinusMilestone | undefined) => Boolean(m && stageModeFor(event, m));
+  const cleaned = milestones
+    .filter((m) => {
+      if (!isRunUp(m) || m.status !== 'pending') return true;
+      const decisionId = (m.slotKey || '').replace(/^runup:/, '').replace(/:(look|share|check)$/, '');
+      return staged(byId.get(decisionId));
+    })
+    .map((m) => {
+      if (!m.decisionBaseTitle || staged(m) || m.status !== 'pending') return m;
+      const { decisionBaseTitle, ...rest } = m;
+      return { ...rest, title: decisionBaseTitle };
+    });
+  return withDecisionRunUps(event, cleaned, referenceDate);
+}
+
+/** Back from Extensive: bookings staged automatically by older versions get their own titles again. */
 export function restoreDecisionTitles(milestones: TMinusMilestone[]): TMinusMilestone[] {
+  const autoStaged = new Set(
+    milestones
+      .filter((m) => isRunUp(m) && m.tier === 'extensive')
+      .map((m) => (m.slotKey || '').replace(/^runup:/, '').replace(/:(look|share|check)$/, ''))
+  );
   return milestones.map((m) => {
-    if (!m.decisionBaseTitle) return m;
+    if (!m.decisionBaseTitle || !autoStaged.has(m.id)) return m;
     const { decisionBaseTitle, ...rest } = m;
     return { ...rest, title: decisionBaseTitle };
   });

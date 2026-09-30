@@ -318,18 +318,42 @@ describe('questions: fill a gap or sharpen a task, never repeat one', () => {
   });
 
   it('turns examples in a task into a sharpening question, not "Decide: <task>"', () => {
-    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'our trip to Brooklyn' });
+    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'our trip to Brooklyn' }).filter((g) => g.key !== 'staging');
     expect(gaps.map((g) => g.question)).toEqual(['Timed tickets for group outings: what would you like?']);
     expect(gaps[0].options).toEqual(['Brooklyn Museum', 'Comedy show', 'Something else']);
   });
 
   it('asks nothing about a task once the user named what they want', () => {
-    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'our trip to Brooklyn', context: { customNote: 'Comedy show please' } });
+    const gaps = deriveOutstandingGaps(plan, { ...base, rawText: 'our trip to Brooklyn', context: { customNote: 'Comedy show please', stagingAnswered: true } });
     expect(gaps).toEqual([]);
   });
 
   it('still asks the role when nothing says it', () => {
     const gaps = deriveOutstandingGaps([], { ...base, rawText: 'Brooklyn end of October' });
     expect(gaps.map((g) => g.key)).toEqual(['user_responsibility']);
+  });
+});
+
+describe('the staging question: which bookings get explore / decide / check', () => {
+  const booking = (id: string, title: string, date: string) =>
+    ({ id, eventId: 'e', tMinusLabel: 'T', tMinusOffsetMinutes: 0, calculatedDate: date, category: 'booking', status: 'pending', title } as unknown as TMinusMilestone);
+  const plan = [booking('f', 'Flights & lodging Booked & Confirmed', '2027-05-01'), booking('c', 'Book rental car', '2027-06-01'), booking('p', 'Pack luggage', '2027-06-28')];
+
+  it('asks a group which bookings to decide together, with the bookings as options', () => {
+    const gaps = deriveOutstandingGaps(plan, { category: 'travel_trip', title: 'Portugal – Family trip', rawText: 'family trip with the kids, we need flights', context: {} });
+    const q = gaps.find((g) => g.key === 'staging')!;
+    expect(q.question).toBe('Which of these do you want to decide together with the group?');
+    expect(q.options).toEqual(['Flights & lodging', 'Rental car', 'None, keep it simple']);
+    expect(q.multiSelect).toBe(true);
+  });
+
+  it('asks a solo traveller about headroom', () => {
+    const gaps = deriveOutstandingGaps(plan, { category: 'travel_trip', title: 'Lisbon – Trip', rawText: 'I am going to Lisbon', context: { userRole: 'guest' } });
+    expect(gaps.find((g) => g.key === 'staging')?.question).toBe('Which of these do you want more headroom for?');
+  });
+
+  it('asks once', () => {
+    const gaps = deriveOutstandingGaps(plan, { category: 'travel_trip', title: 'Trip', rawText: 'our trip', context: { stagingAnswered: true } });
+    expect(gaps.some((g) => g.key === 'staging')).toBe(false);
   });
 });

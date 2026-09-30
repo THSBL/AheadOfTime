@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CalendarEvent, TMinusMilestone } from '../types';
-import { buildDecisionRunUps, checkOffset, checkPoints, decisionTopic, isDecisionMilestone, runUpSpacing, withDecisionRunUps } from './decisionRunUps';
+import { applyStaging, buildDecisionRunUps, checkOffset, checkPoints, decisionTopic, isDecisionMilestone, runUpSpacing } from './decisionRunUps';
 import { applyPreparationLevelChange } from './preparationLevelActions';
 
 const ms = (id: string, title: string, date: string, extra: Partial<TMinusMilestone> = {}): TMinusMilestone => ({
@@ -56,6 +56,7 @@ describe('the rhythm for arranging things: Explore & share -> Decide & book -> C
 
   it('scales the timing to the time left', () => {
     expect(runUpSpacing(20)).toEqual({ look: 7 });
+    expect(runUpSpacing(20, true)).toEqual({ look: 14 });
     expect(runUpSpacing(3)).toEqual({ look: 2 });
     expect(runUpSpacing(1)).toBeNull();
     expect(checkOffset(30)).toBe(23); // a week before the event
@@ -63,52 +64,53 @@ describe('the rhythm for arranging things: Explore & share -> Decide & book -> C
     expect(checkOffset(1)).toBeNull();
   });
 
-  it('adds explore & share before and check & verify after a booking in a group event', () => {
+  const picked = (keys: Record<string, 'group' | 'headroom'>) => ({ stagingAnswered: true, stagedBookings: keys });
+
+  it('a plan starts lean: nothing is staged until the user picks it', () => {
     const decision = ms('a', 'Book flights and hotel', '2026-10-20');
-    const added = buildDecisionRunUps(event([decision]), [decision], REF);
-    expect(added.map((m) => [m.title, m.calculatedDate.slice(0, 10), m.tier])).toEqual([
-      ['Explore & share options: flights and hotel', '2026-10-13', 'extensive'],
-      ['Check & verify: flights and hotel (arrival times, transfers, check-in)', '2026-11-13', 'extensive'],
-    ]);
-    const all = withDecisionRunUps(event([decision]), [decision], REF);
-    expect(all.map((m) => m.title)).toEqual([
-      'Explore & share options: flights and hotel',
-      'Decide & book: flights and hotel',
-      'Check & verify: flights and hotel (arrival times, transfers, check-in)',
-    ]);
+    expect(buildDecisionRunUps(event([decision]), [decision], REF)).toEqual([]);
+    expect(applyStaging(event([decision]), [decision], REF)).toEqual([decision]);
   });
 
-  it('explores alone when nobody else is involved', () => {
-    const decision = ms('a', 'Book dentist', '2026-10-20');
-    const solo = event([decision], { title: 'Dentist', userRole: 'guest' });
-    expect(buildDecisionRunUps(solo, [decision], REF)[0].title).toBe('Explore options: dentist');
-  });
-
-  it('is idempotent and does not double a stage the plan already has', () => {
+  it('a trip booking decided with the group: Explore & share, then Decide & book (the whole-trip check covers stage 3)', () => {
     const decision = ms('a', 'Book flights and hotel', '2026-10-20');
-    const once = withDecisionRunUps(event([decision]), [decision], REF);
-    expect(withDecisionRunUps(event(once), once, REF)).toEqual(once);
-    const aiLook = ms('b', 'Compare flights options', '2026-10-12');
-    expect(buildDecisionRunUps(event([decision, aiLook]), [decision, aiLook], REF).map((m) => m.title)).toEqual([
-      'Check & verify: flights and hotel (arrival times, transfers, check-in)',
+    const ev = event([decision], { context: picked({ 'flights and hotel': 'group' }) });
+    expect(applyStaging(ev, [decision], REF).map((m) => [m.title, m.calculatedDate.slice(0, 10)])).toEqual([
+      ['Explore & share options: flights and hotel', '2026-10-13'],
+      ['Decide & book: flights and hotel', '2026-10-20'],
     ]);
   });
 
-  it('a booking with no room before it still gets its check', () => {
-    const decision = ms('a', 'Book taxi', '2026-10-02');
-    expect(buildDecisionRunUps(event([decision]), [decision], REF).map((m) => m.title)).toEqual(['Check & verify: taxi (pick-up)']);
+  it('outside a trip, a picked booking also gets its own check', () => {
+    const decision = ms('a', 'Book the venue', '2026-10-20');
+    const ev = event([decision], { category: 'birthday_party', title: 'Party with friends', context: picked({ venue: 'group' }) });
+    expect(applyStaging(ev, [decision], REF).map((m) => m.title)).toEqual([
+      'Explore & share options: venue',
+      'Decide & book: venue',
+      'Check & verify: venue (access, setup time)',
+    ]);
   });
 
-  it('switching to Extensive adds the stages; Balanced hides them and gives the booking its own title back', () => {
+  it('solo headroom starts exploring earlier, without sharing', () => {
+    const decision = ms('a', 'Book dentist', '2026-10-30');
+    const ev = event([decision], { title: 'Dentist', userRole: 'guest', category: 'custom', context: picked({ dentist: 'headroom' }) });
+    const first = applyStaging(ev, [decision], REF)[0];
+    expect([first.title, first.calculatedDate.slice(0, 10)]).toEqual(['Explore options: dentist', '2026-10-16']);
+  });
+
+  it('is idempotent, and un-picking removes open stages and gives the booking its title back', () => {
+    const decision = ms('a', 'Book flights and hotel', '2026-10-20');
+    const ev = event([decision], { context: picked({ 'flights and hotel': 'group' }) });
+    const once = applyStaging(ev, [decision], REF);
+    expect(applyStaging(ev, once, REF)).toEqual(once);
+    const back = applyStaging(event(once, { context: picked({}) }), once, REF);
+    expect(back.map((m) => m.title)).toEqual(['Book flights and hotel']);
+  });
+
+  it('the help level alone never adds stages', () => {
     const decision = ms('a', 'Book flights and hotel', '2026-10-20', { tier: 'essentials' });
-    const ev = event([decision]);
-    const up = applyPreparationLevelChange([decision], 'extensive', undefined, { event: ev, referenceDate: REF });
-    expect(up.milestones).toHaveLength(3);
-    expect(up.milestones.find((m) => m.id === 'a')?.title).toBe('Decide & book: flights and hotel');
-    expect(up.needsReplan).toBe(true);
-    const down = applyPreparationLevelChange(up.milestones, 'balanced');
-    const visible = down.milestones.filter((m) => m.isActive !== false);
-    expect(visible.map((m) => m.title)).toEqual(['Book flights and hotel']);
+    const up = applyPreparationLevelChange([decision], 'extensive', undefined, { event: event([decision]), referenceDate: REF });
+    expect(up.milestones.map((m) => m.title)).toEqual(['Book flights and hotel']);
   });
 });
 

@@ -44,7 +44,7 @@ export function buildLeanSystemInstruction(params: {
 - runway: the tasks, in date order. Name each as the outcome to reach ("Flights & Hotel Booked", "Presentation Rehearsed"), with 1-3 concrete sub-steps (deliverables) that are genuinely different steps, specific to this event.
 - Give each task a realistic target_date and t_minus_days (days before the event; negative = after it). Lead times come from the real world: flights/hotels 4-6 weeks, popular restaurants 2-3 weeks, custom items 2-3 weeks, packing 1-3 days.
 - Include steps after the event when they really exist (a dive trip's no-fly window, filing a business-trip expense report).
-- One task per booking (the app adds explore/check steps). Trips: one itinerary and one packing task.
+- One task per booking (the app adds explore/check steps if the user asks). Trips: one itinerary and one packing task.
 - ${LEVEL_LINE[params.preparationLevel]} No filler, no duplicates, as many tasks as the event genuinely needs.
 - Only plan what fits what the user said. Something they said is handled, not needed, or declined gets no task.
 - Travel documents (visa, ESTA, passport renewal) only when the user said they need one - never guess from the destination.

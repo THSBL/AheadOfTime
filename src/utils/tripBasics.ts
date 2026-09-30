@@ -1,14 +1,17 @@
 import type { CalendarEvent, TMinusMilestone } from '../types.js';
 
 /**
- * Every trip plan has an itinerary step and a packing step, whatever the
- * planner came up with this time (the AI sometimes leaves them out, and a
- * plan without them looks thin). Both are one-step things: no explore /
- * decide / check stages. Added once (slotKey), never twice.
+ * Every trip plan has an itinerary step, one "Check the whole trip" step and
+ * a packing step, whatever the planner came up with this time (the AI
+ * sometimes leaves them out, and a plan without them looks thin). The
+ * whole-trip check is where bookings are looked at together - arrival times,
+ * check-in, transfers - instead of a separate check after every booking.
+ * Added once (slotKey), never twice.
  */
 
 const ITINERARY = /\b(itinerar|day-by-day|day by day|daily plan|schedule for the trip|trip plan)\w*/i;
 const PACKING = /\bpack(ing|ed)?\b/i;
+const WHOLE_TRIP_CHECK = /\b(check|verify|review)\b.*\b(whole trip|all bookings|everything lines up|bookings line up)\b/i;
 
 const DAY_MS = 86_400_000;
 const dayOf = (iso: string) => iso.slice(0, 10);
@@ -43,6 +46,9 @@ export function withTripBasics(event: CalendarEvent, milestones: TMinusMilestone
   };
   if (!has(ITINERARY, 'trip:itinerary')) {
     step('trip:itinerary', lead >= 21 ? 14 : Math.ceil(lead / 2), 'Plan the itinerary: day-by-day outline', 'What you do each day, with the bookings in it - so gaps and clashes show up early.', 'logistics');
+  }
+  if (!has(WHOLE_TRIP_CHECK, 'trip:check')) {
+    step('trip:check', lead >= 10 ? 7 : Math.max(1, Math.floor(lead / 3)), 'Check the whole trip: arrival times, check-in, transfers', 'Put the bookings side by side: does the flight land before check-in, is there a way from the airport, do the dates all match?', 'logistics');
   }
   if (!has(PACKING, 'trip:packing')) {
     step('trip:packing', 2, 'Pack luggage & travel documents', 'Clothes for the weather, chargers, passports/ID and booking confirmations.', 'logistics');
