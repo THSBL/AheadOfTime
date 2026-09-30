@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CalendarPreferencePoll } from './CalendarPreferencePoll';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight } from 'lucide-react';
+import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight, X } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
@@ -24,9 +24,16 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
   // usePageMeta reverted it from a page-specific value on another route.
   usePageMeta(DEFAULT_TITLE, DEFAULT_DESCRIPTION);
 
-  // The demo video is still being produced - the button exists so the layout
-  // is final, and says so instead of opening a browser alert() or a dead link.
-  const [showDemoNotice, setShowDemoNotice] = useState(false);
+  // "Watch demo" opens the video in a player on top of the page. The player
+  // (youtube-nocookie.com, allowed in vercel.json's CSP frame-src) only loads
+  // once it's opened, so nothing from YouTube runs before the click.
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
+  useEffect(() => {
+    if (!isDemoOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsDemoOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isDemoOpen]);
   const navigate = useNavigate();
 
   return (
@@ -172,11 +179,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
               <span>Get started for free</span>
             </button>
           )}
-          {/* Placeholder until the demo video exists (see showDemoNotice). */}
           <button
             onClick={() => {
               trackButtonClick('Watch Demo', 'landing_hero');
-              setShowDemoNotice(true);
+              setIsDemoOpen(true);
             }}
             className="px-6 py-3.5 rounded-2xl bg-white hover:bg-slate-100 text-[#182A42] font-bold text-sm sm:text-base shadow-lg shadow-slate-900/30 hover:shadow-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
           >
@@ -184,10 +190,35 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             <span>Watch demo</span>
           </button>
         </div>
-        {showDemoNotice && (
-          <p role="status" className="text-xs sm:text-sm text-slate-300 animate-in fade-in duration-300">
-            The demo video is coming soon.
-          </p>
+        {isDemoOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Ahead Of Time demo video"
+            onClick={() => setIsDemoOpen(false)}
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-4xl">
+              <button
+                type="button"
+                onClick={() => setIsDemoOpen(false)}
+                aria-label="Close video"
+                className="absolute -top-11 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
+                <iframe
+                  className="absolute inset-0 w-full h-full"
+                  src="https://www.youtube-nocookie.com/embed/MgEA5t1td64?autoplay=1&rel=0"
+                  title="Ahead Of Time demo"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          </div>
         )}
 
       </div>
