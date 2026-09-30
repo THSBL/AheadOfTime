@@ -45,7 +45,10 @@ async function sendOwnerAlert(text: string): Promise<void> {
   const ownerChatId = process.env.OWNER_TELEGRAM_CHAT_ID?.trim();
   if (!ownerChatId) return;
   try {
-    await TelegramService.sendMessage(ownerChatId, text, { parse_mode: 'Markdown' });
+    // Plain text (no Markdown): feedback and error text can't turn into
+    // formatting or links, or break the message. Telegram's limit is 4096.
+    const safe = text.length > 4000 ? `${text.slice(0, 4000)}…` : text;
+    await TelegramService.sendMessage(ownerChatId, safe, { parse_mode: null });
   } catch (err) {
     // Never let an alert-delivery failure surface anywhere - this is a
     // best-effort side channel, not something a request should fail over.
@@ -96,11 +99,13 @@ export async function logQualityEvent(input: LogQualityEventInput): Promise<stri
 
     if (severity === 'high') {
       const lines = [
-        `🚨 *High-severity AI quality signal*`,
-        `Type: \`${input.signalType}\``,
+        `🚨 High-severity AI quality signal`,
+        `Type: ${input.signalType}`,
         `Channel: ${input.sourceChannel}`,
         input.errorDetail ? `Error: ${truncate(input.errorDetail, 300)}` : null,
-        input.rawUserMessage ? `Message: ${truncate(input.rawUserMessage, 200)}` : null,
+        // The user's own message stays in the database (admin page, 90 days),
+        // not in a Telegram chat.
+        id ? `Details: quality event ${id}` : null,
       ].filter(Boolean);
       await sendOwnerAlert(lines.join('\n'));
       if (id) {

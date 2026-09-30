@@ -118,7 +118,12 @@ export const AdminFeedbackPage: React.FC = () => {
   const downloadCsv = () => {
     if (!rows || rows.length === 0) return;
     const header = ['created_at', 'user_email', 'response_type', 'score', 'feedback_text', 'tags', 'source_channel'];
-    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    // A cell starting with = + - @ (or tab/CR) is run as a formula by Excel
+    // and Sheets; feedback text is written by users, so prefix those with '.
+    const escape = (v: string) => {
+      const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
     const lines = [
       header.join(','),
       ...rows.map((r) =>

@@ -369,6 +369,10 @@ export async function runBackgroundAgendaScan(
         for (const channel of deliver) {
           let ok = false;
           if (channel === 'telegram') {
+            // Checked again right before sending: the chat may have been
+            // unlinked or moved to another account while the update was built.
+            const current = await TelegramSessionStore.getLinkedSessionForWebUser(user.email);
+            if (!current || String(current.chatId) !== String(session!.chatId)) continue;
             const update = renderTelegramUpdate(model);
             const sent = await TelegramService.sendMessage(session!.chatId, update.text, {
               parse_mode: update.parse_mode,

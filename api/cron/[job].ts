@@ -94,11 +94,11 @@ async function handleWeeklyReport(req: any, res: any) {
       : '  • No tagged feedback this week';
 
     const quoteLines = data.sampleQuotes.length > 0
-      ? data.sampleQuotes.map((q) => `  "${q.feedback_text}"${q.score ? ` (${q.score}/5)` : ''}`).join('\n')
+      ? data.sampleQuotes.map((q) => `  "${oneLine(q.feedback_text, 200)}"${q.score ? ` (${q.score}/5)` : ''}`).join('\n')
       : '  No freeform feedback this week';
 
     const message = [
-      `📊 *Weekly Digest*`,
+      `📊 Weekly Digest`,
       '',
       csatLine,
       '',
@@ -119,4 +119,9 @@ async function handleWeeklyReport(req: any, res: any) {
     console.error('Weekly report generation failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Failed to generate weekly report' });
   }
+}
+
+function oneLine(text: string | null | undefined, max: number): string {
+  const flat = String(text || '').replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }

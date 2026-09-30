@@ -2142,7 +2142,7 @@ export function generateICSContent(event: CalendarEvent): string {
     'PRODID:-//Ahead Of Time Preparation Assistant//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    `X-WR-CALNAME:${event.title} + Ahead Of Time Milestones`,
+    `X-WR-CALNAME:${icsText(event.title)} + Ahead Of Time Milestones`,
   ];
 
   // Main Event
@@ -2154,9 +2154,9 @@ export function generateICSContent(event: CalendarEvent): string {
   ics.push(`DTSTAMP:${nowICS}`);
   ics.push(`DTSTART:${formatDateToICS(mainEventStart)}`);
   ics.push(`DTEND:${formatDateToICS(mainEventEnd)}`);
-  ics.push(`SUMMARY:🎯 ${event.title}`);
-  ics.push(`DESCRIPTION:Event prepared with Ahead Of Time.\\nStatus: ${event.status}\\nCategory: ${event.category}`);
-  if (event.location) ics.push(`LOCATION:${event.location}`);
+  ics.push(`SUMMARY:🎯 ${icsText(event.title)}`);
+  ics.push(`DESCRIPTION:Event prepared with Ahead Of Time.\\nStatus: ${icsText(event.status)}\\nCategory: ${icsText(event.category)}`);
+  if (event.location) ics.push(`LOCATION:${icsText(event.location)}`);
   ics.push('STATUS:CONFIRMED');
   ics.push('END:VEVENT');
 
@@ -2177,15 +2177,15 @@ export function generateICSContent(event: CalendarEvent): string {
     ics.push(`DTSTAMP:${nowICS}`);
     ics.push(`DTSTART:${formatDateToICS(msStart)}`);
     ics.push(`DTEND:${formatDateToICS(msEnd)}`);
-    ics.push(`SUMMARY:[${ms.tMinusLabel}] ${ms.title} (${event.title})`);
+    ics.push(`SUMMARY:[${icsText(ms.tMinusLabel)}] ${icsText(ms.title)} (${icsText(event.title)})`);
     const delivText = ms.deliverables && ms.deliverables.length > 0
-      ? `\\n\\nDELIVERABLES:\\n` + ms.deliverables.map((d) => `• [${d.is_completed ? 'X' : ' '}] ${d.title} (${d.type})`).join('\\n')
+      ? `\\n\\nDELIVERABLES:\\n` + ms.deliverables.map((d) => `• [${d.is_completed ? 'X' : ' '}] ${icsText(d.title)} (${icsText(d.type)})`).join('\\n')
       : '';
-    ics.push(`DESCRIPTION:Ahead Of Time Milestone for ${event.title}\\nCategory: ${ms.category}\\nCheckpoint: ${ms.description || 'Milestone gate'}${delivText}`);
+    ics.push(`DESCRIPTION:Ahead Of Time Milestone for ${icsText(event.title)}\\nCategory: ${icsText(ms.category)}\\nCheckpoint: ${icsText(ms.description || 'Milestone gate')}${delivText}`);
     ics.push('STATUS:CONFIRMED');
     ics.push('BEGIN:VALARM');
     ics.push('ACTION:DISPLAY');
-    ics.push(`DESCRIPTION:Reminder: ${ms.title} (${ms.tMinusLabel})`);
+    ics.push(`DESCRIPTION:Reminder: ${icsText(ms.title)} (${icsText(ms.tMinusLabel)})`);
     ics.push('TRIGGER:-PT15M');
     ics.push('END:VALARM');
     ics.push('END:VEVENT');
@@ -2193,6 +2193,18 @@ export function generateICSContent(event: CalendarEvent): string {
 
   ics.push('END:VCALENDAR');
   return ics.join('\r\n');
+}
+
+/**
+ * Text for one iCalendar field (RFC 5545): a line break or ";" "," in a
+ * title can't start a new field or event in the exported file.
+ */
+function icsText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\r\n|\r|\n/g, '\\n')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,');
 }
 
 function addHours(timeStr: string, hoursToAdd: number): string {

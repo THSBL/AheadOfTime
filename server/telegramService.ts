@@ -5,7 +5,8 @@ import { signEventDeepLink } from './deepLinkToken.js';
 import { formatDisplayDate } from '../src/utils/tminusRules.js';
 
 export interface TelegramSendMessageOptions {
-  parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML';
+  /** null = plain text. Left out = Markdown. */
+  parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML' | null;
   reply_markup?: {
     inline_keyboard?: Array<Array<{
       text: string;
@@ -111,7 +112,7 @@ export class TelegramService {
       const parseMode = options.parse_mode !== undefined ? options.parse_mode : 'Markdown';
       const payload: Record<string, any> = {
         chat_id: cleanChatId,
-        text,
+        text: parseMode ? neutralizeForeignLinks(text, parseMode) : text,
         disable_web_page_preview: options.disable_web_page_preview ?? false,
       };
 
@@ -340,4 +341,35 @@ export class TelegramService {
       return { ok: false, description: err?.message };
     }
   }
+}
+
+/**
+ * Formatted links only to our own app and Telegram. Messages mix in text
+ * other people can influence (event titles, AI answers, feedback); without
+ * this, "[Open your plan](https://evil.example)" would show as a trusted-
+ * looking link from the bot. Foreign links keep their text, lose the link.
+ */
+export function neutralizeForeignLinks(text: string, parseMode: string): string {
+  const trusted = (url: string): boolean => {
+    try {
+      const { protocol, hostname } = new URL(url);
+      if (protocol !== 'https:' && !(protocol === 'http:' && hostname === 'localhost')) return false;
+      const own = new Set(['aheadoftime.app', 'www.aheadoftime.app', 't.me', 'localhost']);
+      try {
+        own.add(new URL(process.env.APP_URL || '').hostname);
+      } catch {
+        // APP_URL not set
+      }
+      for (const v of [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]) {
+        if (v) own.add(v.trim().toLowerCase());
+      }
+      return own.has(hostname.toLowerCase());
+    } catch {
+      return false;
+    }
+  };
+  if (parseMode === 'HTML') {
+    return text.replace(/<a\s+href="([^"]*)"\s*>([\s\S]*?)<\/a>/gi, (whole, url, label) => (trusted(url) ? whole : label));
+  }
+  return text.replace(/\[([^\]]*)\]\(([^)\s]*)\)/g, (whole, label, url) => (trusted(url) ? whole : label));
 }
