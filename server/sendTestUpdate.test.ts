@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getNotifyPrefsMock = vi.fn();
 const listTasksMock = vi.fn();
-const listOpenDecisionsMock = vi.fn();
+const countPendingSyncMock = vi.fn();
 const sendEmailMock = vi.fn();
 const sendMessageMock = vi.fn();
 const getSessionMock = vi.fn();
@@ -16,7 +16,7 @@ vi.mock('./googleOAuthTokenStore.js', () => ({
 }));
 vi.mock('./dailyDigestData.js', () => ({
   listTasksNeedingAttention: (...a: unknown[]) => listTasksMock(...a),
-  listOpenDecisions: (...a: unknown[]) => listOpenDecisionsMock(...a),
+  countPendingSync: (...a: unknown[]) => countPendingSyncMock(...a),
 }));
 vi.mock('./emailService.js', () => ({
   isEmailConfigured: () => isEmailConfiguredMock(),
@@ -40,7 +40,7 @@ describe('sendTestUpdate', () => {
     sendEmailMock.mockResolvedValue({ ok: true });
     sendMessageMock.mockResolvedValue({ ok: true });
     listTasksMock.mockResolvedValue({ overdue: [], dueThisWeek: [] });
-    listOpenDecisionsMock.mockResolvedValue([]);
+    countPendingSyncMock.mockResolvedValue(null);
   });
 
   it('emails the signed-in user themselves, marked [Test], with sample content when nothing is real yet', async () => {

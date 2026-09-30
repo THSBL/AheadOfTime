@@ -1,3 +1,4 @@
+import { isPlanPushed } from './utils/pushStatus';
 import { celebrateTask } from './utils/celebrate';
 import { isEventOver } from './utils/readiness';
 import { TimelineCalendar, type CalendarSpan } from './components/TimelineCalendar';
@@ -1059,6 +1060,19 @@ function App() {
   const [isGoogleCalendarModalOpen, setIsGoogleCalendarModalOpen] = useState(false);
   // Events the Active Events push bar opened the push window with (null = the usual single/batch choice).
   const [pushPreselectIds, setPushPreselectIds] = useState<string[] | null>(null);
+  // "Sync now" from the update: open the sync window with every plan that
+  // still has something to add, once the plans are loaded.
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    if (sp.get('sync') !== 'pending' || isInitializing) return;
+    const pending = events.filter((e) => !isPlanPushed(e) && !isEventOver(e, currentReferenceDate)).map((e) => e.id);
+    sp.delete('sync');
+    navigate({ pathname: location.pathname, search: sp.toString() ? `?${sp}` : '' }, { replace: true });
+    if (pending.length === 0) return;
+    setPushPreselectIds(pending);
+    setIsGoogleCalendarModalOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, isInitializing, events.length]);
   const [isScanAgendaModalOpen, setIsScanAgendaModalOpen] = useState(false);
   const [agendaHorizonMonths, setAgendaHorizonMonthsState] = useState<number>(readAgendaHorizon);
   const setAgendaHorizonMonths = (months: number) => {

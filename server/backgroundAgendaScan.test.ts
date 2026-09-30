@@ -9,7 +9,7 @@ const isEmailConfiguredMock = vi.fn();
 const recordFindingsMock = vi.fn();
 const markFindingsNotifiedMock = vi.fn();
 const listTasksMock = vi.fn();
-const listOpenDecisionsMock = vi.fn();
+const countPendingSyncMock = vi.fn();
 
 vi.mock('./db.js', () => ({ query: (...args: unknown[]) => queryMock(...args) }));
 vi.mock('./googleOAuthTokenStore.js', async () => {
@@ -33,7 +33,7 @@ vi.mock('./emailService.js', () => ({
 }));
 vi.mock('./dailyDigestData.js', () => ({
   listTasksNeedingAttention: (...args: unknown[]) => listTasksMock(...args),
-  listOpenDecisions: (...args: unknown[]) => listOpenDecisionsMock(...args),
+  countPendingSync: (...args: unknown[]) => countPendingSyncMock(...args),
 }));
 vi.mock('./agendaFindingsStore.js', () => ({
   recordFindings: (...args: unknown[]) => recordFindingsMock(...args),
@@ -129,7 +129,7 @@ describe('runBackgroundAgendaScan', () => {
     sendMessageMock.mockResolvedValue({ ok: true });
     sendEmailMock.mockResolvedValue({ ok: true });
     listTasksMock.mockResolvedValue({ overdue: [], dueThisWeek: [] });
-    listOpenDecisionsMock.mockResolvedValue([]);
+    countPendingSyncMock.mockResolvedValue(null);
     isEmailConfiguredMock.mockReturnValue(true);
     fetchMock.mockResolvedValue({
       ok: true,
@@ -160,7 +160,7 @@ describe('runBackgroundAgendaScan', () => {
     expect(text).toContain('Amsterdam trip');
     expect(text).not.toContain('Old wedding');
     expect(text).not.toContain('standup');
-    expect(options.reply_markup.inline_keyboard[0][0].url).toBe('https://aheadoftime.app/dashboard?scan=true');
+    expect(options.reply_markup.inline_keyboard.map((row: any) => row[0].url)).toContain('https://aheadoftime.app/dashboard?scan=true');
     expect(recordFindingsMock).toHaveBeenCalledTimes(1);
     expect(markFindingsNotifiedMock).toHaveBeenCalledWith('u1', ['new1'], 'telegram');
     expect(updateCalls()).toHaveLength(1);
@@ -277,7 +277,7 @@ describe('runBackgroundAgendaScan', () => {
     const summary = await runBackgroundAgendaScan({ now: NOW });
     expect(summary).toMatchObject({ usersNotified: 1, eventsReported: 0, failed: 0 });
     const [, text] = sendMessageMock.mock.calls[0];
-    expect(text).toContain('Needs attention (1)');
+    expect(text).toContain('1 late');
     expect(text).toContain('Send invites');
     expect(recordFindingsMock).not.toHaveBeenCalled();
     expect(updateCalls()).toHaveLength(1);

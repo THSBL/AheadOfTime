@@ -1,7 +1,7 @@
 import { getNotifyPrefs } from './googleOAuthTokenStore.js';
 import { resolveChannels } from './backgroundAgendaScan.js';
-import { listTasksNeedingAttention, listOpenDecisions } from './dailyDigestData.js';
-import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, sampleUpdateModel, type DailyUpdateModel } from './dailyUpdateTemplate.js';
+import { listTasksNeedingAttention, countPendingSync } from './dailyDigestData.js';
+import { hasUpdateContent, renderEmailUpdate, renderTelegramUpdate, sampleUpdateModel, type DailyUpdateModel, type UpdateFrequency } from './dailyUpdateTemplate.js';
 import { isEmailConfigured, sendEmail } from './emailService.js';
 import { TelegramSessionStore } from './telegramStore.js';
 import { TelegramService } from './telegramService.js';
@@ -38,10 +38,11 @@ export async function sendTestUpdate(input: { userId: string; email: string; app
 
   const today = new Date().toISOString().substring(0, 10);
   const tasks = await listTasksNeedingAttention(input.userId, new Date().toISOString());
-  const openDecisions = await listOpenDecisions(input.userId, new Date().toISOString());
-  const real: DailyUpdateModel = { today, overdue: tasks.overdue, dueThisWeek: tasks.dueThisWeek, openDecisions, newEvents: [], appUrl: input.appUrl };
+  const pendingSync = await countPendingSync(input.userId, new Date().toISOString()).catch(() => null);
+  const frequency: UpdateFrequency = prefs.frequency === 'weekly' || prefs.frequency === 'monthly' ? prefs.frequency : 'daily';
+  const real: DailyUpdateModel = { today, frequency, overdue: tasks.overdue, dueThisWeek: tasks.dueThisWeek, pendingSync, newEvents: [], appUrl: input.appUrl };
   const usedSample = !hasUpdateContent(real);
-  const model = usedSample ? sampleUpdateModel(today, input.appUrl) : real;
+  const model = usedSample ? { ...sampleUpdateModel(today, input.appUrl), frequency } : real;
 
   const results: TestUpdateResult['results'] = [];
   for (const channel of deliver) {
