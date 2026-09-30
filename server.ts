@@ -1527,7 +1527,7 @@ app.post("/api/auth/google/status", async (req: Request, res: Response) => {
     res.status(409).json({ ok: false, error: "Turn on Background Sync first." });
     return;
   }
-  const result = await sendTestUpdate({ userId, email: verified.email, appUrl: process.env.APP_URL?.trim() || "" });
+  const result = await sendTestUpdate({ userId, email: verified.email, appUrl: appOrigin(req) });
   res.json({ ok: result.ok, ...result });
 });
 

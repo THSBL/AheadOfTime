@@ -45,6 +45,8 @@ export interface DailyUpdateModel {
   newEvents: UpdateNewEvent[];
   /** Plans with tasks not in the user's calendar yet; null when they don't sync to Google. */
   pendingSync?: UpdatePendingSync | null;
+  /** Shown when nothing is due this week: the next task coming up, if any. */
+  nextUp?: UpdateTask | null;
   /** Public base URL, e.g. https://aheadoftime.app ('' when unknown/not https). */
   appUrl: string;
 }
@@ -159,6 +161,9 @@ export function renderTelegramUpdate(m: DailyUpdateModel): TelegramUpdate {
       lines.push(`${t.late ? '⚠️' : '•'} ${esc(t.title)} <i>- ${esc(t.eventTitle)} · ${esc(t.label)}</i>`);
     }
     if (tasks.length > cap.tasks) lines.push(`…and ${tasks.length - cap.tasks} more in the app`);
+  } else {
+    lines.push('', `✅ <b>Nothing due this week</b>`);
+    if (m.nextUp) lines.push(`Next up: ${esc(m.nextUp.title)} <i>- ${esc(m.nextUp.eventTitle)} · ${esc(shortDate(m.nextUp.dueDate))}</i>`);
   }
 
   if (m.newEvents.length) {
@@ -206,6 +211,10 @@ export function renderEmailUpdate(m: DailyUpdateModel): EmailUpdate {
     text.push(...shownTasks.map((t) => `  ${t.late ? '!' : '•'} ${t.title} - ${t.eventTitle} (${t.label})`));
     if (tasks.length > shownTasks.length) text.push(`  …and ${tasks.length - shownTasks.length} more in the app`);
     if (weekUrl(m)) text.push(`  Open my week: ${weekUrl(m)}`);
+    text.push('');
+  } else {
+    text.push('NOTHING DUE THIS WEEK');
+    if (m.nextUp) text.push(`  Next up: ${m.nextUp.title} - ${m.nextUp.eventTitle} (${shortDate(m.nextUp.dueDate)})`);
     text.push('');
   }
   if (shownEvents.length) {
@@ -260,7 +269,12 @@ export function renderEmailUpdate(m: DailyUpdateModel): EmailUpdate {
   const sections = [
     shownTasks.length
       ? section(`📌 This week (${tasks.length}${m.overdue.length ? ` · ${m.overdue.length} late` : ''})`, taskRows + moreTasks + button(weekUrl(m), 'Open my week', true))
-      : '',
+      : section(
+          '✅ Nothing due this week',
+          (m.nextUp
+            ? `<div style="margin-top:8px;font-size:15px;color:#223">Next up: <strong>${esc(m.nextUp.title)}</strong> <span style="font-size:13px;color:#667">· ${esc(m.nextUp.eventTitle)} · ${esc(shortDate(m.nextUp.dueDate))}</span></div>`
+            : '') + button(weekUrl(m), 'Open my week', true)
+        ),
     shownEvents.length ? section(`🆕 New in your calendar (${events.length})`, eventRows + moreEvents + button(planNewUrl(m), 'Plan new events')) : '',
     pending
       ? section('🗓 Pending sync', `<div style="margin-top:8px;font-size:15px;color:#223">${esc(pendingLine(pending))}</div>${button(syncUrl(m), 'Sync now')}`)

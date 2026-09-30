@@ -14,9 +14,11 @@ vi.mock('./googleOAuthTokenStore.js', () => ({
   getValidAccessToken: vi.fn(),
   ensureBackgroundSyncSchema: vi.fn(),
 }));
+const nextUpMock = vi.fn();
 vi.mock('./dailyDigestData.js', () => ({
   listTasksNeedingAttention: (...a: unknown[]) => listTasksMock(...a),
   countPendingSync: (...a: unknown[]) => countPendingSyncMock(...a),
+  nextUpcomingTask: (...a: unknown[]) => nextUpMock(...a),
 }));
 vi.mock('./emailService.js', () => ({
   isEmailConfigured: () => isEmailConfiguredMock(),
@@ -24,7 +26,7 @@ vi.mock('./emailService.js', () => ({
 }));
 vi.mock('./telegramStore.js', () => ({ TelegramSessionStore: { getLinkedSessionForWebUser: (...a: unknown[]) => getSessionMock(...a) } }));
 vi.mock('./telegramService.js', () => ({ TelegramService: { sendMessage: (...a: unknown[]) => sendMessageMock(...a) } }));
-vi.mock('./agendaFindingsStore.js', () => ({ recordFindings: vi.fn(), markFindingsNotified: vi.fn() }));
+vi.mock('./agendaFindingsStore.js', () => ({ recordFindings: vi.fn(), markFindingsNotified: vi.fn(), listPendingFindings: vi.fn(async () => []) }));
 vi.mock('./db.js', () => ({ query: vi.fn() }));
 
 import { sendTestUpdate } from './sendTestUpdate';
@@ -41,16 +43,22 @@ describe('sendTestUpdate', () => {
     sendMessageMock.mockResolvedValue({ ok: true });
     listTasksMock.mockResolvedValue({ overdue: [], dueThisWeek: [] });
     countPendingSyncMock.mockResolvedValue(null);
+    nextUpMock.mockResolvedValue(null);
   });
 
-  it('emails the signed-in user themselves, marked [Test], with sample content when nothing is real yet', async () => {
+  it('emails the signed-in user themselves, marked [Test]; a quiet week says so with the next task, never samples', async () => {
     getNotifyPrefsMock.mockResolvedValue(prefs(['email']));
+    nextUpMock.mockResolvedValue({ title: 'Book hotel', eventTitle: 'Trip to Lisbon – 15–21 Oct', dueDate: '2026-10-09' });
     const result = await sendTestUpdate(input);
-    expect(result).toMatchObject({ ok: true, usedSample: true, results: [{ channel: 'email', ok: true }] });
+    expect(result).toMatchObject({ ok: true, usedSample: false, results: [{ channel: 'email', ok: true }] });
     const mail = sendEmailMock.mock.calls[0][0];
     expect(mail.to).toBe('me@example.com');
     expect(mail.subject.startsWith('[Test] ')).toBe(true);
-    expect(mail.text).toContain('Sample:');
+    expect(mail.text).not.toContain('Sample:');
+    expect(mail.text).toContain('NOTHING DUE THIS WEEK');
+    expect(mail.text).toContain('Next up: Book hotel');
+    // Links work: the app address is in the email.
+    expect(mail.html).toContain('https://aheadoftime.app/dashboard');
   });
 
   it('sends the real tasks when there are some', async () => {

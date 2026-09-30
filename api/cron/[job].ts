@@ -1,6 +1,7 @@
 import { getWeeklyDigestData, sendOwnerAlert } from '../../server/qualityStore.js';
 import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
 import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
+import { appOrigin } from '../../server/appOrigin.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
 // /api/cron/agenda-scan - the paths vercel.json's crons entries point at).
@@ -45,7 +46,7 @@ async function handleAgendaScan(req: any, res: any) {
 
   try {
     const summary = await runBackgroundAgendaScan({
-      appUrl: process.env.APP_URL?.trim(),
+      appUrl: appOrigin(req),
       dryRun: req.query?.dryRun === '1' || req.query?.dryRun === 'true',
     });
     return res.status(200).json({ ok: true, purgedDeletedEvents: purged, ...summary });

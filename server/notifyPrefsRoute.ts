@@ -4,6 +4,7 @@ import { getNotifyPrefs, hasBackgroundSyncLinked, setNotifyPrefs } from './googl
 import { mergeNotifyPrefs } from './notifyPrefs.js';
 import { isEmailConfigured } from './emailService.js';
 import { sendTestUpdate } from './sendTestUpdate.js';
+import { appOrigin } from './appOrigin.js';
 
 /**
  * GET  /api/auth/notify-prefs -> the Updates tab: preferences plus which channels can deliver
@@ -56,7 +57,7 @@ export async function handleNotifyPrefs(req: any, res: any) {
   }
 
   if (req.method === 'POST' && req.body?.sendTest) {
-    const result = await sendTestUpdate({ userId, email: verified.email, appUrl: process.env.APP_URL?.trim() || '' });
+    const result = await sendTestUpdate({ userId, email: verified.email, appUrl: appOrigin(req) });
     res.status(200).json({ ...result });
     return;
   }

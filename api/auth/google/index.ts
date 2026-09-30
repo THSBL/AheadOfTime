@@ -135,7 +135,7 @@ async function handleStatus(req: any, res: any) {
     if (!(await hasBackgroundSyncLinked(userId))) {
       return res.status(409).json({ ok: false, error: 'Turn on Background Sync first.' });
     }
-    const result = await sendTestUpdate({ userId, email: verified.email, appUrl: process.env.APP_URL?.trim() || '' });
+    const result = await sendTestUpdate({ userId, email: verified.email, appUrl: appOrigin(req) });
     return res.status(200).json({ ok: result.ok, ...result });
   }
 
