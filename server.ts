@@ -1190,23 +1190,19 @@ app.delete("/api/telegram/pair-code", async (req: Request, res: Response) => {
 // 4. Send Refinement Prompt for an Event to Telegram (Multi-tenant: requires chatId)
 app.post("/api/telegram/send-refine", async (req: Request, res: Response) => {
   try {
-    const { chatId, event } = req.body || {};
-    let targetChatId = chatId;
-
-    // If targetChatId is a placeholder or not provided, try resolving from active linked sessions
-    if (!targetChatId || targetChatId === 123456789 || targetChatId === '123456789' || targetChatId === 'demo') {
-      const activeSessions = await TelegramSessionStore.getAllSessions();
-      const linkedSession = activeSessions.find(s => s.isLinked && s.chatId && s.chatId !== 123456789 && s.chatId !== '123456789');
-      if (linkedSession) {
-        targetChatId = linkedSession.chatId;
-      }
+    const { event } = req.body || {};
+    // Only to the signed-in user's own linked chat, never a chat id from the request.
+    const verified = await verifyRequestUser(req);
+    if (!verified) {
+      res.status(401).json({ ok: false, error: "Sign in required." });
+      return;
     }
-
-    if (!targetChatId || targetChatId === 123456789 || targetChatId === '123456789' || targetChatId === 'demo') {
+    const session = await TelegramSessionStore.getLinkedSessionForWebUser(verified.email);
+    const targetChatId = session?.isLinked ? session.chatId : null;
+    if (!targetChatId) {
       res.status(400).json({
         ok: false,
-        error: "Valid Telegram Chat ID required. Please click 'Connect Telegram' and tap Start in @AheadTimebot first.",
-        description: "Valid Telegram Chat ID required. Please click 'Connect Telegram' and tap Start in @AheadTimebot first.",
+        error: "Connect Telegram first: click 'Connect Telegram' and tap Start in the bot.",
       });
       return;
     }
@@ -1264,7 +1260,11 @@ app.get("/api/telegram/event/:id", async (req: Request, res: Response) => {
   if (verifyEventDeepLink(req.params.id, req.query.dlt as string, req.query.dlte as string)) {
     const event = await TelegramSessionStore.getEvent(req.params.id);
     if (event) {
-      res.json({ ok: true, event });
+      const verified = await verifyRequestUser(req).catch(() => null);
+      const ownedByCaller = verified
+        ? (await TelegramSessionStore.getAllEvents(verified.email)).some((e) => e.id === req.params.id)
+        : false;
+      res.json({ ok: true, event, ownedByCaller });
     } else {
       res.status(404).json({ ok: false, error: "Event not found" });
     }

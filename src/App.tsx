@@ -886,13 +886,17 @@ function App() {
   }, [location.pathname, location.search]);
 
   // Deep-link handler for Telegram & external refinement: ?event_id=...&action=refine
+  // Each link is handled once: history.replaceState below doesn't update
+  // location.search, so without this every events change fetched it again.
+  const handledDeepLinkRef = useRef<string | null>(null);
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const eventIdParam = sp.get('event_id') || sp.get('eventId');
     const deepLinkToken = sp.get('dlt');
     const deepLinkExpiry = sp.get('dlte');
+    const deepLinkKey = `${currentUser?.id || ''}|${location.search}`;
 
-    if (eventIdParam) {
+    if (eventIdParam && handledDeepLinkRef.current !== deepLinkKey) {
       // 1. Check local state
       const target = events.find((e) => e.id === eventIdParam);
       // currentUser is a cached profile (localStorage) that can outlive the
@@ -936,6 +940,7 @@ function App() {
       };
 
       if (deepLinkToken && deepLinkExpiry) {
+        handledDeepLinkRef.current = deepLinkKey;
         // A signed, single-event token minted by the bot itself when it
         // built this link - proves the caller legitimately just interacted
         // with this exact event via Telegram. Checked FIRST, ahead of any
@@ -948,11 +953,23 @@ function App() {
         // Works regardless of Google auth state, since someone actively
         // chatting with the bot shouldn't have to separately re-
         // authenticate with Google just to view what they just did there.
-        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?dlt=${encodeURIComponent(deepLinkToken)}&dlte=${encodeURIComponent(deepLinkExpiry)}`)
+        const googleTokenForLink = getStoredAccessToken();
+        fetch(`/api/telegram/event/${encodeURIComponent(eventIdParam)}?dlt=${encodeURIComponent(deepLinkToken)}&dlte=${encodeURIComponent(deepLinkExpiry)}`, {
+          headers: googleTokenForLink && !isTokenExpired() ? { Authorization: `Bearer ${googleTokenForLink}` } : {},
+        })
           .then((r) => r.json())
           .then((data) => {
-            if (data.event) {
-              applyFoundEvent(data.event, false);
+            if (data.event && currentUser?.id && !data.ownedByCaller) {
+              // Signed in as another account: don't pull this event into it
+              // (it would be saved and synced to the wrong calendar).
+              setAgentConfirmationToast({
+                id: Date.now(),
+                title: 'This event belongs to another account',
+                message: `You're signed in as ${currentUser.email || currentUser.id}. Switch to the account that's linked to Telegram to open it.`,
+              });
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (data.event) {
+              applyFoundEvent(data.event, Boolean(data.ownedByCaller));
             } else {
               setAgentConfirmationToast({
                 id: Date.now(),
@@ -964,6 +981,7 @@ function App() {
           })
           .catch((err) => console.warn('Could not fetch telegram event via deep-link token:', err));
       } else if (target) {
+        handledDeepLinkRef.current = deepLinkKey;
         setSelectedEventId(target.id);
         setMobileDashboardView('detail');
         setActiveTab('tasks');
@@ -971,6 +989,7 @@ function App() {
         // Clean URL parameters so manual refresh doesn't trap user
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (hasValidGoogleToken) {
+        handledDeepLinkRef.current = deepLinkKey;
         // 2. Fetch from Telegram server events store
         const telegramAuthHeaders = (() => {
           const token = getStoredAccessToken();

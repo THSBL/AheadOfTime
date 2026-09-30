@@ -37,7 +37,9 @@ export default async function handler(req: any, res: any) {
     if (!event) {
       return res.status(404).json({ ok: false, error: 'Event not found' });
     }
-    return res.status(200).json({ ok: true, event });
+    // The link lets you look at the event; the browser only keeps it when the
+    // signed-in account is the event's owner (see App.tsx).
+    return res.status(200).json({ ok: true, event, ownedByCaller: await callerOwnsEvent(req, String(eventId)) });
   }
 
   // This endpoint returns real event data, so identity must be verified
@@ -59,4 +61,11 @@ export default async function handler(req: any, res: any) {
   }
 
   return res.status(200).json({ ok: true, event });
+}
+
+async function callerOwnsEvent(req: any, eventId: string): Promise<boolean> {
+  const verified = await verifyRequestUser(req).catch(() => null);
+  if (!verified) return false;
+  const events = await TelegramSessionStore.getAllEvents(verified.email);
+  return events.some((e) => e.id === eventId);
 }

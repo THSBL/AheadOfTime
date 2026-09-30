@@ -450,12 +450,23 @@ export class TelegramSessionStore {
       }
     }
 
-    await query(
-      `INSERT INTO pairing_codes (code, user_id, channel, status, created_at, expires_at)
-       VALUES ($1, $2, 'telegram', 'linked', now(), $3)
-       ON CONFLICT (code) DO UPDATE SET status = 'linked', user_id = COALESCE(pairing_codes.user_id, EXCLUDED.user_id)`,
-      [normalizedCode, resolvedUserId, new Date(Date.now() + 86400000).toISOString()]
-    );
+    // Claim the code in one step: when two chats send the same code at the
+    // same moment, only one of them gets it.
+    const claimed = rows[0]
+      ? await query<{ code: string }>(
+          `UPDATE pairing_codes SET status = 'linked', user_id = COALESCE(user_id, $2)
+            WHERE code = $1 AND status = 'pending' RETURNING code`,
+          [normalizedCode, resolvedUserId]
+        )
+      : await query<{ code: string }>(
+          `INSERT INTO pairing_codes (code, user_id, channel, status, created_at, expires_at)
+           VALUES ($1, $2, 'telegram', 'linked', now(), $3)
+           ON CONFLICT (code) DO NOTHING RETURNING code`,
+          [normalizedCode, resolvedUserId, new Date(Date.now() + 86400000).toISOString()]
+        );
+    if (claimed.length === 0) {
+      return { success: false, error: 'This link code was already used. Generate a new one in the app (Settings -> Credentials).' };
+    }
 
     // If this chat already created events anonymously (under its own
     // placeholder user, before ever being linked) and is now being linked
@@ -472,9 +483,15 @@ export class TelegramSessionStore {
     await this.getOrCreateSession(chatId, from);
     await query(
       `UPDATE integration_accounts
-       SET user_id = $2, is_linked = true, linked_at = now(), external_username = $3, last_active_at = now()
+       SET is_linked = true, linked_at = now(), external_username = $3, last_active_at = now(),
+           -- Moving to another account: forget the previous account's events.
+           -- (A chat's own placeholder account moved its events along above.)
+           metadata = CASE WHEN user_id IS DISTINCT FROM $2 AND user_id IS DISTINCT FROM $4::uuid
+                           THEN COALESCE(metadata, '{}'::jsonb) - 'eventsCreated' - 'lastCreatedEventId'
+                           ELSE metadata END,
+           user_id = $2
        WHERE channel = 'telegram' AND external_id = $1`,
-      [String(chatId), resolvedUserId, username]
+      [String(chatId), resolvedUserId, username, placeholderUserId ?? null]
     );
 
     const session = rowToSession((await this.getAccountRow(chatId))!);
@@ -592,9 +609,10 @@ export class TelegramSessionStore {
       const codeRows = await query<{ code: string; user_id: string | null; status: string; user_email: string | null }>(
         `SELECT pc.code, pc.user_id, pc.status, u.email AS user_email
          FROM pairing_codes pc
-         LEFT JOIN users u ON u.id = pc.user_id
-         WHERE pc.code = $1`,
-        [normalizedCode]
+         JOIN users u ON u.id = pc.user_id
+         WHERE pc.code = $1 AND lower(u.email) = lower($2)`,
+        // Only the caller's own codes: someone else's code says nothing here.
+        [normalizedCode, String(userId || '').trim()]
       );
       const record = codeRows[0];
 

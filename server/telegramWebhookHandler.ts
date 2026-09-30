@@ -144,6 +144,16 @@ export class TelegramWebhookHandler {
       // takes long enough to trigger one) is correctly deduped rather
       // than reprocessed.
       try {
+        // Only one-to-one chats: in a group, every member would act as the
+        // linked account (see its plans, change its calendar).
+        const chat = update.callback_query?.message?.chat || update.message?.chat || update.edited_message?.chat || update.channel_post?.chat;
+        if (chat?.type && chat.type !== 'private') {
+          if (update.message?.text?.startsWith('/')) {
+            await TelegramService.sendMessage(chat.id, 'Ahead Of Time only works in a private chat with the bot. Open the bot directly to use it.');
+          }
+          res.status(200).json({ ok: true });
+          return;
+        }
         if (update.callback_query) {
           await TelegramWebhookHandler.handleCallbackQuery(update.callback_query, appBaseUrl);
         } else {
