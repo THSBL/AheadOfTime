@@ -131,7 +131,6 @@ export class TelegramWebhookHandler {
         has_message: Boolean(update.message),
         has_callback: Boolean(update.callback_query),
         chat_id: update.message?.chat?.id || update.callback_query?.message?.chat?.id,
-        text: update.message?.text?.slice(0, 40),
       });
 
       // 5. Process the update BEFORE responding. Vercel serverless
@@ -483,7 +482,7 @@ export class TelegramWebhookHandler {
       });
       await TelegramService.sendMessage(
         chatId,
-        `⚠️ *Error Processing Request*: ${err.message || 'Could not access calendar tool.'}`
+        '⚠️ *Something went wrong* handling that. Please try again in a moment.'
       );
     } finally {
       stopTyping();
@@ -671,7 +670,7 @@ export class TelegramWebhookHandler {
         errorDetail: err?.message || String(err),
         rawUserMessage: text,
       });
-      await TelegramService.sendMessage(chatId, `⚠️ Couldn't process that change: ${err.message || 'please try again.'}`);
+      await TelegramService.sendMessage(chatId, "⚠️ Couldn't process that change. Please try again.");
     } finally {
       stopTyping();
     }

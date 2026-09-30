@@ -316,7 +316,17 @@ export function describeSecretShape(secret: string): string {
   return `secret shape: length=${secret.length}, startsWithGOCSPX=${secret.startsWith('GOCSPX-')}`;
 }
 
-export async function exchangeAuthorizationCode(code: string, redirectUri: string): Promise<{ refreshToken: string; scope: string } | null> {
+/**
+ * Trades the consent screen's code for tokens. With `expectedEmail`, the
+ * Google account that just said yes must be the one signed in to the app:
+ * someone with two Google accounts can't attach account B's calendar to
+ * account A, and a code from someone else's consent can't be planted here.
+ */
+export async function exchangeAuthorizationCode(
+  code: string,
+  redirectUri: string,
+  expectedEmail?: string
+): Promise<{ refreshToken: string; scope: string } | null> {
   const clientId = getGoogleClientId();
   const clientSecret = getGoogleClientSecret();
   if (!clientId || !clientSecret) {
@@ -351,6 +361,13 @@ export async function exchangeAuthorizationCode(code: string, redirectUri: strin
   // granted offline access before and Google omits it on a repeat grant,
   // there's nothing new to store; the caller should treat this as "still
   // linked" rather than an error when a prior token already exists.
+  if (expectedEmail) {
+    const { verifyGoogleAccessToken } = await import('./googleAuthVerify.js');
+    const granted = await verifyGoogleAccessToken(data.access_token);
+    if (!granted || granted.email !== expectedEmail.toLowerCase().trim()) {
+      throw new Error('google_account_mismatch');
+    }
+  }
   if (!data.refresh_token) {
     return null;
   }

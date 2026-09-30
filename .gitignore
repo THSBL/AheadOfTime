@@ -12,3 +12,4 @@ token.json
 *.pem
 .claude/
 .vercel
+data/

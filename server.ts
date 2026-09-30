@@ -849,6 +849,18 @@ app.post("/webhook/whatsapp", WhatsAppWebhookHandler.handleIncomingMessage);
 app.post("/api/webhook/whatsapp", WhatsAppWebhookHandler.handleIncomingMessage);
 
 // 3. WhatsApp Integration Status & Config
+// WhatsApp test tools (list/delete sessions, outreach, simulated messages):
+// only in this local server, never deployed, and owner-only (CRON_SECRET),
+// so someone who can reach a running dev server can't read or message chats.
+app.use("/api/whatsapp", (req: Request, res: Response, next) => {
+  const ownerSecret = process.env.CRON_SECRET?.trim();
+  if (!ownerSecret || req.get("authorization") !== `Bearer ${ownerSecret}`) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  next();
+});
+
 app.get("/api/whatsapp/status", (_req: Request, res: Response) => {
   res.json({
     webhookUrl: "/webhook/whatsapp",
@@ -1460,7 +1472,7 @@ app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
 
   try {
     const userId = await findOrCreateUserByEmail(verifiedState.email);
-    const exchanged = await exchangeAuthorizationCode(code, getOAuthRedirectUri(req));
+    const exchanged = await exchangeAuthorizationCode(code, getOAuthRedirectUri(req), verifiedState.email);
     if (!exchanged) {
       res.redirect(302, `${appOrigin}/settings/credentials?background_sync=no_refresh_token`);
       return;
@@ -1469,6 +1481,10 @@ app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
     const result = grantIncludesTasks(exchanged.scope) ? "connected" : "partial";
     res.redirect(302, `${appOrigin}/settings/credentials?background_sync=${result}`);
   } catch (err: any) {
+    if (err?.message === "google_account_mismatch") {
+      res.redirect(302, `${appOrigin}/settings/credentials?background_sync=wrong_account`);
+      return;
+    }
     console.error("Google OAuth callback error:", err);
     res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
   }

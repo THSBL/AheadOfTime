@@ -118,6 +118,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
       partial: 'Background sync is connected, but Google Tasks wasn\'t ticked on Google\'s screen, so prep tasks can\'t be added. Disconnect and connect again, and tick every box.',
       declined: 'Background sync setup was cancelled.',
       no_refresh_token: 'Google didn\'t grant a fresh background-sync permission - try disconnecting and reconnecting from your Google Account\'s own connected-apps settings, then try again.',
+      wrong_account: 'You picked a different Google account than the one you\'re signed in with. Connect background sync with the same account, or sign in with the other account first.',
       error: 'Something went wrong connecting background sync - please try again.',
     };
     setBackgroundSyncNotice(messages[result] || null);

@@ -122,10 +122,6 @@ export class TelegramService {
         payload.reply_markup = options.reply_markup;
       }
 
-      console.log(`📤 Telegram sendMessage -> chat ${cleanChatId}:`, {
-        textSnippet: text.slice(0, 60),
-        parse_mode: parseMode,
-      });
 
       const res = await fetch(url, {
         method: 'POST',
@@ -134,7 +130,6 @@ export class TelegramService {
       });
 
       let data = await res.json();
-      console.log('📥 Telegram sendMessage response:', JSON.stringify(data));
 
       // Automatic fallback: If Markdown entity parsing fails, retry in plain text so message is NEVER lost
       if (!data.ok && parseMode && data.description?.includes("can't parse entities")) {
@@ -146,7 +141,6 @@ export class TelegramService {
           body: JSON.stringify(payload),
         });
         data = await retryRes.json();
-        console.log('📥 Telegram sendMessage fallback response:', JSON.stringify(data));
       }
 
       if (!data.ok) {

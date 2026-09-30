@@ -14,7 +14,7 @@ export const AuthCallbackPage: React.FC = () => {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
       const expiresIn = hashParams.get('expires_in') || searchParams.get('expires_in');
-      const returnTo = searchParams.get('returnTo') || hashParams.get('returnTo') || '/dashboard';
+      const returnTo = safeReturnTo(searchParams.get('returnTo') || hashParams.get('returnTo'));
 
       if (accessToken) {
         localStorage.setItem('aot_google_access_token', accessToken);
@@ -25,7 +25,7 @@ export const AuthCallbackPage: React.FC = () => {
 
         setStatus('success');
         setTimeout(() => {
-          navigate(decodeURIComponent(returnTo), { replace: true });
+          navigate(returnTo, { replace: true });
         }, 1200);
       } else {
         // Fallback for code or mock confirmation
@@ -33,7 +33,7 @@ export const AuthCallbackPage: React.FC = () => {
         localStorage.setItem('aot_onboarding_completed', 'true');
         setStatus('success');
         setTimeout(() => {
-          navigate(decodeURIComponent(returnTo), { replace: true });
+          navigate(returnTo, { replace: true });
         }, 1200);
       }
     } catch (err: any) {
@@ -83,3 +83,14 @@ export const AuthCallbackPage: React.FC = () => {
     </div>
   );
 };
+
+/** Only a path inside this app ("/dashboard"), never another site ("//evil.com", "https://..."). */
+function safeReturnTo(raw: string | null): string {
+  let value = raw || '';
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    return '/dashboard';
+  }
+  return /^\/(?![\/\\])/.test(value) ? value : '/dashboard';
+}

@@ -378,7 +378,7 @@ export class TelegramSessionStore {
       [code, resolvedUserId, expiresAt.toISOString()]
     );
 
-    console.log(`[Telegram Session Store] Created pending pairing code: ${code}`);
+    console.log('[Telegram Session Store] Created a pairing code.');
     return code;
   }
 
@@ -480,7 +480,7 @@ export class TelegramSessionStore {
     const session = rowToSession((await this.getAccountRow(chatId))!);
 
     console.log(
-      `[Telegram Webhook] Successfully linked pairCode: ${normalizedCode} to chatId: ${chatId} (@${from?.username || 'user'})`
+      '[Telegram Webhook] Linked a Telegram chat to an account.'
     );
 
     return { success: true, session };
@@ -1024,7 +1024,7 @@ export class TelegramSessionStore {
       [String(chatId), JSON.stringify(eventsCreated), JSON.stringify(eventUuid)]
     );
 
-    console.log(`💾 Recorded event ${eventUuid} ("${event.title}") for chat ${chatId}.`);
+    console.log(`💾 Recorded event ${eventUuid}.`);
   }
 
   /**

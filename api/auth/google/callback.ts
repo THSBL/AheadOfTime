@@ -34,7 +34,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const userId = await findOrCreateUserByEmail(verifiedState.email);
-    const exchanged = await exchangeAuthorizationCode(code, getRedirectUri(req));
+    const exchanged = await exchangeAuthorizationCode(code, getRedirectUri(req), verifiedState.email);
 
     if (!exchanged) {
       // No refresh_token came back - most likely this user already
@@ -51,6 +51,9 @@ export default async function handler(req: any, res: any) {
     const result = grantIncludesTasks(exchanged.scope) ? 'connected' : 'partial';
     return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=${result}`);
   } catch (err: any) {
+    if (err?.message === 'google_account_mismatch') {
+      return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=wrong_account`);
+    }
     console.error('Google OAuth callback error:', err);
     return res.redirect(302, `${appOrigin}/settings/credentials?background_sync=error`);
   }
