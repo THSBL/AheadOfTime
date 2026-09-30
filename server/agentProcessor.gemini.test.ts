@@ -182,7 +182,7 @@ describe('processWithGemini - preserving existing milestones when the model omit
 
     expect(result.event.eventDate).toBe('2026-10-19');
     expect(result.event.endDate).toBe('2026-10-23');
-    expect(result.event.title).toBe('Business Trip to New York');
+    expect(result.event.title).toBe('Business Trip to New York – 19–23 Oct');
   });
 
   it('reads a single picked date from the refinement answers', async () => {

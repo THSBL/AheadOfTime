@@ -723,7 +723,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const renderCustomItemsSection = (placeholder: string, title: string = "Anything Specific (Add Multiple Items)") => (
     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-lg">ðŸ“</span>
+        <span className="text-lg">📝</span>
         <h3 className="text-sm font-bold text-slate-900">{title}</h3>
       </div>
       <div className="space-y-2.5">
@@ -842,9 +842,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                       "Create event" is tapped. */}
                   {isLatestPlanReply && draftEvent && (
                     <div className="ml-9 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
-                      <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
-                        {getEventTopicLabel(draftEvent.category, draftEvent.context)}
-                      </span>
+                      {/* The type label only when there is one: "Calendar Event" above a title read like the title itself. */}
+                      {getEventTopicLabel(draftEvent.category, draftEvent.context) !== 'Calendar Event' && (
+                        <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          {getEventTopicLabel(draftEvent.category, draftEvent.context)}
+                        </span>
+                      )}
                       <h4 className="text-sm font-black text-slate-900 leading-snug">{draftEvent.title}</h4>
                       <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
                         <Calendar className="w-3 h-3 shrink-0" />

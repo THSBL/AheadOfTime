@@ -71,6 +71,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { getStoredAccessToken, isTokenExpired, requestGoogleCalendarToken, clearGoogleSession, getStoredClientId } from './services/googleAuth';
+import { newEventTitle } from './utils/eventTitle';
 import { useAccountKey } from './hooks/useAccountKey';
 import { hasAppSession, checkAppSession, endAppSession, appSessionChecked } from './services/appSession';
 import { syncGoogleTasksWithLocalEvents, TaskSyncSummary } from './services/googleTasks';
@@ -1530,15 +1531,15 @@ function App() {
       console.error('Failed to process message server-side, falling back to client-side heuristics:', err);
       const category = detectEventCategory(text);
 
-      let targetDate = '2026-09-25';
+      // No date in the message: three weeks out, like the server planner.
+      let targetDate = new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10);
       let targetTime = '19:00';
       const dateMatch = text.match(/\b(20\d\d-\d\d-\d\d)\b/);
       if (dateMatch) targetDate = dateMatch[1];
       const timeMatch = text.match(/\b(\d\d:\d\d)\b/);
       if (timeMatch) targetTime = timeMatch[1];
 
-      let title = text.split('.')[0].replace(/\[.*?\]/g, '').trim();
-      title = getCleanEventTitle(title, category);
+      const title = newEventTitle({ message: text, fallbackWhat: getCleanEventTitle(text.split('.')[0].replace(/\[.*?\]/g, '').trim(), category), eventDate: targetDate });
 
       const eventId = `evt-${Date.now()}`;
       const milestones = generateDeterministicMilestones({ eventId, title, eventDate: targetDate, eventTime: targetTime, category, context: {} });

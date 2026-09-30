@@ -1,3 +1,4 @@
+import { titleWhat } from './eventTitle.js';
 import { CalendarEvent, EventCategory, TMinusMilestone, UserEventRole } from '../types.js';
 import { generateHeuristicMilestones } from './tminusRules.js';
 import { generateConcreteEventMilestones, CanonicalCategory } from './creationStateMachine.js';
@@ -44,7 +45,9 @@ export interface DeterministicGeneratorInput {
   };
 }
 
-export function generateDeterministicMilestones(input: DeterministicGeneratorInput): TMinusMilestone[] {
+export function generateDeterministicMilestones(fullInput: DeterministicGeneratorInput): TMinusMilestone[] {
+  // Task names use only the What of the event title, not its date and place.
+  const input = { ...fullInput, title: titleWhat(fullInput.title) };
   if (input.wizardChipAnswers) {
     return generateConcreteEventMilestones(
       input.title,

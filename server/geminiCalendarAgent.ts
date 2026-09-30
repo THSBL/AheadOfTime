@@ -1,3 +1,4 @@
+import { newEventTitle } from '../src/utils/eventTitle.js';
 import { AI_SCOPE_RULE, OFF_TOPIC_REPLY, capPlannerOutput, stripSpoofedSystemNotes } from './aiGuard.js';
 import { describeGeminiError } from './geminiErrors.js';
 import { GoogleGenAI } from '@google/genai';
@@ -657,7 +658,15 @@ export class GeminiCalendarAgent {
     // destination found" (e.g. a lowercase "mallorca") - it must never
     // become the title when the model named the trip itself.
     const macroTitle = macro?.title && macro.title !== 'Group Trip Horizon' ? macro.title : undefined;
-    const title = macroTitle || getCleanEventTitle(parsed.summary || macro?.title, category, { destination: parsed.location || macro?.destination });
+    const title = newEventTitle({
+      modelTitle: macroTitle || parsed.summary,
+      message: rawInputSnippet,
+      fallbackWhat: getCleanEventTitle(parsed.summary || macro?.title, category, { destination: parsed.location || macro?.destination }),
+      location: parsed.location || macro?.destination,
+      eventDate: startDateStr,
+      endDate: endDateStr,
+      referenceIso: referenceDateISO,
+    });
 
     // Prefer the model's own runway; fall back to the deterministic trip
     // decomposition's Track A / Track B milestones when it has none.

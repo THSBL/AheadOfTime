@@ -1,13 +1,14 @@
 import { CalendarEvent, TMinusMilestone, MilestoneCategory } from '../types.js';
 import { calculateOffsetDate, getCleanEventTitle } from './tminusRules.js';
 import { inferTaskTimingLocally } from './timingAI.js';
+import { titleWhat } from './eventTitle.js';
 
 /**
  * Generates an intelligent, domain-tailored T-Minus milestone plan for any calendar event.
  * Uses deep real-world logistical constraints (booking lead times, artisan crafting, freshness, packing buffers).
  */
 export function deepRefineEventLocally(event: CalendarEvent): TMinusMilestone[] {
-  const title = getCleanEventTitle(event.title, event.category, event.context);
+  const title = titleWhat(getCleanEventTitle(event.title, event.category, event.context));
   const text = `${title} ${event.location || ''} ${JSON.stringify(event.context || {})}`.toLowerCase();
   const eventDate = event.eventDate;
   const eventTime = event.eventTime || '19:00';

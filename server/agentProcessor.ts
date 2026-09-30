@@ -1,3 +1,4 @@
+import { newEventTitle } from '../src/utils/eventTitle.js';
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   CalendarEvent,
@@ -1087,6 +1088,19 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
     ...(existingEvent?.context || {}),
     destination: macroEvent?.destination || existingEvent?.context?.destination,
   });
+  // A new event is named What – When – Where (src/utils/eventTitle.ts):
+  // never the bare category label getCleanEventTitle falls back to.
+  if (!existingEvent) {
+    title = newEventTitle({
+      modelTitle: macroEvent?.title || parsed.event_title || parsed.eventTitle,
+      message: params.message,
+      fallbackWhat: title,
+      location: macroEvent?.destination || parsed.location,
+      eventDate,
+      endDate,
+      referenceIso: params.currentReferenceDate,
+    });
+  }
 
   const focusText = parsed.focus || (structuredPayload
     ? `I created "${title}" (${eventDate}${endDate ? ` to ${endDate}` : ''}) with a full prep checklist.`
@@ -1534,7 +1548,15 @@ export function processWithDeterministicRules(params: {
 
     const calendarEvent: CalendarEvent = {
       id: eventId,
-      title: macro.title,
+      // What – When – Where, like every new event (src/utils/eventTitle.ts).
+      title: newEventTitle({
+        modelTitle: macro.title !== 'Group Trip Horizon' ? macro.title : undefined,
+        message: params.message,
+        location: macro.destination,
+        eventDate: macro.start_date,
+        endDate: macro.end_date,
+        referenceIso: params.refDateISO,
+      }),
       category: 'travel_trip',
       eventDate: macro.start_date,
       endDate: macro.end_date,
@@ -1645,6 +1667,16 @@ export function processWithDeterministicRules(params: {
     context.customNote = [context.customNote, params.message.trim()].filter(Boolean).join('. ');
   }
   title = getCleanEventTitle(title, category, context);
+  if (!params.existingEvent) {
+    title = newEventTitle({
+      message: params.message,
+      fallbackWhat: title,
+      location: context?.destination,
+      eventDate,
+      endDate: naturalRange?.endDate,
+      referenceIso: params.refDateISO,
+    });
+  }
 
   const explicitDecisionKeys = new Set<string>();
   if (params.intakeAnswer) {
