@@ -58,6 +58,8 @@ export function initAnalytics(overrideMeasurementId?: string): boolean {
   window.gtag('config', measurementId, {
     send_page_view: false, // We handle dynamic SPA pageviews explicitly
     anonymize_ip: true,
+    page_location: safePageLocation(),
+    page_referrer: '',
   });
 
   // Inject Google Tag script
@@ -98,7 +100,8 @@ export function trackPageView(pagePath: string, pageTitle?: string) {
 
   if (typeof window !== 'undefined' && window.gtag && activeMeasurementId) {
     window.gtag('event', 'page_view', {
-      page_path: pagePath,
+      page_path: pagePath.split(/[?#]/)[0],
+      page_location: safePageLocation(),
       page_title: pageTitle || document.title,
       send_to: activeMeasurementId,
     });
@@ -116,6 +119,7 @@ export function trackEvent(eventName: string, params: Record<string, any> = {}) 
   if (typeof window !== 'undefined' && window.gtag && activeMeasurementId) {
     window.gtag('event', eventName, {
       ...params,
+      page_location: safePageLocation(),
       timestamp: new Date().toISOString(),
       send_to: activeMeasurementId,
     });
@@ -163,4 +167,18 @@ export function trackAccountAction(action: 'login' | 'logout' | 'switch', accoun
     action_type: action,
     has_account: !!accountId,
   });
+}
+
+/**
+ * The page address without its query string or #fragment. gtag would
+ * otherwise send the full address with every hit, and ours can carry
+ * secrets: the Google access token after sign-in (#access_token=...),
+ * sign-in links and calendar-feed tokens.
+ */
+function safePageLocation(): string {
+  try {
+    return `${window.location.origin}${window.location.pathname}`;
+  } catch {
+    return '';
+  }
 }
