@@ -33,7 +33,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ isAuthenticated,
     }
   }
 
-  const authenticated = isAuthenticated ?? (hasCompletedOnboarding || isConnected || hasDeepLinkEvent);
+  // Back from an email sign-in link: the server has just started the
+  // session, and the dashboard finishes signing in - also on a device that
+  // never went through onboarding (e.g. the link opened on a phone).
+  const isEmailSignInLanding = searchParams.get('signed_in') === 'email';
+
+  const authenticated = isAuthenticated ?? (hasCompletedOnboarding || isConnected || hasDeepLinkEvent || isEmailSignInLanding);
 
   if (!authenticated) {
     const returnTo = encodeURIComponent(location.pathname + location.search + location.hash);

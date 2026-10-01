@@ -3,14 +3,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { GoogleCalendarIntegrationCard } from './GoogleCalendarIntegrationCard';
 import { TelegramIntegrationCard } from './TelegramIntegrationCard';
 import { RecentlyDeletedEventsCard } from './RecentlyDeletedEventsCard';
-import { ArrowLeft, Check } from 'lucide-react';
+import { ArrowLeft, Check, UserRound } from 'lucide-react';
 import { CalendarEvent, OnboardingProfile } from '../types';
 import { getCurrentUser, loadUserEvents } from '../services/accountManager';
 import { useAccountKey } from '../hooks/useAccountKey';
 import { useUserProfile } from '../contexts/UserProfileContext';
 import { AiPlanningCard } from './AiPlanningCard';
 import { DeleteAccountCard } from './DeleteAccountCard';
-import { SettingsGroup } from './SettingsRow';
+import { SettingsGroup, SettingsRow, SettingsPill, rowPrimaryClass } from './SettingsRow';
+import { openSignIn } from './SignInModal';
 import { UpdatesSettings } from './UpdatesSettings';
 import { CalendarHabitsCard } from './CalendarHabitsCard';
 import { CalendarFeedCard } from './CalendarFeedCard';
@@ -125,6 +126,33 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
       <main className="flex-1 max-w-xl mx-auto px-4 py-5 w-full space-y-3">
         {tab === 'connections' && (
           <SettingsGroup>
+            {/* Who you are signed in as, and a way in that is not only Google:
+                Outlook and Apple Calendar users sign in with an email link. */}
+            <SettingsRow
+              icon={<UserRound className="w-4 h-4" />}
+              title="Account"
+              subtitle={
+                currentUser?.email
+                  ? `${currentUser.email}${currentUser.provider === 'email' ? ' (email link)' : currentUser.provider === 'google' ? ' (Google)' : ''}`
+                  : 'Not signed in - use Google or an email link'
+              }
+              right={
+                currentUser?.email ? (
+                  <SettingsPill on>Signed in</SettingsPill>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openSignIn('Use Outlook or Apple Calendar? Get a sign-in link by email. Use Google Calendar? Continue with Google.')}
+                    className={rowPrimaryClass}
+                  >
+                    Sign in
+                  </button>
+                )
+              }
+            />
+            {/* Not on Google: the calendar feed is how tasks reach your
+                calendar, so it comes first; Google stays available below. */}
+            {currentUser?.provider !== 'google' && <CalendarFeedCard key={accountKey} />}
             <GoogleCalendarIntegrationCard
               events={events}
               onSyncComplete={(synced) => {
@@ -132,7 +160,7 @@ export const SettingsCredentialsPage: React.FC<SettingsCredentialsPageProps> = (
                 onSyncComplete?.(synced);
               }}
             />
-            <CalendarFeedCard key={accountKey} />
+            {currentUser?.provider === 'google' && <CalendarFeedCard key={accountKey} />}
             <TelegramIntegrationCard userId={currentUser?.id} />
             <AiPlanningCard />
           </SettingsGroup>

@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, ListChecks, MapPin, ChevronRight, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import { Logo } from './Logo';
+import { openSignIn } from './SignInModal';
 import { getCurrentUser, loadUserEvents, setCurrentUser as setGlobalCurrentUser, AuthUser } from '../services/accountManager';
 import {
   getStoredAccessToken,
@@ -540,6 +541,7 @@ export const RecurringUserLanding: React.FC = () => {
  * state that card shows in Settings.
  */
 const CalendarConnectionFooter: React.FC = () => {
+  const navigate = useNavigate();
   const [accessToken, setAccessToken] = useState<string | null>(() => getStoredAccessToken());
   const [profile, setProfile] = useState<GoogleCalendarProfile | null>(() => {
     try {
@@ -566,6 +568,17 @@ const CalendarConnectionFooter: React.FC = () => {
         // full Google Calendar card in Settings is where that belongs.
       });
   }, [isConnected, profile, accessToken]);
+
+  // Signed in with an email link (Apple Calendar / Outlook): no Google
+  // calendar to sync here - their tasks reach them through the feed.
+  const signedInUser = getCurrentUser();
+  const isEmailUser = signedInUser?.provider === 'email';
+
+  // Not signed in: open the sign-in window (Google or an email link) rather
+  // than going straight to Google - Outlook and Apple users have no Google
+  // account to pick.
+  const handleOpenSignIn = () =>
+    openSignIn('Use Outlook or Apple Calendar? Get a sign-in link by email. Use Google Calendar? Continue with Google.');
 
   const handleSignIn = async () => {
     setIsBusy(true);
@@ -635,10 +648,22 @@ const CalendarConnectionFooter: React.FC = () => {
             Sync
           </button>
         </div>
+      ) : isEmailUser ? (
+        <div className="flex items-center gap-2 text-[11px] sm:text-xs text-white/45">
+          <span className="truncate max-w-[12rem] sm:max-w-xs">Signed in as {signedInUser?.email}</span>
+          <span className="text-white/20">·</span>
+          <button
+            type="button"
+            onClick={() => navigate('/settings/connections#calendar-feed')}
+            className="inline-flex items-center gap-1 text-white/45 hover:text-white/80 transition-colors cursor-pointer"
+          >
+            Calendar feed
+          </button>
+        </div>
       ) : (
         <button
           type="button"
-          onClick={handleSignIn}
+          onClick={signedInUser ? handleSignIn : handleOpenSignIn}
           disabled={isBusy}
           className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs text-white/45 hover:text-white/80 transition-colors disabled:opacity-50 cursor-pointer"
         >

@@ -305,7 +305,7 @@ export const GoogleCalendarIntegrationCard: React.FC<GoogleCalendarIntegrationCa
       <SettingsRow
         icon={calendarIcon}
         title="Google Calendar"
-        subtitle={isConnected ? calendarProfile?.id || calendarProfile?.summary || 'Connected' : 'Scan your agenda and sync plans'}
+        subtitle={isConnected ? calendarProfile?.id || calendarProfile?.summary || 'Connected' : 'Only if you use Google Calendar'}
         open={Boolean(error || successMessage)}
         right={
           isConnected ? (

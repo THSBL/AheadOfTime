@@ -38,7 +38,8 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { PrivacyPage } from './components/PrivacyPage';
 import { FeaturesPage } from './components/FeaturesPage';
 import { HowItWorksPage } from './components/HowItWorksPage';
-import { SignInModal, OPEN_SIGN_IN_EVENT } from './components/SignInModal';
+import { openSignIn } from './components/SignInModal';
+import { SignInHost } from './components/SignInHost';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -709,20 +710,12 @@ function App() {
   }, [events, currentUser?.id, isInitializing]);
 
   // Account switching and clean logout actions
-  // Sign in: Google, or a one-time email link (for Apple Calendar / Outlook users).
-  const [signIn, setSignIn] = useState<{ open: boolean; reason?: string }>({ open: false });
-  useEffect(() => {
-    const onOpen = (e: Event) => setSignIn({ open: true, reason: (e as CustomEvent<{ reason?: string }>).detail?.reason });
-    window.addEventListener(OPEN_SIGN_IN_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_SIGN_IN_EVENT, onOpen);
-  }, []);
+  // Sign in (Google or a one-time email link) is one app-wide window:
+  // SignInHost, opened with openSignIn() from any page.
 
   // Back from the email link: the server already started the session.
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
-    if (sp.get('signin') === 'email') {
-      setSignIn({ open: true });
-    }
     if (sp.get('signed_in') !== 'email') return;
     void checkAppSession().then((email) => {
       if (!email) return;
@@ -745,37 +738,6 @@ function App() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
-
-  const handleSignIn = async () => {
-    try {
-      const res = await requestGoogleCalendarToken(getStoredClientId());
-      if (res?.accessToken) {
-        const profile = await fetchPrimaryCalendarProfile(res.accessToken);
-        if (profile?.id) {
-          const userEmail = profile.id.toLowerCase().trim();
-          sessionStorage.setItem('gcal_profile', JSON.stringify(profile));
-          const user: AuthUser = {
-            id: userEmail,
-            email: userEmail,
-            name: profile.summary || profile.id,
-            timeZone: profile.timeZone,
-            provider: 'google',
-            connectedAt: new Date().toISOString(),
-          };
-          setGlobalCurrentUser(user);
-          setCurrentUser(user);
-          setEvents(loadUserEvents(user.id));
-          setMessages(loadUserMessages(user.id, user.name));
-          trackAccountAction('login', user.id);
-          // setGlobalCurrentUser dispatches aot_account_switched, which
-          // UserProfileContext listens for to refresh onboardingProfile.
-          setCurrentView('dashboard');
-        }
-      }
-    } catch (err: any) {
-      console.error('Sign-in error:', err);
-    }
-  };
 
   const handleSwitchAccount = async () => {
     try {
@@ -2119,9 +2081,9 @@ function App() {
               agendaHorizonMonths={agendaHorizonMonths}
               onAgendaHorizonChange={setAgendaHorizonMonths}
               currentUser={currentUser}
-              onSwitchAccount={() => setSignIn({ open: true, reason: 'Sign in with another account.' })}
+              onSwitchAccount={() => openSignIn('Sign in with another account.')}
               onSignOut={handleSignOut}
-              onSignIn={() => setSignIn({ open: true })}
+              onSignIn={() => openSignIn()}
             />
           </div>
 
@@ -2559,16 +2521,6 @@ function App() {
         }}
       />
 
-      <SignInModal
-        isOpen={signIn.open}
-        reason={signIn.reason}
-        onClose={() => setSignIn({ open: false })}
-        onGoogle={() => {
-          setSignIn({ open: false });
-          void handleSignIn();
-        }}
-      />
-
       {/* Bulk Delete Confirmation Modal */}
       <BulkDeleteModal
         isOpen={isBulkDeleteModalOpen || singleDeleteId !== null}
@@ -2785,6 +2737,7 @@ export default function AppWithRouter() {
             need cookie-consent gating. */}
         <VercelAnalytics />
         <SpeedInsights />
+        <SignInHost />
         <Routes>
           {/* Public / SEO Routes */}
           <Route path="/" element={<LandingRoute />} />

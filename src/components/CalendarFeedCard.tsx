@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarPlus, Copy, Check, RefreshCw } from 'lucide-react';
-import { SettingsRow, SettingsPill } from './SettingsRow';
+import { SettingsRow, SettingsPill, rowPrimaryClass } from './SettingsRow';
 import { aiJsonHeaders } from '../services/aiRequest';
 import { openSignIn } from './SignInModal';
 
@@ -20,6 +20,14 @@ export const CalendarFeedCard: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [needsSignIn, setNeedsSignIn] = useState(false);
+
+  // Linked to directly (summary page, How it works): open and show it.
+  const [linkedHere] = useState(() => typeof window !== 'undefined' && window.location.hash === '#calendar-feed');
+  useEffect(() => {
+    if (!linkedHere) return;
+    const t = window.setTimeout(() => document.getElementById('calendar-feed')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    return () => window.clearTimeout(t);
+  }, [linkedHere]);
 
   useEffect(() => {
     fetch('/api/auth/calendar-feed', { headers: aiJsonHeaders(), cache: 'no-store' })
@@ -62,6 +70,8 @@ export const CalendarFeedCard: React.FC = () => {
     }
   };
 
+  const signIn = () => openSignIn('Sign in to turn on the calendar feed. No Google account? Use the email link below.');
+
   const webcal = state?.url ? state.url.replace(/^https?:\/\//, 'webcal://') : null;
   const enabled = Boolean(state?.enabled);
 
@@ -71,8 +81,16 @@ export const CalendarFeedCard: React.FC = () => {
       icon={<CalendarPlus className="w-4 h-4" />}
       title="Calendar feed"
       subtitle="Your tasks in Apple, Outlook or any calendar"
-      right={<SettingsPill on={enabled}>{enabled ? 'On' : 'Off'}</SettingsPill>}
-      open={false}
+      right={
+        needsSignIn ? (
+          <button type="button" onClick={signIn} className={rowPrimaryClass}>
+            Sign in
+          </button>
+        ) : (
+          <SettingsPill on={enabled}>{enabled ? 'On' : 'Off'}</SettingsPill>
+        )
+      }
+      open={linkedHere || needsSignIn}
     >
       <p>
         Subscribe once and your tasks appear in your own calendar. Each task has a <b>✓ Mark done</b> link: tap it and the task is done here
@@ -81,10 +99,10 @@ export const CalendarFeedCard: React.FC = () => {
       {needsSignIn && (
         <button
           type="button"
-          onClick={() => openSignIn('Sign in to turn on the calendar feed. No Google account? Use the email link.')}
+          onClick={signIn}
           className="px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
         >
-          Sign in to use the calendar feed
+          Sign in with Google or an email link
         </button>
       )}
       {error && <p className="text-rose-600 font-semibold">{error}</p>}
