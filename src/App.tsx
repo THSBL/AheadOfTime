@@ -710,6 +710,16 @@ function App() {
   }, [events, currentUser?.id, isInitializing]);
 
   // Account switching and clean logout actions
+  // Scanning the agenda reads Google Calendar, so it is only offered to
+  // people on Google: hidden for email-link accounts and for anyone who said
+  // in onboarding they use Outlook, Apple Calendar or something else -
+  // unless Google Calendar is connected on this device after all.
+  const usesOtherCalendar =
+    currentUser?.provider === 'email' ||
+    Boolean(onboardingProfile?.primaryCalendar && onboardingProfile.primaryCalendar !== 'google');
+  const canScanAgenda = !usesOtherCalendar || Boolean(getStoredAccessToken() && !isTokenExpired());
+  const openScanAgenda = canScanAgenda ? () => setIsScanAgendaModalOpen(true) : undefined;
+
   // Sign in (Google or a one-time email link) is one app-wide window:
   // SignInHost, opened with openSignIn() from any page.
 
@@ -2067,7 +2077,7 @@ function App() {
               onReferenceDateChange={(newDate) => setCurrentReferenceDate(newDate)}
               onResetData={handleResetData}
               onOpenNewEventModal={handleOpenNewEventFlow}
-              onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
+              onOpenScanAgenda={openScanAgenda}
               onOpenGoogleCalendarSync={() => navigate('/settings/credentials')}
               onOpenOnboarding={() => navigate('/settings/profile')}
               isGoogleConnected={Boolean(getStoredAccessToken() && !isTokenExpired())}
@@ -2246,7 +2256,7 @@ function App() {
                   }}
                   onToggleMilestoneStatus={handleToggleMilestoneStatus}
                   onOpenNewEventModal={handleOpenNewEventFlow}
-                  onOpenScanAgenda={() => setIsScanAgendaModalOpen(true)}
+                  onOpenScanAgenda={openScanAgenda}
                   onUpdateMilestone={handleUpdateMilestone}
                 />
               ) : activeTab === 'tasks' ? (

@@ -14,7 +14,8 @@ import {
   MapPin,
   Loader2,
   CheckCircle2,
-  PawPrint
+  PawPrint,
+  Mail
 } from 'lucide-react';
 import { OnboardingProfile, AgeRange, FamilyStatus, CalendarType, FamilyStructure, CalendarTypeScope } from '../types';
 import { Logo } from './Logo';
@@ -73,6 +74,22 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
     trackEvent('onboarding_start');
   }, []);
 
+  const usesOtherCalendar = Boolean(primaryCalendar && primaryCalendar !== 'google');
+
+  // Outlook / Apple / other: finish onboarding without the agenda scan and
+  // open the sign-in window (email link) - the feed needs an account.
+  const startWithEmail = () => {
+    if (!consentChecked) {
+      setShowConsentError(true);
+      return;
+    }
+    void handleSubmit('go_dashboard');
+    window.setTimeout(
+      () => openSignIn('Enter your email for a sign-in link. Then turn on the calendar feed in Settings → Connections and subscribe to it in your calendar.'),
+      400,
+    );
+  };
+
   const handleSubmit = async (action: 'connect_calendar' | 'go_dashboard') => {
     if (!consentChecked) {
       setShowConsentError(true);
@@ -110,12 +127,14 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
         sessionStorage.setItem('aot_open_scan_modal', 'true');
         localStorage.setItem('aot_calendar_connected', 'true');
         trackEvent('onboarding_complete', { action, calendar_connected: true });
+        onComplete(profile, action);
       } catch (err) {
+        // Google window closed or failed: no agenda to scan, go to the dashboard.
         console.warn('OAuth popup closed or error:', err);
         trackEvent('onboarding_complete', { action, calendar_connected: false });
+        onComplete(profile, 'go_dashboard');
       } finally {
         setIsConnecting(false);
-        onComplete(profile, action);
       }
     } else {
       trackEvent('onboarding_complete', { action, calendar_connected: false });
@@ -397,28 +416,44 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
             </label>
           </div>
 
-          {/* Actions */}
+          {/* Actions - follow the answer to "Which calendar do you use?":
+              scanning the agenda reads Google Calendar, so Outlook, Apple
+              and other calendars skip it and sign in with an email link to
+              get the calendar feed instead. */}
           <div className="space-y-3 pt-2">
-            <button
-              type="button"
-              id="btn-save-and-connect-calendar"
-              disabled={isConnecting}
-              onClick={() => handleSubmit('connect_calendar')}
-              className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
-                  <span>Connecting Google Account &amp; Loading Agenda...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 text-sky-300" />
-                  <span>Connect Calendar &amp; Import Agenda</span>
-                  <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </button>
+            {usesOtherCalendar ? (
+              <button
+                type="button"
+                id="btn-save-and-sign-in-email"
+                onClick={startWithEmail}
+                className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
+              >
+                <Mail className="w-4 h-4 text-sky-300" />
+                <span>Sign in with email &amp; get the calendar feed</span>
+                <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                id="btn-save-and-connect-calendar"
+                disabled={isConnecting}
+                onClick={() => handleSubmit('connect_calendar')}
+                className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
+                    <span>Connecting Google Calendar &amp; loading your agenda...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-sky-300" />
+                    <span>Connect Google Calendar &amp; import agenda</span>
+                    <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            )}
 
             <div className="text-center">
               <button
@@ -428,17 +463,23 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               >
                 Or explore empty agenda overview first &rarr;
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSubmit('go_dashboard');
-                  // The sign-in window lives in the app; open it once the dashboard is up.
-                  window.setTimeout(() => openSignIn('No Google account? Get a sign-in link by email, then subscribe to your tasks in Apple Calendar or Outlook.'), 400);
-                }}
-                className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
-              >
-                Use Apple Calendar or Outlook? Sign in with email &rarr;
-              </button>
+              {usesOtherCalendar ? (
+                <button
+                  type="button"
+                  onClick={() => handleSubmit('connect_calendar')}
+                  className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
+                >
+                  Use Google Calendar after all? Connect it &rarr;
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startWithEmail}
+                  className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
+                >
+                  Use Apple Calendar or Outlook? Sign in with email &rarr;
+                </button>
+              )}
             </div>
           </div>
 

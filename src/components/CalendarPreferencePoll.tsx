@@ -75,6 +75,9 @@ export const CalendarPreferencePoll: React.FC<CalendarPreferencePollProps> = ({
   const save = async (calendar: CalendarChoice, extras: { otherText?: string; notifyEmail?: string } = {}) => {
     setIsSaving(true);
     setError(null);
+    // The page using the poll (e.g. onboarding picking the right next step)
+    // gets the answer at once, even if storing it for research fails.
+    onAnswered?.(calendar);
     try {
       const token = getStoredAccessToken();
       const res = await fetch('/api/feedback/calendar-poll', {
@@ -92,7 +95,6 @@ export const CalendarPreferencePoll: React.FC<CalendarPreferencePollProps> = ({
         // Only affects showing "thanks" on a later visit.
       }
       trackEvent('calendar_poll_answer', { source, calendar, left_email: Boolean(extras.notifyEmail) });
-      onAnswered?.(calendar);
     } catch (err: any) {
       setError(err?.message || 'Could not save your answer.');
     } finally {
@@ -104,10 +106,15 @@ export const CalendarPreferencePoll: React.FC<CalendarPreferencePollProps> = ({
     if (isSaving) return;
     setAnswer(null);
     setEmailSaved(false);
-    // Google: nothing more to ask. Others: one optional follow-up first.
-    if (calendar === 'google') {
+    // The choice counts straight away for the page using the poll (onboarding
+    // picks the next step from it), even before the optional follow-up is sent.
+    onAnswered?.(calendar);
+    // Google - or any calendar when there is no follow-up to show (no
+    // "which one?" for Other, no notify email): save at once. Otherwise one
+    // optional follow-up first.
+    if (calendar === 'google' || (calendar !== 'other' && !offerNotifyEmail)) {
       setPending(null);
-      save('google');
+      save(calendar);
     } else {
       setPending(calendar);
     }

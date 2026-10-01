@@ -54,7 +54,8 @@ interface MyWeekAheadProps {
   onSelectEvent: (eventId: string) => void;
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
   onOpenNewEventModal: () => void;
-  onOpenScanAgenda: () => void;
+  /** Absent for people not on Google Calendar: scanning reads Google. */
+  onOpenScanAgenda?: () => void;
   onUpdateMilestone?: (eventId: string, updatedMilestone: TMinusMilestone) => void;
 }
 
@@ -537,13 +538,15 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>New Event</span>
           </button>
-          <button
-            onClick={onOpenScanAgenda}
-            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
-          >
-            <Search className="w-4 h-4 text-slate-500" />
-            <span>Scan your agenda</span>
-          </button>
+          {onOpenScanAgenda && (
+            <button
+              onClick={onOpenScanAgenda}
+              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
+            >
+              <Search className="w-4 h-4 text-slate-500" />
+              <span>Scan your agenda</span>
+            </button>
+          )}
         </div>
       </div>
     );

@@ -214,7 +214,7 @@ export const Header: React.FC<HeaderProps> = ({
                             <span className="text-sky-950 font-bold">{monthYear(agendaScan.until)}</span>
                           </>
                         ) : (
-                          <span>Scan your agenda</span>
+                          <span>{onOpenScanAgenda ? 'Scan your agenda' : 'Your agenda'}</span>
                         )}
                       </span>
 
