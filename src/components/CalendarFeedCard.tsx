@@ -97,13 +97,12 @@ export const CalendarFeedCard: React.FC = () => {
         too, no sign-in needed. Done in the app or Telegram? Your calendar shows it at its next refresh (usually within an hour).
       </p>
       {needsSignIn && (
-        <button
-          type="button"
-          onClick={signIn}
-          className="px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+        <a
+          href="/setup/calendar"
+          className="inline-block px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold"
         >
-          Sign in with Google or an email link
-        </button>
+          Set it up in 3 steps (sign in with email)
+        </a>
       )}
       {error && <p className="text-rose-600 font-semibold">{error}</p>}
       {state && !enabled && (

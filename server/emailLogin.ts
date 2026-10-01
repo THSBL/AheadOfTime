@@ -97,6 +97,11 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 }
 
+/** The one place besides the dashboard an email link may return to. */
+const CALENDAR_SETUP = 'calendar-setup';
+/** Which calendar's steps the setup page shows - one of a fixed few, else none. */
+const setupCalendar = (v: unknown): string => (v === 'outlook' || v === 'apple' || v === 'other' ? v : '');
+
 function page(inner: string, autoSubmit = false): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Sign in · Ahead Of Time</title>
@@ -133,7 +138,10 @@ export async function handleEmailLink(req: any, res: any) {
     try {
       const created = await createLoginLink(email, clientIp(req));
       if (created.error) return res.status(429).json({ ok: false, error: 'Too many sign-in emails. Wait a few minutes and try again.' });
-      const link = `${appUrlFor(req)}/api/auth/email-link?t=${created.token}`;
+      // Only one fixed place to return to (never a free URL): the calendar
+      // setup page for Outlook / Apple users, otherwise the dashboard.
+      const next = body.next === CALENDAR_SETUP ? `&next=${CALENDAR_SETUP}${setupCalendar(body.cal) ? `&cal=${setupCalendar(body.cal)}` : ''}` : '';
+      const link = `${appUrlFor(req)}/api/auth/email-link?t=${created.token}${next}`;
       const sent = await sendEmail({ to: email, subject: 'Your sign-in link for Ahead Of Time', ...emailBody(link) });
       if (!sent.ok) {
         console.warn('Email sign-in: sending failed:', sent.error);
@@ -149,12 +157,21 @@ export async function handleEmailLink(req: any, res: any) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   const token = String((req.method === 'POST' ? body.t : req.query?.t) || '');
 
-  // 2. The link from the email: sign in on a button (submitted by the browser itself).
+  const next = (req.method === 'POST' ? body.next : req.query?.next) === CALENDAR_SETUP ? CALENDAR_SETUP : '';
+  const cal = next ? setupCalendar(req.method === 'POST' ? body.cal : req.query?.cal) : '';
+
+  // 2. The link from the email: a page with a Sign in button. It waits for a
+  // tap on purpose - Outlook's link scanner (Safe Links) opens links in
+  // emails before the person does, and must not use up the one-time link.
   if (req.method === 'GET') {
     if (!token) return res.status(400).send(page(`<h1>Link incomplete</h1><p>Open the link from your email again, or ask for a new one.</p>`));
     return res
       .status(200)
-      .send(page(`<h1>Signing you in…</h1><p>One moment.</p><form method="post" id="f"><input type="hidden" name="t" value="${escapeHtml(token)}"><button>Sign in</button></form>`, true));
+      .send(
+        page(
+          `<h1>Sign in to Ahead Of Time</h1><p>${next ? 'Tap to sign in and finish connecting your calendar.' : 'Tap to sign in.'}</p><form method="post" id="f"><input type="hidden" name="t" value="${escapeHtml(token)}">${next ? `<input type="hidden" name="next" value="${CALENDAR_SETUP}">` : ''}${cal ? `<input type="hidden" name="cal" value="${cal}">` : ''}<button>Sign in</button></form>`,
+        ),
+      );
   }
 
   // 3. Use the link and start the session.
@@ -171,7 +188,7 @@ export async function handleEmailLink(req: any, res: any) {
     const session = await createSession(userId, email, req.headers?.['user-agent']);
     res.setHeader('Set-Cookie', buildSessionCookie(session));
     res.statusCode = 303;
-    res.setHeader('Location', `${appUrl}/dashboard?signed_in=email`);
+    res.setHeader('Location', next ? `${appUrl}/setup/calendar?signed_in=email${cal ? `&cal=${cal}` : ''}` : `${appUrl}/dashboard?signed_in=email`);
     return res.end();
   }
 

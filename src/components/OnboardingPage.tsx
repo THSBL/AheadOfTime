@@ -1,4 +1,3 @@
-import { openSignIn } from './SignInModal';
 import { getCachedAiPlanningEnabled, saveAiPlanningEnabled } from '../services/aiSettings';
 import React, { useState, useEffect } from 'react';
 import { CalendarPreferencePoll } from './CalendarPreferencePoll';
@@ -26,7 +25,7 @@ import { usePageMeta } from '../utils/usePageMeta';
 
 interface OnboardingPageProps {
   initialProfile?: Partial<OnboardingProfile>;
-  onComplete: (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => void;
+  onComplete: (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard' | 'calendar_setup') => void;
   onOpenPrivacyPolicy: () => void;
 }
 
@@ -77,20 +76,10 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   const usesOtherCalendar = Boolean(primaryCalendar && primaryCalendar !== 'google');
 
   // Outlook / Apple / other: finish onboarding without the agenda scan and
-  // open the sign-in window (email link) - the feed needs an account.
-  const startWithEmail = () => {
-    if (!consentChecked) {
-      setShowConsentError(true);
-      return;
-    }
-    void handleSubmit('go_dashboard');
-    window.setTimeout(
-      () => openSignIn('Enter your email for a sign-in link. Then turn on the calendar feed in Settings → Connections and subscribe to it in your calendar.'),
-      400,
-    );
-  };
+  // go to the three-step calendar setup (sign in, copy link, paste it).
+  const startWithEmail = () => void handleSubmit('calendar_setup');
 
-  const handleSubmit = async (action: 'connect_calendar' | 'go_dashboard') => {
+  const handleSubmit = async (action: 'connect_calendar' | 'go_dashboard' | 'calendar_setup') => {
     if (!consentChecked) {
       setShowConsentError(true);
       return;
@@ -349,7 +338,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               />
               {primaryCalendar && primaryCalendar !== 'google' && (
                 <p className="text-[11px] text-slate-500 leading-normal">
-                  Good to go: after setup, turn on the calendar feed in Settings → Connections and subscribe to it in your calendar. Your tasks show up there, and you can tick them off right from the calendar.
+                  Good to go: next you sign in with your email, copy your private calendar link and paste it into your calendar. We walk you through it. Your tasks then show up there, and you can tick them off right from the calendar.
                 </p>
               )}
             </div>
@@ -429,7 +418,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                 className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
               >
                 <Mail className="w-4 h-4 text-sky-300" />
-                <span>Sign in with email &amp; get the calendar feed</span>
+                <span>Next: connect {primaryCalendar === 'outlook' ? 'Outlook' : primaryCalendar === 'apple' ? 'Apple Calendar' : 'your calendar'} (3 steps)</span>
                 <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
               </button>
             ) : (
@@ -477,7 +466,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                   onClick={startWithEmail}
                   className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
                 >
-                  Use Apple Calendar or Outlook? Sign in with email &rarr;
+                  Use Apple Calendar or Outlook? Set it up here &rarr;
                 </button>
               )}
             </div>

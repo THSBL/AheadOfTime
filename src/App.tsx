@@ -40,6 +40,7 @@ import { FeaturesPage } from './components/FeaturesPage';
 import { HowItWorksPage } from './components/HowItWorksPage';
 import { openSignIn } from './components/SignInModal';
 import { SignInHost } from './components/SignInHost';
+import { CalendarSetupPage } from './components/CalendarSetupPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -826,7 +827,7 @@ function App() {
   };
 
   // 3. Onboarding & Connection Completion Handlers
-  const handleCompleteOnboarding = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => {
+  const handleCompleteOnboarding = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard' | 'calendar_setup') => {
     try {
       localStorage.setItem('aot_onboarding_completed', 'true');
       localStorage.setItem('aot_calendar_connected', 'true');
@@ -2712,7 +2713,7 @@ function OnboardingRoute() {
   const navigate = useNavigate();
   const { saveProfile } = useUserProfile();
 
-  const handleComplete = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard') => {
+  const handleComplete = (profile: OnboardingProfile, action: 'connect_calendar' | 'go_dashboard' | 'calendar_setup') => {
     try {
       localStorage.setItem('onboarding_profile', JSON.stringify(profile));
       localStorage.setItem('aot_onboarding_completed', 'true');
@@ -2725,6 +2726,11 @@ function OnboardingRoute() {
       console.warn('Error saving onboarding profile', e);
     }
     saveProfile(profile);
+    if (action === 'calendar_setup') {
+      // Outlook / Apple / other: the three-step calendar setup page.
+      navigate(`/setup/calendar${profile.primaryCalendar ? `?cal=${profile.primaryCalendar}` : ''}`);
+      return;
+    }
     navigate(action === 'connect_calendar' ? '/dashboard?scan=true' : '/dashboard');
   };
 
@@ -2766,6 +2772,7 @@ export default function AppWithRouter() {
                 header's own logo/wordmark has somewhere real to link back
                 to instead of just toggling app state in place. */}
             <Route path="/summary" element={<AccountScopedLanding />} />
+            <Route path="/setup/calendar" element={<CalendarSetupPage />} />
             <Route path="/dashboard" element={<App />} />
             <Route path="/events" element={<App />} />
             <Route path="/events/new" element={<App />} />
