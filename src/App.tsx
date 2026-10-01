@@ -2,7 +2,7 @@ import { isPlanPushed } from './utils/pushStatus';
 import { celebrateTask } from './utils/celebrate';
 import { isEventOver } from './utils/readiness';
 import { TimelineCalendar, type CalendarSpan } from './components/TimelineCalendar';
-import { eventTouchesRange, isComingUp } from './utils/calendarView';
+import { eventTouchesRange } from './utils/calendarView';
 import { readAgendaHorizon, saveAgendaHorizon } from './services/agendaScanRecord';
 import { completeTripDuplicates } from './utils/tripDuplicates';
 import { refreshAiPlanningEnabled } from './services/aiSettings';
@@ -421,8 +421,9 @@ function App() {
     [sortedEvents, currentReferenceDate]
   );
 
-  // Active Events: in Calendar view full cards for what's in the period on screen; in
-  // List view the next 30 days first, the rest folded under "Later".
+  // Active Events: in Calendar view the plans in the month/week on screen
+  // (the rest counted); in List view always every plan - there's no month on
+  // screen there to say why some would be missing.
   const sidebarPartition = useMemo(() => {
     if (activeTab !== 'tasks') return null;
     const today = new Date(currentReferenceDate).toISOString().slice(0, 10);
@@ -434,11 +435,7 @@ function App() {
         hiddenNote: `outside this ${calendarSpan}`,
       };
     }
-    return {
-      ids: new Set(sortedEvents.filter((e) => isComingUp(e, today)).map((e) => e.id)),
-      mode: 'fold' as const,
-      hiddenNote: 'after 30 days',
-    };
+    return null;
   }, [activeTab, isCalendarShown, calendarRange, calendarSpan, sortedEvents, currentReferenceDate]);
   const [focusMode, setFocusMode] = useState<FocusMode>('welcome');
   const [isWizardInputFocused, setIsWizardInputFocused] = useState(false);
