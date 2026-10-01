@@ -203,31 +203,49 @@ export const RecurringUserLanding: React.FC = () => {
       const slope = y1 - y0 > 1 ? (X(last.left) - X(first.left)) / (y1 - y0) : 0; // dx per dy (negative: widens downward)
       const GAP = 28;
       const lineX = (y: number) => Math.max(2, X(first.left) - GAP + slope * (y - y0));
-      // The rectangle's straight side runs to just below the badge, then
-      // flares out (one smooth S-bend) onto the parallel line, which it
-      // reaches at the top of the first stripe and follows to the bottom.
-      const meetY = Math.max(r + 40, first.top - p.top);
-      const shoulderY = Math.max(r + 8, Math.min(b.bottom - p.top - 12, meetY - 40));
+      // The rectangle's straight side runs partway down the badge, then a
+      // straight diagonal carries it out onto the parallel line (met at the
+      // top of the first stripe), which it follows to the bottom. Each
+      // corner between those three straight runs is gently rounded so they
+      // flow into each other.
+      const meetY = Math.max(r + 60, first.top - p.top + 6);
+      const shoulderY = Math.max(r + 8, Math.min(b.top - p.top + b.height * 0.55, meetY - 50));
       const meetX = Math.min(n, lineX(meetY));
       const bottomY = H - r;
       const endX = lineX(bottomY);
       const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
-      const dy = meetY - shoulderY;
-      const c1 = { x: n, y: shoulderY + dy * 0.5 };
-      const c2 = { x: meetX - slope * dy * 0.5, y: meetY - dy * 0.5 };
-      const R = (q: { x: number; y: number }) => pt(FW - q.x, q.y);
+      type P = { x: number; y: number };
+      // Left side, top -> bottom, as straight runs (rounded at the joints).
+      const side: P[] = [{ x: n, y: r }, { x: n, y: shoulderY }, { x: meetX, y: meetY }, { x: endX, y: bottomY }];
+      const toward = (from: P, to: P, dist: number): P => {
+        const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+        const t = Math.min(dist, len / 2) / len;
+        return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+      };
+      const ROUND = 36;
+      // The same runs mirrored for the right side, and reversed for going up.
+      const rightDown: string[] = [];
+      for (let i = 1; i < side.length - 1; i++) {
+        const a0 = toward(side[i], side[i - 1], ROUND);
+        const a1 = toward(side[i], side[i + 1], ROUND);
+        rightDown.push(`L ${pt(FW - a0.x, a0.y)}`, `Q ${pt(FW - side[i].x, side[i].y)} ${pt(FW - a1.x, a1.y)}`);
+      }
+      rightDown.push(`L ${pt(FW - endX, bottomY)}`);
+      const leftUp: string[] = [];
+      for (let i = side.length - 2; i >= 1; i--) {
+        const a1 = toward(side[i], side[i + 1], ROUND);
+        const a0 = toward(side[i], side[i - 1], ROUND);
+        leftUp.push(`L ${pt(a1.x, a1.y)}`, `Q ${pt(side[i].x, side[i].y)} ${pt(a0.x, a0.y)}`);
+      }
       const d = [
         `M ${pt(n + r, 0)}`,
         `L ${pt(FW - n - r, 0)}`,
         `Q ${pt(FW - n, 0)} ${pt(FW - n, r)}`,
-        `L ${pt(FW - n, shoulderY)}`,
-        `C ${R(c1)} ${R(c2)} ${pt(FW - meetX, meetY)}`,
-        `L ${pt(FW - endX, bottomY)}`,
+        ...rightDown,
         `Q ${pt(FW - endX, H)} ${pt(FW - endX - r, H)}`,
         `L ${pt(endX + r, H)}`,
         `Q ${pt(endX, H)} ${pt(endX, bottomY)}`,
-        `L ${pt(meetX, meetY)}`,
-        `C ${pt(c2.x, c2.y)} ${pt(c1.x, c1.y)} ${pt(n, shoulderY)}`,
+        ...leftUp,
         `L ${pt(n, r)}`,
         `Q ${pt(n, 0)} ${pt(n + r, 0)}`,
         'Z',
