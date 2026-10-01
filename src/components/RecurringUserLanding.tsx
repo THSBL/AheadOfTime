@@ -170,7 +170,7 @@ export const RecurringUserLanding: React.FC = () => {
   const panelRef = useRef<HTMLDivElement>(null);
   const badgeRef = useRef<HTMLImageElement>(null);
   const navRef = useRef<HTMLElement>(null);
-  const [panelShape, setPanelShape] = useState<{ width: number; height: number; d: string } | null>(null);
+  const [panelShape, setPanelShape] = useState<{ width: number; height: number; d: string; margin: number } | null>(null);
   useLayoutEffect(() => {
     const panel = panelRef.current;
     const badge = badgeRef.current;
@@ -183,40 +183,54 @@ export const RecurringUserLanding: React.FC = () => {
       if (p.width === 0 || p.height === 0 || stripes.length === 0) return;
       const W = p.width;
       const H = p.height;
-      const cx = W / 2;
-      const gap = 22; // panel edge outside each stripe
-      const neckHalf = Math.min(W / 2 - 4, b.width / 2 + 22);
+      // The backdrop may reach past the stripe column so it can flare wider
+      // than the widest stripe - as far as the screen leaves room for.
+      const M = Math.max(0, Math.min(64, (window.innerWidth - W) / 2 - 6));
+      const FW = W + 2 * M; // drawing frame width
+      const cx = FW / 2;
+      const X = (clientX: number) => clientX - p.left + M; // page x -> frame x
+      const neckHalf = Math.min(FW / 2 - 4, b.width / 2 + 22);
       const n = cx - neckHalf; // neck's left edge
-      const r = 22;
-      // One straight side along the stripes' outer (bottom-left) corners,
-      // pushed out just enough that no stripe pokes through it.
-      const corners = stripes.map((s0) => ({ x: s0.left - p.left - gap, y: s0.bottom - p.top }));
-      const first = corners[0];
-      const last = corners[corners.length - 1];
-      const k = last.y !== first.y ? (last.x - first.x) / (last.y - first.y) : 0; // x per y (negative: widening)
-      const lineX = (y: number, shift: number) => first.x + shift + k * (y - first.y);
-      const shift = Math.min(0, ...corners.map((c) => c.x - lineX(c.y, 0)));
-      const bottomX = Math.max(2, lineX(H, shift));
-      // Where the side meets the neck; never above the badge's middle.
-      const meetY = k < 0 ? first.y + (n - (first.x + shift)) / k : first.y;
-      const shoulderY = Math.max(b.top - p.top + b.height * 0.5, Math.min(meetY, H - r));
+      const r = 24;
+      // Straight neck walls down to the bottom of the badge, then one smooth
+      // curve that stays outside every stripe with growing room, ending
+      // well wide of the widest one.
+      const shoulderY = Math.min(H - r - 1, b.bottom - p.top);
+      const via = stripes.map((s0, i) => ({ x: X(s0.left) - (34 + 6 * i), y: s0.top - p.top + s0.height * 0.35 }));
+      const last = stripes[stripes.length - 1];
+      const end = { x: Math.max(2, X(last.left) - 52), y: H - r };
+      const pts = [{ x: n, y: shoulderY }, ...via.filter((q) => q.y > shoulderY + 8), end];
+      for (let i = 1; i < pts.length; i++) pts[i].x = Math.max(2, Math.min(pts[i].x, pts[i - 1].x - 2));
       const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
-      const m = (x: number) => W - x;
+      // Catmull-Rom through the points, as cubic Beziers (left side, top->bottom).
+      const curve = (list: { x: number; y: number }[]) =>
+        list.slice(1).map((p2, i) => {
+          const p0 = list[Math.max(0, i - 1)];
+          const p1 = list[i];
+          const p3 = list[Math.min(list.length - 1, i + 2)];
+          const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+          const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+          return `C ${pt(c1.x, c1.y)} ${pt(c2.x, c2.y)} ${pt(p2.x, p2.y)}`;
+        });
+      const mirror = (q: { x: number; y: number }) => ({ x: FW - q.x, y: q.y });
+      const rightDown = curve(pts.map(mirror));
+      const leftUp = curve([...pts].reverse());
       const d = [
         `M ${pt(n + r, 0)}`,
-        `L ${pt(m(n) - r, 0)}`,
-        `Q ${pt(m(n), 0)} ${pt(m(n), r)}`,
-        `L ${pt(m(n), shoulderY)}`,
-        `L ${pt(m(bottomX), H - r)}`,
-        `Q ${pt(m(bottomX), H)} ${pt(m(bottomX) - r, H)}`,
-        `L ${pt(bottomX + r, H)}`,
-        `Q ${pt(bottomX, H)} ${pt(bottomX, H - r)}`,
-        `L ${pt(n, shoulderY)}`,
+        `L ${pt(FW - n - r, 0)}`,
+        `Q ${pt(FW - n, 0)} ${pt(FW - n, r)}`,
+        `L ${pt(FW - n, shoulderY)}`,
+        ...rightDown,
+        `Q ${pt(FW - end.x, H)} ${pt(FW - end.x - r, H)}`,
+        `L ${pt(end.x + r, H)}`,
+        `Q ${pt(end.x, H)} ${pt(end.x, H - r)}`,
+        ...leftUp,
         `L ${pt(n, r)}`,
         `Q ${pt(n, 0)} ${pt(n + r, 0)}`,
         'Z',
       ].join(' ');
-      setPanelShape({ width: W, height: H, d });
+      setPanelShape({ width: FW, height: H, d, margin: M });
+      return;
     };
     measure();
     // The stripes slide/scale in on first load; measure again once settled.
@@ -343,11 +357,14 @@ export const RecurringUserLanding: React.FC = () => {
             correct without needing to know that height up front. */}
         <div ref={panelRef} className="relative mt-6 w-full max-w-xl">
           <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
+            className="absolute top-0 h-full pointer-events-none"
             viewBox={panelShape ? `0 0 ${panelShape.width} ${panelShape.height}` : '0 0 100 100'}
             preserveAspectRatio="none"
             aria-hidden="true"
             style={{
+              // Wider than the stripe column by panelShape.margin on each side.
+              left: -(panelShape?.margin ?? 0),
+              width: `calc(100% + ${2 * (panelShape?.margin ?? 0)}px)`,
               // A 70px-offset shadow layer used to live here to make the
               // flare's diagonal shoulders "trail" a shadow further down
               // the page - in practice it did the opposite of "follow the
