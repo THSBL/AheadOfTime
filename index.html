@@ -11,15 +11,24 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://aheadoftime.app/" />
     <meta property="og:site_name" content="Ahead Of Time" />
-    <!-- Stopgap: reuses the existing wide logo banner (1281x239) so link
-         shares aren't blank/broken - summary_large_image really wants a
-         ~1.91:1 image (e.g. 1200x630), so a purpose-made social card is a
-         good follow-up rather than this banner crop. -->
-    <meta property="og:image" content="https://aheadoftime.app/assets/AheadOfTime_Large-logo-tag.png" />
+    <!-- Favicon set: Google Search shows a square icon that is a multiple of
+         48px, so link one explicitly (it ignores a missing tag and shows a
+         blank globe). New filenames bust link-preview and favicon caches. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icon-48.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icon-96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#1a2841" />
+    <meta property="og:image" content="https://aheadoftime.app/assets/aheadoftime-social-card-v2.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Ahead Of Time - Assistant for busy calendars" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Ahead Of Time - The assistant for busy calendars" />
     <meta name="twitter:description" content="Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does. Less scrambling. More headspace. Time to actually enjoy it." />
-    <meta name="twitter:image" content="https://aheadoftime.app/assets/AheadOfTime_Large-logo-tag.png" />
+    <meta name="twitter:image" content="https://aheadoftime.app/assets/aheadoftime-social-card-v2.png" />
     <!-- Structured data for search engines and AI answer engines (GEO) -
          no JSON-LD existed anywhere before this. SoftwareApplication
          describes the product itself (free to start, web-based); WebSite
@@ -33,6 +42,7 @@
         "description": "Calendars tell you when an event starts. Ahead Of Time makes sure you are ready when it does. Describe an event or trip in plain language and it reverse-engineers a countdown of prep milestones, in Google Calendar, Apple Calendar or Outlook.",
         "applicationCategory": "ProductivityApplication",
         "operatingSystem": "Web",
+        "image": "https://aheadoftime.app/icon-512.png",
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -46,6 +56,15 @@
         "@type": "WebSite",
         "name": "Ahead Of Time",
         "url": "https://aheadoftime.app/"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Ahead Of Time",
+        "url": "https://aheadoftime.app/",
+        "logo": "https://aheadoftime.app/icon-512.png"
       }
     </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
