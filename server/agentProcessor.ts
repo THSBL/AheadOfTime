@@ -1,4 +1,4 @@
-import { detectRename, isGenericTitle, newEventTitle } from '../src/utils/eventTitle.js';
+import { detectRename, isGenericTitle, newEventTitle, withoutTaskTalk } from '../src/utils/eventTitle.js';
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   CalendarEvent,
@@ -1114,7 +1114,7 @@ ADDITION: <1-2 questions, clarification or proposed tailored options>`;
   const renamedTo = existingEvent ? detectRename(params.message) : null;
   if (renamedTo) {
     title = renamedTo;
-  } else if (existingEvent && isGenericTitle(existingEvent.title)) {
+  } else if (existingEvent && (isGenericTitle(existingEvent.title) || withoutTaskTalk(existingEvent.title) !== existingEvent.title.trim())) {
     title = newEventTitle({
       modelTitle: existingEvent.title,
       message: existingEvent.rawInputSnippet || params.message,
@@ -1717,7 +1717,7 @@ export function processWithDeterministicRules(params: {
     // label is rebuilt; otherwise the title stays.
     const renamedTo = detectRename(params.message);
     if (renamedTo) title = renamedTo;
-    else if (isGenericTitle(params.existingEvent.title)) {
+    else if (isGenericTitle(params.existingEvent.title) || withoutTaskTalk(params.existingEvent.title) !== params.existingEvent.title.trim()) {
       title = newEventTitle({
         modelTitle: params.existingEvent.title,
         message: params.existingEvent.rawInputSnippet || params.message,

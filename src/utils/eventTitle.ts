@@ -1,13 +1,31 @@
 /**
- * New-event titles follow one method: Where – What – When. The place only
- * when known; the What short and in the user's own words.
+ * New-event titles follow one method: Where – Occasion & with who – When.
+ * The place only when known; the middle is the occasion and the people in
+ * the user's own words, never what still has to be done.
  *   "Portugal – Family trip – Jul 2027"
  *   "Antwerp – Dinner with Sarah – Fri 2 Oct"
- *   "Dentist appointment – Tue 6 Oct"
- * "What" is the model's own title when it is specific, else the activity
- * from the user's message. A bare category or template label ("Calendar
- * Event", "Vacation & Holiday Getaway") is never used as the What.
+ *   "Paris – Weekend with my wife – Nov"
+ * Task talk ("need to arrange flights", "we still have to book a hotel")
+ * is cut off. A bare category or template label ("Calendar Event",
+ * "Vacation & Holiday Getaway") is never used.
  */
+
+/** Everything from "need to / have to / must ..." on is a task, not the event. */
+const TASK_CLAUSE = /\s*(?:,|;|\s-\s|\band\b|\bbut\b|\bso\b)?\s*(?:(?:we|i|you)\s+)?(?:still\s+|also\s+)?(?:need(?:s)?(?:\s+to)?|have to|has to|must|should|gotta|got to|want to|would like to|don'?t forget to|remember to)\b.*$/i;
+/** "Need to arrange a weekend in Paris" -> "a weekend in Paris". */
+const LEADING_TASK = /^(?:(?:we|i)\s+)?(?:still\s+)?(?:need(?:s)?(?:\s+to)?|have to|must|want to|would like to|(?:can|could) you|please)\s+(?:help me\s+)?(?:arrange|book|plan|organi[sz]e|sort out|sort|get|buy|reserve|find|make|schedule|set up|prepare|go on|do|have)?\s*/i;
+/** "Going to Lisbon with the kids" is a trip. */
+const TRAVEL_START = /^(?:(?:we|i)(?:'re|'m| are| am)?\s+)?(?:going|flying|travell?ing|heading|driving)\s+(?=to\b|with\b|$)/i;
+
+/** The event part of a sentence: task talk cut off, leading "need to arrange" dropped. */
+export function withoutTaskTalk(text: string): string {
+  let t = String(text || '').trim();
+  const cut = t.match(TASK_CLAUSE);
+  if (cut && cut.index !== undefined && cut.index > 0) t = t.slice(0, cut.index);
+  t = t.replace(LEADING_TASK, '');
+  if (TRAVEL_START.test(t)) t = t.replace(TRAVEL_START, 'Trip ');
+  return t.replace(/[\s,;:-]+$/, '').trim();
+}
 
 const GENERIC_TITLES = new RegExp(
   '^(' +
@@ -101,6 +119,7 @@ export function extractWhatWhere(message: string | null | undefined): { what: st
     .split(/[.!?]\s|,\s/)[0]
     .replace(/\s+/g, ' ')
     .trim();
+  text = withoutTaskTalk(text);
   if (!text) return { what: null, where: null };
 
   for (const re of WHEN_PATTERNS) text = text.replace(re, ' ');
@@ -118,12 +137,12 @@ export function extractWhatWhere(message: string | null | undefined): { what: st
   text = text.replace(LEADING_FILLER, '').trim();
   text = text.replace(/^(?:a|an|the|my|our|some)\s+/i, '').trim();
   // Dangling joiners left behind by removed phrases.
-  text = text.replace(/\s+(?:on|at|from|for|in|to|by|the|and|,)\s*$/i, '').replace(/^(?:for|on|at)\s+/i, '').trim();
+  text = text.replace(/\s+(?:on|at|from|for|in|to|by|the|and|with|,)\s*$/i, '').replace(/^(?:for|on|at)\s+/i, '').trim();
   text = text.replace(/[,;:\s-]+$/, '').trim();
 
   const words = text.split(' ').filter(Boolean);
   if (words.length === 0) return { what: null, where };
-  const what = words.slice(0, 6).join(' ');
+  const what = words.slice(0, 7).join(' ').replace(/\s+(?:with|and|for|in|to|at)$/i, '');
   return { what: what.charAt(0).toUpperCase() + what.slice(1), where };
 }
 
@@ -199,7 +218,7 @@ export function newEventTitle(params: {
   // A title that is just the user's sentence copied ("I have a job interview
   // at 10") is replaced by the cleaned activity from that sentence.
   const usable = (t: string | null | undefined): string | null => {
-    const v = (t || '').trim();
+    const v = withoutTaskTalk((t || '').split(/\s[–-]\s(?=(?:need|to do|book|arrange|todo)\b)/i)[0]);
     if (isGenericTitle(v)) return null;
     const words = v.toLowerCase().split(/\s+/).filter(Boolean);
     const cleaned = (fromMessage.what || '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -209,8 +228,8 @@ export function newEventTitle(params: {
     return v;
   };
   const what = usable(params.modelTitle) || usable(params.fallbackWhat) || fromMessage.what || 'Plan';
-  // A model title that already carries a date or " – " is used as is.
-  if (/\s[–-]\s/.test(what) || /\b\d{1,2}\s+[A-Z][a-z]{2}\b/.test(what)) return what;
+  // A model title that already carries a date is used as is.
+  if (/\b\d{1,2}\s+[A-Z][a-z]{2}\b/.test(what)) return what;
   const templatePlace = [params.modelTitle, params.fallbackWhat].map((t) => splitParenthetical(t || '').place).find(Boolean);
   const where = cleanPlace(params.location) || fromMessage.where || cleanPlace(templatePlace);
   return composeEventTitle(what, params.eventDate, where, params.endDate, params.referenceIso, saysMonthOnly(params.message || ''));
