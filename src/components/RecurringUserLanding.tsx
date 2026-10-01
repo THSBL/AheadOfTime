@@ -192,39 +192,42 @@ export const RecurringUserLanding: React.FC = () => {
       const neckHalf = Math.min(FW / 2 - 4, b.width / 2 + 22);
       const n = cx - neckHalf; // neck's left edge
       const r = 24;
-      // Straight neck walls down to the bottom of the badge, then one smooth
-      // curve that stays outside every stripe with growing room, ending
-      // well wide of the widest one.
-      const shoulderY = Math.min(H - r - 1, b.bottom - p.top);
-      const via = stripes.map((s0, i) => ({ x: X(s0.left) - (34 + 6 * i), y: s0.top - p.top + s0.height * 0.35 }));
+      // A rounded rectangle around the badge whose sides then run straight
+      // down parallel to the stripes' slanted outer edges (the line through
+      // the stripes' bottom-left corners), a fixed gap outside them, to the
+      // rounded bottom corners.
+      const first = stripes[0];
       const last = stripes[stripes.length - 1];
-      const end = { x: Math.max(2, X(last.left) - 52), y: H - r };
-      const pts = [{ x: n, y: shoulderY }, ...via.filter((q) => q.y > shoulderY + 8), end];
-      for (let i = 1; i < pts.length; i++) pts[i].x = Math.max(2, Math.min(pts[i].x, pts[i - 1].x - 2));
+      const y0 = first.bottom - p.top;
+      const y1 = last.bottom - p.top;
+      const slope = y1 - y0 > 1 ? (X(last.left) - X(first.left)) / (y1 - y0) : 0; // dx per dy (negative: widens downward)
+      const GAP = 28;
+      const lineX = (y: number) => Math.max(2, X(first.left) - GAP + slope * (y - y0));
+      // The rectangle's straight side runs to just below the badge, then
+      // flares out (one smooth S-bend) onto the parallel line, which it
+      // reaches at the top of the first stripe and follows to the bottom.
+      const meetY = Math.max(r + 40, first.top - p.top);
+      const shoulderY = Math.max(r + 8, Math.min(b.bottom - p.top - 12, meetY - 40));
+      const meetX = Math.min(n, lineX(meetY));
+      const bottomY = H - r;
+      const endX = lineX(bottomY);
       const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
-      // Catmull-Rom through the points, as cubic Beziers (left side, top->bottom).
-      const curve = (list: { x: number; y: number }[]) =>
-        list.slice(1).map((p2, i) => {
-          const p0 = list[Math.max(0, i - 1)];
-          const p1 = list[i];
-          const p3 = list[Math.min(list.length - 1, i + 2)];
-          const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
-          const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
-          return `C ${pt(c1.x, c1.y)} ${pt(c2.x, c2.y)} ${pt(p2.x, p2.y)}`;
-        });
-      const mirror = (q: { x: number; y: number }) => ({ x: FW - q.x, y: q.y });
-      const rightDown = curve(pts.map(mirror));
-      const leftUp = curve([...pts].reverse());
+      const dy = meetY - shoulderY;
+      const c1 = { x: n, y: shoulderY + dy * 0.5 };
+      const c2 = { x: meetX - slope * dy * 0.5, y: meetY - dy * 0.5 };
+      const R = (q: { x: number; y: number }) => pt(FW - q.x, q.y);
       const d = [
         `M ${pt(n + r, 0)}`,
         `L ${pt(FW - n - r, 0)}`,
         `Q ${pt(FW - n, 0)} ${pt(FW - n, r)}`,
         `L ${pt(FW - n, shoulderY)}`,
-        ...rightDown,
-        `Q ${pt(FW - end.x, H)} ${pt(FW - end.x - r, H)}`,
-        `L ${pt(end.x + r, H)}`,
-        `Q ${pt(end.x, H)} ${pt(end.x, H - r)}`,
-        ...leftUp,
+        `C ${R(c1)} ${R(c2)} ${pt(FW - meetX, meetY)}`,
+        `L ${pt(FW - endX, bottomY)}`,
+        `Q ${pt(FW - endX, H)} ${pt(FW - endX - r, H)}`,
+        `L ${pt(endX + r, H)}`,
+        `Q ${pt(endX, H)} ${pt(endX, bottomY)}`,
+        `L ${pt(meetX, meetY)}`,
+        `C ${pt(c2.x, c2.y)} ${pt(c1.x, c1.y)} ${pt(n, shoulderY)}`,
         `L ${pt(n, r)}`,
         `Q ${pt(n, 0)} ${pt(n + r, 0)}`,
         'Z',
