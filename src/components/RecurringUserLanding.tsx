@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, ListChecks, MapPin, ChevronRight, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import { Logo } from './Logo';
@@ -162,6 +162,76 @@ export const RecurringUserLanding: React.FC = () => {
 
   const referenceDateISO = useMemo(() => new Date().toISOString(), []);
 
+  // The glass panel behind the badge and the stripes follows them: a neck
+  // around the badge, then sides that run along the stripes' outer edges as
+  // they widen (12% / 6% / 0% margins), down to the bottom corners. Built
+  // from measured positions, so it still fits when a stripe's text wraps or
+  // the screen is narrow. Until measured, the old fixed shape is drawn.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const badgeRef = useRef<HTMLImageElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const [panelShape, setPanelShape] = useState<{ width: number; height: number; d: string } | null>(null);
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const badge = badgeRef.current;
+    const nav = navRef.current;
+    if (!panel || !badge || !nav || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const p = panel.getBoundingClientRect();
+      const b = badge.getBoundingClientRect();
+      const stripes = (Array.from(nav.children) as Element[]).map((c) => c.getBoundingClientRect());
+      if (p.width === 0 || p.height === 0 || stripes.length === 0) return;
+      const W = p.width;
+      const H = p.height;
+      const cx = W / 2;
+      const gap = 22; // panel edge outside each stripe
+      const neckHalf = Math.min(W / 2 - 4, b.width / 2 + 22);
+      const n = cx - neckHalf; // neck's left edge
+      const r = 22;
+      // One straight side along the stripes' outer (bottom-left) corners,
+      // pushed out just enough that no stripe pokes through it.
+      const corners = stripes.map((s0) => ({ x: s0.left - p.left - gap, y: s0.bottom - p.top }));
+      const first = corners[0];
+      const last = corners[corners.length - 1];
+      const k = last.y !== first.y ? (last.x - first.x) / (last.y - first.y) : 0; // x per y (negative: widening)
+      const lineX = (y: number, shift: number) => first.x + shift + k * (y - first.y);
+      const shift = Math.min(0, ...corners.map((c) => c.x - lineX(c.y, 0)));
+      const bottomX = Math.max(2, lineX(H, shift));
+      // Where the side meets the neck; never above the badge's middle.
+      const meetY = k < 0 ? first.y + (n - (first.x + shift)) / k : first.y;
+      const shoulderY = Math.max(b.top - p.top + b.height * 0.5, Math.min(meetY, H - r));
+      const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
+      const m = (x: number) => W - x;
+      const d = [
+        `M ${pt(n + r, 0)}`,
+        `L ${pt(m(n) - r, 0)}`,
+        `Q ${pt(m(n), 0)} ${pt(m(n), r)}`,
+        `L ${pt(m(n), shoulderY)}`,
+        `L ${pt(m(bottomX), H - r)}`,
+        `Q ${pt(m(bottomX), H)} ${pt(m(bottomX) - r, H)}`,
+        `L ${pt(bottomX + r, H)}`,
+        `Q ${pt(bottomX, H)} ${pt(bottomX, H - r)}`,
+        `L ${pt(n, shoulderY)}`,
+        `L ${pt(n, r)}`,
+        `Q ${pt(n, 0)} ${pt(n + r, 0)}`,
+        'Z',
+      ].join(' ');
+      setPanelShape({ width: W, height: H, d });
+    };
+    measure();
+    // The stripes slide/scale in on first load; measure again once settled.
+    const timers = [400, 1200, 2600].map((ms) => window.setTimeout(measure, ms));
+    const ro = new ResizeObserver(measure);
+    ro.observe(panel);
+    ro.observe(nav);
+    badge.addEventListener('load', measure);
+    return () => {
+      ro.disconnect();
+      timers.forEach((t) => window.clearTimeout(t));
+      badge.removeEventListener('load', measure);
+    };
+  }, []);
+
   const events = useMemo(() => {
     const user = getCurrentUser();
     if (!user?.id) return [];
@@ -271,10 +341,10 @@ export const RecurringUserLanding: React.FC = () => {
             fill whatever height the real content needs (the stripe copy can
             wrap to 2 lines at some widths), so the flare's proportions stay
             correct without needing to know that height up front. */}
-        <div className="relative mt-6 w-full max-w-xl">
+        <div ref={panelRef} className="relative mt-6 w-full max-w-xl">
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 100 100"
+            viewBox={panelShape ? `0 0 ${panelShape.width} ${panelShape.height}` : '0 0 100 100'}
             preserveAspectRatio="none"
             aria-hidden="true"
             style={{
@@ -296,7 +366,7 @@ export const RecurringUserLanding: React.FC = () => {
             }}
           >
             <path
-              d="M 33,0 L 67,0 Q 75,0 75,6 L 75,22 C 75,29 92,38 98,52 L 98,92 Q 98,100 89,100 L 11,100 Q 2,100 2,92 L 2,52 C 8,38 25,29 25,22 L 25,6 Q 25,0 33,0 Z"
+              d={panelShape?.d ?? 'M 33,0 L 67,0 Q 75,0 75,6 L 75,22 C 75,29 92,38 98,52 L 98,92 Q 98,100 89,100 L 11,100 Q 2,100 2,92 L 2,52 C 8,38 25,29 25,22 L 25,6 Q 25,0 33,0 Z'}
               fill="rgba(255,255,255,0.035)"
               stroke="rgba(255,255,255,0.1)"
               strokeWidth="0.4"
@@ -314,6 +384,7 @@ export const RecurringUserLanding: React.FC = () => {
                 draw-in, since there's no longer a separate outline/grid/pin
                 to animate piece by piece. */}
             <img
+              ref={badgeRef}
               src="/assets/summary-hero.png"
               alt="Ahead Of Time"
               width={720}
@@ -335,6 +406,7 @@ export const RecurringUserLanding: React.FC = () => {
                 topInsetRatio changes, the other stripe's matching edge has
                 to be recomputed too, or the seam breaks again. */}
             <nav
+              ref={navRef}
               aria-label="Quick navigation"
               className="mt-8 sm:mt-10 w-full flex flex-col gap-2 sm:gap-3"
             >
