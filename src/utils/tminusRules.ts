@@ -2316,12 +2316,17 @@ export function decomposeComplexTripIntent(
   // "Group Trip Horizon" plan with generic Day 2 milestones that had
   // nothing to do with what was actually typed. Only trust them when the
   // message also contains a genuine multi-day date range.
+  // Only what the user said counts: the chat's own questions travel along
+  // in the brief ("Who looks after the kids while you're away?") and must
+  // not make a dinner a trip. "birthday 20 october" is not "day 20" (\b),
+  // and "from ... to" only counts as a date range, not "from home to town".
+  const tripText = message.replace(/[^.!?\n]*\?/g, ' ');
   const hasStrongTripSignal =
-    /\b(stag|bachelor|bachelorette|hen)\b|\btrip\b|\bvacation\b/i.test(message) ||
-    /^(going|flying|traveling|travelling|heading)\s+to\s+/i.test(message) ||
-    /from\s+.*?to\s+/i.test(message) ||
-    /day\s*\d+|2nd\s*day|second\s*day|3rd\s*day|third\s*day/i.test(message);
-  const hasSoftTripWord = /holiday|getaway|conference|retreat|weekend/i.test(message);
+    /\b(stag|bachelor|bachelorette|hen)\b|\btrip\b|\bvacation\b/i.test(tripText) ||
+    /^(going|flying|traveling|travelling|heading)\s+to\s+/i.test(tripText) ||
+    /\bfrom\s+\d{1,2}(?:st|nd|rd|th)?\b[^.\n]{0,25}?\bto\s+\d{1,2}\b/i.test(tripText) ||
+    /\bday\s*\d+\b|\b2nd\s*day|\bsecond\s*day|\b3rd\s*day|\bthird\s*day/i.test(tripText);
+  const hasSoftTripWord = /holiday|getaway|conference|retreat|weekend/i.test(tripText);
 
   const baseRef = new Date(referenceDateISO);
   const safeBase = isNaN(baseRef.getTime()) ? new Date('2026-09-01T03:20:00Z') : baseRef;

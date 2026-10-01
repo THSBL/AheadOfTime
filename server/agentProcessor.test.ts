@@ -367,9 +367,17 @@ describe('askRefinementQuestions (creation conversation step 1)', () => {
     }
   };
 
-  it('never blocks creation - with no GEMINI_API_KEY and a dated message it asks nothing', async () => {
+  it('without GEMINI_API_KEY, a dated dinner only asks where (time is implied, nothing else)', async () => {
     const result = await withoutGemini(() => askRefinementQuestions({
       message: 'Dinner party with friends on 23 October',
+      currentReferenceDate: REF_DATE_ISO,
+    }));
+    expect(result.questions.map((q) => q.id)).toEqual(['where']);
+  });
+
+  it('asks nothing when where and when are already said', async () => {
+    const result = await withoutGemini(() => askRefinementQuestions({
+      message: 'Dinner party with friends at home on 23 October',
       currentReferenceDate: REF_DATE_ISO,
     }));
     expect(result).toEqual({ needsClarification: false, questions: [] });
@@ -380,7 +388,7 @@ describe('askRefinementQuestions (creation conversation step 1)', () => {
       message: 'Dinner party with friends',
       currentReferenceDate: REF_DATE_ISO,
     }));
-    expect(result.questions.map((q) => q.id)).toEqual(['when']);
+    expect(result.questions.map((q) => q.id)).toEqual(['when', 'where']);
   });
 
   it('adds the profile question (pet care) for a trip even without Gemini', async () => {
@@ -504,5 +512,14 @@ describe('travel documents in the fallback planner', () => {
     expect(withVisa.milestones.some((m) => /esta/i.test(m.title))).toBe(false);
     const without = run('Divetrip to Egypt\n\nDetails:\n- When is it? 12 to 19 November\n- Travel documents: anything to arrange? All sorted / not needed');
     expect(without.milestones.some((m) => /visa|passport|esta/i.test(m.title))).toBe(false);
+  });
+});
+
+describe('a dinner is not a trip', () => {
+  it('"birthday 20 october" is not "day 20", and the chat\'s own questions don\'t count', () => {
+    const brief = 'Dinner for a friends birthday 20 october\n\nDetails:\n- Who looks after the kids while you are away from home? Yes, need a sitter';
+    const result = processWithDeterministicRules({ message: brief, refDateStr: '2026-10-01', refDateISO: '2026-10-01T10:00:00.000Z' });
+    expect(result.event.category).not.toBe('travel_trip');
+    expect(result.event.milestones.some((m) => /itinerary|whole trip|pack luggage/i.test(m.title))).toBe(false);
   });
 });

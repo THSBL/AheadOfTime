@@ -20,6 +20,14 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${dayOf(b)
 
 export function withTripBasics(event: CalendarEvent, milestones: TMinusMilestone[], referenceDate: string): TMinusMilestone[] {
   if (event.category !== 'travel_trip' || !event.eventDate) return milestones;
+  // Only real trips: a date range, a destination or travel words - never a
+  // dinner that was mislabelled a trip.
+  const travelWords = /\b(trip|travel|flight|fly|flying|hotel|stay|vacation|holiday|abroad|getaway|lodging)\b/i;
+  const isRealTrip =
+    (event.endDate && event.endDate !== event.eventDate) ||
+    Boolean(event.context?.destination) ||
+    travelWords.test(`${event.title || ''} ${event.rawInputSnippet || ''}`);
+  if (!isRealTrip) return milestones;
   const today = dayOf(new Date(referenceDate).toISOString());
   const lead = daysBetween(today, event.eventDate);
   if (lead < 1) return milestones;

@@ -101,6 +101,37 @@ export function buildWhenQuestion(message: string, currentReferenceDate: string)
   };
 }
 
+const SAYS_PLACE = /\b(at home|home|my place|our place|restaurant|bar|cafe|café|pub|venue|office|park|beach|hall|club|hotel|(?:in|at|to) [A-Z][\p{L}'-]+)/u;
+const SAYS_TIME = /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm|h|u)\b|\d{1,2}:\d{2}|morning|afternoon|evening|night|tonight|lunch|dinner|breakfast|brunch|all day|whole day|noon|midday)/i;
+
+/**
+ * Where and what time come first for anything that isn't a trip - asked by
+ * the app itself, so a dinner is never planned as a full day (or a trip)
+ * because nobody asked. Skipped when the message already says.
+ */
+export function buildWhereAndTimeQuestions(message: string): RefinementQuestion[] {
+  const statement = (message || '').replace(/[^.!?\n]*\?/g, ' ');
+  if (!statement.trim() || isAwayFromHomeEvent(statement)) return [];
+  const questions: RefinementQuestion[] = [];
+  if (!SAYS_PLACE.test(statement)) {
+    questions.push({
+      id: 'where',
+      question: 'Where is it?',
+      options: ['At home', 'At a restaurant or venue', "At someone else's place", 'Not decided yet'],
+      source: 'message',
+    });
+  }
+  if (!SAYS_TIME.test(statement)) {
+    questions.push({
+      id: 'time',
+      question: 'What time of day?',
+      options: ['Morning', 'Afternoon', 'Evening', 'All day'],
+      source: 'message',
+    });
+  }
+  return questions;
+}
+
 /**
  * Minimal where/when fallback for when Gemini is unavailable, so the
  * refinement step still covers the basics instead of silently vanishing.
@@ -109,13 +140,15 @@ export function buildFallbackMessageQuestions(message: string, currentReferenceD
   const ambiguous = buildAmbiguousDateQuestion(message, currentReferenceDate);
   if (ambiguous) return [ambiguous];
   const when = buildWhenQuestion(message, currentReferenceDate);
-  return when ? [when] : [];
+  return [...(when ? [when] : []), ...buildWhereAndTimeQuestions(message)];
 }
 
 const PET_QUESTION = /\b(pet|dog|cat)\b/i;
 const DATE_QUESTION = /\b(when|what dates?|which dates?|which (day|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|travel dates?)\b/i;
 const DOCUMENTS_QUESTION = /\b(visa|passport|travel documents?|entry)\b/i;
 const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
+const WHERE_QUESTION = /\bwhere\b|\bvenue\b|\blocation\b|at home or/i;
+const TIME_QUESTION = /\bwhat time\b|time of day|\bhow long\b|morning|evening/i;
 
 /**
  * Gemini's message-based questions first, then any guaranteed question
@@ -124,13 +157,25 @@ const KIDS_QUESTION = /\b(kid|kids|child|children|childcare)\b/i;
 export function mergeRefinementQuestions(messageQuestions: RefinementQuestion[], profileQuestions: RefinementQuestion[]): RefinementQuestion[] {
   // The app's own date question (pickers, or "which Saturday") replaces any
   // date question Gemini asked in its own words, and always comes first.
+  // Then where and what time (the basics), before any of Gemini's own.
   const appDateQuestions = profileQuestions.filter((q) => q.id === 'when' || q.id === 'which_date');
+  const basics = profileQuestions.filter((q) => q.id === 'where' || q.id === 'time');
+  const coveredByBasics = (q: RefinementQuestion) =>
+    basics.some((b) => (b.id === 'where' ? WHERE_QUESTION : TIME_QUESTION).test(q.question));
   const merged = [
     ...appDateQuestions,
-    ...messageQuestions.filter((q) => appDateQuestions.length === 0 || !DATE_QUESTION.test(q.question)),
+    ...basics,
+    ...messageQuestions.filter((q) => (appDateQuestions.length === 0 || !DATE_QUESTION.test(q.question)) && !coveredByBasics(q)),
   ];
   for (const pq of profileQuestions.filter((q) => !appDateQuestions.includes(q))) {
-    const topic = pq.id === 'pet_care' ? PET_QUESTION : pq.id === 'kids' ? KIDS_QUESTION : pq.id === 'travel_documents' ? DOCUMENTS_QUESTION : pq.id === 'which_date' ? DATE_QUESTION : null;
+    const topic =
+      pq.id === 'pet_care' ? PET_QUESTION
+      : pq.id === 'kids' ? KIDS_QUESTION
+      : pq.id === 'travel_documents' ? DOCUMENTS_QUESTION
+      : pq.id === 'which_date' ? DATE_QUESTION
+      : pq.id === 'where' ? WHERE_QUESTION
+      : pq.id === 'time' ? TIME_QUESTION
+      : null;
     const alreadyCovered = merged.some((q) => q.id === pq.id || (topic && topic.test(q.question)));
     if (!alreadyCovered) merged.push(pq);
   }

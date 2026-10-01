@@ -57,7 +57,9 @@ describe('buildFallbackMessageQuestions', () => {
   it('asks "when" only if there is no date', () => {
     expect(buildFallbackMessageQuestions('Divetrip to Egypt', REF).map((q) => q.id)).toEqual(['when']);
     expect(buildFallbackMessageQuestions('Divetrip to Egypt 12 November', REF)).toEqual([]);
-    expect(buildFallbackMessageQuestions('Dinner this Friday', REF)).toEqual([]);
+    expect(buildFallbackMessageQuestions('Dinner this Friday', REF).map((q) => q.id)).toEqual(['where']);
+    expect(buildFallbackMessageQuestions('Dinner at home this Friday', REF)).toEqual([]);
+    expect(buildFallbackMessageQuestions('Dentist this Friday in Antwerp', REF).map((q) => q.id)).toEqual(['time']);
     expect(buildFallbackMessageQuestions('Dinner next Friday', REF).map((q) => q.id)).toEqual(['which_date']);
   });
 });

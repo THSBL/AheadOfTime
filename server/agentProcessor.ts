@@ -50,6 +50,7 @@ export { describeGeminiError };
 import {
   buildProfileRefinementQuestions,
   buildTripRefinementQuestions,
+  buildWhereAndTimeQuestions,
   buildAmbiguousDateQuestion,
   buildWhenQuestion,
   buildFallbackMessageQuestions,
@@ -251,19 +252,19 @@ export async function generateContentFast(
 
 const CLARIFY_SYSTEM_INSTRUCTION = `You help a calendar-prep app ask the user a few quick refinement questions BEFORE it builds a backward-planning preparation timeline for the event they just described. All answers are sent back together with the original description in one single planning call, so the questions only have to fill the gaps that would change the plan.
 
-Mostly this is the basics - what and where, and the key decisions - asked ONLY for what the description leaves open:
-- When: do NOT ask about the date - the app always asks it itself (with date pickers) when the description has none.
-- What: what the event actually is must be clear. If the description is too vague to plan (e.g. "Saturday thing", "the event"), ask what it is.
-- Where: destination/venue, if it matters for the prep and isn't given.
-- What: the one or two key decisions that change what gets prepared (e.g. for a dive trip: certified yet or doing a course, own gear or renting; for a birthday: organising it or attending, gift or not).
+Be conservative: ask the basics first - WHERE, WHEN and HOW - and only what the description leaves open. Never assume a single evening is a whole day or a trip.
+- When: do NOT ask about the date - the app always asks it itself (with date pickers) when the description has none. For a trip, how long it is matters.
+- Where and what time of day: the app asks these itself for anything that isn't a trip - don't repeat them. For a trip, ask the destination if it isn't given.
+- How: how it happens - who is coming / how many, whether you host or join, how people get there - when it changes the prep.
+- What: only if the event itself is unclear (e.g. "Saturday thing"), ask what it is. At most ONE key decision that really changes the plan (e.g. dive trip: certified or doing a course) - never a list of extras like gifts, cakes or sitters unless the description points to them.
 For a trip abroad, ask whether a visa or passport renewal is needed - never assume either way; requirements depend on nationality and destination.
 Also use the userProfile facts: if the profile says they have a pet or kids and the event takes them away from home, ask who looks after them - unless the description already covers it.
 
 Rules:
-- 1 to 4 questions, each short and specific to THIS event - never generic ("tell me more", "any other details?").
+- 0 to 3 questions, each short and specific to THIS event - never generic ("tell me more", "any other details?").
 - Every question stays about the event the user described; never drift into a separate topic.
 - Give 2-4 short concrete options per question when the answer is a choice. For a free-form answer (e.g. an exact date) an empty options list is fine.
-- Don't ask what a sensible default covers (exact guest count, exact time of day).
+- Don't ask what a sensible default covers (an exact guest count).
 - If the description already has everything needed for a good plan, return an empty questions list.
 
 Also classify the message: is_new_event_plan is true only when it describes a NEW event or plan to prepare for (a trip, party, deadline, appointment...). It is false for a question about the schedule ("what's on tomorrow?"), a change to a plan that already exists ("also book a rental car"), a greeting, or anything else - and then return an empty questions list.
@@ -348,6 +349,7 @@ export async function askRefinementQuestions(params: {
   const guaranteedQuestions = [
     ...(ambiguousDate ? [ambiguousDate] : []),
     ...(whenQuestion ? [whenQuestion] : []),
+    ...buildWhereAndTimeQuestions(params.message),
     ...buildTripRefinementQuestions(params.message),
     ...buildProfileRefinementQuestions(params.message, params.userProfile),
   ];

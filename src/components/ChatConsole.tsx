@@ -814,6 +814,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 !draftConversation.slice(idx + 1).some((m) => m.associatedEventId)
               );
 
+              // A question at the end of the planner's reply goes below the
+              // plan card, where the user reads it after seeing the plan -
+              // not tucked into the middle of the reply.
+              const split = !isUser && isLatestPlanReply ? splitFollowUpQuestion(msg.additionText) : { body: msg.additionText, question: '' };
+
               return (
                 <div key={msg.id} className="space-y-2">
                   <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -832,8 +837,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                       }`}
                     >
                       <p>{msg.focusText || msg.text}</p>
-                      {!isUser && msg.additionText && (
-                        <p className="text-slate-500">{msg.additionText}</p>
+                      {!isUser && split.body && (
+                        <p className="text-slate-500">{split.body}</p>
                       )}
                     </div>
                   </div>
@@ -873,6 +878,18 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                           <Check className="w-3.5 h-3.5" />
                           <span>Looks good, create event</span>
                         </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {split.question && (
+                    <div className="flex justify-start">
+                      <div className="w-7 h-7 rounded-full bg-[#182A42] text-white flex items-center justify-center shrink-0 mr-2 shadow-xs">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="max-w-[80%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-xs sm:text-sm leading-relaxed bg-white border border-slate-200/90 text-slate-800 shadow-2xs space-y-1">
+                        <p>{split.question}</p>
+                        <p className="text-[11px] text-slate-500">Answer below, or create the event as it is.</p>
                       </div>
                     </div>
                   )}
@@ -1424,3 +1441,14 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
     </div>
   );
 };
+
+/** "I built X. Would you like a cake or dessert?" -> body and the trailing question(s). */
+function splitFollowUpQuestion(text?: string): { body: string; question: string } {
+  const t = (text || '').trim();
+  if (!t) return { body: '', question: '' };
+  const sentences = t.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [t];
+  let cut = sentences.length;
+  while (cut > 0 && sentences[cut - 1].trim().endsWith('?')) cut -= 1;
+  if (cut === sentences.length) return { body: t, question: '' };
+  return { body: sentences.slice(0, cut).join('').trim(), question: sentences.slice(cut).join('').trim() };
+}
