@@ -124,9 +124,54 @@ function idealDueDay(milestone: TMinusMilestone, event: Partial<Pick<CalendarEve
   }
 }
 
-/** Open tasks that are on the normal schedule (late-from-start ones excluded). */
-function scheduledOutstanding(event: CalendarEvent): TMinusMilestone[] {
-  return actionableMilestones(event.milestones).filter((m) => m.status !== 'completed' && !isLateFromStart(m, event));
+/**
+ * A preparation task: planned for before (or on) the event, as opposed to
+ * a T+ task planned for after it (thank-you notes, filing expenses). Decided
+ * by its lead time (negative or zero = before); without one, by its date.
+ */
+export function isPrepTask(
+  milestone: Pick<TMinusMilestone, 'tMinusOffsetMinutes' | 'calculatedDate'>,
+  event: Pick<CalendarEvent, 'eventDate'>
+): boolean {
+  if (typeof milestone.tMinusOffsetMinutes === 'number') return milestone.tMinusOffsetMinutes <= 0;
+  return (milestone.calculatedDate || '').slice(0, 10) <= (event.eventDate || '').slice(0, 10);
+}
+
+/**
+ * A task that no longer matters because its event has happened:
+ * - preparation, once the event's day has passed (no "overdue" for
+ *   getting ready for something that's over);
+ * - for an event spanning several days (a trip), a task during it, once
+ *   the whole event is over.
+ * Only T+ tasks - planned for after the event - stay, and keep their
+ * reminders. Never shown, counted as overdue or sent in an update.
+ * Mirrors staleTaskSql in server/staleTasks.ts.
+ */
+export function isPastEventTask(
+  milestone: Pick<TMinusMilestone, 'tMinusOffsetMinutes' | 'calculatedDate'>,
+  event: Pick<CalendarEvent, 'eventDate'> & Partial<Pick<CalendarEvent, 'endDate'>>,
+  referenceDateISO: string
+): boolean {
+  const today = referenceDateISO.slice(0, 10);
+  const start = (event.eventDate || '').slice(0, 10);
+  if (!start) return false;
+  if (isPrepTask(milestone, event)) return today > start;
+  const end = (event.endDate || '').slice(0, 10);
+  const due = (milestone.calculatedDate || '').slice(0, 10);
+  return Boolean(end) && end > start && today > end && due <= end;
+}
+
+/**
+ * Open tasks that are on the normal schedule (late-from-start ones
+ * excluded) and, given the reference date, still matter (isPastEventTask).
+ */
+function scheduledOutstanding(event: CalendarEvent, referenceDateISO?: string): TMinusMilestone[] {
+  return actionableMilestones(event.milestones).filter(
+    (m) =>
+      m.status !== 'completed' &&
+      !isLateFromStart(m, event) &&
+      !(referenceDateISO && isPastEventTask(m, event, referenceDateISO))
+  );
 }
 
 export function computeAheadStatus(event: CalendarEvent, referenceDateISO: string): AheadStatus {
@@ -135,7 +180,7 @@ export function computeAheadStatus(event: CalendarEvent, referenceDateISO: strin
   const completedCount = actionable.filter((m) => m.status === 'completed').length;
   const outstanding = actionable.filter((m) => m.status !== 'completed');
 
-  const overdueOutstanding = scheduledOutstanding(event).filter((m) => getCountdownStatus(m.calculatedDate, referenceDateISO).isOverdue);
+  const overdueOutstanding = scheduledOutstanding(event, referenceDateISO).filter((m) => getCountdownStatus(m.calculatedDate, referenceDateISO).isOverdue);
   const overdueCount = overdueOutstanding.length;
   const criticalOutstandingCount = outstanding.filter((m) => inferMilestoneImportance(m) === 'critical').length;
   const overdueCriticalCount = overdueOutstanding.filter((m) => inferMilestoneImportance(m) === 'critical').length;
@@ -341,9 +386,9 @@ export function computeSimpleAheadStatus(
     const actionable = actionableMilestones(event.milestones);
     totalCount += actionable.length;
     completedCount += actionable.filter((m) => m.status === 'completed').length;
-    catchUpCount += actionable.filter((m) => isLateFromStart(m, event)).length;
+    catchUpCount += actionable.filter((m) => isLateFromStart(m, event) && !isPastEventTask(m, event, referenceDateISO)).length;
 
-    for (const milestone of scheduledOutstanding(event)) {
+    for (const milestone of scheduledOutstanding(event, referenceDateISO)) {
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
       if (countdown.isOverdue) {
         overdueCount += 1;
@@ -414,7 +459,7 @@ const IMPORTANCE_WEIGHT: Record<ActionImportance, number> = { critical: 0, impor
  * tie-break at equal urgency. Returns null once nothing outstanding remains.
  */
 export function computeNextBestActionForEvent(event: CalendarEvent, referenceDateISO: string): NextBestAction | null {
-  const outstanding = scheduledOutstanding(event);
+  const outstanding = scheduledOutstanding(event, referenceDateISO);
   if (outstanding.length === 0) return null;
 
   const scored = outstanding.map((m) => {
@@ -572,7 +617,7 @@ export function computeOverdueMilestones(events: CalendarEvent[], referenceDateI
   const items: UpcomingMilestoneItem[] = [];
 
   for (const event of events) {
-    for (const milestone of scheduledOutstanding(event)) {
+    for (const milestone of scheduledOutstanding(event, referenceDateISO)) {
       const countdown = getCountdownStatus(milestone.calculatedDate, referenceDateISO);
       if (!countdown.isOverdue) continue;
 
@@ -608,7 +653,7 @@ export interface CatchUpGroup {
 export function computeCatchUpGroups(events: CalendarEvent[], referenceDateISO: string): CatchUpGroup[] {
   const groups: CatchUpGroup[] = [];
   for (const event of sortEventsByDate(events)) {
-    const late = actionableMilestones(event.milestones).filter((m) => isLateFromStart(m, event));
+    const late = actionableMilestones(event.milestones).filter((m) => isLateFromStart(m, event) && !isPastEventTask(m, event, referenceDateISO));
     if (late.length === 0) continue;
     groups.push({
       eventId: event.id,
@@ -762,8 +807,7 @@ export function prepareWeekViewEvents(events: CalendarEvent[], referenceDateISO:
       const isOver = Boolean(end) && end < today;
       const milestones = (event.milestones || []).map((m) => {
         if (m.isActive === false || m.status === 'completed' || m.status === 'skipped') return m;
-        const afterEvent = typeof m.tMinusOffsetMinutes === 'number' && m.tMinusOffsetMinutes > 0;
-        if (isOver && !afterEvent) return { ...m, isActive: false };
+        if (isPastEventTask(m, event, referenceDateISO)) return { ...m, isActive: false };
         if (isShadowedByTripDuplicate(m, event, open)) return { ...m, isActive: false };
         return m;
       });

@@ -1,5 +1,6 @@
 import { query } from './db.js';
 import { ensureEventSyncSchema } from './eventSyncSchema.js';
+import { staleTaskSql } from './staleTasks.js';
 import type { UpdateTask, UpdatePendingSync } from './dailyUpdateTemplate.js';
 
 const WEEK_DAYS = 7;
@@ -23,6 +24,7 @@ export async function nextUpcomingTask(userId: string, todayIso: string): Promis
         AND m.kind = 'milestone'
         AND COALESCE(m.is_active, true)
         AND m.calculated_date >= $2::date
+        AND NOT ${staleTaskSql('$2')}
       ORDER BY m.calculated_date ASC
       LIMIT 1`,
     [userId, today]
@@ -33,9 +35,9 @@ export async function nextUpcomingTask(userId: string, todayIso: string): Promis
 
 /**
  * The user's own pending tasks (from the synced event list) that are overdue
- * or due within a week, for events that have not happened yet. Events they
- * deleted, long-past events, and tasks that were already late when their
- * event was added, never nag.
+ * or due within a week. Preparation for an event that has happened, events
+ * they deleted, and tasks that were already late when their event was
+ * added, never nag; tasks planned for after an event (T+) do.
  */
 export async function listTasksNeedingAttention(userId: string, todayIso: string): Promise<TasksNeedingAttention> {
   await ensureEventSyncSchema();
@@ -46,7 +48,9 @@ export async function listTasksNeedingAttention(userId: string, todayIso: string
        JOIN events e ON e.id = m.event_id
       WHERE e.user_id = $1
         AND e.deleted_at IS NULL
-        AND e.event_date >= $2::date
+        -- Prep for an event that has happened never nags; tasks planned
+        -- for after it (T+) do, until they're done.
+        AND NOT ${staleTaskSql('$2')}
         AND m.status = 'pending'
         AND m.kind = 'milestone'
         -- Hidden by a lower help level: not on the user's list, not in the update.

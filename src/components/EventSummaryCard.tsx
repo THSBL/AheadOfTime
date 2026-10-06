@@ -20,6 +20,7 @@ import {
 import { CalendarEvent } from '../types';
 import { formatDisplayDate, generateICSContent, formatMessagingSummary, getCountdownStatus, getCleanEventTitle, getEventTopicLabel } from '../utils/tminusRules';
 import { EventVariablePicker } from './EventVariablePicker';
+import { isPastEventTask } from '../utils/readiness';
 
 interface EventSummaryCardProps {
   event: CalendarEvent;
@@ -222,9 +223,10 @@ export const EventSummaryCard: React.FC<EventSummaryCardProps> = ({
           </div>
         </div>
 
-        {event.milestones && event.milestones.filter((ms) => ms.isActive !== false).length > 0 ? (
+        {/* Prep for an event that's over is left out: only after-event (T+) tasks stay. */}
+        {event.milestones && event.milestones.filter((ms) => ms.isActive !== false && !isPastEventTask(ms, event, currentReferenceDate)).length > 0 ? (
           <div className="space-y-2">
-            {event.milestones.filter((ms) => ms.isActive !== false).map((ms) => {
+            {event.milestones.filter((ms) => ms.isActive !== false && !isPastEventTask(ms, event, currentReferenceDate)).map((ms) => {
               const isCompleted = ms.status === 'completed';
               const msCountdown = getCountdownStatus(ms.calculatedDate, currentReferenceDate);
               const isOverdue = !isCompleted && msCountdown.isOverdue;

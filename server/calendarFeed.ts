@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { appOrigin } from './appOrigin.js';
 import { query } from './db.js';
 import { ensureEventSyncSchema } from './eventSyncSchema.js';
+import { staleTaskSql } from './staleTasks.js';
 
 /**
  * Calendar feed: a private link any calendar app can subscribe to (Apple
@@ -149,8 +150,9 @@ async function loadFeedTasks(userId: string, now: Date): Promise<FeedTask[]> {
       WHERE e.user_id = $1 AND e.deleted_at IS NULL
         AND COALESCE(m.is_active, true) AND m.status IN ('pending', 'completed')
         AND m.calculated_date >= $2::date
-        -- An event that's over takes its tasks with it: nothing left to prepare.
-        AND COALESCE(e.end_date, e.event_date) >= $3::date
+        -- Prep for an event that's over leaves the feed; tasks planned for
+        -- after it (T+, e.g. thank-you notes) stay until done.
+        AND NOT ${staleTaskSql('$3')}
       ORDER BY m.calculated_date
       LIMIT 500`,
     [userId, from, now.toISOString().slice(0, 10)]

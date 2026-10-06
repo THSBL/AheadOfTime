@@ -35,7 +35,7 @@ import { generateDeterministicMilestones } from '../utils/deterministicMilestone
 import { SyncStatusIcon } from './SyncStatusIcon';
 import { isPlanPushed, newTasksPendingSync } from '../utils/pushStatus';
 import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
-import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStart, spreadCatchUpDates } from '../utils/readiness';
+import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStart, isPastEventTask, spreadCatchUpDates } from '../utils/readiness';
 import { CatchUpCard } from './CatchUpCard';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
@@ -799,7 +799,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const weeklyPreview = computeWeeklyMilestonePreview(syntheticEvents, currentReferenceDate);
   // Due before this event was added: a one-time "already done?" check, not
   // overdue work (see isLateFromStart).
-  const catchUpMilestones = displayedMilestones.filter((ms) => isLateFromStart(ms, activeEvent));
+  // Prep for an event that's over is left out (isPastEventTask).
+  const catchUpMilestones = displayedMilestones.filter((ms) => isLateFromStart(ms, activeEvent) && !isPastEventTask(ms, activeEvent, currentReferenceDate));
   const markCatchUpDone = (ids: string[]) => {
     if (!onUpdateMilestone) return;
     const completedAt = new Date().toISOString();
