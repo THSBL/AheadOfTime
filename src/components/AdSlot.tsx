@@ -53,14 +53,11 @@ export const AdSlot: React.FC<{ place: keyof typeof SLOTS; className?: string }>
   return (
     <aside className={`w-full ${className}`} aria-label="Advertisement">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1 text-center">Advertisement</p>
-      <ins
-        className="adsbygoogle"
-        style={{ display: 'block', minHeight: 90 }}
-        data-ad-client={CLIENT}
-        data-ad-slot={slot}
-        data-ad-format="auto"
-        data-full-width-responsive="true"
-      />
+      {/* A short banner, never a big block: the size is set in CSS
+          (.aot-ad-banner in index.css: 100px high on phones, 90px wider up),
+          which Google's responsive ad code supports when data-ad-format is
+          left out. */}
+      <ins className="adsbygoogle aot-ad-banner" data-ad-client={CLIENT} data-ad-slot={slot} />
     </aside>
   );
 };
