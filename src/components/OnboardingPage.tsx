@@ -67,7 +67,11 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   });
   const [homeZipOrLocation, setHomeZipOrLocation] = useState<string>(initialProfile?.homeZipOrLocation || '');
   const [hasPet, setHasPet] = useState<boolean>(initialProfile?.hasPet ?? false);
-  const [primaryCalendar, setPrimaryCalendar] = useState<CalendarChoice | undefined>(initialProfile?.primaryCalendar);
+  // Preselected by "Connect <calendar>" on the landing page (?cal=), else the saved choice.
+  const [primaryCalendar, setPrimaryCalendar] = useState<CalendarChoice | undefined>(() => {
+    const fromLink = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('cal') : null;
+    return CALENDAR_OPTIONS.some((o) => o.id === fromLink) ? (fromLink as CalendarChoice) : initialProfile?.primaryCalendar;
+  });
   const [consentChecked, setConsentChecked] = useState<boolean>(initialProfile?.privacyConsentAccepted ?? false);
   const [showConsentError, setShowConsentError] = useState<boolean>(false);
   // Optional, separate from the required consent above: whether plans are

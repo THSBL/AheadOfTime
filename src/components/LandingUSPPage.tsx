@@ -1,10 +1,45 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarPreferencePoll } from './CalendarPreferencePoll';
+import { recordCalendarChoice } from './CalendarPreferencePoll';
+import type { CalendarChoice } from '../utils/calendarPoll';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight, X } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
+
+/** What each calendar gets, in a few words (accurate to how each connects). */
+const CALENDAR_OVERVIEW: Array<{ id: CalendarChoice; name: string; how: string; points: string[] }> = [
+  {
+    id: 'google',
+    name: 'Google Calendar',
+    how: 'Connects directly',
+    points: [
+      'Finds the events in your agenda worth preparing for',
+      'Puts every prep task in your calendar, on the right day',
+      'Tasks you tick off in Google show as done here',
+    ],
+  },
+  {
+    id: 'outlook',
+    name: 'Outlook',
+    how: 'Through a private calendar link',
+    points: [
+      'Every prep task shows up in Outlook by itself',
+      'Tick a task off right from the calendar entry',
+      'No Google account needed: sign in with your email',
+    ],
+  },
+  {
+    id: 'apple',
+    name: 'Apple Calendar',
+    how: 'Through a private calendar link',
+    points: [
+      'Your prep tasks on iPhone, iPad and Mac',
+      'Tick a task off right from the calendar entry',
+      'Subscribe in one tap, no Google account needed',
+    ],
+  },
+];
 
 interface LandingUSPPageProps {
   onGetStarted: () => void;
@@ -35,6 +70,19 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [isDemoOpen]);
   const navigate = useNavigate();
+
+  // Connect: straight into that calendar's setup. New visitors go through
+  // onboarding with the calendar already chosen (step 2 shows its way to
+  // connect); signed-in people go to the connection itself.
+  const connectCalendar = (calendar: CalendarChoice) => {
+    trackButtonClick(`Connect ${calendar}`, 'landing_calendar');
+    recordCalendarChoice(calendar, 'landing');
+    if (onGoToDashboard) {
+      navigate(calendar === 'google' ? '/settings/connections' : `/setup/calendar?cal=${calendar}`);
+      return;
+    }
+    navigate(`/onboarding?cal=${calendar}`);
+  };
 
   return (
     <div className="relative z-10 min-h-screen w-full bg-[#182A42] flex flex-col justify-between font-sans text-slate-900 selection:bg-[#182A42] selection:text-white">
@@ -291,35 +339,49 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           ))}
         </div>
 
-        {/* Which calendar do you use - and how it works with that one. */}
-        <div className="mt-8 max-w-2xl mx-auto bg-[#22344a] border border-white/10 rounded-3xl p-5 sm:p-6 shadow-md shadow-slate-900/20">
-          <CalendarPreferencePoll
-            source="landing"
-            variant="dark"
-            intro="Works with Google Calendar, Apple Calendar and Outlook. Which one do you use? We'll show you how it works with yours."
-            offerNotifyEmail
-          />
-          <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-            <span className="font-semibold">See how it works with</span>
-            {[
-              ['google', 'Google Calendar'],
-              ['outlook', 'Outlook'],
-              ['apple', 'Apple Calendar'],
-            ].map(([id, label]) => (
-              <a
-                key={id}
-                href={`/how-it-works?calendar=${id}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  trackButtonClick(`How it works ${label}`, 'landing_calendar');
-                  navigate(`/how-it-works?calendar=${id}`);
-                }}
-                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white font-bold transition-colors"
-              >
-                {label}
-              </a>
+        {/* What it does with each calendar, and a way to connect yours. */}
+        <div className="mt-8 max-w-4xl mx-auto">
+          <h3 className="text-center text-lg sm:text-xl font-black text-white">Works with the calendar you already use</h3>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {CALENDAR_OVERVIEW.map((cal) => (
+              <div key={cal.id} className="bg-[#22344a] border border-white/10 rounded-3xl p-5 shadow-md shadow-slate-900/20 flex flex-col">
+                <p className="text-base font-black text-white">{cal.name}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-aot-sage mt-0.5">{cal.how}</p>
+                <ul className="mt-3 space-y-1.5 text-xs sm:text-sm text-slate-300 flex-1">
+                  {cal.points.map((point) => (
+                    <li key={point} className="flex gap-2">
+                      <span className="text-aot-sage shrink-0" aria-hidden="true">✓</span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => connectCalendar(cal.id)}
+                  className="mt-4 w-full py-2.5 rounded-xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-black text-sm cursor-pointer transition-colors"
+                >
+                  Connect {cal.name}
+                </button>
+                <a
+                  href={`/how-it-works?calendar=${cal.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    trackButtonClick(`How it works ${cal.name}`, 'landing_calendar');
+                    navigate(`/how-it-works?calendar=${cal.id}`);
+                  }}
+                  className="mt-2 text-center text-xs font-semibold text-slate-400 hover:text-white underline underline-offset-2"
+                >
+                  See how it works
+                </a>
+              </div>
             ))}
           </div>
+          <p className="mt-3 text-center text-xs text-slate-400">
+            Something else?{' '}
+            <button type="button" onClick={() => connectCalendar('other')} className="font-bold text-slate-200 hover:text-white underline underline-offset-2 cursor-pointer">
+              Any calendar that can subscribe to a link works
+            </button>
+          </p>
         </div>
       </div>
       {/* Bottom Closing Banner - a lighter navy + border so it still reads as
