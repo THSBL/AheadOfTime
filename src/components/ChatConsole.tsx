@@ -31,6 +31,7 @@ import {
   GraduationCap,
   RotateCcw,
   Loader2,
+  ChevronDown,
 } from 'lucide-react';
 import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset, OnboardingProfile, PlanningUserProfile, RefinementQuestion } from '../types';
 import { composeConversationBrief, ConversationBriefInput } from '../utils/refinementQuestions';
@@ -65,6 +66,8 @@ function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
 }
 
 interface ChatConsoleProps {
+  /** Fold the template catalogue into one "Or start from a template" button (the try-out). */
+  templatesCollapsed?: boolean;
   messages: AgentMessage[];
   onSendMessage: (text: string, isVoiceMemo?: boolean, audioBlob?: Blob) => void;
   onSaveEvent?: (event: CalendarEvent) => void;
@@ -115,6 +118,7 @@ const AiUseNotice: React.FC = () => {
 };
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
+  templatesCollapsed = false,
   messages,
   onSendMessage,
   onSaveEvent,
@@ -1010,7 +1014,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 </div>
                 <div className="bg-white border border-slate-200/90 rounded-2xl rounded-bl-md px-3.5 py-2.5 shadow-2xs flex items-center gap-1.5">
                   <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" />
-                  <span className="text-xs text-slate-400 font-semibold">Thinking…</span>
+                  <span className="text-xs text-slate-400 font-semibold">Thinking Ahead…</span>
                 </div>
               </div>
             )}
@@ -1089,6 +1093,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             onOpenImporter={onOpenImporter}
             onStartLaunch={handleStartLaunch}
             onPresetsUpdated={handleUpdatePresets}
+            templatesCollapsed={templatesCollapsed}
           />
         </div>
       )}
@@ -1165,6 +1170,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
 
 interface InitialPresetsAndFreeformProps {
+  templatesCollapsed?: boolean;
   corePresets?: PromptPreset[];
   workPresets?: PromptPreset[];
   canImportSpreadsheet?: boolean;
@@ -1216,7 +1222,11 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
   onOpenImporter,
   onStartLaunch,
   onPresetsUpdated,
+  templatesCollapsed = false,
 }) => {
+  // Folded (the try-out): one quiet button instead of the whole catalogue,
+  // so the description box is the one thing on the page.
+  const [templatesOpen, setTemplatesOpen] = useState(!templatesCollapsed);
   return (
     <div className="space-y-6">
       {/* Freeform input - moved above the preset catalogue: it's the
@@ -1297,6 +1307,19 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
         <AiUseNotice />
       </div>
 
+      {!templatesOpen ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setTemplatesOpen(true)}
+            aria-expanded={false}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-bold text-slate-200 cursor-pointer"
+          >
+            Or start from a template <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+      <>
       {/* Divider - sits between the freeform input above and the preset
           catalogue below. */}
       <div className="relative flex items-center justify-center py-1">
@@ -1457,6 +1480,8 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
           <FileSpreadsheet className="w-3.5 h-3.5" />
           <span>Import Template</span>
         </button>
+      )}
+      </>
       )}
     </div>
   );

@@ -2098,6 +2098,7 @@ function App() {
       {/* Milky Glass Header */}
       <div className="relative z-20">
             <Header
+              minimal={isTrial}
               currentReferenceDate={currentReferenceDate}
               onReferenceDateChange={(newDate) => setCurrentReferenceDate(newDate)}
               onResetData={handleResetData}
@@ -2151,7 +2152,8 @@ function App() {
                 states, both desktop columns), not just when the workspace
                 column happens to be showing, so switching tabs is possible
                 from the Active Events list too. */}
-            <div className="lg:col-span-12 flex items-center justify-between shrink-0">
+            {/* Not on the try-out: a guest has one thing to do here. */}
+            <div className={`lg:col-span-12 flex items-center justify-between shrink-0 ${isTrial ? 'hidden' : ''}`}>
               <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
                 <button
                   type="button"
@@ -2401,6 +2403,7 @@ function App() {
               ) : (
                 <div className="flex-1">
                   <ChatConsole
+                    templatesCollapsed={isTrial}
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     onSaveEvent={handleSaveManualEvent}

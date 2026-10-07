@@ -26,6 +26,8 @@ import { AuthUser } from '../services/accountManager';
 import { AGENDA_SCANNED_EVENT, readAgendaScan, type AgendaScanRecord } from '../services/agendaScanRecord';
 
 interface HeaderProps {
+  /** The try-out: only the logo and Sign In (a guest can't scan, sync or open plans). */
+  minimal?: boolean;
   currentReferenceDate: string;
   onReferenceDateChange: (newDate: string) => void;
   onResetData: () => void;
@@ -51,6 +53,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  minimal = false,
   currentReferenceDate,
   onReferenceDateChange,
   onResetData,
@@ -187,7 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
               ref={triggerRef}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
-              className="relative hidden sm:block"
+              className={`relative hidden ${minimal ? '' : 'sm:block'}`}
             >
               <div className="bg-white/90 hover:bg-white backdrop-blur-md border border-white/95 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 text-xs text-slate-700 shadow-xs transition-all">
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -396,7 +399,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Scan for existing events in your agenda (Desktop only) */}
-            {onOpenScanAgenda && (
+            {onOpenScanAgenda && !minimal && (
               <button
                 onClick={onOpenScanAgenda}
                 id="btn-scan-agenda"
@@ -412,7 +415,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenNewEventModal}
               id="btn-manual-event"
-              className="hidden sm:flex bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
+              className={`hidden ${minimal ? '' : 'sm:flex'} bg-[#182A42] hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0`}
               title="Create new event using presets or assistant"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -430,7 +433,7 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={() => navigate('/feedback')}
               id="btn-header-feedback"
-              className="hidden sm:flex bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-300 text-xs font-semibold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
+              className={`hidden ${minimal ? '' : 'sm:flex'} bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-300 text-xs font-semibold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0`}
               title="Share feedback or report an issue"
             >
               <MessageSquare className="w-3.5 h-3.5 text-slate-500" />

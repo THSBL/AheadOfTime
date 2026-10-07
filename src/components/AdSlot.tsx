@@ -52,8 +52,9 @@ export const AdSlot: React.FC<{ place: keyof typeof SLOTS; className?: string }>
 
   if (!CLIENT || !slot) return null;
   return (
-    <aside className={`w-full ${className}`} aria-label="Advertisement">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1 text-center">Advertisement</p>
+    <aside className={`aot-ad w-full ${className}`} aria-label="Advertisement">
+      {/* Shown only once an ad has actually loaded (index.css). */}
+      <p className="aot-ad-label text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1 text-center">Advertisement</p>
       {/* A short banner, never a big block: the size is set in CSS
           (.aot-ad-banner in index.css: 100px high on phones, 90px wider up),
           which Google's responsive ad code supports when data-ad-format is

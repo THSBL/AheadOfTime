@@ -194,3 +194,15 @@ html.aot-returning [data-prerendered] {
     height: 90px;
   }
 }
+
+/* The "Advertisement" label only above a loaded ad; no ad to show (or the
+   site not approved yet): the block folds away. AdSense sets data-ad-status. */
+.aot-ad .aot-ad-label {
+  display: none;
+}
+.aot-ad:has(ins[data-ad-status='filled']) .aot-ad-label {
+  display: block;
+}
+.aot-ad ins.adsbygoogle[data-ad-status='unfilled'] {
+  display: none !important;
+}

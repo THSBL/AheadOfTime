@@ -66,19 +66,8 @@ export const TrialCard: React.FC<TrialCardProps> = ({ plan, onAdjust }) => {
 
   const happy = rating === 'love' || rating === 'good';
 
-  if (!plan) {
-    return (
-      <div className="mx-auto max-w-3xl px-1">
-        <div className="rounded-2xl bg-white/95 border border-aot-sage/60 px-4 py-3 flex items-start gap-3 shadow-sm">
-          <Sparkles className="w-4 h-4 text-[#447463] mt-0.5 shrink-0" />
-          <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
-            <b className="text-[#182A42]">Try it out, no sign-in needed.</b> Describe something coming up in the chat below. The assistant asks a few
-            quick questions, then builds your prep plan. Nothing is saved until you choose to put it in your calendar.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Before a plan exists the page is just the description box: no banner.
+  if (!plan) return null;
 
   // Pinned to the bottom of the screen, next to the plan it's about.
   return (
