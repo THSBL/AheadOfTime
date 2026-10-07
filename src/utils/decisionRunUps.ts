@@ -9,7 +9,7 @@ import type { CalendarEvent, TMinusMilestone } from '../types.js';
  *
  *   1. Explore & share  look at options; send a shortlist when others have a say
  *   2. Decide & book    revisit the options and make the final choice
- *   3. Check & verify   arrival times, check-in, transport - how it fits the rest
+ *   (Trips add one "Check the whole trip" step for all bookings: tripBasics.ts.)
  *
  * The choice lives on the event (context.stagedBookings, keyed by what is
  * booked, so it survives the planner rewording a step); applyStaging adds
@@ -97,6 +97,49 @@ export function checkPoints(topic: string): string {
   if (points.length === 0) add('details', 'timing');
   return points.slice(0, 3).join(', ');
 }
+
+/**
+ * The decision as the choice it really is - the biggest thing to settle -
+ * and the angles to explore it by: "restaurant reservation" ->
+ * { choice: "which restaurant", options: "restaurant options",
+ *   angles: "neighbourhood, theme, price" }. A place in the topic
+ * ("London restaurant") is kept: "which restaurant in London".
+ */
+export function decisionChoice(topic: string): { choice: string; options: string; angles: string } {
+  const t = topic.toLowerCase();
+  const place = (topic.match(/\b[A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+)*/u) || [])[0];
+  const where = place ? ` in ${place}` : '';
+  // [pattern, the choice, what the options are of, the angles to compare by]
+  const kinds: Array<[RegExp, string, string, string[]]> = [
+    [/restaurant|dinner|table|dining|lunch|brunch/, 'which restaurant', 'restaurant', ['neighbourhood', 'theme', 'price']],
+    [/flight|plane/, 'which flights', 'flight', ['times', 'airports', 'price']],
+    [/lodging|hotel|stay|accommodation|airbnb|apartment|villa|cabin|hostel/, 'where to stay', 'stay', ['neighbourhood', 'price', 'rooms']],
+    [/venue|hall|space/, 'which venue', 'venue', ['location', 'size', 'price']],
+    [/cater/, 'which caterer', 'caterer', ['menu', 'dietary needs', 'price']],
+    [/activit|tour|excursion|class|lesson|show|concert|ticket/, 'which activity', 'activity', ['type', 'timing', 'price']],
+    [/rental car|car rental|\bcar\b/, 'which rental car', 'rental car', ['pick-up', 'size', 'price']],
+    [/sitter|babysit|nanny|pet|dog|cat\b/, 'who looks after them', 'sitter', ['availability', 'reviews', 'price']],
+    [/photograph|video/, 'which photographer', 'photographer', ['style', 'availability', 'price']],
+    [/train|ferry|bus\b|coach/, 'which connection', 'travel', ['times', 'changes', 'price']],
+  ];
+  const found = kinds.filter(([re]) => re.test(t)).slice(0, 2);
+  if (found.length === 0) return { choice: topic, options: `${topic} options`, angles: '' };
+  const angles: string[] = [];
+  for (const [, , , a] of found) for (const x of a) if (!angles.includes(x) && angles.length < 3) angles.push(x);
+  // Two things booked together ("flights and hotel"): both choices, price last.
+  if (found.length > 1) angles.sort((x, y) => (x === 'price' ? 1 : y === 'price' ? -1 : 0));
+  return {
+    choice: `${found.map(([, c]) => c).join(' & ')}${where}`,
+    options: `${found.map(([, , o]) => o).join(' & ')} options${where}`,
+    angles: angles.join(', '),
+  };
+}
+
+const exploreTitle = (topic: string, share: boolean) => {
+  const { options, angles } = decisionChoice(topic);
+  return `${share ? 'Explore & share' : 'Explore'}: ${options}${angles ? ` (${angles})` : ''}`;
+};
+const decideTitle = (topic: string) => `${DECIDE_PREFIX}${decisionChoice(topic).choice}`;
 
 const words = (text: string) => new Set(text.toLowerCase().match(/[a-z]{4,}/g) || []);
 
@@ -220,26 +263,20 @@ export function buildDecisionRunUps(event: CalendarEvent, milestones: TMinusMile
       step(
         'look',
         shiftDay(d.calculatedDate, -spacing.look),
-        share ? `Explore & share options: ${topic}` : `Explore options: ${topic}`,
-        share
-          ? `Shortlist a few options and send them to the group. Ask for a reply before ${dayLabel(d.calculatedDate)}, when you decide and book.`
-          : `Shortlist a few options so the choice on ${dayLabel(d.calculatedDate)} is easy. Nothing to book yet.`
+        exploreTitle(topic, share),
+        (() => {
+          const { angles } = decisionChoice(topic);
+          const by = angles ? ` by ${angles.replace(/, ([^,]+)$/, ' and $1')}` : '';
+          return share
+            ? `Shortlist 2-3 options${by} and send them to the group. Ask everyone to pick before ${dayLabel(d.calculatedDate)}, when you decide and book.`
+            : `Shortlist 2-3 options${by}, so the choice on ${dayLabel(d.calculatedDate)} is easy. Nothing to book yet.`;
+        })()
       );
     }
 
-    // 3. Check & verify - after booking, in time to fix what doesn't fit.
-    // A trip has one "Check the whole trip" step for all bookings together
-    // (tripBasics.ts); other events check each picked booking.
-    const after = event.category === 'travel_trip' ? null : checkOffset(daysBetween(d.calculatedDate, event.eventDate));
-    if (after !== null) {
-      const points = checkPoints(topic);
-      step(
-        'check',
-        shiftDay(d.calculatedDate, after),
-        `Check & verify: ${topic} (${points})`,
-        `Look at the confirmations together: do ${points} line up with the rest of the plan?`
-      );
-    }
+    // No separate "Check & verify" step per booking any more: the real
+    // work is the choice itself. A trip still gets one "Check the whole
+    // trip" step for all bookings together (tripBasics.ts).
   }
   return added;
 }
@@ -268,7 +305,7 @@ export function withDecisionRunUps(event: CalendarEvent, milestones: TMinusMiles
     if (!decisionIds.has(m.id) || m.decisionBaseTitle) return m;
     renamed = true;
     const topic = decisionTopic(m.title, keepCase);
-    return { ...m, decisionBaseTitle: m.title, title: `${DECIDE_PREFIX}${topic}` };
+    return { ...m, decisionBaseTitle: m.title, title: decideTitle(topic) };
   });
   if (added.length === 0 && !renamed) return milestones;
   return [...named, ...added].sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate));
@@ -283,29 +320,55 @@ export function withDecisionRunUps(event: CalendarEvent, milestones: TMinusMiles
  */
 export function upgradeLegacyRunUps(event: CalendarEvent): CalendarEvent {
   const milestones = event.milestones || [];
-  const legacy = milestones.some((m) => isRunUp(m) && m.status === 'pending' && /^(Look at options: |Share .* options with the group$)/.test(m.title));
-  if (!legacy) return event;
   const keepCase = `${event.title || ''} ${event.location || ''} ${event.context?.destination || ''}`;
   const share = involvesOthers(event);
+  const isTrip = event.category === 'travel_trip';
   const byId = new Map(milestones.map((m) => [m.id, m]));
-  const upgraded = milestones.map((m) => {
-    if (!isRunUp(m) || m.status !== 'pending') return m;
-    const [, decisionId, key] = (m.slotKey || '').match(/^runup:(.+):(look|share)$/) || [];
-    if (!decisionId) return m;
-    const decision = byId.get(decisionId);
-    const topic = decisionTopic(decision?.decisionBaseTitle || decision?.title || m.title.replace(/^Look at options: /, ''), keepCase);
-    if (key === 'share') return { ...m, isActive: false, status: 'skipped' as const };
-    return { ...m, title: share ? `Explore & share options: ${topic}` : `Explore options: ${topic}` };
-  });
+  let changed = false;
+  const upgraded: TMinusMilestone[] = [];
+  for (const m of milestones) {
+    if (m.status !== 'pending') {
+      upgraded.push(m);
+      continue;
+    }
+    if (isRunUp(m)) {
+      const [, decisionId, key] = (m.slotKey || '').match(/^runup:(.+):(look|share|check)$/) || [];
+      if (!decisionId) {
+        upgraded.push(m);
+        continue;
+      }
+      const decision = byId.get(decisionId);
+      // Folded into the explore step; and no per-booking check outside trips.
+      if (key === 'share' || (key === 'check' && !isTrip)) {
+        changed = true;
+        continue;
+      }
+      if (key === 'look') {
+        const topic = decisionTopic(decision?.decisionBaseTitle || decision?.title || m.title.replace(/^[^:]+:\s*/, ''), keepCase);
+        const title = exploreTitle(topic, share);
+        if (title !== m.title) {
+          changed = true;
+          upgraded.push({ ...m, title });
+          continue;
+        }
+      }
+      upgraded.push(m);
+      continue;
+    }
+    upgraded.push(m);
+  }
+  // Each staged booking's own name: the choice ("Decide & book: which restaurant").
   const decisionIds = new Set(
     upgraded.filter((m) => isRunUp(m) && m.slotKey?.endsWith(':look')).map((m) => (m.slotKey || '').replace(/^runup:|:look$/g, ''))
   );
-  const named = upgraded.map((m) =>
-    decisionIds.has(m.id) && !m.decisionBaseTitle && m.status === 'pending'
-      ? { ...m, decisionBaseTitle: m.title, title: `${DECIDE_PREFIX}${decisionTopic(m.title, keepCase)}` }
-      : m
-  );
-  return { ...event, milestones: named };
+  const named = upgraded.map((m) => {
+    if (m.status !== 'pending' || (!decisionIds.has(m.id) && !m.decisionBaseTitle)) return m;
+    const title = decideTitle(decisionTopic(m.decisionBaseTitle || m.title, keepCase));
+    if (title === m.title) return m;
+    changed = true;
+    return { ...m, decisionBaseTitle: m.decisionBaseTitle || m.title, title };
+  });
+  return changed ? { ...event, milestones: named } : event;
 }
 
 /**

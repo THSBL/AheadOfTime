@@ -30,7 +30,7 @@ const event = (milestones: TMinusMilestone[], extra: Partial<CalendarEvent> = {}
 
 const REF = '2026-10-01T10:00:00Z';
 
-describe('the rhythm for arranging things: Explore & share -> Decide & book -> Check & verify', () => {
+describe('the rhythm for arranging things: Explore & share -> Decide & book', () => {
   it('stages bookings and arrangements, not one-step things', () => {
     expect(isDecisionMilestone(ms('a', 'Book flights and hotel', '2026-10-20'))).toBe(true);
     expect(isDecisionMilestone(ms('b', 'Restaurant Selected & Table Reserved', '2026-10-20'))).toBe(true);
@@ -76,18 +76,17 @@ describe('the rhythm for arranging things: Explore & share -> Decide & book -> C
     const decision = ms('a', 'Book flights and hotel', '2026-10-20');
     const ev = event([decision], { context: picked({ 'flights and hotel': 'group' }) });
     expect(applyStaging(ev, [decision], REF).map((m) => [m.title, m.calculatedDate.slice(0, 10)])).toEqual([
-      ['Explore & share options: flights and hotel', '2026-10-13'],
-      ['Decide & book: flights and hotel', '2026-10-20'],
+      ['Explore & share: flight & stay options (times, airports, price)', '2026-10-13'],
+      ['Decide & book: which flights & where to stay', '2026-10-20'],
     ]);
   });
 
-  it('outside a trip, a picked booking also gets its own check', () => {
+  it('a picked booking is about the choice, with no separate check step', () => {
     const decision = ms('a', 'Book the venue', '2026-10-20');
     const ev = event([decision], { category: 'birthday_party', title: 'Party with friends', context: picked({ venue: 'group' }) });
     expect(applyStaging(ev, [decision], REF).map((m) => m.title)).toEqual([
-      'Explore & share options: venue',
-      'Decide & book: venue',
-      'Check & verify: venue (access, setup time)',
+      'Explore & share: venue options (location, size, price)',
+      'Decide & book: which venue',
     ]);
   });
 
@@ -95,7 +94,7 @@ describe('the rhythm for arranging things: Explore & share -> Decide & book -> C
     const decision = ms('a', 'Book dentist', '2026-10-30');
     const ev = event([decision], { title: 'Dentist', userRole: 'guest', category: 'custom', context: picked({ dentist: 'headroom' }) });
     const first = applyStaging(ev, [decision], REF)[0];
-    expect([first.title, first.calculatedDate.slice(0, 10)]).toEqual(['Explore options: dentist', '2026-10-16']);
+    expect([first.title, first.calculatedDate.slice(0, 10)]).toEqual(['Explore: dentist options', '2026-10-16']);
   });
 
   it('is idempotent, and un-picking removes open stages and gives the booking its title back', () => {
@@ -123,7 +122,7 @@ describe('plans saved before the rhythm', () => {
       ms('a-runup-share', 'Share flights & Brooklyn Lodging Secured options with the group', '2026-10-03', { slotKey: 'runup:a:share' }),
     ], { title: 'Trip to Brooklyn with friends', location: 'Brooklyn, New York' });
     const titles = upgradeLegacyRunUps(ev).milestones.filter((m) => m.isActive !== false).map((m) => m.title).sort();
-    expect(titles).toEqual(['Decide & book: flights & Brooklyn lodging', 'Explore & share options: flights & Brooklyn lodging']);
+    expect(titles).toEqual(['Decide & book: which flights & where to stay in Brooklyn', 'Explore & share: flight & stay options in Brooklyn (times, airports, price)']);
     const fresh = event([ms('b', 'Book flights', '2026-10-05')]);
     expect(upgradeLegacyRunUps(fresh)).toBe(fresh);
   });
