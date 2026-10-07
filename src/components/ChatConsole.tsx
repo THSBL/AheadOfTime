@@ -859,14 +859,34 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                         {formatDisplayDate(draftEvent.eventDate)}
                         {draftEvent.endDate && draftEvent.endDate !== draftEvent.eventDate ? ` – ${formatDisplayDate(draftEvent.endDate)}` : ''}
                       </p>
-                      <div className="space-y-1 pt-1 border-t border-emerald-200/70">
-                        {(draftEvent.milestones || []).map((m) => (
-                          <div key={m.id} className="flex items-center justify-between gap-2 text-[11px]">
-                            <span className="text-slate-700 truncate">{m.title}</span>
-                            <span className="text-slate-400 font-mono shrink-0">{formatDisplayDate(m.calculatedDate)}</span>
-                          </div>
-                        ))}
+                      {/* Each step with its first ideas (the sub-steps: "Reserve at
+                          Lilia or Llama Inn") - examples of what the assistant
+                          helps with, not a fixed list. */}
+                      <div className="space-y-2 pt-2 border-t border-emerald-200/70">
+                        {(draftEvent.milestones || []).map((m) => {
+                          const ideas = (m.deliverables || []).map((d) => (d?.title || '').trim()).filter(Boolean).slice(0, 2);
+                          return (
+                            <div key={m.id} className="text-[11px]">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-slate-800 font-semibold truncate">{m.title}</span>
+                                <span className="text-slate-400 font-mono shrink-0">{formatDisplayDate(m.calculatedDate)}</span>
+                              </div>
+                              {ideas.length > 0 && (
+                                <ul className="mt-0.5 space-y-0.5">
+                                  {ideas.map((idea) => (
+                                    <li key={idea} className="text-slate-500 leading-snug pl-3 relative before:content-['›'] before:absolute before:left-0.5 before:text-emerald-600">
+                                      {idea}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
+                      {(draftEvent.milestones || []).some((m) => (m.deliverables || []).length > 0) && (
+                        <p className="text-[11px] text-emerald-800/80 italic">Ideas to get you started - ask me to swap, add or look into any of them.</p>
+                      )}
                       <div className="flex items-center justify-between gap-2 pt-1.5">
                         <span className="text-[11px] text-slate-500">Anything to add? Type it below.</span>
                         <button
