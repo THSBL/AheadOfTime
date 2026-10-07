@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   RefreshCw,
   MoreHorizontal,
+  Link2,
   Layers,
   Repeat,
   X,
@@ -44,6 +45,7 @@ import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
 import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
+import { SharePlanDialog } from './SharePlanDialog';
 
 // Category-specific example so the "SOMETHING OFF?" placeholder feels like
 // it's actually about this event, not a hardcoded party-planning example
@@ -149,6 +151,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  // Share this plan as a read-only link (SharePlanDialog).
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<TMinusMilestone | null>(null);
   const [isEditingEvent, setIsEditingEvent] = useState(false);
   const [clarifyTitle, setClarifyTitle] = useState('');
@@ -1104,6 +1108,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <MoreHorizontal className="w-4 h-4" />
         </button>
 
+        {isShareOpen && activeEvent && <SharePlanDialog event={activeEvent} onClose={() => setIsShareOpen(false)} />}
         {isMoreMenuOpen && (
           <>
             <div
@@ -1123,6 +1128,17 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                   <span>Import Template Preset...</span>
                 </button>
               )}
+
+              <button
+                onClick={() => {
+                  setIsShareOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-sky-50 hover:text-slate-900 flex items-center gap-2 cursor-pointer"
+              >
+                <Link2 className="w-3.5 h-3.5 text-sky-600" />
+                <span>Share plan</span>
+              </button>
 
               <button
                 onClick={() => {

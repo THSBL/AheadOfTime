@@ -42,6 +42,8 @@ import { openSignIn } from './components/SignInModal';
 import { SignInHost } from './components/SignInHost';
 import { CalendarSetupPage } from './components/CalendarSetupPage';
 import { TrialCard } from './components/TrialCard';
+import { AdSlot } from './components/AdSlot';
+import { SharedPlanPage } from './components/SharedPlanPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -2424,6 +2426,10 @@ function App() {
                     onOpenPreferences={() => setIsPreferencesModalOpen(true)}
                     currentReferenceDate={currentReferenceDate}
                   />
+                  {/* The try-out only, for a visitor without an account or a connected
+                      calendar: one ad block below the chat field (public pages
+                      only - see AdSlot). */}
+                  {isTrial && !(getStoredAccessToken() && !isTokenExpired()) && <AdSlot place="tryChat" className="mt-4 max-w-3xl mx-auto" />}
                 </div>
               )}
             </div>
@@ -2800,6 +2806,8 @@ export default function AppWithRouter() {
           <Route path="/how-it-works" element={<HowItWorksPage />} />
           {/* Try it out: plan one event without signing in. */}
           <Route path="/try" element={<App />} />
+          {/* A plan someone shared: read-only, public. */}
+          <Route path="/p/:token" element={<SharedPlanPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/faq" element={<FaqPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />

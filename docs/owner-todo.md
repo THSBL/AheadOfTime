@@ -22,3 +22,27 @@ Why: the two daily/weekly jobs, and re-registering the Telegram bot, now **refus
 
 - [ ] Check the Gemini API project's billing tier (paid vs free): whether Google may use API data depends on it; make sure it matches the privacy page.
 - [ ] Decide whether "Plan with AI" stays on by default or becomes opt-in.
+
+## Ads on public pages (Google AdSense) - added 7 Oct 2026
+
+The app shows one ad block on two public pages only: a shared plan (`/p/...`) and the try-out chat (`/try`, for visitors who aren't signed in). Nothing shows until these steps are done. Ads are non-personalised; the privacy policy already says so.
+
+- [ ] **Apply for AdSense** at adsense.google.com with `aheadoftime.app`. Approval can take days to weeks.
+- [ ] **EU consent message:** in AdSense, Privacy & messaging → European regulations → create and publish the consent message for aheadoftime.app. Google requires it for visitors from the EU, UK and Switzerland.
+- [ ] **Create two display ad units** (responsive): "Shared plan" and "Try-out chat". Note each unit's slot id (a number).
+- [ ] **Vercel → Settings → Environment Variables (Production):**
+  - `VITE_ADSENSE_CLIENT` = your publisher id, e.g. `ca-pub-1234567890123456`
+  - `VITE_ADSENSE_SLOT_SHARED_PLAN` = the "Shared plan" slot id
+  - `VITE_ADSENSE_SLOT_TRY_CHAT` = the "Try-out chat" slot id
+  Then **Redeploy**. The build writes `/ads.txt` automatically from the publisher id.
+- [ ] After the redeploy, open a shared plan and check the ad block appears (an ad blocker hides it).
+
+## Weekly "T-minus Tuesday" content package - added 7 Oct 2026
+
+Every Monday (with the weekly report), the app builds one example plan for one of the four target groups, publishes it as a shared plan, and writes a Reddit, LinkedIn and Pinterest draft. You review and post by hand: nothing is posted automatically.
+
+- [ ] **Email:** goes to `OWNER_EMAIL` if set, otherwise the first address in `ADMIN_EMAILS`. Set `OWNER_EMAIL` in Vercel if that's not the address you want.
+- [ ] **Telegram:** goes to `OWNER_TELEGRAM_CHAT_ID` (already used by the weekly report).
+- [ ] **Preview any time** (publishes and sends nothing):
+  `curl -H "Authorization: Bearer <CRON_SECRET>" "https://aheadoftime.app/api/cron/weekly-content?dryRun=1"`
+  Without `?dryRun=1` it publishes this week's example plan and sends the package right away.

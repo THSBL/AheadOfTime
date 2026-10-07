@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import { appOrigin } from "./server/appOrigin";
 import path from "path";
 import fs from "fs";
+import { handleSharedPlans } from "./server/sharedPlans";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import {
@@ -1431,6 +1432,8 @@ app.all("/api/auth/calendar-feed", async (req: Request, res: Response) => {
   }
   await handleCalendarFeedSettings(req, res, await findOrCreateUserByEmail(verified.email));
 });
+// Twin of api/auth/google/index.ts action=shared-plan.
+app.all("/api/plan/shared", (req: Request, res: Response) => handleSharedPlans(req, res));
 // Twin of api/auth/google/index.ts action=delete-account.
 app.all("/api/auth/account", (req: Request, res: Response) => handleAccountDeletion(req, res));
 

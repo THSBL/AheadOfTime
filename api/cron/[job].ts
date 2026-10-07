@@ -2,16 +2,24 @@ import { getWeeklyDigestData, sendOwnerAlert } from '../../server/qualityStore.j
 import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
 import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 import { appOrigin } from '../../server/appOrigin.js';
+import { buildWeeklyPackage, deliverWeeklyPackage } from '../../server/weeklyContent.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
 // /api/cron/agenda-scan - the paths vercel.json's crons entries point at).
 // Vercel's Hobby plan caps a deployment at 12 serverless functions and this
 // project is already at 11, so a new job goes in here rather than in a new
 // api/cron/*.ts file (same consolidation as api/auth/google/index.ts).
+// The Monday run builds an AI plan and drafts on top of the report.
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req: any, res: any) {
   const job = String(req.query?.job || '');
   if (job === 'weekly-report') return handleWeeklyReport(req, res);
   if (job === 'agenda-scan') return handleAgendaScan(req, res);
+  // Manual run of the Monday content package (it also rides the weekly report).
+  if (job === 'weekly-content') return handleWeeklyContent(req, res);
   return res.status(404).json({ ok: false, error: 'Unknown cron job' });
 }
 
@@ -115,7 +123,9 @@ async function handleWeeklyReport(req: any, res: any) {
 
     await sendOwnerAlert(message);
 
-    return res.status(200).json({ ok: true });
+    // Monday is also the day the weekly content package goes out.
+    const weeklyContent = await runWeeklyContentQuietly(req);
+    return res.status(200).json({ ok: true, weeklyContent });
   } catch (err: any) {
     console.error('Weekly report generation failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Failed to generate weekly report' });
@@ -125,4 +135,39 @@ async function handleWeeklyReport(req: any, res: any) {
 function oneLine(text: string | null | undefined, max: number): string {
   const flat = String(text || '').replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/**
+ * The weekly "T-minus Tuesday" content package (server/weeklyContent.ts):
+ * built and sent to the owner on Mondays with the weekly report (Hobby
+ * allows two cron jobs, both taken). Owner-only manual run, e.g. to preview
+ * without publishing or sending anything:
+ *   curl -H "Authorization: Bearer $CRON_SECRET" \
+ *     "https://<app>/api/cron/weekly-content?dryRun=1"
+ */
+async function handleWeeklyContent(req: any, res: any) {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) return res.status(500).json({ ok: false, error: 'CRON_SECRET is not configured.' });
+  if ((req.headers?.authorization || '') !== `Bearer ${cronSecret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const dryRun = req.query?.dryRun === '1' || req.query?.dryRun === 'true';
+  try {
+    const pkg = await buildWeeklyPackage({ appUrl: appOrigin(req), dryRun });
+    const delivered = dryRun ? { email: false, telegram: false } : await deliverWeeklyPackage(pkg);
+    return res.status(200).json({ ok: true, dryRun, delivered, package: pkg });
+  } catch (err: any) {
+    console.error('Weekly content failed:', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Weekly content failed' });
+  }
+}
+
+/** Rides the Monday weekly report: never fails the report itself. */
+async function runWeeklyContentQuietly(req: any): Promise<string> {
+  try {
+    const pkg = await buildWeeklyPackage({ appUrl: appOrigin(req) });
+    const d = await deliverWeeklyPackage(pkg);
+    return `weekly content ${pkg.week}: email ${d.email ? 'sent' : 'not sent'}, telegram ${d.telegram ? 'sent' : 'not sent'}`;
+  } catch (err: any) {
+    console.warn('Weekly content (non-fatal):', err);
+    return `weekly content failed: ${err?.message || err}`;
+  }
 }

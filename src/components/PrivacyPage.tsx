@@ -355,7 +355,18 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                   <strong>No Sale of Google User Data:</strong> We <strong>NEVER</strong> sell, rent, trade, or transfer your Google Calendar or Google Tasks data to third-party data brokers, ad networks, or commercial aggregators.
                 </li>
                 <li>
-                  <strong>Advertising &amp; Monetization Policy:</strong> To keep Ahead Of Time viable, the Service may display non-targeted, contextual advertisements or offer optional premium freemium subscription tiers. <strong>No Google Calendar or Task data is ever shared with or accessible to advertising providers</strong>, and Google user data is never used to serve targeted or retargeted advertisements.
+                  <strong>Advertising:</strong> To keep Ahead Of Time free, two public pages may show one or two ads from Google AdSense:
+                  the try-out page (only for visitors who aren't signed in and haven't connected a calendar) and pages showing a plan
+                  someone shared. These ads are <strong>non-personalised</strong>: Google doesn't use a profile of you to choose them.
+                  Google may still use cookies to limit how often an ad appears and to prevent fraud; in the EU, UK and Switzerland it
+                  asks for your consent first. Ads never appear in the app once you're signed in, and{' '}
+                  <strong>no calendar, task or plan data is ever shared with or accessible to advertising providers</strong>; Google
+                  user data is never used to serve targeted or retargeted ads.
+                </li>
+                <li>
+                  <strong>Shared plans:</strong> When you share a plan, anyone with its link can see that plan's title, dates, steps and
+                  ideas, as they were when you shared it. Not your notes, your other plans, your name or your email address. You can stop
+                  sharing at any time from the plan; the link then stops working. Shared plan pages are not listed by search engines.
                 </li>
                 <li>
                   <strong>Prohibition on AI Training:</strong> We <strong>NEVER</strong> use Google Workspace APIs or any data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) models.
@@ -407,7 +418,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                 </div>
                 <p className="text-xs text-slate-600">
                   Settings &rarr; Credentials &rarr; <strong>Delete account</strong> permanently deletes your account and everything we store
-                  for it: plans and tasks, profile, Telegram link, Background Sync access (also revoked at Google), feedback and settings.
+                  for it: plans and tasks, shared plan links, profile, Telegram link, Background Sync access (also revoked at Google), feedback and settings.
                   Events already synced to your own Google Calendar stay there. Your own words kept in our error logs are removed after 90 days.
                 </p>
               </div>

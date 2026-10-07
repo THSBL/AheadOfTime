@@ -40,3 +40,12 @@ for (const route of PRERENDER_ROUTES) {
   console.log(`prerendered ${route.path} -> ${OUT}/${route.file} (${Math.round(html.length / 1024)} KB)`);
 }
 rmSync(SSR_OUT, { recursive: true, force: true });
+
+// Google AdSense asks every site that shows its ads for /ads.txt naming the
+// publisher. Written only when the publisher id is configured.
+const adClient = (process.env.VITE_ADSENSE_CLIENT || '').trim();
+const pub = adClient.replace(/^ca-/, '');
+if (/^pub-\d{10,20}$/.test(pub)) {
+  writeFileSync(`${OUT}/ads.txt`, `google.com, ${pub}, DIRECT, f08c47fec0942fa0\n`);
+  console.log(`wrote ${OUT}/ads.txt for ${pub}`);
+}
