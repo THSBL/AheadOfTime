@@ -666,7 +666,7 @@ Output ONLY the raw JSON object.`;
 // this never blocks event creation).
 app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void> => {
   try {
-    const aiUser = await guardAiRequest(req, res, { message: AI_LIMITS.messageChars });
+    const aiUser = await guardAiRequest(req, res, { message: AI_LIMITS.messageChars }, { allowTrial: true });
     if (!aiUser) return;
     const { message, currentReferenceDate, userProfile } = req.body || {};
     if (!message || typeof message !== 'string') {
@@ -686,11 +686,16 @@ app.post("/api/agent/clarify", async (req: Request, res: Response): Promise<void
 // Main intelligent agent processing endpoint
 app.post("/api/agent/process", async (req: Request, res: Response): Promise<void> => {
   try {
-    const aiUser = await guardAiRequest(req, res, {
-      message: AI_LIMITS.messageChars,
-      conversationBrief: AI_LIMITS.briefChars,
-      activeEvents: 400_000,
-    });
+    const aiUser = await guardAiRequest(
+      req,
+      res,
+      {
+        message: AI_LIMITS.messageChars,
+        conversationBrief: AI_LIMITS.briefChars,
+        activeEvents: 400_000,
+      },
+      { allowTrial: true }
+    );
     if (!aiUser) return;
     const payload: ProcessAgentInputPayload = req.body;
     let {

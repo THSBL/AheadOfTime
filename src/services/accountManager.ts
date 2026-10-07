@@ -84,10 +84,82 @@ export function getCurrentUser(): AuthUser | null {
 /**
  * Sets the active user and dispatches a storage event for cross-component sync
  */
+const TRIAL_PLAN_KEY = 'aot_trial_plan';
+const TRIAL_PLAN_TTL_MS = 2 * 24 * 60 * 60 * 1000;
+
+/**
+ * A plan made on the try-out page (/try) before signing in. It is kept on
+ * this device only, and moves into the account on the next sign-in
+ * (adoptTrialPlan), so trying it out first loses nothing.
+ */
+export function saveTrialPlan(event: CalendarEvent): void {
+  try {
+    localStorage.setItem(TRIAL_PLAN_KEY, JSON.stringify({ event, savedAt: Date.now() }));
+  } catch {
+    // storage blocked: the plan simply isn't carried over
+  }
+}
+
+export function readTrialPlan(): CalendarEvent | null {
+  try {
+    const raw = localStorage.getItem(TRIAL_PLAN_KEY);
+    if (!raw) return null;
+    const { event, savedAt } = JSON.parse(raw);
+    if (!event?.id || typeof savedAt !== 'number' || Date.now() - savedAt > TRIAL_PLAN_TTL_MS) {
+      localStorage.removeItem(TRIAL_PLAN_KEY);
+      return null;
+    }
+    return event as CalendarEvent;
+  } catch {
+    return null;
+  }
+}
+
+export function clearTrialPlan(): void {
+  try {
+    localStorage.removeItem(TRIAL_PLAN_KEY);
+  } catch {
+    // nothing to clear
+  }
+}
+
+/** Moves a waiting try-out plan into this account's plans (once). Returns its id. */
+export function adoptTrialPlan(userId: string): string | null {
+  const plan = readTrialPlan();
+  if (!plan || normalizeUserId(userId) === 'guest') return null;
+  const events = loadUserEvents(userId);
+  if (!events.some((e) => e.id === plan.id)) {
+    saveUserEvents([{ ...plan, updatedAt: new Date().toISOString() }, ...events], userId);
+  }
+  clearTrialPlan();
+  try {
+    sessionStorage.setItem(TRIAL_ADOPTED_KEY, plan.id);
+  } catch {
+    // only affects opening the plan after sign-in
+  }
+  return plan.id;
+}
+
+const TRIAL_ADOPTED_KEY = 'aot_trial_adopted';
+
+/** The try-out plan that just joined the account, once (to open it after sign-in). */
+export function takeAdoptedTrialPlanId(): string | null {
+  try {
+    const id = sessionStorage.getItem(TRIAL_ADOPTED_KEY);
+    sessionStorage.removeItem(TRIAL_ADOPTED_KEY);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
 export function setCurrentUser(user: AuthUser | null): void {
   if (typeof window === 'undefined') return;
   try {
     if (user) {
+      // A plan made on the try-out page joins the account before anything
+      // loads the account's plans (aot_account_switched below).
+      adoptTrialPlan(user.id);
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
       localStorage.setItem('aot_calendar_connected', 'true');
       localStorage.setItem('aot_onboarding_completed', 'true');

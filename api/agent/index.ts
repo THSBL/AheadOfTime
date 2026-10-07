@@ -49,11 +49,17 @@ async function handleProcess(req: any, res: any) {
 
   let userIdForLog: string | undefined;
   try {
-    const aiUser = await guardAiRequest(req, res, {
-      message: AI_LIMITS.messageChars,
-      conversationBrief: AI_LIMITS.briefChars,
-      activeEvents: 400_000,
-    });
+    const aiUser = await guardAiRequest(
+      req,
+      res,
+      {
+        message: AI_LIMITS.messageChars,
+        conversationBrief: AI_LIMITS.briefChars,
+        activeEvents: 400_000,
+      },
+      // The try-out page (/try) may plan without an account, within TRIAL_LIMITS.
+      { allowTrial: true }
+    );
     if (!aiUser) return;
     userIdForLog = aiUser.userId;
     const payload: ProcessAgentInputPayload = req.body;
@@ -189,7 +195,7 @@ async function handleClarify(req: any, res: any) {
     return;
   }
   try {
-    const aiUser = await guardAiRequest(req, res, { message: AI_LIMITS.messageChars });
+    const aiUser = await guardAiRequest(req, res, { message: AI_LIMITS.messageChars }, { allowTrial: true });
     if (!aiUser) return;
     const { message, currentReferenceDate, userProfile } = req.body || {};
     if (!message || typeof message !== 'string') {

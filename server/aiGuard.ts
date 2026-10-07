@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { query } from './db.js';
 import { verifyRequestUser } from './requestAuth.js';
 import { findOrCreateUserByEmail } from './telegramStore.js';
@@ -39,11 +40,90 @@ export class OffTopicRequestError extends Error {
   }
 }
 
+/**
+ * The try-out (/try, no sign-in): a few plans per visitor, and a cap for all
+ * visitors together, so a public planner can't run up the AI bill. Counted
+ * per hashed IP address (the address itself is never stored).
+ */
+export const TRIAL_LIMITS = { perHour: 12, perDay: 24, allPerDay: 600, eventChars: 40_000, briefChars: 2_000 };
+
 export interface AiRequestUser {
+  /** '' for a try-out visitor (no account). */
   userId: string;
   email: string;
   /** False when the user switched AI planning off in Settings. */
   aiEnabled: boolean;
+  /** A try-out visitor without an account (see TRIAL_LIMITS). */
+  isTrial?: boolean;
+}
+
+let trialSchemaReady: Promise<void> | null = null;
+
+function ensureTrialUsageSchema(): Promise<void> {
+  if (!trialSchemaReady) {
+    trialSchemaReady = query(
+      `CREATE TABLE IF NOT EXISTS trial_ai_usage (
+         bucket       TEXT NOT NULL,
+         window_start TIMESTAMPTZ NOT NULL,
+         calls        INTEGER NOT NULL DEFAULT 0,
+         PRIMARY KEY (bucket, window_start)
+       )`
+    )
+      .then(() => undefined)
+      .catch((err) => {
+        trialSchemaReady = null;
+        throw err;
+      });
+  }
+  return trialSchemaReady;
+}
+
+/** The visitor's address as the hosting sets it (Vercel overwrites these headers). */
+function requestIp(req: any): string {
+  const h = req.headers || {};
+  const first = (v: unknown) => String(v || '').split(',')[0].trim();
+  return first(h['x-vercel-forwarded-for']) || first(h['x-real-ip']) || first(h['x-forwarded-for']) || req.socket?.remoteAddress || 'unknown';
+}
+
+async function bumpTrialBucket(bucket: string): Promise<{ hour: number; day: number }> {
+  const rows = await query<{ hour_calls: number; day_calls: string }>(
+    `WITH bumped AS (
+       INSERT INTO trial_ai_usage (bucket, window_start, calls)
+       VALUES ($1, date_trunc('hour', now()), 1)
+       ON CONFLICT (bucket, window_start) DO UPDATE SET calls = trial_ai_usage.calls + 1
+       RETURNING calls
+     )
+     SELECT (SELECT calls FROM bumped) AS hour_calls,
+            (SELECT COALESCE(SUM(calls), 0) FROM trial_ai_usage
+              WHERE bucket = $1 AND window_start >= date_trunc('hour', now() - interval '24 hours')
+                AND window_start < date_trunc('hour', now())) AS day_calls`,
+    [bucket]
+  );
+  const hour = Number(rows[0]?.hour_calls || 0);
+  return { hour, day: hour + Number(rows[0]?.day_calls || 0) };
+}
+
+/**
+ * Counts one try-out AI call; false when this visitor or all visitors
+ * together are over the limit. Unlike signed-in use, an unavailable
+ * counter refuses the call: a public endpoint must never run unmetered.
+ */
+async function recordTrialCall(req: any): Promise<boolean> {
+  try {
+    await ensureTrialUsageSchema();
+    const pepper = process.env.NOTIFY_LINK_SECRET || process.env.CRON_SECRET || 'aot-trial';
+    const visitor = crypto.createHmac('sha256', pepper).update(requestIp(req)).digest('hex').slice(0, 32);
+    const mine = await bumpTrialBucket(`ip:${visitor}`);
+    if (mine.hour > TRIAL_LIMITS.perHour || mine.day > TRIAL_LIMITS.perDay) return false;
+    const all = await bumpTrialBucket('all');
+    if (Math.random() < 0.02) {
+      await query(`DELETE FROM trial_ai_usage WHERE window_start < now() - interval '2 days'`).catch(() => {});
+    }
+    return all.day <= TRIAL_LIMITS.allPerDay;
+  } catch (err) {
+    console.warn('Try-out usage count unavailable (refusing the call):', err);
+    return false;
+  }
 }
 
 let usageSchemaReady: Promise<void> | null = null;
@@ -139,19 +219,39 @@ function textLength(value: unknown): number {
 export async function guardAiRequest(
   req: any,
   res: any,
-  limits: Record<string, number> = { message: AI_LIMITS.messageChars }
+  limits: Record<string, number> = { message: AI_LIMITS.messageChars },
+  options: { allowTrial?: boolean } = {}
 ): Promise<AiRequestUser | null> {
   const verified = await verifyRequestUser(req);
-  if (!verified) {
-    res.status(401).json({ ok: false, error: 'unauthorized', message: 'Please sign in again to keep planning.' });
-    return null;
-  }
   const body = req.body || {};
   for (const [field, max] of Object.entries(limits)) {
     if (textLength(body[field]) > max) {
       res.status(413).json({ ok: false, error: 'too_long', message: 'That message is too long - please keep it shorter.' });
       return null;
     }
+  }
+  if (!verified) {
+    // The try-out page plans without an account - only on the endpoints
+    // that allow it, and only within TRIAL_LIMITS.
+    const wantsTrial = String(req.headers?.['x-aot-trial'] || '') === '1';
+    if (options.allowTrial && wantsTrial) {
+      // A try-out plans one event: no long histories or event lists.
+      if (textLength(body.activeEvents) > TRIAL_LIMITS.eventChars || textLength(body.conversationBrief) > TRIAL_LIMITS.briefChars) {
+        res.status(413).json({ ok: false, error: 'too_long', message: 'That message is too long - please keep it shorter.' });
+        return null;
+      }
+      if (!(await recordTrialCall(req))) {
+        res.status(429).json({
+          ok: false,
+          error: 'trial_limit',
+          message: "That's the limit for trying it out today. Sign in (free) to keep planning.",
+        });
+        return null;
+      }
+      return { userId: '', email: '', aiEnabled: true, isTrial: true };
+    }
+    res.status(401).json({ ok: false, error: 'unauthorized', message: 'Please sign in again to keep planning.' });
+    return null;
   }
   const userId = await findOrCreateUserByEmail(verified.email);
   // A device that switched AI off but couldn't save it yet says so on every

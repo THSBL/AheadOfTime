@@ -190,6 +190,20 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             <span>Watch demo</span>
           </button>
         </div>
+        {/* Try it out - quieter than the main buttons: plan one event
+            without signing in (/try). */}
+        {!onGoToDashboard && (
+          <div className="-mt-1 text-center animate-in fade-in duration-700 delay-300">
+            <a
+              href="/try"
+              onClick={() => trackButtonClick('Try it out', 'landing_hero')}
+              className="inline-flex items-center gap-1 text-sm font-bold text-aot-sage hover:text-white underline underline-offset-4 decoration-aot-sage/50"
+            >
+              Or try it out first <ChevronRight className="w-3.5 h-3.5" />
+            </a>
+            <p className="mt-1 text-xs text-slate-400">No sign-in needed: plan one event and see how it works.</p>
+          </div>
+        )}
         {isDemoOpen && (
           <div
             role="dialog"

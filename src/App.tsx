@@ -41,6 +41,7 @@ import { HowItWorksPage } from './components/HowItWorksPage';
 import { openSignIn } from './components/SignInModal';
 import { SignInHost } from './components/SignInHost';
 import { CalendarSetupPage } from './components/CalendarSetupPage';
+import { TryPage } from './components/TryPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -92,8 +93,7 @@ import {
   saveUserEvents,
   loadUserMessages,
   saveUserMessages,
-  logoutAndClearAccountSession
-} from './services/accountManager';
+  logoutAndClearAccountSession, takeAdoptedTrialPlanId } from './services/accountManager';
 import { UserProfileProvider, useUserProfile } from './contexts/UserProfileContext';
 import { aiJsonHeaders, readAiRefusal } from './services/aiRequest';
 
@@ -725,11 +725,16 @@ function App() {
   // SignInHost, opened with openSignIn() from any page.
 
   // Back from the email link: the server already started the session.
+  // Handled once per landing (the check can resolve more than once).
+  const emailLandingHandledRef = useRef(false);
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     if (sp.get('signed_in') !== 'email') return;
     void checkAppSession().then((email) => {
-      if (!email) return;
+      if (!email || emailLandingHandledRef.current) return;
+      emailLandingHandledRef.current = true;
+      // A plan made on the try-out page joins the account at sign-in
+      // (setCurrentUser); open it rather than the week overview.
       const userEmail = email.toLowerCase().trim();
       const user: AuthUser = { id: userEmail, email: userEmail, name: userEmail.split('@')[0], provider: 'email', connectedAt: new Date().toISOString() };
       try {
@@ -745,7 +750,13 @@ function App() {
       setHasCompletedOnboarding(true);
       setCurrentView('dashboard');
       setSyncToast({ id: Date.now(), title: 'Signed in', message: `Signed in as ${userEmail}.` });
-      navigate('/dashboard', { replace: true });
+      const trialPlanId = takeAdoptedTrialPlanId();
+      if (trialPlanId) {
+        setSelectedEventId(trialPlanId);
+        navigate(`/events/${encodeURIComponent(trialPlanId)}`, { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
@@ -2760,6 +2771,8 @@ export default function AppWithRouter() {
           <Route path="/onboarding" element={<OnboardingRoute />} />
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/how-it-works" element={<HowItWorksPage />} />
+          {/* Try it out: plan one event without signing in. */}
+          <Route path="/try" element={<TryPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/faq" element={<FaqPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
