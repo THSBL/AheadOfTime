@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { appOrigin } from './appOrigin.js';
 import { query } from './db.js';
 import { findOrCreateUserByEmail } from './telegramStore.js';
-import { createSession, revokeSession, readSessionCookie, buildSessionCookie } from './sessionStore.js';
+import { createSession, revokeSession, readSessionCookie, buildSessionCookie, verifySession } from './sessionStore.js';
 import { isEmailConfigured, sendEmail } from './emailService.js';
 
 /**
@@ -93,6 +93,20 @@ export async function consumeLoginLink(token: string): Promise<string | null> {
   return rows[0]?.email || null;
 }
 
+/** What became of a link, without using it: for a clear page instead of a bare "expired". */
+export async function loginLinkStatus(token: string): Promise<{ state: 'valid' | 'used' | 'expired' | 'unknown'; email?: string }> {
+  if (!token || token.length > 100) return { state: 'unknown' };
+  await ensureEmailLoginSchema();
+  const rows = await query<{ email: string; used_at: string | null; expired: boolean }>(
+    `SELECT email, used_at, expires_at <= now() AS expired FROM email_login_links WHERE token_hash = $1`,
+    [hash(token)]
+  );
+  const row = rows[0];
+  if (!row) return { state: 'unknown' };
+  if (row.used_at) return { state: 'used', email: row.email };
+  return { state: row.expired ? 'expired' : 'valid', email: row.email };
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 }
@@ -102,15 +116,13 @@ const CALENDAR_SETUP = 'calendar-setup';
 /** Which calendar's steps the setup page shows - one of a fixed few, else none. */
 const setupCalendar = (v: unknown): string => (v === 'outlook' || v === 'apple' || v === 'other' ? v : '');
 
-function page(inner: string, autoSubmit = false): string {
+// Styles and the one-tap script are files (public/signin.*): the site's
+// Content-Security-Policy blocks inline <style> and <script>.
+function page(inner: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Sign in · Ahead Of Time</title>
-<style>body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#182A42;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px}
-.card{background:#fff;color:#182A42;border-radius:24px;padding:28px 24px;max-width:380px;width:100%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.3)}
-h1{font-size:20px;margin:0 0 8px}p{color:#475569;font-size:14px;margin:0 0 20px;line-height:1.5}
-button,a.btn{display:block;width:100%;box-sizing:border-box;padding:14px;border-radius:14px;border:0;background:#182A42;color:#fff;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none}
-.brand{font-weight:900;color:#95BFB5;margin-bottom:16px;font-size:14px}</style></head>
-<body><div class="card"><div class="brand">Ahead Of Time</div>${inner}</div>${autoSubmit ? `<script>document.getElementById('f').submit()</script>` : ''}</body></html>`;
+<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/signin.css"></head>
+<body><main class="card"><div class="brand"><img src="/icon-96.png" alt="">Ahead Of Time</div>${inner}</main><script src="/signin.js" defer></script></body></html>`;
 }
 
 function emailBody(link: string): { html: string; text: string } {
@@ -124,6 +136,33 @@ function emailBody(link: string): { html: string; text: string } {
 <a href="${safe}" style="display:inline-block;background:#182A42;color:#fff;font-weight:700;padding:12px 22px;border-radius:12px;text-decoration:none">Sign in</a>
 <p style="color:#94a3b8;font-size:12px;line-height:1.5;margin:24px 0 0">Didn't ask for this? Ignore this email; nobody can sign in without the link.</p></div>`,
   };
+}
+
+/**
+ * A link that can't sign in (any more). Opened again in the browser it
+ * already signed in - a second tap, or the email opened twice - it simply
+ * goes on to the app; otherwise a page that says what happened.
+ */
+async function unusableLink(req: any, res: any, status: { state: string; email?: string }, destination: string) {
+  const appUrl = escapeHtml(appUrlFor(req));
+  if (status.state === 'used' && status.email) {
+    const current = await verifySession(readSessionCookie(req)).catch(() => null);
+    if (current && current.email.toLowerCase() === status.email) {
+      res.statusCode = 303;
+      res.setHeader('Location', destination);
+      return res.end();
+    }
+    return res
+      .status(400)
+      .send(page(`<h1>This link was already used</h1><p>Each sign-in link works once. Already signed in on this device? Open the app. Otherwise ask for a new link.</p><a class="btn" href="${appUrl}/dashboard">Open Ahead Of Time</a><a class="btn secondary" href="${appUrl}/?signin=email">Get a new link</a>`));
+  }
+  if (status.state === 'valid') {
+    // Only when the database didn't answer.
+    return res.status(503).send(page(`<h1>Sign-in is not available right now</h1><p>Try the link again in a minute. It still works for ${LINK_TTL_MIN} minutes from when it was sent.</p>`));
+  }
+  return res
+    .status(400)
+    .send(page(`<h1>This link has expired</h1><p>Sign-in links work for ${LINK_TTL_MIN} minutes. Ask for a new one; it arrives within a minute.</p><a class="btn" href="${appUrl}/?signin=email">Get a new link</a>`));
 }
 
 export async function handleEmailLink(req: any, res: any) {
@@ -159,12 +198,16 @@ export async function handleEmailLink(req: any, res: any) {
 
   const next = (req.method === 'POST' ? body.next : req.query?.next) === CALENDAR_SETUP ? CALENDAR_SETUP : '';
   const cal = next ? setupCalendar(req.method === 'POST' ? body.cal : req.query?.cal) : '';
+  const appUrl = appUrlFor(req);
+  const destination = next ? `${appUrl}/setup/calendar?signed_in=email${cal ? `&cal=${cal}` : ''}` : `${appUrl}/dashboard?signed_in=email`;
 
   // 2. The link from the email: a page with a Sign in button. It waits for a
   // tap on purpose - Outlook's link scanner (Safe Links) opens links in
   // emails before the person does, and must not use up the one-time link.
   if (req.method === 'GET') {
     if (!token) return res.status(400).send(page(`<h1>Link incomplete</h1><p>Open the link from your email again, or ask for a new one.</p>`));
+    const status = await loginLinkStatus(token).catch(() => ({ state: 'valid' as const, email: undefined }));
+    if (status.state !== 'valid') return unusableLink(req, res, status, destination);
     return res
       .status(200)
       .send(
@@ -177,18 +220,16 @@ export async function handleEmailLink(req: any, res: any) {
   // 3. Use the link and start the session.
   if (req.method === 'POST') {
     const email = await consumeLoginLink(token).catch(() => null);
-    const appUrl = appUrlFor(req);
     if (!email) {
-      return res
-        .status(400)
-        .send(page(`<h1>This link has expired</h1><p>Sign-in links work once, for ${LINK_TTL_MIN} minutes. Ask for a new one in the app.</p><a class="btn" href="${escapeHtml(appUrl)}/?signin=email">Get a new link</a>`));
+      const status = await loginLinkStatus(token).catch(() => ({ state: 'unknown' as const, email: undefined }));
+      return unusableLink(req, res, status, destination);
     }
     await revokeSession(readSessionCookie(req)).catch(() => {});
     const userId = await findOrCreateUserByEmail(email);
     const session = await createSession(userId, email, req.headers?.['user-agent']);
     res.setHeader('Set-Cookie', buildSessionCookie(session));
     res.statusCode = 303;
-    res.setHeader('Location', next ? `${appUrl}/setup/calendar?signed_in=email${cal ? `&cal=${cal}` : ''}` : `${appUrl}/dashboard?signed_in=email`);
+    res.setHeader('Location', destination);
     return res.end();
   }
 
