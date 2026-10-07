@@ -13,3 +13,4 @@ token.json
 .claude/
 .vercel
 data/
+dist-prerender/

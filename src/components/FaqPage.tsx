@@ -117,11 +117,11 @@ export const FaqPage: React.FC = () => {
                     className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
                   />
                 </button>
-                {isOpen && (
-                  <div className="px-4 sm:px-5 pb-4 sm:pb-5 -mt-1">
-                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">{entry.answer}</p>
-                  </div>
-                )}
+                {/* Always in the page (hidden while closed), so every answer
+                    is in the HTML for readers that don't click. */}
+                <div hidden={!isOpen} className="px-4 sm:px-5 pb-4 sm:pb-5 -mt-1">
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">{entry.answer}</p>
+                </div>
               </div>
             );
           })}

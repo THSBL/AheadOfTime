@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import { appOrigin } from "./server/appOrigin";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import {
@@ -1624,7 +1625,10 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      // App routes get the empty shell (app.html, written by
+      // scripts/prerender.mjs); index.html holds the rendered home page.
+      const shell = path.join(distPath, "app.html");
+      res.sendFile(fs.existsSync(shell) ? shell : path.join(distPath, "index.html"));
     });
   }
 

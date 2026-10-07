@@ -15,6 +15,13 @@ const DEFAULT_DESCRIPTION =
  * used in PrivacyPage.tsx, extended to also update the description tag.
  */
 export function usePageMeta(title: string, description?: string) {
+  // Build-time rendering (src/prerender.tsx) runs no effects: note the
+  // page's title and description there so they go into its HTML.
+  const collector = (globalThis as { __aotPageMeta?: { title?: string; description?: string } }).__aotPageMeta;
+  if (typeof document === 'undefined' && collector) {
+    collector.title = title;
+    if (description) collector.description = description;
+  }
   useEffect(() => {
     const previousTitle = document.title;
     document.title = title;

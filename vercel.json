@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm run build",
   "rewrites": [
     {
       "source": "/api/auth/email-link",
@@ -101,8 +102,24 @@
       "destination": "/api/$1"
     },
     {
+      "source": "/features",
+      "destination": "/features.html"
+    },
+    {
+      "source": "/how-it-works",
+      "destination": "/how-it-works.html"
+    },
+    {
+      "source": "/faq",
+      "destination": "/faq.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
       "source": "/((?!api/).*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ],
   "crons": [

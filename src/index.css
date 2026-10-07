@@ -176,3 +176,9 @@
    clip-path here, so their edges can be rounded and gently bowed instead of
    a plain rectangle or a hard diagonal cut. */
 
+
+/* The home page's prerendered marketing text (scripts/prerender.mjs) stays
+   hidden for returning users (public/early.js) until the app replaces it. */
+html.aot-returning [data-prerendered] {
+  visibility: hidden;
+}
