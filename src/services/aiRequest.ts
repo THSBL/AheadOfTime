@@ -1,12 +1,13 @@
 import { getStoredAccessToken, isTokenExpired } from './googleAuth';
 import { bearerHeader } from './appSession';
 import { getCachedAiPlanningEnabled } from './aiSettings';
+import { getCurrentUser } from './accountManager';
 
 /**
  * Headers for the app's AI routes (/api/agent, /api/event/deep-refine,
- * /api/milestone/suggest-timing, /api/presets). They only answer signed-in
- * users: the session cookie goes along by itself, and a live Google token
- * is added when there is one.
+ * /api/milestone/suggest-timing, /api/presets). They answer signed-in
+ * users (the session cookie goes along by itself, and a live Google token
+ * is added when there is one); the planner also answers try-out visitors.
  */
 export function aiJsonHeaders(): Record<string, string> {
   const token = getStoredAccessToken();
@@ -15,6 +16,10 @@ export function aiJsonHeaders(): Record<string, string> {
     ...bearerHeader(token && !isTokenExpired() ? token : null),
     // Switched off here but not saved on the server yet: still off.
     ...(getCachedAiPlanningEnabled() ? {} : { 'X-AI-Planning': 'off' }),
+    // Not signed in (the try-out): the planner may answer within its
+    // try-out limits (TRIAL_LIMITS in server/aiGuard.ts); other AI routes
+    // still need an account.
+    ...(getCurrentUser() ? {} : { 'X-AOT-Trial': '1' }),
   };
 }
 

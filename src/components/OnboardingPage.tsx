@@ -1,6 +1,6 @@
 import { getCachedAiPlanningEnabled, saveAiPlanningEnabled } from '../services/aiSettings';
 import React, { useState, useEffect } from 'react';
-import { CalendarPreferencePoll } from './CalendarPreferencePoll';
+import { recordCalendarChoice } from './CalendarPreferencePoll';
 import type { CalendarChoice } from '../utils/calendarPoll';
 import { 
   Sparkles, 
@@ -22,6 +22,13 @@ import { ensureGisLoaded, requestGoogleCalendarToken, getStoredClientId } from '
 import { parseAndRecognizeLocation } from '../utils/locationHelper';
 import { trackEvent } from '../services/analytics';
 import { usePageMeta } from '../utils/usePageMeta';
+
+const CALENDAR_OPTIONS: Array<{ id: CalendarChoice; label: string; note: string }> = [
+  { id: 'google', label: 'Google Calendar', note: 'Connects directly and can read your agenda' },
+  { id: 'outlook', label: 'Outlook', note: 'Gets your tasks through a calendar link' },
+  { id: 'apple', label: 'Apple Calendar', note: 'Gets your tasks through a calendar link' },
+  { id: 'other', label: 'Something else', note: 'Any calendar that can subscribe to a link' },
+];
 
 interface OnboardingPageProps {
   initialProfile?: Partial<OnboardingProfile>;
@@ -73,11 +80,24 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
     trackEvent('onboarding_start');
   }, []);
 
-  const usesOtherCalendar = Boolean(primaryCalendar && primaryCalendar !== 'google');
-
-  // Outlook / Apple / other: finish onboarding without the agenda scan and
-  // go to the three-step calendar setup (sign in, copy link, paste it).
-  const startWithEmail = () => void handleSubmit('calendar_setup');
+  // Two steps: the quick questions (and consent), then which calendar -
+  // which shows only that calendar's way to connect.
+  const [step, setStep] = useState<1 | 2>(1);
+  const goToCalendarStep = () => {
+    if (!consentChecked) {
+      setShowConsentError(true);
+      return;
+    }
+    setShowConsentError(false);
+    setStep(2);
+    trackEvent('onboarding_step', { step: 2 });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const chooseCalendar = (calendar: CalendarChoice) => {
+    setPrimaryCalendar(calendar);
+    recordCalendarChoice(calendar, 'onboarding');
+  };
+  const calendarName = primaryCalendar === 'outlook' ? 'Outlook' : primaryCalendar === 'apple' ? 'Apple Calendar' : 'your calendar';
 
   const handleSubmit = async (action: 'connect_calendar' | 'go_dashboard' | 'calendar_setup') => {
     if (!consentChecked) {
@@ -157,8 +177,11 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
       <div className="max-w-xl mx-auto w-full my-auto py-6">
         <div className="relative z-20 bg-white border border-slate-200/90 rounded-3xl shadow-xl shadow-slate-200/50 p-6 sm:p-8 space-y-6 isolate">
           
+          {step === 1 && (
+            <>
           {/* Explanation of why we need this information */}
           <div className="space-y-2 border-b border-slate-100 pb-5">
+            <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Step 1 of 2</p>
             <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
               Let's tune your first plan
             </h1>
@@ -326,22 +349,6 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
               </p>
             </div>
 
-            {/* Which calendar - tailors the tip below. Saves on its own; never
-                blocks finishing onboarding. */}
-            <div className="space-y-2 pt-1 border-t border-slate-100">
-              <CalendarPreferencePoll
-                source="onboarding"
-                formLabel
-                question="Which calendar do you use day to day?"
-                intro="Google Calendar works fully. Apple Calendar and Outlook get your tasks through a calendar feed."
-                onAnswered={setPrimaryCalendar}
-              />
-              {primaryCalendar && primaryCalendar !== 'google' && (
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Good to go: next you sign in with your email, copy your private calendar link and paste it into your calendar. We walk you through it. Your tasks then show up there, and you can tick them off right from the calendar.
-                </p>
-              )}
-            </div>
 
           </div>
 
@@ -405,72 +412,112 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
             </label>
           </div>
 
-          {/* Actions - follow the answer to "Which calendar do you use?":
-              scanning the agenda reads Google Calendar, so Outlook, Apple
-              and other calendars skip it and sign in with an email link to
-              get the calendar feed instead. */}
-          <div className="space-y-3 pt-2">
-            {usesOtherCalendar ? (
-              <button
-                type="button"
-                id="btn-save-and-sign-in-email"
-                onClick={startWithEmail}
-                className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
-              >
-                <Mail className="w-4 h-4 text-sky-300" />
-                <span>Next: connect {primaryCalendar === 'outlook' ? 'Outlook' : primaryCalendar === 'apple' ? 'Apple Calendar' : 'your calendar'} (3 steps)</span>
-                <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                id="btn-save-and-connect-calendar"
-                disabled={isConnecting}
-                onClick={() => handleSubmit('connect_calendar')}
-                className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#182A42] disabled:opacity-80 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
-              >
-                {isConnecting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
-                    <span>Connecting Google Calendar &amp; loading your agenda...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-sky-300" />
-                    <span>Connect Google Calendar &amp; import agenda</span>
-                    <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
-                  </>
-                )}
-              </button>
-            )}
+          <button
+            type="button"
+            id="btn-onboarding-next"
+            onClick={goToCalendarStep}
+            className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] active:scale-[0.99] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer group"
+          >
+            <span>Next: your calendar</span>
+            <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+          </button>
+            </>
+          )}
 
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => handleSubmit('go_dashboard')}
-                className="text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
-              >
-                Or explore empty agenda overview first &rarr;
-              </button>
-              {usesOtherCalendar ? (
-                <button
-                  type="button"
-                  onClick={() => handleSubmit('connect_calendar')}
-                  className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
-                >
-                  Use Google Calendar after all? Connect it &rarr;
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={startWithEmail}
-                  className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-medium py-1 transition-colors cursor-pointer"
-                >
-                  Use Apple Calendar or Outlook? Set it up here &rarr;
-                </button>
+          {step === 2 && (
+            <>
+              <div className="space-y-2 border-b border-slate-100 pb-5">
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Step 2 of 2</p>
+                <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Which calendar do you use day to day?</h1>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  Your prep tasks go there, so they sit right next to the events they're for.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Which calendar do you use day to day?">
+                {CALENDAR_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={primaryCalendar === opt.id}
+                    onClick={() => chooseCalendar(opt.id)}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                      primaryCalendar === opt.id ? 'border-[#182A42] bg-[#182A42]/5 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <span className="block text-sm font-extrabold text-[#182A42]">{opt.label}</span>
+                    <span className="block text-[11px] text-slate-500 mt-0.5 leading-snug">{opt.note}</span>
+                  </button>
+                ))}
+              </div>
+
+              {primaryCalendar === 'google' && (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 animate-in fade-in duration-150">
+                  <p className="text-sm font-extrabold text-[#182A42]">Connect Google Calendar</p>
+                  <ol className="text-xs text-slate-600 space-y-1 list-decimal pl-4">
+                    <li>Sign in with Google and allow calendar access.</li>
+                    <li>We look through your agenda for events worth preparing for.</li>
+                    <li>You pick which ones get a plan; their tasks land in your calendar.</li>
+                  </ol>
+                  <button
+                    type="button"
+                    id="btn-save-and-connect-calendar"
+                    disabled={isConnecting}
+                    onClick={() => handleSubmit('connect_calendar')}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] disabled:opacity-80 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer group"
+                  >
+                    {isConnecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
+                        <span>Connecting Google Calendar &amp; loading your agenda...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-sky-300" />
+                        <span>Connect Google Calendar &amp; import agenda</span>
+                        <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
-            </div>
-          </div>
+
+              {primaryCalendar && primaryCalendar !== 'google' && (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 animate-in fade-in duration-150">
+                  <p className="text-sm font-extrabold text-[#182A42]">Connect {calendarName}</p>
+                  <ol className="text-xs text-slate-600 space-y-1 list-decimal pl-4">
+                    <li>Sign in with your email - no password, no Google account.</li>
+                    <li>Copy your private calendar link.</li>
+                    <li>Paste it into {calendarName}. We show you exactly where.</li>
+                  </ol>
+                  <button
+                    type="button"
+                    id="btn-save-and-sign-in-email"
+                    onClick={() => handleSubmit('calendar_setup')}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-[#182A42] hover:bg-[#162a3f] text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer group"
+                  >
+                    <Mail className="w-4 h-4 text-sky-300" />
+                    <span>Connect {calendarName} (3 steps)</span>
+                    <ArrowRight className="w-4 h-4 text-sky-300 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <button type="button" onClick={() => setStep(1)} className="text-xs text-slate-500 hover:text-slate-800 font-medium py-1 cursor-pointer">
+                  &larr; Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSubmit('go_dashboard')}
+                  className="text-xs text-slate-500 hover:text-slate-800 font-medium py-1 cursor-pointer"
+                >
+                  Skip for now, explore first &rarr;
+                </button>
+              </div>
+            </>
+          )}
 
         </div>
       </div>

@@ -53,6 +53,23 @@ interface CalendarPreferencePollProps {
  * the anonymous /api/feedback/calendar-poll endpoint; never blocks the page
  * it sits on.
  */
+/**
+ * Records a calendar choice made elsewhere (onboarding's calendar step) for
+ * the same research count, without showing the poll. Never blocks.
+ */
+export function recordCalendarChoice(calendar: CalendarChoice, source: string): void {
+  try {
+    localStorage.setItem(`aot_calendar_poll_${source}`, calendar);
+  } catch {
+    // only affects showing "thanks" on a later visit
+  }
+  void fetch('/api/feedback/calendar-poll', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ calendar, source, visitorId: getVisitorId() }),
+  }).catch(() => {});
+}
+
 export const CalendarPreferencePoll: React.FC<CalendarPreferencePollProps> = ({
   source,
   variant = 'light',

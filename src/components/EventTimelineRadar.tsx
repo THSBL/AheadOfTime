@@ -188,6 +188,20 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
   // Collapsed by default - a user happy with the already-balanced plan
   // should see one compact box, not every open question forced on them.
   const [isCorrectionBoxOpen, setIsCorrectionBoxOpen] = useState(false);
+  // "Adjust it" from the try-out card (TrialCard): open this box and put
+  // the cursor in it.
+  useEffect(() => {
+    const open = () => {
+      setIsCorrectionBoxOpen(true);
+      window.setTimeout(() => {
+        const input = document.getElementById('plan-correction-input') as HTMLInputElement | null;
+        input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        input?.focus({ preventScroll: true });
+      }, 150);
+    };
+    window.addEventListener('aot_open_plan_correction', open);
+    return () => window.removeEventListener('aot_open_plan_correction', open);
+  }, []);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'macro' | 'micro'>('all');
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState<Set<string>>(new Set());
 
@@ -1367,6 +1381,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             <div className="flex items-center gap-2">
               <input
                 type="text"
+                id="plan-correction-input"
                 value={correctionInput}
                 onChange={(e) => setCorrectionInput(e.target.value)}
                 onKeyDown={(e) => {

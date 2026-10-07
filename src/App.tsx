@@ -41,7 +41,7 @@ import { HowItWorksPage } from './components/HowItWorksPage';
 import { openSignIn } from './components/SignInModal';
 import { SignInHost } from './components/SignInHost';
 import { CalendarSetupPage } from './components/CalendarSetupPage';
-import { TryPage } from './components/TryPage';
+import { TrialCard } from './components/TrialCard';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { FaqPage } from './components/FaqPage';
@@ -364,6 +364,8 @@ function App() {
       if (requested === 'tasks' || requested === 'chat') {
         return requested;
       }
+      // The try-out (/try) opens on Create New Event.
+      if (window.location.pathname === '/try') return 'chat';
     } catch {
       // Fall through to the default tab.
     }
@@ -720,6 +722,15 @@ function App() {
     Boolean(onboardingProfile?.primaryCalendar && onboardingProfile.primaryCalendar !== 'google');
   const canScanAgenda = !usesOtherCalendar || Boolean(getStoredAccessToken() && !isTokenExpired());
   const openScanAgenda = canScanAgenda ? () => setIsScanAgendaModalOpen(true) : undefined;
+
+  // The try-out (/try): this same app for a visitor who hasn't signed in -
+  // the real Create New Event chat, plus a card to rate the plan and push
+  // it to their calendar (TrialCard). The newest plan is the one tried.
+  const isTrial = location.pathname === '/try' && !currentUser;
+  const trialPlan = useMemo(() => {
+    if (!isTrial || events.length === 0) return null;
+    return [...events].sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''))[0];
+  }, [isTrial, events]);
 
   // Sign in (Google or a one-time email link) is one app-wide window:
   // SignInHost, opened with openSignIn() from any page.
@@ -2111,6 +2122,22 @@ function App() {
 
           <AgendaFindingsBanner onReview={() => setIsScanAgendaModalOpen(true)} />
 
+          {isTrial && (
+            <div className="mt-3">
+              <TrialCard
+                plan={trialPlan}
+                onAdjust={() => {
+                  // Changes go through the plan's own correction box (a new
+                  // message in Create New Event would start a second plan).
+                  if (trialPlan) setSelectedEventId(trialPlan.id);
+                  setActiveTab('tasks');
+                  setMobileDashboardView('detail');
+                  window.setTimeout(() => window.dispatchEvent(new Event('aot_open_plan_correction')), 50);
+                }}
+              />
+            </div>
+          )}
+
           {/* Main Dashboard Layout (Master-Detail on Mobile, 2-Column on Desktop) */}
           {/* content-start: rows keep their own height instead of sharing out the
               spare screen height as gaps. overflow-x-clip (not overflow-hidden):
@@ -2772,7 +2799,7 @@ export default function AppWithRouter() {
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/how-it-works" element={<HowItWorksPage />} />
           {/* Try it out: plan one event without signing in. */}
-          <Route path="/try" element={<TryPage />} />
+          <Route path="/try" element={<App />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/faq" element={<FaqPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
