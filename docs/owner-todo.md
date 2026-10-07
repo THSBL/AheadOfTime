@@ -27,14 +27,10 @@ Why: the two daily/weekly jobs, and re-registering the Telegram bot, now **refus
 
 The app shows one ad block on two public pages only: a shared plan (`/p/...`) and the try-out chat (`/try`, for visitors who aren't signed in). Nothing shows until these steps are done. Ads are non-personalised; the privacy policy already says so.
 
-- [ ] **Apply for AdSense** at adsense.google.com with `aheadoftime.app`. Approval can take days to weeks.
-- [ ] **EU consent message:** in AdSense, Privacy & messaging → European regulations → create and publish the consent message for aheadoftime.app. Google requires it for visitors from the EU, UK and Switzerland.
-- [ ] **Create two display ad units** (responsive): "Shared plan" and "Try-out chat". Note each unit's slot id (a number).
-- [ ] **Vercel → Settings → Environment Variables (Production):**
-  - `VITE_ADSENSE_CLIENT` = your publisher id, e.g. `ca-pub-1234567890123456`
-  - `VITE_ADSENSE_SLOT_SHARED_PLAN` = the "Shared plan" slot id
-  - `VITE_ADSENSE_SLOT_TRY_CHAT` = the "Try-out chat" slot id
-  Then **Redeploy**. The build writes `/ads.txt` automatically from the publisher id.
+- [x] **AdSense account** with publisher id `ca-pub-3080738656559449` (in the code; nothing to set in Vercel).
+- [ ] **Verify the site** in AdSense (Sites → aheadoftime.app): choose **Meta tag** or **Ads.txt snippet**. Both are already on the live site. Don't add the script snippet to the site; it isn't needed.
+- [ ] **EU consent message:** Privacy & messaging → European regulations → create and publish the consent message for aheadoftime.app. Google requires it for visitors from the EU, UK and Switzerland.
+- [ ] **After approval, create two ad units:** Ads → By ad unit → Display ads. Name one "Shared plan" and one "Try-out chat", keep them Responsive, and save. Each gets a code with `data-ad-slot="1234567890"`: that number is the unit's id. Send both numbers, or add them in Vercel as `VITE_ADSENSE_SLOT_SHARED_PLAN` and `VITE_ADSENSE_SLOT_TRY_CHAT` and redeploy.
 - [ ] After the redeploy, open a shared plan and check the ad block appears (an ad blocker hides it).
 
 ## Weekly "T-minus Tuesday" content package - added 7 Oct 2026

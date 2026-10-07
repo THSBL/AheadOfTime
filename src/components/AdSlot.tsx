@@ -3,14 +3,15 @@ import React, { useEffect, useRef } from 'react';
 /**
  * One Google AdSense block - only on public pages (a shared plan, the
  * try-out chat), never next to anyone's calendar data. Non-personalised
- * ads only, matching the privacy policy. Shows nothing until the AdSense
- * publisher id and the slot are set (VITE_ADSENSE_CLIENT, e.g.
- * ca-pub-1234567890123456, and the slot's VITE_ADSENSE_SLOT_* id). Those
+ * ads only, matching the privacy policy. Shows nothing until the slot's
+ * ad unit id is set (VITE_ADSENSE_SLOT_*; the publisher id is below). Those
  * pages' Content-Security-Policy allows Google's ad domains (vercel.json);
  * everywhere else it stays strict, so an ad can't load there.
  */
 
-const CLIENT = (import.meta.env.VITE_ADSENSE_CLIENT as string | undefined)?.trim() || '';
+/** The site's AdSense publisher id (public; VITE_ADSENSE_CLIENT can override it). */
+export const ADSENSE_CLIENT_DEFAULT = 'ca-pub-3080738656559449';
+const CLIENT = (import.meta.env.VITE_ADSENSE_CLIENT as string | undefined)?.trim() || ADSENSE_CLIENT_DEFAULT;
 const SLOTS: Record<'sharedPlan' | 'tryChat', string> = {
   sharedPlan: (import.meta.env.VITE_ADSENSE_SLOT_SHARED_PLAN as string | undefined)?.trim() || '',
   tryChat: (import.meta.env.VITE_ADSENSE_SLOT_TRY_CHAT as string | undefined)?.trim() || '',

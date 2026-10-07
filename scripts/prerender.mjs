@@ -42,8 +42,8 @@ for (const route of PRERENDER_ROUTES) {
 rmSync(SSR_OUT, { recursive: true, force: true });
 
 // Google AdSense asks every site that shows its ads for /ads.txt naming the
-// publisher. Written only when the publisher id is configured.
-const adClient = (process.env.VITE_ADSENSE_CLIENT || '').trim();
+// publisher (also how AdSense verifies the site).
+const adClient = (process.env.VITE_ADSENSE_CLIENT || 'ca-pub-3080738656559449').trim();
 const pub = adClient.replace(/^ca-/, '');
 if (/^pub-\d{10,20}$/.test(pub)) {
   writeFileSync(`${OUT}/ads.txt`, `google.com, ${pub}, DIRECT, f08c47fec0942fa0\n`);
