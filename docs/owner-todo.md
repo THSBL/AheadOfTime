@@ -30,7 +30,7 @@ The app shows one ad block on two public pages only: a shared plan (`/p/...`) an
 - [x] **AdSense account** with publisher id `ca-pub-3080738656559449` (in the code; nothing to set in Vercel).
 - [ ] **Verify the site** in AdSense (Sites → aheadoftime.app): choose **Meta tag** or **Ads.txt snippet**. Both are already on the live site. Don't add the script snippet to the site; it isn't needed.
 - [ ] **EU consent message:** Privacy & messaging → European regulations → create and publish the consent message for aheadoftime.app. Google requires it for visitors from the EU, UK and Switzerland.
-- [ ] **After approval, create two ad units:** Ads → By ad unit → Display ads. Name one "Shared plan" and one "Try-out chat", keep them Responsive, and save. Each gets a code with `data-ad-slot="1234567890"`: that number is the unit's id. Send both numbers, or add them in Vercel as `VITE_ADSENSE_SLOT_SHARED_PLAN` and `VITE_ADSENSE_SLOT_TRY_CHAT` and redeploy.
+- [x] **Two ad units created:** Shared plan `7879371811`, Try-out chat `7767691179` (in the code). Was: Ads → By ad unit → Display ads. Name one "Shared plan" and one "Try-out chat", keep them Responsive, and save. Each gets a code with `data-ad-slot="1234567890"`: that number is the unit's id. Send both numbers, or add them in Vercel as `VITE_ADSENSE_SLOT_SHARED_PLAN` and `VITE_ADSENSE_SLOT_TRY_CHAT` and redeploy.
 - [ ] After the redeploy, open a shared plan and check the ad block appears (an ad blocker hides it).
 
 ## Weekly "T-minus Tuesday" content package - added 7 Oct 2026
