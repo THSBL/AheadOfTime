@@ -103,11 +103,13 @@ async function buildPlan(example: Example, now: Date): Promise<{ plan: SharedPla
   return { plan, usedAi };
 }
 
-const stepsList = (plan: SharedPlanSnapshot, n = 5) =>
-  plan.steps
-    .slice(0, n)
-    .map((s) => `- ${s.title}${s.ideas[0] ? ` (e.g. ${s.ideas[0]})` : ''}`)
-    .join('\n');
+/** The first steps, each with its first idea when that idea is its own (not repeated across steps). */
+const stepsList = (plan: SharedPlanSnapshot, n = 5) => {
+  const steps = plan.steps.slice(0, n);
+  const counts = new Map<string, number>();
+  for (const st of steps) if (st.ideas[0]) counts.set(st.ideas[0], (counts.get(st.ideas[0]) || 0) + 1);
+  return steps.map((st) => `- ${st.title}${st.ideas[0] && counts.get(st.ideas[0]) === 1 ? ` (e.g. ${st.ideas[0]})` : ''}`).join('\n');
+};
 
 /** Plain drafts when the AI isn't available: still usable, just plainer. */
 function templateDrafts(example: Example, plan: SharedPlanSnapshot, link: string): ChannelDraft[] {
@@ -180,10 +182,21 @@ ${plan.steps.map((s) => `- ${s.date}: ${s.title}${s.ideas.length ? ` (ideas: ${s
   }
 }
 
+/** No AI this week: a template plan isn't good enough to post. */
+export class WeeklyContentSkipped extends Error {
+  constructor(public week: string, public exampleTitle: string) {
+    super('The AI planner was not available, so no example plan was published.');
+    this.name = 'WeeklyContentSkipped';
+  }
+}
+
 export async function buildWeeklyPackage(opts: { appUrl: string; now?: Date; dryRun?: boolean }): Promise<WeeklyPackage> {
   const now = opts.now || new Date();
   const { example, weekLabel } = exampleForWeek(now);
   const { plan, usedAi } = await buildPlan(example, now);
+  // The built-in planner's plans are generic (a housewarming gets birthday
+  // steps): never publish one as marketing. A preview still shows it.
+  if (!usedAi && !opts.dryRun) throw new WeeklyContentSkipped(weekLabel, plan.title);
   const token = opts.dryRun ? 'dry-run' : await sharePlan(null, `weekly-${weekLabel}`, plan);
   const link = sharedPlanUrl(opts.appUrl, token);
   const drafts = (await aiDrafts(example, exampleMessage(example, now), plan, link)) || templateDrafts(example, plan, link);
@@ -245,4 +258,13 @@ export async function deliverWeeklyPackage(p: WeeklyPackage): Promise<{ email: b
     telegram = Boolean(res.ok);
   }
   return { email, telegram };
+}
+
+/** Tells the owner (Telegram) that this week's package was skipped, and why. */
+export async function deliverWeeklySkipNotice(err: WeeklyContentSkipped): Promise<boolean> {
+  const chatId = process.env.OWNER_TELEGRAM_CHAT_ID?.trim();
+  if (!chatId) return false;
+  const msg = `🗓️ T-minus Tuesday ${err.week} skipped: the AI planner wasn't available, and a template plan isn't good enough to post. Run the weekly content preview again later (see docs/owner-todo.md).`;
+  const res = await TelegramService.sendMessage(chatId, msg, { parse_mode: null }).catch(() => ({ ok: false }));
+  return Boolean(res.ok);
 }

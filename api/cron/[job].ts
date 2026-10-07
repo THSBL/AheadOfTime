@@ -2,7 +2,7 @@ import { getWeeklyDigestData, sendOwnerAlert } from '../../server/qualityStore.j
 import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
 import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 import { appOrigin } from '../../server/appOrigin.js';
-import { buildWeeklyPackage, deliverWeeklyPackage } from '../../server/weeklyContent.js';
+import { buildWeeklyPackage, deliverWeeklyPackage, deliverWeeklySkipNotice, WeeklyContentSkipped } from '../../server/weeklyContent.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
 // /api/cron/agenda-scan - the paths vercel.json's crons entries point at).
@@ -155,6 +155,10 @@ async function handleWeeklyContent(req: any, res: any) {
     const delivered = dryRun ? { email: false, telegram: false } : await deliverWeeklyPackage(pkg);
     return res.status(200).json({ ok: true, dryRun, delivered, package: pkg });
   } catch (err: any) {
+    if (err instanceof WeeklyContentSkipped) {
+      const notified = await deliverWeeklySkipNotice(err);
+      return res.status(200).json({ ok: true, skipped: true, reason: err.message, notified });
+    }
     console.error('Weekly content failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Weekly content failed' });
   }
@@ -167,6 +171,10 @@ async function runWeeklyContentQuietly(req: any): Promise<string> {
     const d = await deliverWeeklyPackage(pkg);
     return `weekly content ${pkg.week}: email ${d.email ? 'sent' : 'not sent'}, telegram ${d.telegram ? 'sent' : 'not sent'}`;
   } catch (err: any) {
+    if (err instanceof WeeklyContentSkipped) {
+      await deliverWeeklySkipNotice(err);
+      return `weekly content ${err.week}: skipped (no AI planner)`;
+    }
     console.warn('Weekly content (non-fatal):', err);
     return `weekly content failed: ${err?.message || err}`;
   }
