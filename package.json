@@ -16,7 +16,7 @@
     "compare:prompts": "tsx scripts/compare-planner-prompts.ts"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
+    "@google/genai": "^2.27.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/canvas-confetti": "^1.9.0",
     "@vercel/analytics": "^2.0.1",
@@ -29,11 +29,11 @@
     "mammoth": "^1.12.3",
     "motion": "^12.23.24",
     "papaparse": "^5.7.0",
-    "pdfjs-dist": "^6.3.289",
-    "pg": "^8.23.0",
+    "pdfjs-dist": "^6.4.299",
+    "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "react-router-dom": "^7.18.3",
+    "react-router-dom": "^7.18.4",
     "read-excel-file": "^9.3.10",
     "vite": "^6.2.3"
   },
@@ -42,13 +42,13 @@
     "@types/node": "^22.14.0",
     "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.23.1",
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "autoprefixer": "^10.6.1",
+    "esbuild": "^0.28.2",
     "playwright": "^1.55.0",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.15",
     "typescript": "~5.8.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.3"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,
