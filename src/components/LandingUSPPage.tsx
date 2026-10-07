@@ -21,7 +21,7 @@ const CALENDAR_COLUMNS: Array<{ id: CalendarChoice; name: string; short: string 
   { id: 'apple', name: 'Apple Calendar', short: 'Apple' },
 ];
 
-const CALENDAR_ROWS: Array<{ label: string; later?: boolean; cells: Array<{ ok: boolean; note?: string }> }> = [
+const CALENDAR_ROWS: Array<{ label: string; hint?: string; later?: boolean; cells: Array<{ ok: boolean; note?: string }> }> = [
   { label: 'Your prep tasks appear in your calendar', cells: [{ ok: true }, { ok: true }, { ok: true }] },
   {
     label: 'Tick a task off in your calendar, and it\'s done here too',
@@ -34,6 +34,7 @@ const CALENDAR_ROWS: Array<{ label: string; later?: boolean; cells: Array<{ ok: 
   { label: 'Plan by chat or Telegram, with daily updates', cells: [{ ok: true }, { ok: true }, { ok: true }] },
   {
     label: 'Finds events in your agenda to prepare for',
+    hint: 'On Outlook and Apple, for now: describe what\'s coming up in the chat and get the plan right away.',
     later: true,
     cells: [{ ok: true }, { ok: false }, { ok: false }],
   },
@@ -359,7 +360,10 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                   role="row"
                   className={`grid grid-cols-[1.5fr_repeat(3,1fr)] gap-x-2 sm:gap-x-3 items-center border-b border-white/5 ${row.later ? 'py-2 text-slate-400' : 'py-2.5 text-slate-200'}`}
                 >
-                  <span role="rowheader" className={`leading-snug ${row.later ? 'text-[11px] sm:text-xs' : 'font-semibold'}`}>{row.label}</span>
+                  <span role="rowheader" className={`leading-snug ${row.later ? 'text-[11px] sm:text-xs' : 'font-semibold'}`}>
+                    {row.label}
+                    {row.hint && <span className="block mt-0.5 text-[10px] sm:text-[11px] italic text-slate-400">{row.hint}</span>}
+                  </span>
                   {row.cells.map((cell, i) => (
                     <span key={i} role="cell" className="text-center leading-tight">
                       {cell.ok ? (
@@ -373,9 +377,7 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
                 </div>
               ))}
               <div role="row" className="grid grid-cols-[1.5fr_repeat(3,1fr)] gap-x-2 sm:gap-x-3 items-start pt-3">
-                <span role="rowheader" className="text-[11px] text-slate-400 leading-snug pr-1">
-                  No agenda scan yet? Just tell the assistant what's coming up - it plans it in seconds.
-                </span>
+                <span role="rowheader" aria-label="Connect your calendar" />
                 {CALENDAR_COLUMNS.map((c) => (
                   <span key={c.id} role="cell" className="flex flex-col items-stretch gap-1.5">
                     <button
