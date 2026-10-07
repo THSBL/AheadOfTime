@@ -7,37 +7,35 @@ import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
 
-/** What each calendar gets, in a few words (accurate to how each connects). */
-const CALENDAR_OVERVIEW: Array<{ id: CalendarChoice; name: string; how: string; points: string[] }> = [
+/**
+ * The landing comparison: what each calendar gets, accurate to how each
+ * connects. Google syncs both ways directly (googleTasks.ts); Outlook and
+ * Apple subscribe to the calendar link (server/calendarFeed.ts, refresh
+ * asked hourly; Outlook takes its own time) and tick tasks off through
+ * each task's Mark done link. Shared strengths first; what's still to come
+ * last, small, never as a red cross.
+ */
+const CALENDAR_COLUMNS: Array<{ id: CalendarChoice; name: string; short: string }> = [
+  { id: 'google', name: 'Google Calendar', short: 'Google' },
+  { id: 'outlook', name: 'Outlook', short: 'Outlook' },
+  { id: 'apple', name: 'Apple Calendar', short: 'Apple' },
+];
+
+const CALENDAR_ROWS: Array<{ label: string; later?: boolean; cells: Array<{ ok: boolean; note?: string }> }> = [
+  { label: 'Your prep tasks appear in your calendar', cells: [{ ok: true }, { ok: true }, { ok: true }] },
   {
-    id: 'google',
-    name: 'Google Calendar',
-    how: 'Connects directly',
-    points: [
-      'Finds the events in your agenda worth preparing for',
-      'Puts every prep task in your calendar, on the right day',
-      'Tasks you tick off in Google show as done here',
-    ],
+    label: 'Tick a task off in your calendar, and it\'s done here too',
+    cells: [{ ok: true }, { ok: true, note: 'one tap' }, { ok: true, note: 'one tap' }],
   },
   {
-    id: 'outlook',
-    name: 'Outlook',
-    how: 'Through a private calendar link',
-    points: [
-      'Every prep task shows up in Outlook by itself',
-      'Tick a task off right from the calendar entry',
-      'No Google account needed: sign in with your email',
-    ],
+    label: 'Done or changed here, updated in your calendar',
+    cells: [{ ok: true, note: 'right away' }, { ok: true, note: 'within hours' }, { ok: true, note: 'about hourly' }],
   },
+  { label: 'Plan by chat or Telegram, with daily updates', cells: [{ ok: true }, { ok: true }, { ok: true }] },
   {
-    id: 'apple',
-    name: 'Apple Calendar',
-    how: 'Through a private calendar link',
-    points: [
-      'Your prep tasks on iPhone, iPad and Mac',
-      'Tick a task off right from the calendar entry',
-      'Subscribe in one tap, no Google account needed',
-    ],
+    label: 'Finds events in your agenda to prepare for',
+    later: true,
+    cells: [{ ok: true }, { ok: false }, { ok: false }],
   },
 ];
 
@@ -339,42 +337,69 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
           ))}
         </div>
 
-        {/* What it does with each calendar, and a way to connect yours. */}
+        {/* One side-by-side comparison: what works both ways on every
+            calendar first, then - smaller - what's still to come for some. */}
         <div className="mt-8 max-w-4xl mx-auto">
           <h3 className="text-center text-lg sm:text-xl font-black text-white">Works with the calendar you already use</h3>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {CALENDAR_OVERVIEW.map((cal) => (
-              <div key={cal.id} className="bg-[#22344a] border border-white/10 rounded-3xl p-5 shadow-md shadow-slate-900/20 flex flex-col">
-                <p className="text-base font-black text-white">{cal.name}</p>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-aot-sage mt-0.5">{cal.how}</p>
-                <ul className="mt-3 space-y-1.5 text-xs sm:text-sm text-slate-300 flex-1">
-                  {cal.points.map((point) => (
-                    <li key={point} className="flex gap-2">
-                      <span className="text-aot-sage shrink-0" aria-hidden="true">✓</span>
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={() => connectCalendar(cal.id)}
-                  className="mt-4 w-full py-2.5 rounded-xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-black text-sm cursor-pointer transition-colors"
-                >
-                  Connect {cal.name}
-                </button>
-                <a
-                  href={`/how-it-works?calendar=${cal.id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    trackButtonClick(`How it works ${cal.name}`, 'landing_calendar');
-                    navigate(`/how-it-works?calendar=${cal.id}`);
-                  }}
-                  className="mt-2 text-center text-xs font-semibold text-slate-400 hover:text-white underline underline-offset-2"
-                >
-                  See how it works
-                </a>
+          <p className="mt-1 text-center text-xs sm:text-sm text-slate-300">Both ways: your tasks go into your calendar, and what you tick off there counts here.</p>
+          <div className="mt-4 bg-[#22344a] border border-white/10 rounded-3xl p-3 sm:p-5 shadow-md shadow-slate-900/20 overflow-hidden">
+            <div role="table" aria-label="What works with each calendar" className="text-xs sm:text-sm">
+              <div role="row" className="grid grid-cols-[1.5fr_repeat(3,1fr)] gap-x-2 sm:gap-x-3 items-end pb-3 border-b border-white/10">
+                <span role="columnheader" aria-label="Feature" />
+                {CALENDAR_COLUMNS.map((c) => (
+                  <span key={c.id} role="columnheader" className="text-center font-black text-white leading-tight">
+                    <span className="hidden sm:inline">{c.name}</span>
+                    <span className="sm:hidden">{c.short}</span>
+                  </span>
+                ))}
               </div>
-            ))}
+              {CALENDAR_ROWS.map((row) => (
+                <div
+                  key={row.label}
+                  role="row"
+                  className={`grid grid-cols-[1.5fr_repeat(3,1fr)] gap-x-2 sm:gap-x-3 items-center border-b border-white/5 ${row.later ? 'py-2 text-slate-400' : 'py-2.5 text-slate-200'}`}
+                >
+                  <span role="rowheader" className={`leading-snug ${row.later ? 'text-[11px] sm:text-xs' : 'font-semibold'}`}>{row.label}</span>
+                  {row.cells.map((cell, i) => (
+                    <span key={i} role="cell" className="text-center leading-tight">
+                      {cell.ok ? (
+                        <span className="text-aot-sage font-black" aria-label="Yes">✓</span>
+                      ) : (
+                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 bg-white/5 rounded-full px-2 py-0.5 inline-block">Coming later</span>
+                      )}
+                      {cell.note && <span className="block text-[10px] sm:text-[11px] text-slate-400 mt-0.5">{cell.note}</span>}
+                    </span>
+                  ))}
+                </div>
+              ))}
+              <div role="row" className="grid grid-cols-[1.5fr_repeat(3,1fr)] gap-x-2 sm:gap-x-3 items-start pt-3">
+                <span role="rowheader" className="text-[11px] text-slate-400 leading-snug pr-1">
+                  No agenda scan yet? Just tell the assistant what's coming up - it plans it in seconds.
+                </span>
+                {CALENDAR_COLUMNS.map((c) => (
+                  <span key={c.id} role="cell" className="flex flex-col items-stretch gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => connectCalendar(c.id)}
+                      className="w-full py-2 rounded-xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-black text-[11px] sm:text-sm cursor-pointer transition-colors"
+                    >
+                      Connect
+                    </button>
+                    <a
+                      href={`/how-it-works?calendar=${c.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        trackButtonClick(`How it works ${c.name}`, 'landing_calendar');
+                        navigate(`/how-it-works?calendar=${c.id}`);
+                      }}
+                      className="text-center text-[10px] sm:text-xs font-semibold text-slate-400 hover:text-white underline underline-offset-2"
+                    >
+                      How it works
+                    </a>
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
           <p className="mt-3 text-center text-xs text-slate-400">
             Something else?{' '}
