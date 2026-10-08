@@ -373,7 +373,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                   type in the chat, and which suggested steps people often skip) may be analysed in anonymised form, once a week, to propose
                   better default steps for everyone (for example "house moves: add 'transfer internet' three weeks before"). Every change is
                   reviewed and approved by us before it's used. E-mail addresses, links and phone numbers are removed first, nothing is
-                  shared with anyone, and plans linked to your Google Calendar are never part of this.
+                  shared with anyone, and events imported from your Google Calendar are never part of this.
                 </li>
                 <li>
                   <strong>Prohibition on AI Training:</strong> We <strong>NEVER</strong> use Google Workspace APIs or any data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) models.

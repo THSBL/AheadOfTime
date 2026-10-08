@@ -103,7 +103,8 @@ Safety: rules are applied by the app's code to new plans after the AI has
 answered - they are never sent to the AI, so they can't instruct it. Step
 titles are checked (short plain words; no links, addresses, numbers or
 instruction words) when proposed, when you approve, and every time a rule is
-used. Only people with AI planning on are included; plans linked to Google
-Calendar never are; e-mails, links and phone numbers are removed first. At most
+used. Only signed-in accounts at least a week old, with a plan of their own and
+AI planning on, count (max 3 signals per person per round; guests and the
+try-out never); events imported from Google Calendar never do; e-mails, links and phone numbers are removed first. At most
 30 rules in use, at most 3 per plan. Code: server/planLessons.ts (rules),
 server/lessonsStore.ts (signals, proposals, admin).

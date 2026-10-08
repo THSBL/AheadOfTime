@@ -19,10 +19,12 @@ const aiModules = async () => {
  *
  * 1. Signals: what users told us in the last weeks - feedback-form text,
  *    corrections typed in the chat, steps many people skip, and the
- *    product notes from the blog. Only from people who have AI planning
- *    switched on, never from plans linked to Google Calendar (Google's API
- *    data policy); e-mail addresses, links and phone numbers are removed
- *    first.
+ *    product notes from the blog. Only from signed-in accounts at least a
+ *    week old with a plan of their own and AI planning on (guests, the
+ *    try-out and fresh accounts never count; at most 3 signals per person
+ *    per round), never from plans imported from Google Calendar (Google's
+ *    API data policy); e-mail addresses, links and phone numbers are
+ *    removed first.
  * 2. Once a week (the daily cron, on the first run of an ISO week) one AI
  *    call groups them into at most 6 proposed rules. The signals are user
  *    text, so the call is told to treat them as data, and its answer is
@@ -132,6 +134,16 @@ export function scrub(text: unknown, max = 300): string {
     .slice(0, max);
 }
 
+/**
+ * Who counts: a signed-in account (guests and the try-out never do) that
+ * is at least a week old, has a plan of its own and has AI planning on.
+ * Throwaway accounts made to push a rule don't get a say.
+ */
+const TRUSTED = `u.ai_planning_enabled AND u.created_at < now() - interval '7 days'
+  AND EXISTS (SELECT 1 FROM events own WHERE own.user_id = u.id AND own.deleted_at IS NULL)`;
+/** One person's voice counts at most this many times per round. */
+const MAX_PER_PERSON = 3;
+
 async function gatherSignals(): Promise<Signal[]> {
   const out: Signal[] = [];
   const safely = async (label: string, run: () => Promise<void>) => {
@@ -146,7 +158,7 @@ async function gatherSignals(): Promise<Signal[]> {
   await safely('feedback', async () => {
     const rows = await query<any>(
       `SELECT c.id, c.user_id, c.feedback_text, c.score FROM csat_responses c JOIN users u ON u.id = c.user_id
-        WHERE c.created_at > now() - interval '21 days' AND c.feedback_text IS NOT NULL AND u.ai_planning_enabled
+        WHERE c.created_at > now() - interval '21 days' AND c.feedback_text IS NOT NULL AND ${TRUSTED}
         ORDER BY c.created_at DESC LIMIT 60`
     );
     for (const r of rows) out.push({ id: `f${out.length}`, kind: 'feedback', text: `${r.score ? `(score ${r.score}/5) ` : ''}${scrub(r.feedback_text)}`, category: null, people: [String(r.user_id)] });
@@ -156,7 +168,7 @@ async function gatherSignals(): Promise<Signal[]> {
       `SELECT q.user_id, q.raw_user_message, COALESCE(e.category, q.context->>'category') AS category
          FROM ai_quality_events q JOIN users u ON u.id = q.user_id LEFT JOIN events e ON e.id = q.event_id
         WHERE q.created_at > now() - interval '21 days' AND q.signal_type IN ('rapid_correction', 'plan_refined')
-          AND q.raw_user_message IS NOT NULL AND u.ai_planning_enabled
+          AND q.raw_user_message IS NOT NULL AND ${TRUSTED}
         ORDER BY q.created_at DESC LIMIT 80`
     );
     for (const r of rows) out.push({ id: `c${out.length}`, kind: 'correction', text: scrub(r.raw_user_message, 200), category: r.category || null, people: [String(r.user_id)] });
@@ -165,10 +177,11 @@ async function gatherSignals(): Promise<Signal[]> {
     const rows = await query<any>(
       `SELECT e.category, lower(m.title) AS title, array_agg(DISTINCT e.user_id::text) AS people
          FROM milestones m JOIN events e ON e.id = m.event_id JOIN users u ON u.id = e.user_id
-        WHERE e.updated_at > now() - interval '45 days' AND u.ai_planning_enabled
-          -- Never data from Google APIs: plans linked to a Google Calendar
-          -- event (imported by Scan agenda, or pushed there) are left out.
-          AND COALESCE(e.client_payload->>'googleEventId', '') = ''
+        WHERE e.updated_at > now() - interval '45 days' AND ${TRUSTED}
+          -- Never data from Google APIs: plans imported from Google Calendar
+          -- by Scan agenda (ids gcal-... / scan-...) are left out. Plans made
+          -- in the app and pushed TO a calendar are the app's own and count.
+          AND COALESCE(e.client_id, '') NOT LIKE 'gcal-%' AND COALESCE(e.client_id, '') NOT LIKE 'scan-%'
           AND (m.status = 'skipped' OR (m.client_payload->>'isActive' = 'false' AND COALESCE(m.client_payload->>'hiddenReason', '') = ''))
         GROUP BY 1, 2 HAVING count(DISTINCT e.user_id) >= 2 ORDER BY count(DISTINCT e.user_id) DESC LIMIT 30`
     );
@@ -182,7 +195,15 @@ async function gatherSignals(): Promise<Signal[]> {
       }
     }
   });
-  return out;
+  // Nobody can flood a round: each person's first few signals only.
+  const perPerson = new Map<string, number>();
+  return out.filter((s) => {
+    if (s.kind === 'skipped' || s.kind === 'blog') return true;
+    const who = s.people[0];
+    const n = (perPerson.get(who) || 0) + 1;
+    perPerson.set(who, n);
+    return n <= MAX_PER_PERSON;
+  });
 }
 
 // ---------------------------------------------------------------- weekly proposals
