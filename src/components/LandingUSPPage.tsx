@@ -454,6 +454,11 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             Privacy Policy
           </a>
           <span>&bull;</span>
+          {/* Server-rendered pages (server/blogEpisodes.ts): a full page load. */}
+          <a href="/blog" className="hover:text-white underline">
+            Blog
+          </a>
+          <span>&bull;</span>
           <span>Secure Calendar Integration</span>
         </div>
       </div>

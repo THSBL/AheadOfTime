@@ -43,16 +43,25 @@ export const WEEKLY_EXAMPLES: Example[] = [
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const spell = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 
-/** The example's message with an exact date (both planners read those reliably). */
-export function exampleMessage(example: Example, now: Date): string {
-  // A Saturday that many weeks out: most of these happen on a weekend.
-  const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + example.weeksOut * 7));
+/**
+ * "on 14 November 2026" or "from 28 November to 3 December 2026": a
+ * Saturday that many weeks out (most of these happen on a weekend), in
+ * words both planners read reliably.
+ */
+export function datePhrase(weeksOut: number, nights: number | undefined, now: Date): string {
+  const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + weeksOut * 7));
   day.setUTCDate(day.getUTCDate() + ((6 - day.getUTCDay() + 7) % 7));
-  if (!example.nights) return `${example.message} on ${spell(day)}`;
-  const end = new Date(day.getTime() + example.nights * 86_400_000);
-  // "from 28 November to 3 December 2026": the year once, at the end.
+  if (!nights) return `on ${spell(day)}`;
+  const end = new Date(day.getTime() + nights * 86_400_000);
+  // The year once, at the end.
   const start = `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}${day.getUTCFullYear() !== end.getUTCFullYear() ? ` ${day.getUTCFullYear()}` : ''}`;
-  return `${example.message}, from ${start} to ${spell(end)}`;
+  return `from ${start} to ${spell(end)}`;
+}
+
+/** The example's message with an exact date. */
+export function exampleMessage(example: Example, now: Date): string {
+  const when = datePhrase(example.weeksOut, example.nights, now);
+  return example.nights ? `${example.message}, ${when}` : `${example.message} ${when}`;
 }
 
 export interface ChannelDraft {

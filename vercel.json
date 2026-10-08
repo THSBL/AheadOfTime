@@ -102,6 +102,22 @@
       "destination": "/api/auth/google?action=shared-plan"
     },
     {
+      "source": "/blog",
+      "destination": "/api/auth/google?action=blog"
+    },
+    {
+      "source": "/blog/review",
+      "destination": "/api/auth/google?action=blog&review=1"
+    },
+    {
+      "source": "/blog/:slug",
+      "destination": "/api/auth/google?action=blog&slug=:slug"
+    },
+    {
+      "source": "/blog-sitemap.xml",
+      "destination": "/api/auth/google?action=blog&sitemap=1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

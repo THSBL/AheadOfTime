@@ -2,6 +2,7 @@ import { getWeeklyDigestData, sendOwnerAlert } from '../../server/qualityStore.j
 import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
 import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 import { appOrigin } from '../../server/appOrigin.js';
+import { runBlogEpisode } from '../../server/blogEpisodes.js';
 import { buildWeeklyPackage, deliverWeeklyPackage, deliverWeeklySkipNotice, WeeklyContentSkipped } from '../../server/weeklyContent.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
@@ -20,6 +21,8 @@ export default async function handler(req: any, res: any) {
   if (job === 'agenda-scan') return handleAgendaScan(req, res);
   // Manual run of the Monday content package (it also rides the weekly report).
   if (job === 'weekly-content') return handleWeeklyContent(req, res);
+  // Manual run of the blog conversation (it also rides the daily agenda scan).
+  if (job === 'blog-episode') return handleBlogEpisode(req, res);
   return res.status(404).json({ ok: false, error: 'Unknown cron job' });
 }
 
@@ -35,6 +38,7 @@ export default async function handler(req: any, res: any) {
  *     "https://<app>/api/cron/agenda-scan?dryRun=1"
  */
 async function handleAgendaScan(req: any, res: any) {
+  const startedAt = Date.now();
   const cronSecret = process.env.CRON_SECRET?.trim();
   if (!cronSecret) {
     return res.status(500).json({ ok: false, error: 'CRON_SECRET is not configured.' });
@@ -57,7 +61,10 @@ async function handleAgendaScan(req: any, res: any) {
       appUrl: appOrigin(req),
       dryRun: req.query?.dryRun === '1' || req.query?.dryRun === 'true',
     });
-    return res.status(200).json({ ok: true, purgedDeletedEvents: purged, ...summary });
+    // The weekly blog conversation advances with whatever time is left
+    // (server/blogEpisodes.ts saves after every step and carries on tomorrow).
+    const blog = dryRun(req) ? 'not run (dry run)' : await runBlogQuietly(req, startedAt + RUN_BUDGET_MS);
+    return res.status(200).json({ ok: true, purgedDeletedEvents: purged, ...summary, blog });
   } catch (err: any) {
     console.error('Background agenda scan failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Agenda scan failed' });
@@ -177,5 +184,40 @@ async function runWeeklyContentQuietly(req: any): Promise<string> {
     }
     console.warn('Weekly content (non-fatal):', err);
     return `weekly content failed: ${err?.message || err}`;
+  }
+}
+
+/** This function's 60 s, minus room to answer. */
+const RUN_BUDGET_MS = 52_000;
+const dryRun = (req: any) => req.query?.dryRun === '1' || req.query?.dryRun === 'true';
+
+/** Rides the daily agenda scan: never fails the scan itself. */
+async function runBlogQuietly(req: any, deadline: number): Promise<string> {
+  try {
+    const r = await runBlogEpisode({ appUrl: appOrigin(req), deadline });
+    return [r.status, r.week, r.step].filter(Boolean).join(' · ');
+  } catch (err: any) {
+    console.warn('Blog episode (non-fatal):', err);
+    return `blog failed: ${err?.message || err}`;
+  }
+}
+
+/**
+ * Owner-only manual run of the weekly blog conversation: carries on the one
+ * being written (or starts this week's); ?new=1 starts another one this
+ * week. Run it again until it says "ready for review" (each run has ~50 s).
+ *   curl -H "Authorization: Bearer $CRON_SECRET" "https://<app>/api/cron/blog-episode"
+ */
+async function handleBlogEpisode(req: any, res: any) {
+  const startedAt = Date.now();
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) return res.status(500).json({ ok: false, error: 'CRON_SECRET is not configured.' });
+  if ((req.headers?.authorization || '') !== `Bearer ${cronSecret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  try {
+    const r = await runBlogEpisode({ appUrl: appOrigin(req), deadline: startedAt + RUN_BUDGET_MS, startNew: req.query?.new === '1' });
+    return res.status(200).json({ ok: true, ...r });
+  } catch (err: any) {
+    console.error('Blog episode failed:', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Blog episode failed' });
   }
 }

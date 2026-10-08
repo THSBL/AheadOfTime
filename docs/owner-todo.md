@@ -42,3 +42,29 @@ Every Monday (with the weekly report), the app builds one example plan for one o
 - [ ] **Preview any time** (publishes and sends nothing):
   `curl -H "Authorization: Bearer <CRON_SECRET>" "https://aheadoftime.app/api/cron/weekly-content?dryRun=1"`
   Without `?dryRun=1` it publishes this week's example plan and sends the package right away.
+
+## Weekly blog conversation "T-minus Talks" - added 8 Oct 2026
+
+Every week a fictional guest (an AI persona with a job, city, household,
+calendar and one complication) uses the real app: types a request, answers
+the app's follow-up questions, gets the real plan. Then the host (Tess) and
+the guest talk it through, one turn per AI call, and an editor pass writes
+the post. Code: `server/blogEpisodes.ts`, guests: `server/blogPersonas.ts`.
+
+- **Nothing to set up**: it uses `GEMINI_API_KEY`, `NOTIFY_LINK_SECRET`
+  (review links), and the same owner email / `OWNER_TELEGRAM_CHAT_ID` as the
+  weekly content. Without the AI key it does nothing (no template posts).
+- **When**: the daily cron (07:00 UTC) starts the week's episode on Monday
+  and carries it on with the time it has left; usually ready in 1-3 days.
+- **You get**: an email + Telegram message with a review link. The draft
+  shows exactly as it will look, plus the guest's *product notes* (their
+  criticism of the app - never published). Tap **Publish** or **Skip**.
+  A published post can be unpublished from the same link (valid 60 days).
+- **Run it now** (each run has ~50 s; repeat until it says "ready for review"):
+  `curl -H "Authorization: Bearer $CRON_SECRET" "https://aheadoftime.app/api/cron/blog-episode"`
+  Add `?new=1` to start an extra episode this week.
+- **Pages**: `/blog`, `/blog/<post>`, RSS at `/blog/feed.xml`, sitemap at
+  `/blog-sitemap.xml` (listed in robots.txt). Submit the sitemap in Google
+  Search Console once the first post is live.
+- Every post says the guest is an AI persona. Keep it that way: without it
+  the posts read as fake testimonials.

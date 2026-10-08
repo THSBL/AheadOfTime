@@ -27,6 +27,7 @@ import { handleAccountDeletion } from '../../../server/accountDeletion.js';
 import { handleEmailLink } from '../../../server/emailLogin.js';
 import { handleCalendarFeed, handleCalendarDone, handleCalendarFeedSettings, handleCalendarPlan } from '../../../server/calendarFeed.js';
 import { handleSharedPlans } from '../../../server/sharedPlans.js';
+import { handleBlog } from '../../../server/blogEpisodes.js';
 
 // Consolidated Vercel function for /api/auth/google/authorize (GET) and
 // /api/auth/google/status (GET/DELETE) - vercel.json rewrites both old
@@ -227,6 +228,10 @@ export default async function handler(req: any, res: any) {
   // Share a plan: public read-only link (server/sharedPlans.ts).
   if (action === 'shared-plan') {
     return handleSharedPlans(req, res);
+  }
+  // The blog's server-rendered pages (server/blogEpisodes.ts).
+  if (action === 'blog') {
+    return handleBlog(req, res);
   }
   if (action === 'calendar-feed') {
     const verified = await verifyRequestUser(req);

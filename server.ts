@@ -3,6 +3,7 @@ import { appOrigin } from "./server/appOrigin";
 import path from "path";
 import fs from "fs";
 import { handleSharedPlans } from "./server/sharedPlans";
+import { handleBlog } from "./server/blogEpisodes";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import {
@@ -1431,6 +1432,20 @@ app.all("/api/auth/calendar-feed", async (req: Request, res: Response) => {
     return;
   }
   await handleCalendarFeedSettings(req, res, await findOrCreateUserByEmail(verified.email));
+});
+// Twins of vercel.json's /blog rewrites (api/auth/google/index.ts action=blog).
+app.all("/blog", (req: Request, res: Response) => handleBlog(req, res));
+app.all("/blog/review", (req: Request, res: Response) => {
+  req.query = { ...req.query, review: "1" };
+  return handleBlog(req, res);
+});
+app.get("/blog/:slug", (req: Request, res: Response) => {
+  req.query = { ...req.query, slug: req.params.slug };
+  return handleBlog(req, res);
+});
+app.get("/blog-sitemap.xml", (req: Request, res: Response) => {
+  req.query = { ...req.query, sitemap: "1" };
+  return handleBlog(req, res);
 });
 // Twin of api/auth/google/index.ts action=shared-plan.
 app.all("/api/plan/shared", (req: Request, res: Response) => handleSharedPlans(req, res));
