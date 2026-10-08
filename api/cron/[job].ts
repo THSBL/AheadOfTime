@@ -2,7 +2,7 @@ import { getWeeklyDigestData, sendOwnerAlert } from '../../server/qualityStore.j
 import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
 import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 import { appOrigin } from '../../server/appOrigin.js';
-import { runBlogEpisode } from '../../server/blogEpisodes.js';
+import { runBlogEpisode, handleBlogAdmin } from '../../server/blogEpisodes.js';
 import { buildWeeklyPackage, deliverWeeklyPackage, deliverWeeklySkipNotice, WeeklyContentSkipped } from '../../server/weeklyContent.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
@@ -23,6 +23,9 @@ export default async function handler(req: any, res: any) {
   if (job === 'weekly-content') return handleWeeklyContent(req, res);
   // Manual run of the blog conversation (it also rides the daily agenda scan).
   if (job === 'blog-episode') return handleBlogEpisode(req, res);
+  // The /admin/blog page (signed-in admins, not the cron secret); here for
+  // the 60 seconds a writing run needs.
+  if (job === 'blog-admin') return handleBlogAdmin(req, res, Date.now() + RUN_BUDGET_MS);
   return res.status(404).json({ ok: false, error: 'Unknown cron job' });
 }
 

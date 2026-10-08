@@ -284,6 +284,9 @@ export const HowItWorksPage: React.FC = () => {
             <button type="button" onClick={() => navigate('/features')} className="hidden sm:block text-sm font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-xl hover:bg-white/5 transition cursor-pointer">
               Features
             </button>
+            <a href="/blog" className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-xl hover:bg-white/5 transition">
+              Blog
+            </a>
             <button type="button" onClick={goToApp} className={`${primaryClass} !py-2 !px-4 !shadow-none`}>
               {primaryLabel}
             </button>

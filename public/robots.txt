@@ -5,6 +5,7 @@ Disallow: /events
 Disallow: /settings/
 Disallow: /auth/callback
 Disallow: /blog/review
+Disallow: /admin/
 
 Sitemap: https://aheadoftime.app/sitemap.xml
 Sitemap: https://aheadoftime.app/blog-sitemap.xml

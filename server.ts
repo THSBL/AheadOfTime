@@ -3,7 +3,7 @@ import { appOrigin } from "./server/appOrigin";
 import path from "path";
 import fs from "fs";
 import { handleSharedPlans } from "./server/sharedPlans";
-import { handleBlog } from "./server/blogEpisodes";
+import { handleBlog, handleBlogAdmin } from "./server/blogEpisodes";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import {
@@ -1433,6 +1433,8 @@ app.all("/api/auth/calendar-feed", async (req: Request, res: Response) => {
   }
   await handleCalendarFeedSettings(req, res, await findOrCreateUserByEmail(verified.email));
 });
+// Twin of api/cron/[job].ts job=blog-admin (the /admin/blog page).
+app.all("/api/cron/blog-admin", (req: Request, res: Response) => handleBlogAdmin(req, res, Date.now() + 52_000));
 // Twins of vercel.json's /blog rewrites (api/auth/google/index.ts action=blog).
 app.all("/blog", (req: Request, res: Response) => handleBlog(req, res));
 app.all("/blog/review", (req: Request, res: Response) => {

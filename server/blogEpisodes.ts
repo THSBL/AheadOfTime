@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import { Type } from '@google/genai';
 import { query } from './db.js';
 import { appOrigin } from './appOrigin.js';
+import { verifyRequestUser } from './requestAuth.js';
+import { isAdminEmail } from './googleAuthVerify.js';
 import { askRefinementQuestions, processWithGemini, applyExtensiveRunUps, generateContentFast } from './agentProcessor.js';
 import { composeConversationBrief } from '../src/utils/refinementQuestions.js';
 import { snapshotFromEvent, sharePlan, sharedPlanUrl, type SharedPlanSnapshot } from './sharedPlans.js';
@@ -817,5 +819,69 @@ export async function handleBlog(req: any, res: any) {
     console.error('Blog error:', err?.message || err);
     const m = messagePage(appUrl, 'The blog is not available right now', 'Try again in a minute.', 503);
     return send(m.status, m.html, undefined, 'no-store');
+  }
+}
+
+// ---------------------------------------------------------------- admin page
+
+export interface AdminEpisodeRow {
+  id: number;
+  week: string;
+  status: EpisodeStatus;
+  title: string | null;
+  guest: string;
+  step: string | null;
+  lastError: string | null;
+  createdAt: string;
+  publishedAt: string | null;
+  url: string | null;
+  reviewUrl: string | null;
+}
+
+/**
+ * /api/cron/blog-admin (in the cron function for its 60 seconds), for the
+ * /admin/blog page; admins only (ADMIN_EMAILS):
+ *   GET            - every conversation, with its edit (review) link
+ *   POST {startNew} - writes as far as one run allows: carries on the one
+ *                     being written, or starts a new one; the page calls
+ *                     again until it's ready for review.
+ */
+export async function handleBlogAdmin(req: any, res: any, deadline: number) {
+  res.setHeader('Cache-Control', 'no-store');
+  const verified = await verifyRequestUser(req);
+  if (!verified) return res.status(401).json({ ok: false, error: 'Sign in first.' });
+  if (!isAdminEmail(verified.email)) return res.status(403).json({ ok: false, error: 'This account is not an admin.' });
+  const appUrl = appOrigin(req);
+  try {
+    if (req.method === 'POST') {
+      const run = await runBlogEpisode({ appUrl, deadline, startNew: req.body?.startNew === true });
+      return res.status(200).json({ ok: true, run });
+    }
+    await ensureSchema();
+    const rows = await query(`SELECT * FROM blog_episodes ORDER BY id DESC LIMIT 60`);
+    const episodes: AdminEpisodeRow[] = rows.map((r: any) => {
+      const ep = rowToEpisode(r);
+      return {
+        id: ep.id,
+        week: ep.week,
+        status: ep.status,
+        title: ep.post?.title || null,
+        guest: personaLine(ep.persona),
+        step: ep.status === 'drafting' ? describeStep(ep.state) : null,
+        lastError: r.last_error || null,
+        createdAt: ep.createdAt,
+        publishedAt: ep.publishedAt,
+        url: ep.status === 'published' && ep.slug ? `${appUrl}/blog/${ep.slug}` : null,
+        reviewUrl: ep.post ? reviewLink(appUrl, ep.id) : null,
+      };
+    });
+    return res.status(200).json({
+      ok: true,
+      episodes,
+      setup: { ai: Boolean(process.env.GEMINI_API_KEY), reviewLinks: Boolean(process.env.NOTIFY_LINK_SECRET?.trim()) },
+    });
+  } catch (err: any) {
+    console.error('Blog admin error:', err?.message || err);
+    return res.status(503).json({ ok: false, error: 'The blog is not available right now.' });
   }
 }

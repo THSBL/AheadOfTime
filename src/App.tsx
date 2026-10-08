@@ -46,6 +46,7 @@ import { AdSlot } from './components/AdSlot';
 import { SharedPlanPage } from './components/SharedPlanPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
+import { AdminBlogPage } from './components/AdminBlogPage';
 import { FaqPage } from './components/FaqPage';
 import { AuthCallbackPage } from './components/AuthCallbackPage';
 import { SettingsCredentialsPage } from './components/SettingsCredentialsPage';
@@ -2839,6 +2840,7 @@ export default function AppWithRouter() {
                 ADMIN_EMAILS server-side check on /api/feedback/admin-list
                 (see server/googleAuthVerify.ts), not URL obscurity. */}
             <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+            <Route path="/admin/blog" element={<AdminBlogPage />} />
           </Route>
 
           {/* Catch-all Fallback */}

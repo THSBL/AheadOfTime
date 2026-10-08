@@ -161,6 +161,13 @@ export const AdminFeedbackPage: React.FC = () => {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Dashboard</span>
           </button>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/blog')}
+            className="ml-auto text-xs text-slate-700 bg-slate-100 hover:bg-slate-200/80 px-3 py-1.5 rounded-xl transition font-semibold cursor-pointer"
+          >
+            Blog
+          </button>
           {rows && rows.length > 0 && (
             <button
               type="button"

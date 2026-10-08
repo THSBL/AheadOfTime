@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { recordCalendarChoice } from './CalendarPreferencePoll';
 import type { CalendarChoice } from '../utils/calendarPoll';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight, X } from 'lucide-react';
+import { Sparkles, ShieldCheck, LayoutDashboard, ChevronRight, X, BookOpen } from 'lucide-react';
 import { Logo } from './Logo';
 import { trackButtonClick } from '../services/analytics';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '../utils/usePageMeta';
@@ -129,6 +129,16 @@ export const LandingUSPPage: React.FC<LandingUSPPageProps> = ({
             >
               <Sparkles className="w-4 h-4 text-slate-500" />
               <span>Features</span>
+            </a>
+
+            {/* Server-rendered (server/blogEpisodes.ts): a full page load. */}
+            <a
+              href="/blog"
+              onClick={() => trackButtonClick('Blog', 'landing_header')}
+              className="bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 font-medium text-xs sm:text-sm px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <BookOpen className="w-4 h-4 text-slate-500" />
+              <span>Blog</span>
             </a>
 
             <a

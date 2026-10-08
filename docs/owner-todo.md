@@ -65,7 +65,11 @@ the post. Code: `server/blogEpisodes.ts`, guests: `server/blogPersonas.ts`.
   one line about you (shown under the title, and to Google as the post's
   editor). Name and line are remembered for next week. This human part is
   what makes the posts more than AI text - worth the two minutes.
-- **Run it now** (each run has ~50 s; repeat until it says "ready for review"):
+- **Admin page: https://aheadoftime.app/admin/blog** (signed in with an
+  ADMIN_EMAILS account): every conversation with its status, an **Edit**
+  button (the review page) and **Write a new one now** (keeps the page busy
+  1-4 minutes until it's ready for review).
+- **Or from a terminal** (each run has ~50 s; repeat until it says "ready for review"):
   `curl -H "Authorization: Bearer $CRON_SECRET" "https://aheadoftime.app/api/cron/blog-episode"`
   Add `?new=1` to start an extra episode this week.
 - **Pages**: `/blog`, `/blog/<post>`, RSS at `/blog/feed.xml`, sitemap at

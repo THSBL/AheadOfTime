@@ -198,6 +198,9 @@ export const FeaturesPage: React.FC = () => {
             >
               Overview
             </button>
+            <a href="/blog" className="text-sm font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-xl hover:bg-white/5 transition">
+              Blog
+            </a>
             <button type="button" onClick={goToAppOrOnboarding} className={`${primaryClass} !py-2 !px-4 !shadow-none`}>
               {primaryLabel}
             </button>
