@@ -18,6 +18,7 @@ interface Row {
   title: string | null;
   guest: string;
   step: string | null;
+  kind: 'question' | 'guest';
   lastError: string | null;
   createdAt: string;
   publishedAt: string | null;
@@ -45,6 +46,8 @@ export const AdminBlogPage: React.FC = () => {
   const [setup, setSetup] = useState<{ ai: boolean; reviewLinks: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [writing, setWriting] = useState<string | null>(null);
+  const [question, setQuestion] = useState('');
+  const [link, setLink] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -68,17 +71,21 @@ export const AdminBlogPage: React.FC = () => {
 
   const drafting = rows?.find((r) => r.status === 'drafting');
 
-  // Runs until the conversation is ready for review (or something stops it).
-  const write = async () => {
+  // Runs until the post is ready for review (or something stops it). With
+  // a question, the first run starts a post about it; later runs carry on.
+  const write = async (fromQuestion?: { question: string; link: string }) => {
     setError(null);
     let startNew = !drafting;
+    let first: Record<string, unknown> = fromQuestion ? { question: fromQuestion.question, link: fromQuestion.link } : { startNew };
     for (let i = 0; i < MAX_RUNS; i++) {
       setWriting(i === 0 ? 'Starting…' : 'Still writing…');
       try {
-        const res = await fetch('/api/cron/blog-admin', { method: 'POST', headers: aiJsonHeaders(), body: JSON.stringify({ startNew }) });
+        const res = await fetch('/api/cron/blog-admin', { method: 'POST', headers: aiJsonHeaders(), body: JSON.stringify(i === 0 ? first : { startNew }) });
         const data = await res.json().catch(() => null);
         if (!res.ok || !data?.ok) throw new Error(data?.error || 'The run did not finish.');
         startNew = false;
+        first = {};
+        if (fromQuestion) setQuestion('');
         const run = data.run as { status: string; step?: string; reviewUrl?: string };
         await load();
         if (run.status === 'drafting') {
@@ -111,33 +118,66 @@ export const AdminBlogPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-black text-[#182A42]">T-minus Talks</h1>
           <p className="text-sm text-slate-600 mt-1">
-            One conversation a week. A new one starts by itself every week; you get an email and a Telegram message when it's ready. Open
-            <b> Edit</b> to read it, add your note and publish or skip.
+            Short weekly posts. Best: start one from a real question you found online. Without one, a post with an invented guest starts by
+            itself each week. You get an email and a Telegram message when it's ready; open <b>Edit</b> to read it, add your note and publish
+            or skip.
           </p>
         </div>
 
         {setup && (!setup.ai || !setup.reviewLinks) && (
           <p className="text-sm bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3">
-            {!setup.ai ? 'GEMINI_API_KEY is not set, so no conversations can be written. ' : ''}
+            {!setup.ai ? 'GEMINI_API_KEY is not set, so no posts can be written. ' : ''}
             {!setup.reviewLinks ? 'NOTIFY_LINK_SECRET is not set, so there are no Edit links.' : ''}
           </p>
         )}
 
+        <section className="bg-white border-2 border-[#182A42] rounded-2xl p-4 space-y-3">
+          <div>
+            <h2 className="font-black text-[#182A42]">Start from a real question</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Paste a question someone asked on Reddit or a forum: someone planning something and stuck. It's retold in our own words with
+              names, places and details changed, never quoted or linked on the blog. You also get a draft reply to post in the thread yourself.
+            </p>
+          </div>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            rows={5}
+            maxLength={6000}
+            placeholder="Paste the question here (title and text)"
+            className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#182A42]/30"
+          />
+          <input
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="Link to the thread (optional, only for you)"
+            className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#182A42]/30"
+          />
+          <button
+            type="button"
+            onClick={() => write({ question, link })}
+            disabled={Boolean(writing) || !setup?.ai || question.trim().length < 60}
+            className="px-4 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-sm font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-default"
+          >
+            {writing ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenLine className="w-4 h-4" />} Write a post about this
+          </button>
+        </section>
+
         <section className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
-            <p className="font-bold text-slate-900">{drafting ? `${drafting.week} is being written` : 'Want one now?'}</p>
+            <p className="font-bold text-slate-900">{drafting ? `${drafting.week} is being written` : 'No question this week?'}</p>
             <p className="text-slate-500 text-xs mt-0.5">
               {writing || (drafting ? `At: ${drafting.step}. It carries on by itself tomorrow, or now with the button.` : 'Takes 1-4 minutes. Keep this page open.')}
             </p>
           </div>
           <button
             type="button"
-            onClick={write}
+            onClick={() => write()}
             disabled={Boolean(writing) || !setup?.ai}
             className="px-4 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-sm font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-default"
           >
             {writing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {drafting ? 'Continue writing' : 'Write a new one now'}
+            {drafting ? 'Continue writing' : 'Write one with an invented guest'}
           </button>
         </section>
 
@@ -162,7 +202,7 @@ export const AdminBlogPage: React.FC = () => {
                   </span>
                 </div>
                 <p className="font-bold text-[#182A42] leading-snug">{r.title || (r.status === 'drafting' ? `Writing: ${r.step}` : 'No post was written')}</p>
-                <p className="text-xs text-slate-500">Guest: {r.guest} (AI persona)</p>
+                <p className="text-xs text-slate-500">{r.kind === 'question' ? `Reader question, retold as: ${r.guest}` : `Guest: ${r.guest} (AI persona)`}</p>
                 {r.lastError && r.status !== 'published' && <p className="text-xs text-rose-700">Last problem: {r.lastError}</p>}
                 <div className="flex flex-wrap gap-2 pt-1">
                   {r.reviewUrl && (

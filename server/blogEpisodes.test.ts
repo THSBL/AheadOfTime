@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   advanceEpisode,
   cleanOwnerInput,
+  cleanSource,
+  personaFromRetelling,
+  UnusableQuestion,
   cleanTurn,
   renderPostPage,
   renderIndexPage,
@@ -52,27 +55,55 @@ const plan = {
   ],
 };
 
+const SOURCE = {
+  text: "u/sunnyplanner here. Organising my sister's hen do in Porto for 11 of us in March, group chat is chaos, nobody answers, I'm paying deposits myself again. Where do I even start? https://example.com/x",
+  url: 'https://www.reddit.com/r/weddingplanning/comments/abc/hen_do_help/',
+};
+
 function fakeDeps(overrides: Partial<EpisodeDeps> = {}, log: string[] = []): EpisodeDeps {
   return {
     now: NOW,
     llm: async (req) => {
+      if (req.schema?.properties?.usable) {
+        log.push('retell');
+        return JSON.stringify({
+          usable: true,
+          situation: "Someone is organising a sister's hen weekend abroad for ten friends. The group chat never decides, and last time they paid the deposits themselves.",
+          event: "my sister's hen weekend in Lisbon for 10 friends",
+          weeksOut: 8,
+          nights: 2,
+          name: 'Marta',
+          age: 31,
+          role: 'teacher',
+          city: 'Leeds',
+          household: 'couple',
+          householdDetail: 'lives with a partner',
+        });
+      }
       if (req.schema?.properties?.answers) {
         log.push('answers');
         return JSON.stringify({ answers: [{ index: 0, answer: 'Flying' }] });
       }
-      if (req.schema?.properties?.title) {
+      if (req.schema?.properties?.leadTimes) {
         log.push('edit');
+        const question = /reader question/i.test(req.prompt);
         return JSON.stringify({
-          title: 'A night-shift nurse plans her sister\'s hen weekend <in Lisbon>',
-          description: 'Ten friends, one group chat, rotating shifts.',
+          title: 'Planning a hen weekend <abroad> when the group chat decides nothing',
+          description: 'Ten friends, one group chat, and the deposits.',
           intro: 'Priya works rotating shifts and the group chat decides nothing.',
-          sections: [
-            { heading: 'What is coming up', lines: [{ speaker: 'host', text: 'Welcome, Priya.' }, { speaker: 'guest', text: 'Thanks.' }, { speaker: 'robot', text: 'x' }] },
-            { heading: 'The plan', lines: [{ speaker: 'host', text: 'The first step?' }, { speaker: 'guest', text: 'Shortlisting stays.' }] },
-            { heading: 'What missed', lines: [{ speaker: 'host', text: 'Anything off?' }, { speaker: 'guest', text: 'No step for my shifts. <script>alert(1)</script>' }] },
+          exchange: question ? [] : [
+            { speaker: 'host', text: 'What makes it tricky?' },
+            { speaker: 'guest', text: 'Nobody decides. <script>alert(1)</script>' },
+            { speaker: 'robot', text: 'x' },
           ],
-          takeaways: ['Book the stay six weeks out.', 'Collect money early.', 'Pick one decider.'],
+          leadTimes: [
+            { when: '5 weeks before', what: 'Shortlist three stays', why: 'Good places go first.' },
+            { when: '4 weeks before', what: 'Collect deposits', why: 'Before you book, not after.' },
+            { when: '3 weeks before', what: 'Book flights', why: 'Prices climb.' },
+          ],
+          limitation: "It doesn't know your rota.",
           productNotes: ['Shift workers want steps on days off.'],
+          reply: question ? 'Start with the stay, five weeks out...\n\nI make a free planner that works backwards from the date - I wrote this one up here: {LINK}' : 'should be dropped',
         });
       }
       if (/opening a planning app/.test(req.prompt)) {
@@ -98,21 +129,22 @@ function fakeDeps(overrides: Partial<EpisodeDeps> = {}, log: string[] = []): Epi
   };
 }
 
-describe('advanceEpisode (one conversation, step by step)', () => {
-  it('runs the guest through the real app flow, then talks turn by turn, then edits', async () => {
+describe('advanceEpisode: invented guest', () => {
+  it('runs the guest through the real app flow, a short chat, then the short post', async () => {
     const log: string[] = [];
     const { state, post } = await advanceEpisode(persona, { transcript: [] }, '2026-W41', fakeDeps({}, log));
-    expect(log.slice(0, 4)).toEqual(['request', 'clarify', 'answers', 'plan:with-answers']);
+    expect(log).toEqual(['request', 'clarify', 'answers', 'plan:with-answers', 'host', 'guest', 'host', 'guest', 'edit']);
     // The request carries the exact date even when the guest left it out.
     expect(state.request).toMatch(/from 21 November to 23 November 2026/);
     expect(state.answers).toEqual([{ question: 'How are you getting there?', answer: 'Flying' }]);
     expect(state.transcript).toHaveLength(TRANSCRIPT_LENGTH);
-    expect(state.transcript.map((t) => t.speaker).slice(0, 3)).toEqual(['host', 'guest', 'host']);
-    expect(state.transcript.at(-1)!.speaker).toBe('host');
     // Labels and wrapping quotes are stripped.
     expect(state.transcript[0].text).toBe('So, what is coming up?');
     expect(state.transcript[1].text).toBe('Honestly, chaos.');
-    expect(post!.sections[0].lines.map((l) => l.speaker)).toEqual(['host', 'guest']);
+    expect(post!.format).toBe(2);
+    expect(post!.exchange!.map((l) => l.speaker)).toEqual(['host', 'guest']);
+    expect(post!.leadTimes).toHaveLength(3);
+    expect(post!.reply).toBeUndefined();
     expect(post!.productNotes).toEqual(['Shift workers want steps on days off.']);
   });
 
@@ -140,10 +172,56 @@ describe('advanceEpisode (one conversation, step by step)', () => {
   });
 });
 
+describe('advanceEpisode: reader question', () => {
+  it('retells the question as a different person, plans it, skips the chat and drafts a reply', async () => {
+    const log: string[] = [];
+    const prompts: string[] = [];
+    const deps = fakeDeps({}, log);
+    const llm = deps.llm;
+    deps.llm = async (req) => {
+      prompts.push(req.prompt);
+      return llm(req);
+    };
+    const { state, post } = await advanceEpisode(persona, { transcript: [], source: cleanSource(SOURCE.text, SOURCE.url)! }, 'w', deps);
+    expect(log).toEqual(['retell', 'request', 'clarify', 'answers', 'plan:with-answers', 'edit']);
+    expect(state.retold!.persona).toMatchObject({ name: 'Marta', city: 'Leeds', scenario: { key: 'reader-question', weeksOut: 8, nights: 2 } });
+    // The guest who uses the app is the retold person, not the drawn one.
+    expect(prompts[1]).not.toContain('ICU nurse');
+    expect(state.transcript).toEqual([]);
+    expect(post!.exchange).toBeUndefined();
+    expect(post!.reply).toContain('{LINK}');
+  });
+
+  it('gives up on a question that is not about planning, without retrying', async () => {
+    const deps = fakeDeps();
+    deps.llm = async () => JSON.stringify({ usable: false, reason: 'It is a rant about prices.', situation: '', event: '', weeksOut: 1, nights: 0, name: '', age: 0, role: '', city: '', household: '', householdDetail: '' });
+    await expect(advanceEpisode(persona, { transcript: [], source: { text: 'x'.repeat(80), url: null } }, 'w', deps)).rejects.toBeInstanceOf(UnusableQuestion);
+  });
+
+  it('strips usernames, e-mail addresses and links from what is pasted, and keeps only a plain thread link', () => {
+    const c = cleanSource(`${SOURCE.text} mail me at a.b@example.com`, SOURCE.url)!;
+    expect(c.text).not.toMatch(/sunnyplanner|example\.com|a\.b@/);
+    expect(c.text).toContain('someone here');
+    expect(c.url).toBe(SOURCE.url);
+    expect(cleanSource('too short', null)).toBeNull();
+    expect(cleanSource('y'.repeat(80), 'javascript:alert(1)')!.url).toBeNull();
+  });
+
+  it('keeps the retold numbers in range', () => {
+    const p = personaFromRetelling({ name: 'A', age: 400, weeksOut: 99, nights: -3, household: 'nonsense', situation: 's', event: 'e' }, persona);
+    expect(p.age).toBe(85);
+    expect(p.scenario.weeksOut).toBe(52);
+    expect(p.scenario.nights).toBeUndefined();
+    expect(p.household).toBe(persona.household);
+  });
+});
+
 describe('sanitizePost', () => {
-  it('drops malformed lines and refuses a post that is too thin', () => {
-    expect(sanitizePost({ title: 'x', intro: 'y', sections: [], takeaways: ['a'] })).toBeNull();
-    expect(sanitizePost(null)).toBeNull();
+  it('refuses a post that is too thin', () => {
+    expect(sanitizePost({ title: 'x', intro: 'y', leadTimes: [{ when: 'a', what: 'b' }] }, { question: true })).toBeNull();
+    // An invented guest needs at least two lines of chat.
+    expect(sanitizePost({ title: 'x', intro: 'y', leadTimes: [{ when: 'a', what: 'b' }, { when: 'c', what: 'd' }], exchange: [] }, { question: false })).toBeNull();
+    expect(sanitizePost(null, { question: true })).toBeNull();
   });
 });
 
@@ -169,7 +247,7 @@ describe('pages', () => {
     reviewer: null,
   });
 
-  it('escapes everything the models wrote and always says the guest is an AI persona', async () => {
+  it('escapes everything the models wrote and says an invented guest is an AI persona', async () => {
     const { post } = await advanceEpisode(persona, { transcript: [] }, 'w', fakeDeps());
     const html = renderPostPage(ep(post), 'https://aheadoftime.app');
     expect(html).not.toContain('<script>alert(1)');
@@ -217,6 +295,29 @@ describe('pages', () => {
     expect(cleanOwnerInput({ note: '  one\r\n\n\n\ntwo  ', reviewer_name: '  Eva  ', reviewer_bio: 'a\nb' })).toEqual({ note: 'one\n\ntwo', reviewer: { name: 'Eva', bio: 'a b' } });
     expect(cleanOwnerInput({ note: '   ', reviewer_name: '' })).toEqual({ note: null, reviewer: null });
     expect(cleanOwnerInput({ note: 'x'.repeat(2000) }).note!.length).toBe(800);
+  });
+
+  it('a reader-question post says it was retold, shows the lead times and never the original or the reply', async () => {
+    const source = cleanSource(SOURCE.text, SOURCE.url)!;
+    const { state, post } = await advanceEpisode(persona, { transcript: [], source }, 'w', fakeDeps());
+    const page = renderPostPage({ ...ep(post), persona: state.retold!.persona, state: { ...state, shareToken: 'tok12345678' } }, 'https://aheadoftime.app');
+    expect(page).toContain('Reader question');
+    expect(page).toContain('changed names, places and details');
+    expect(page).toContain('The 3 lead times that matter');
+    expect(page).toContain("What the app couldn't do:");
+    expect(page).not.toContain('AI persona ·');
+    for (const secret of ['reddit.com', 'Porto', 'I make a free planner', 'Shift workers want']) expect(page).not.toContain(secret);
+    // The owner's review page has the reply and the thread link.
+    const review = renderPostPage({ ...ep(post), status: 'review', persona: state.retold!.persona, state }, 'https://aheadoftime.app', { token: 'k' });
+    expect(review).toContain('Draft reply for the original thread');
+    expect(review).toContain(SOURCE.url);
+  });
+
+  it('still renders first-format posts', () => {
+    const old = { title: 'Old post', description: 'd', intro: 'i', sections: [{ heading: 'H', lines: [{ speaker: 'host', text: 'Q?' }, { speaker: 'guest', text: 'A.' }] }], takeaways: ['T1'], productNotes: [] };
+    const html = renderPostPage(ep(old), 'https://aheadoftime.app');
+    expect(html).toContain('<h2>H</h2>');
+    expect(html).toContain('Takeaways');
   });
 
   it('lists nothing yet without breaking', () => {

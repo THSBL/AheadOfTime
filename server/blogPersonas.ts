@@ -40,6 +40,8 @@ export interface Persona {
   constraint: string;
   temperament: string;
   scenario: Scenario;
+  /** Retold from a real question (blogEpisodes.ts): the situation in our own words. */
+  story?: string;
 }
 
 const ROLES = [

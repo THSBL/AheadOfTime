@@ -45,6 +45,17 @@ Every Monday (with the weekly report), the app builds one example plan for one o
 
 ## Weekly blog conversation "T-minus Talks" - added 8 Oct 2026
 
+**Update (8 Oct): short posts, from real questions.** On /admin/blog, paste a
+question someone asked on Reddit or a forum (+ the thread link, only for you)
+and tap *Write a post about this*. It's retold in our own words with names,
+places and details changed (usernames, e-mails and links are stripped before
+anything else sees it), run through the real app, and written up as a short
+post: the situation, the plan, the 3 lead times that matter, one thing the app
+couldn't do. The review page and email include a **draft reply for the thread**:
+post it yourself, as yourself, once the post is live and only where the
+subreddit allows links. Never automate this. Without a question, the weekly
+run writes a short post with an invented guest instead.
+
 Every week a fictional guest (an AI persona with a job, city, household,
 calendar and one complication) uses the real app: types a request, answers
 the app's follow-up questions, gets the real plan. Then the host (Tess) and
