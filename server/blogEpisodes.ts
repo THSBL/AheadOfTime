@@ -81,6 +81,15 @@ export interface Episode {
   slug: string | null;
   createdAt: string;
   publishedAt: string | null;
+  /** The owner's own words on the conversation, written on the review page. */
+  ownerNote: string | null;
+  /** Who reviewed it ("Reviewed by"), from the review page. */
+  reviewer: Reviewer | null;
+}
+
+export interface Reviewer {
+  name: string;
+  bio: string;
 }
 
 // ---------------------------------------------------------------- storage
@@ -105,6 +114,8 @@ function ensureSchema(): Promise<void> {
          published_at  TIMESTAMPTZ
        )`
     )
+      // Added after the first version of the table.
+      .then(() => query(`ALTER TABLE blog_episodes ADD COLUMN IF NOT EXISTS owner_note TEXT, ADD COLUMN IF NOT EXISTS reviewer JSONB`))
       .then(() => undefined)
       .catch((err) => {
         schemaReady = null;
@@ -126,7 +137,23 @@ function rowToEpisode(r: any): Episode {
     slug: r.slug,
     createdAt: iso(r.created_at)!,
     publishedAt: iso(r.published_at),
+    ownerNote: r.owner_note || null,
+    reviewer: r.reviewer?.name ? r.reviewer : null,
   };
+}
+
+/** The last reviewer's name and line, to prefill the next review. */
+async function lastReviewer(): Promise<Reviewer | null> {
+  const rows = await query<{ reviewer: Reviewer }>(`SELECT reviewer FROM blog_episodes WHERE reviewer IS NOT NULL ORDER BY updated_at DESC LIMIT 1`);
+  return rows[0]?.reviewer || null;
+}
+
+/** The note keeps its paragraphs; everything else is one trimmed line. */
+export function cleanOwnerInput(body: any): { note: string | null; reviewer: Reviewer | null } {
+  const note = typeof body?.note === 'string' ? body.note.replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 800) : '';
+  const line = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '');
+  const name = line(body?.reviewer_name, 60);
+  return { note: note || null, reviewer: name ? { name, bio: line(body?.reviewer_bio, 140) } : null };
 }
 
 async function getEpisode(id: number): Promise<Episode | null> {
@@ -516,7 +543,7 @@ async function deliverForReview(ep: Episode, appUrl: string): Promise<void> {
       'Product notes from the guest (not published):',
       ...notes.map((n) => `- ${n}`),
       '',
-      link ? `Read it and publish or skip: ${link}` : 'NOTIFY_LINK_SECRET is not set, so there is no review link.',
+      link ? `Read it, add a note of your own if you like, then publish or skip: ${link}` : 'NOTIFY_LINK_SECRET is not set, so there is no review link.',
       'Nothing is published until you tap Publish.',
     ].join('\n');
     const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#182A42">
@@ -525,7 +552,7 @@ async function deliverForReview(ep: Episode, appUrl: string): Promise<void> {
 <p style="color:#475569;font-size:14px;margin:0 0 12px">Guest: ${esc(personaLine(ep.persona))} (AI persona)</p>
 <p style="font-size:14px;line-height:1.55;margin:0 0 16px">${esc(post.intro)}</p>
 <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin:0 0 16px"><p style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:0 0 6px">Product notes from the guest (not published)</p><ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.5">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>
-${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#182A42;color:#fff;font-weight:700;padding:10px 18px;border-radius:10px;text-decoration:none">Read it, then publish or skip</a></p>` : '<p>NOTIFY_LINK_SECRET is not set, so there is no review link.</p>'}
+${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#182A42;color:#fff;font-weight:700;padding:10px 18px;border-radius:10px;text-decoration:none">Read it, add your note, then publish or skip</a></p>` : '<p>NOTIFY_LINK_SECRET is not set, so there is no review link.</p>'}
 <p style="color:#94a3b8;font-size:12px">Nothing is published until you tap Publish.</p></div>`;
     const sent = await sendEmail({ to: ownerEmail, subject: `${SERIES}: ${post.title}`, html, text }).catch(() => ({ ok: false }));
     emailed = sent.ok;
@@ -602,14 +629,15 @@ ${plan.steps.length > shown.length ? `<p class="more">+ ${plan.steps.length - sh
 ${link ? `<a class="btn secondary" href="${esc(link)}">Open the full plan</a>` : ''}</section>`;
 }
 
-export function renderPostPage(ep: Episode, appUrl: string, review?: { token: string }): string {
+export function renderPostPage(ep: Episode, appUrl: string, review?: { token: string; reviewerDefault?: Reviewer | null }): string {
   const post = ep.post!;
   const p = ep.persona;
   const name = (t: Turn) => (t.speaker === 'host' ? HOST.name : p.name);
   const shareLink = ep.state.shareToken ? sharedPlanUrl(appUrl, ep.state.shareToken) : null;
   const date = longDate(ep.publishedAt || ep.createdAt);
-  const bar = review ? reviewBar(ep, review.token) : '';
+  const bar = review ? reviewBar(ep, review.token, ep.reviewer || review.reviewerDefault || null) : '';
   const body = `${bar}<main class="post"><p class="kicker">${SERIES} · ${esc(date)}</p><h1>${esc(post.title)}</h1>
+${ep.reviewer ? `<p class="byline">Reviewed by <b>${esc(ep.reviewer.name)}</b>${ep.reviewer.bio ? `, ${esc(ep.reviewer.bio)}` : ''}</p>` : ''}
 <p class="intro">${esc(post.intro)}</p>${personaCard(p)}
 ${post.sections
   .map(
@@ -619,6 +647,7 @@ ${post.sections
   )
   .join('\n')}
 ${ep.state.plan ? planBox(ep.state.plan, shareLink) : ''}
+${ep.ownerNote ? `<section class="owner-note"><p class="label">A note from ${esc(ep.reviewer?.name || 'the team')}</p>${ep.ownerNote.split(/\n{2,}/).map((para) => `<p>${esc(para).replace(/\n/g, '<br>')}</p>`).join('')}</section>` : ''}
 <section class="takeaways"><h2>Takeaways</h2><ul>${post.takeaways.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></section>
 <section class="try"><h2>Plan your own</h2><p>Tell it what's coming up and get the steps, backwards from the date. Free, no sign-up needed to try.</p><a class="btn" href="/try">Try it with your own event</a></section>
 <p class="disclosure">${esc(DISCLOSURE)}</p></main>`;
@@ -640,22 +669,27 @@ ${ep.state.plan ? planBox(ep.state.plan, shareLink) : ''}
           mainEntityOfPage: `${appUrl}/blog/${ep.slug}`,
           image: 'https://aheadoftime.app/assets/aheadoftime-social-card-v3.png',
           author: { '@type': 'Organization', name: 'Ahead Of Time', url: appUrl },
+          ...(ep.reviewer ? { editor: { '@type': 'Person', name: ep.reviewer.name, ...(ep.reviewer.bio ? { description: ep.reviewer.bio } : {}) } } : {}),
           publisher: { '@type': 'Organization', name: 'Ahead Of Time', logo: { '@type': 'ImageObject', url: 'https://aheadoftime.app/icon-512.png' } },
         },
   });
 }
 
-function reviewBar(ep: Episode, token: string): string {
-  const k = `<input type="hidden" name="k" value="${esc(token)}">`;
-  const button = (action: string, label: string, cls = '') => `<form method="post" action="/blog/review">${k}<input type="hidden" name="do" value="${action}"><button class="${cls}">${label}</button></form>`;
+function reviewBar(ep: Episode, token: string, reviewer: Reviewer | null): string {
+  const action = (value: string, label: string, cls = '') => `<button name="do" value="${value}" class="${cls}">${label}</button>`;
   const notes = ep.post?.productNotes.length ? `<details><summary>Product notes from the guest (never published)</summary><ul>${ep.post.productNotes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></details>` : '';
-  const status =
+  const [status, actions] =
     ep.status === 'published'
-      ? `<p><b>Live</b> at <a href="/blog/${esc(ep.slug || '')}">/blog/${esc(ep.slug || '')}</a></p>${button('unpublish', 'Unpublish', 'quiet')}`
+      ? [`<p><b>Live</b> at <a href="/blog/${esc(ep.slug || '')}">/blog/${esc(ep.slug || '')}</a></p>`, `${action('save', 'Save changes')}${action('unpublish', 'Unpublish', 'quiet')}`]
       : ep.status === 'skipped'
-        ? `<p><b>Skipped.</b> Only you can see this.</p>${button('publish', 'Publish anyway')}`
-        : `<p><b>Draft</b> - only you can see this. Nothing is live until you publish.</p><div class="actions">${button('publish', 'Publish')}${button('skip', 'Skip this week', 'quiet')}</div>`;
-  return `<div class="review">${status}${notes}</div>`;
+        ? [`<p><b>Skipped.</b> Only you can see this.</p>`, `${action('publish', 'Publish anyway')}${action('save', 'Save', 'quiet')}`]
+        : [`<p><b>Draft</b> - only you can see this. Nothing is live until you publish.</p>`, `${action('publish', 'Publish')}${action('save', 'Save', 'quiet')}${action('skip', 'Skip this week', 'quiet')}`];
+  return `<div class="review">${status}<form method="post" action="/blog/review" class="note-form"><input type="hidden" name="k" value="${esc(token)}">
+<label for="note">Your note <span>(optional, shown as "A note from you" under the plan: what you'd do in their place, or what you're changing)</span></label>
+<textarea id="note" name="note" rows="4" maxlength="800">${esc(ep.ownerNote || '')}</textarea>
+<div class="row"><label>Your name <span>(shown as "Reviewed by")</span><input name="reviewer_name" maxlength="60" value="${esc(reviewer?.name || '')}"></label>
+<label>One line about you<input name="reviewer_bio" maxlength="140" value="${esc(reviewer?.bio || '')}" placeholder="Founder of Ahead Of Time"></label></div>
+<div class="actions">${actions}</div></form>${notes}</div>`;
 }
 
 export function renderIndexPage(posts: Episode[], appUrl: string): string {
@@ -695,9 +729,13 @@ export function renderFeed(posts: Episode[], appUrl: string): string {
 
 // ---------------------------------------------------------------- publish / skip
 
-async function setStatus(id: number, action: string): Promise<Episode | null> {
+async function setStatus(id: number, action: string, body: any = {}): Promise<Episode | null> {
   const ep = await getEpisode(id);
   if (!ep || !ep.post) return ep;
+  if (action === 'save' || action === 'publish') {
+    const { note, reviewer } = cleanOwnerInput(body);
+    await query(`UPDATE blog_episodes SET owner_note = $2, reviewer = $3::jsonb, updated_at = now() WHERE id = $1`, [id, note, reviewer ? JSON.stringify(reviewer) : null]);
+  }
   if (action === 'publish' && ep.status !== 'published') {
     let slug = ep.slug || slugify(ep.post.title);
     for (let n = 2; !ep.slug; n++) {
@@ -747,10 +785,11 @@ export async function handleBlog(req: any, res: any) {
       }
       let ep = await getEpisode(id);
       if (req.method === 'POST') {
-        ep = await setStatus(id, String(body.do || ''));
+        const action = String(body.do || '');
+        ep = await setStatus(id, action, body);
         res.statusCode = 303;
         res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('Location', ep?.status === 'published' && ep.slug ? `/blog/${ep.slug}` : `/blog/review?k=${encodeURIComponent(String(token))}`);
+        res.setHeader('Location', action === 'publish' && ep?.status === 'published' && ep.slug ? `/blog/${ep.slug}` : `/blog/review?k=${encodeURIComponent(String(token))}`);
         return res.end();
       }
       if (!ep) {
@@ -761,7 +800,7 @@ export async function handleBlog(req: any, res: any) {
         const m = messagePage(appUrl, 'Still being written', `This week's conversation is at: ${describeStep(ep.state)}. The next daily run carries on.`);
         return send(m.status, m.html, undefined, 'no-store');
       }
-      return send(200, renderPostPage(ep, appUrl, { token: String(token) }), undefined, 'no-store');
+      return send(200, renderPostPage(ep, appUrl, { token: String(token), reviewerDefault: await lastReviewer() }), undefined, 'no-store');
     }
     if (q.sitemap) return send(200, renderSitemap(await listPublished(500), appUrl), 'application/xml; charset=utf-8');
     if (q.slug === 'feed.xml') return send(200, renderFeed(await listPublished(30), appUrl), 'application/rss+xml; charset=utf-8');

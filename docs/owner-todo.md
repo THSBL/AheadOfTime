@@ -60,6 +60,11 @@ the post. Code: `server/blogEpisodes.ts`, guests: `server/blogPersonas.ts`.
   shows exactly as it will look, plus the guest's *product notes* (their
   criticism of the app - never published). Tap **Publish** or **Skip**.
   A published post can be unpublished from the same link (valid 60 days).
+- **Your note + "Reviewed by"**: the review page has a box for a few sentences
+  of your own (shown under the plan as "A note from <you>") and your name +
+  one line about you (shown under the title, and to Google as the post's
+  editor). Name and line are remembered for next week. This human part is
+  what makes the posts more than AI text - worth the two minutes.
 - **Run it now** (each run has ~50 s; repeat until it says "ready for review"):
   `curl -H "Authorization: Bearer $CRON_SECRET" "https://aheadoftime.app/api/cron/blog-episode"`
   Add `?new=1` to start an extra episode this week.

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   advanceEpisode,
+  cleanOwnerInput,
   cleanTurn,
   renderPostPage,
   renderIndexPage,
@@ -164,6 +165,8 @@ describe('pages', () => {
     slug: 'a-night-shift-nurse',
     createdAt: NOW.toISOString(),
     publishedAt: NOW.toISOString(),
+    ownerNote: null,
+    reviewer: null,
   });
 
   it('escapes everything the models wrote and always says the guest is an AI persona', async () => {
@@ -185,6 +188,35 @@ describe('pages', () => {
     expect(html).toContain('Shift workers want');
     expect(html).toContain('noindex');
     expect(html).not.toContain('BlogPosting');
+  });
+
+  it("shows the owner's note and the reviewer, escaped, and names the reviewer as the post's editor", async () => {
+    const { post } = await advanceEpisode(persona, { transcript: [] }, 'w', fakeDeps());
+    const html = renderPostPage(
+      { ...ep(post), ownerNote: 'Fair point on the rota.\n\nWe are <testing> shift-aware dates.', reviewer: { name: 'Eva', bio: 'Founder of Ahead Of Time' } },
+      'https://aheadoftime.app'
+    );
+    expect(html).toContain('Reviewed by <b>Eva</b>, Founder of Ahead Of Time');
+    expect(html).toContain('A note from Eva');
+    expect(html).toContain('<p>Fair point on the rota.</p><p>We are &lt;testing&gt; shift-aware dates.</p>');
+    expect(html).toContain('"editor":{"@type":"Person","name":"Eva"');
+    // Without them, neither appears.
+    const plain = renderPostPage(ep(post), 'https://aheadoftime.app');
+    expect(plain).not.toContain('Reviewed by');
+    expect(plain).not.toContain('owner-note');
+  });
+
+  it('the review form is prefilled with the last reviewer', async () => {
+    const { post } = await advanceEpisode(persona, { transcript: [] }, 'w', fakeDeps());
+    const html = renderPostPage({ ...ep(post), status: 'review' }, 'https://aheadoftime.app', { token: 'k', reviewerDefault: { name: 'Eva', bio: 'Founder' } });
+    expect(html).toContain('name="reviewer_name" maxlength="60" value="Eva"');
+    expect(html).toContain('<textarea id="note" name="note"');
+  });
+
+  it('cleans what the review form sends', () => {
+    expect(cleanOwnerInput({ note: '  one\r\n\n\n\ntwo  ', reviewer_name: '  Eva  ', reviewer_bio: 'a\nb' })).toEqual({ note: 'one\n\ntwo', reviewer: { name: 'Eva', bio: 'a b' } });
+    expect(cleanOwnerInput({ note: '   ', reviewer_name: '' })).toEqual({ note: null, reviewer: null });
+    expect(cleanOwnerInput({ note: 'x'.repeat(2000) }).note!.length).toBe(800);
   });
 
   it('lists nothing yet without breaking', () => {
