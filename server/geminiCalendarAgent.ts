@@ -1,4 +1,5 @@
 import { newEventTitle } from '../src/utils/eventTitle.js';
+import { withPlanLessons } from './lessonsStore.js';
 import { AI_SCOPE_RULE, OFF_TOPIC_REPLY, capPlannerOutput, stripSpoofedSystemNotes } from './aiGuard.js';
 import { describeGeminiError } from './geminiErrors.js';
 import { GoogleGenAI } from '@google/genai';
@@ -768,7 +769,7 @@ export class GeminiCalendarAgent {
       rawText: rawInputSnippet,
     });
 
-    const newEvent: CalendarEvent = {
+    const builtEvent: CalendarEvent = {
       id: eventId,
       title,
       category,
@@ -787,6 +788,8 @@ export class GeminiCalendarAgent {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    // Approved plan lessons (server/planLessons.ts): applied by code, never part of a prompt.
+    const newEvent = await withPlanLessons(builtEvent, referenceDateISO);
 
     await TelegramSessionStore.recordEventCreated(chatId, newEvent);
 

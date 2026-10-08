@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { handleSharedPlans } from "./server/sharedPlans";
 import { handleBlog, handleBlogAdmin } from "./server/blogEpisodes";
+import { withPlanLessons, handleLessonsAdmin } from "./server/lessonsStore";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import {
@@ -808,7 +809,10 @@ app.post("/api/agent/process", async (req: Request, res: Response): Promise<void
       result.usedAi = false;
     }
 
-    res.json(applyExtensiveRunUps(result, refDateISO));
+    const finalPlan = applyExtensiveRunUps(result, refDateISO);
+    // Approved plan lessons, on new plans only (see api/agent/index.ts).
+    if (!existingEvent && finalPlan.event) finalPlan.event = await withPlanLessons(finalPlan.event, refDateISO);
+    res.json(finalPlan);
   } catch (error: any) {
     console.error("Agent process handler error:", error);
     await logQualityEvent({
@@ -1433,6 +1437,8 @@ app.all("/api/auth/calendar-feed", async (req: Request, res: Response) => {
   }
   await handleCalendarFeedSettings(req, res, await findOrCreateUserByEmail(verified.email));
 });
+// Twin of api/cron/[job].ts job=lessons-admin (the /admin/lessons page).
+app.all("/api/cron/lessons-admin", (req: Request, res: Response) => handleLessonsAdmin(req, res));
 // Twin of api/cron/[job].ts job=blog-admin (the /admin/blog page).
 app.all("/api/cron/blog-admin", (req: Request, res: Response) => handleBlogAdmin(req, res, Date.now() + 52_000));
 // Twins of vercel.json's /blog rewrites (api/auth/google/index.ts action=blog).

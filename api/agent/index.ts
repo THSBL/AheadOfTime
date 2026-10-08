@@ -1,4 +1,5 @@
 import type { CalendarEvent, ProcessAgentInputPayload, ProcessAgentResponsePayload } from '../../src/types.js';
+import { withPlanLessons } from '../../server/lessonsStore.js';
 import {
   generateContentFast,
   TRANSCRIBE_MODELS,
@@ -172,7 +173,11 @@ async function handleProcess(req: any, res: any) {
       result.usedAi = false;
     }
 
-    res.json(applyExtensiveRunUps(result, refDateISO));
+    const finalPlan = applyExtensiveRunUps(result, refDateISO);
+    // Approved plan lessons (server/planLessons.ts), on new plans only:
+    // applied by code after the AI answered, never part of a prompt.
+    if (!existingEvent && finalPlan.event) finalPlan.event = await withPlanLessons(finalPlan.event, refDateISO);
+    res.json(finalPlan);
   } catch (error: any) {
     console.error("Agent process handler error:", error);
     await logQualityEvent({

@@ -3,6 +3,7 @@ import { runBackgroundAgendaScan } from '../../server/backgroundAgendaScan.js';
 import { purgeDeletedEvents } from '../../server/eventSyncStore.js';
 import { appOrigin } from '../../server/appOrigin.js';
 import { runBlogEpisode, handleBlogAdmin } from '../../server/blogEpisodes.js';
+import { runLessonProposals, handleLessonsAdmin } from '../../server/lessonsStore.js';
 import { buildWeeklyPackage, deliverWeeklyPackage, deliverWeeklySkipNotice, WeeklyContentSkipped } from '../../server/weeklyContent.js';
 
 // One dynamic function serves every cron job (/api/cron/weekly-report,
@@ -26,6 +27,8 @@ export default async function handler(req: any, res: any) {
   // The /admin/blog page (signed-in admins, not the cron secret); here for
   // the 60 seconds a writing run needs.
   if (job === 'blog-admin') return handleBlogAdmin(req, res, Date.now() + RUN_BUDGET_MS);
+  // The /admin/lessons page (signed-in admins).
+  if (job === 'lessons-admin') return handleLessonsAdmin(req, res);
   return res.status(404).json({ ok: false, error: 'Unknown cron job' });
 }
 
@@ -66,8 +69,10 @@ async function handleAgendaScan(req: any, res: any) {
     });
     // The weekly blog conversation advances with whatever time is left
     // (server/blogEpisodes.ts saves after every step and carries on tomorrow).
+    // Once a week: proposed plan lessons from user feedback (server/lessonsStore.ts).
+    const lessons = dryRun(req) ? 'not run (dry run)' : await runLessonsQuietly(req, startedAt + RUN_BUDGET_MS);
     const blog = dryRun(req) ? 'not run (dry run)' : await runBlogQuietly(req, startedAt + RUN_BUDGET_MS);
-    return res.status(200).json({ ok: true, purgedDeletedEvents: purged, ...summary, blog });
+    return res.status(200).json({ ok: true, purgedDeletedEvents: purged, ...summary, lessons, blog });
   } catch (err: any) {
     console.error('Background agenda scan failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Agenda scan failed' });
@@ -222,5 +227,16 @@ async function handleBlogEpisode(req: any, res: any) {
   } catch (err: any) {
     console.error('Blog episode failed:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Blog episode failed' });
+  }
+}
+
+/** Rides the daily agenda scan: the week's lesson proposals, when there's time. */
+async function runLessonsQuietly(req: any, deadline: number): Promise<string> {
+  if (deadline - Date.now() < 35_000) return 'lessons: no time left in this run';
+  try {
+    return await runLessonProposals({ appUrl: appOrigin(req) });
+  } catch (err: any) {
+    console.warn('Plan lessons (non-fatal):', err);
+    return `lessons failed: ${err?.message || err}`;
   }
 }

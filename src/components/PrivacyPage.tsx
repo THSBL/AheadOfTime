@@ -369,6 +369,13 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigateHome }) => {
                   sharing at any time from the plan; the link then stops working. Shared plan pages are not listed by search engines.
                 </li>
                 <li>
+                  <strong>Improving the plans:</strong> If you have AI planning switched on, what you tell us (feedback, corrections you
+                  type in the chat, and which suggested steps people often skip) may be analysed in anonymised form, once a week, to propose
+                  better default steps for everyone (for example "house moves: add 'transfer internet' three weeks before"). Every change is
+                  reviewed and approved by us before it's used. E-mail addresses, links and phone numbers are removed first, nothing is
+                  shared with anyone, and plans linked to your Google Calendar are never part of this.
+                </li>
+                <li>
                   <strong>Prohibition on AI Training:</strong> We <strong>NEVER</strong> use Google Workspace APIs or any data retrieved from Google APIs to train, retrain, fine-tune, or develop generalized artificial intelligence (AI) or machine learning (ML) models.
                 </li>
                 <li>

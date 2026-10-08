@@ -163,8 +163,15 @@ export const AdminFeedbackPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => navigate('/admin/blog')}
+            onClick={() => navigate('/admin/lessons')}
             className="ml-auto text-xs text-slate-700 bg-slate-100 hover:bg-slate-200/80 px-3 py-1.5 rounded-xl transition font-semibold cursor-pointer"
+          >
+            Lessons
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/blog')}
+            className="text-xs text-slate-700 bg-slate-100 hover:bg-slate-200/80 px-3 py-1.5 rounded-xl transition font-semibold cursor-pointer"
           >
             Blog
           </button>
