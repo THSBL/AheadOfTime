@@ -1,4 +1,5 @@
 ﻿import { AI_SETTING_EVENT, getCachedAiPlanningEnabled } from '../services/aiSettings';
+import { AckBubble, PlanPreview, UpdatingBubble, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
@@ -68,6 +69,10 @@ function mapPresetIdToCanonicalCategory(presetId: string): CanonicalCategory {
 interface ChatConsoleProps {
   /** Fold the template catalogue into one "Or start from a template" button (the try-out). */
   templatesCollapsed?: boolean;
+  /** The try-out's first screen: a headline question and example chips. */
+  trialIntro?: boolean;
+  /** Hears whether a plan is on screen (the try-out shows its ad only after one). */
+  onDraftPlanChange?: (hasPlan: boolean) => void;
   messages: AgentMessage[];
   onSendMessage: (text: string, isVoiceMemo?: boolean, audioBlob?: Blob) => void;
   onSaveEvent?: (event: CalendarEvent) => void;
@@ -119,6 +124,8 @@ const AiUseNotice: React.FC = () => {
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
   templatesCollapsed = false,
+  trialIntro = false,
+  onDraftPlanChange,
   messages,
   onSendMessage,
   onSaveEvent,
@@ -243,6 +250,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const [isDraftLoading, setIsDraftLoading] = useState(false);
   const [draftReplyInput, setDraftReplyInput] = useState('');
   const [draftBrief, setDraftBrief] = useState<ConversationBriefInput | null>(null);
+  // What the screen shows while the AI works (chatPreview.tsx): the facts
+  // read from the first message, and which wait it is.
+  const [draftFacts, setDraftFacts] = useState<MessageFacts | null>(null);
+  const [draftPhase, setDraftPhase] = useState<'clarify' | 'plan' | 'update' | null>(null);
+  useEffect(() => {
+    onDraftPlanChange?.(Boolean(draftEvent));
+  }, [draftEvent]);
   // Non-null only while the refinement questions are waiting for answers.
   const [refinementQuestions, setRefinementQuestions] = useState<RefinementQuestion[] | null>(null);
   const [refinementAnswers, setRefinementAnswers] = useState<Record<string, string>>({});
@@ -289,6 +303,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setDraftReplyInput('');
     setIsDraftLoading(false);
     setDraftBrief(null);
+    setDraftFacts(null);
+    setDraftPhase(null);
     setRefinementQuestions(null);
     setRefinementAnswers({});
     setDateAnswers({});
@@ -310,6 +326,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     draftRequestInFlight.current = true;
     const generation = draftGeneration.current;
     setIsDraftLoading(true);
+    setDraftPhase(addition ? 'update' : 'plan');
+    // The answers may carry the date ("2026-11-12 to 2026-11-19"): the
+    // preview's runway uses it.
+    if (!addition) setDraftFacts(readMessageFacts(brief.originalMessage, currentReferenceDate, (brief.answers || []).map((a) => a.answer).join('. ')));
     try {
       const body = addition
         ? {
@@ -363,6 +383,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       if (generation === draftGeneration.current) {
         draftRequestInFlight.current = false;
         setIsDraftLoading(false);
+        setDraftPhase(null);
       }
     }
   };
@@ -376,6 +397,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setDraftConversation([]);
     appendDraftMessage('user', text);
     setIsDraftLoading(true);
+    // An instant reply from their own words while the questions load.
+    setDraftFacts(readMessageFacts(text, currentReferenceDate));
+    setDraftPhase('clarify');
     const brief: ConversationBriefInput = { originalMessage: text, answers: [], additions: [] };
     setDraftBrief(brief);
 
@@ -395,6 +419,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         if (generation !== draftGeneration.current) return;
         draftRequestInFlight.current = false;
         setDraftBrief(null);
+        setDraftFacts(null);
+        setDraftPhase(null);
         appendDraftMessage('agent', stopMessage);
         setIsDraftLoading(false);
         return;
@@ -407,12 +433,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     }
     if (generation !== draftGeneration.current) return;
     draftRequestInFlight.current = false;
+    setDraftPhase(null);
 
     if (questions.length > 0) {
       setRefinementAnswers({});
       setDateAnswers({});
       setRefinementQuestions(questions);
-      appendDraftMessage('agent', questions.length === 1 ? 'One quick question so the plan fits:' : 'A few quick questions so the plan fits:');
       setIsDraftLoading(false);
       return;
     }
@@ -825,7 +851,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
               return (
                 <div key={msg.id} className="space-y-2">
-                  <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${idx === draftConversation.length - 1 ? 'aot-rise' : ''}`}>
                     {!isUser && (
                       <div className="w-7 h-7 rounded-full bg-[#182A42] text-white flex items-center justify-center shrink-0 mr-2 shadow-xs">
                         <Sparkles className="w-3.5 h-3.5" />
@@ -850,7 +876,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                   {/* Summary of the plan so far - nothing is saved until
                       "Create event" is tapped. */}
                   {isLatestPlanReply && draftEvent && (
-                    <div className="ml-9 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                    <div className="ml-9 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs aot-rise">
                       {/* The type label only when there is one: "Calendar Event" above a title read like the title itself. */}
                       {getEventTopicLabel(draftEvent.category, draftEvent.context) !== 'Calendar Event' && (
                         <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -867,10 +893,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                           Lilia or Llama Inn") - examples of what the assistant
                           helps with, not a fixed list. */}
                       <div className="space-y-2 pt-2 border-t border-emerald-200/70">
-                        {(draftEvent.milestones || []).map((m) => {
+                        {(draftEvent.milestones || []).map((m, stepIdx) => {
                           const ideas = (m.deliverables || []).map((d) => (d?.title || '').trim()).filter(Boolean).slice(0, 2);
                           return (
-                            <div key={m.id} className="text-[11px]">
+                            // Steps fill in one after another.
+                            <div key={m.id} className="text-[11px] aot-rise" style={{ animationDelay: `${Math.min(stepIdx, 12) * 70}ms` }}>
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-slate-800 font-semibold truncate">{m.title}</span>
                                 <span className="text-slate-400 font-mono shrink-0">{formatDisplayDate(m.calculatedDate)}</span>
@@ -906,6 +933,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                     </div>
                   )}
 
+                  {/* The instant reply under the first message: what we read
+                      from it, with the questions on their way. */}
+                  {idx === 0 && isUser && draftFacts && <AckBubble facts={draftFacts} questionsLoading={draftPhase === 'clarify'} />}
+
                   {split.question && (
                     <div className="flex justify-start">
                       <div className="w-7 h-7 rounded-full bg-[#182A42] text-white flex items-center justify-center shrink-0 mr-2 shadow-xs">
@@ -925,15 +956,16 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 an option or typing, and sent together with the first
                 message in one planning call. Every question is optional. */}
             {refinementQuestions && !isDraftLoading && (
-              <div className="ml-9 bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs">
-                {refinementQuestions.map((q) => {
+              <div className="ml-9 bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs aot-rise">
+                <p className="text-xs text-slate-500">{refinementQuestions.length === 1 ? 'One quick question so the plan fits:' : 'A few quick questions so the plan fits:'}</p>
+                {refinementQuestions.map((q, qIdx) => {
                   const answer = refinementAnswers[q.id] || '';
                   const isDateQuestion = q.kind === 'date' || q.kind === 'dateRange';
                   const picked = dateAnswers[q.id];
                   const typedAnswer = q.options.includes(answer) || (isDateQuestion && picked?.start) ? '' : answer;
                   const today = currentReferenceDate.slice(0, 10);
                   return (
-                    <div key={q.id} className="space-y-1.5">
+                    <div key={q.id} className="space-y-1.5 aot-rise" style={{ animationDelay: `${qIdx * 120}ms` }}>
                       <p className="text-xs font-bold text-slate-800">{q.question}</p>
                       {q.options.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
@@ -1007,17 +1039,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
               </div>
             )}
 
-            {isDraftLoading && (
-              <div className="flex justify-start">
-                <div className="w-7 h-7 rounded-full bg-[#182A42] text-white flex items-center justify-center shrink-0 mr-2 shadow-xs">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
-                <div className="bg-white border border-slate-200/90 rounded-2xl rounded-bl-md px-3.5 py-2.5 shadow-2xs flex items-center gap-1.5">
-                  <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin" />
-                  <span className="text-xs text-slate-400 font-semibold">Thinking Ahead…</span>
-                </div>
-              </div>
-            )}
+            {/* While the AI works: the plan's shape (first plan), or a
+                moving line (a change); the questions' wait is in the
+                instant reply above. */}
+            {isDraftLoading && draftPhase === 'plan' && <PlanPreview facts={draftFacts} referenceDateIso={currentReferenceDate} />}
+            {isDraftLoading && (draftPhase === 'update' || (draftPhase === null && !draftFacts)) && <UpdatingBubble />}
             <div ref={draftEndRef} className="scroll-mb-24" aria-hidden="true" />
           </div>
 
@@ -1094,6 +1120,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             onStartLaunch={handleStartLaunch}
             onPresetsUpdated={handleUpdatePresets}
             templatesCollapsed={templatesCollapsed}
+            trialIntro={trialIntro}
+            onExample={(text) => {
+              setInputText('');
+              handleDraftFreeformSubmit(text);
+            }}
           />
         </div>
       )}
@@ -1195,6 +1226,9 @@ interface InitialPresetsAndFreeformProps {
   onStartLaunch?: (preset: CustomPreset) => void;
   onPresetsUpdated?: (presets: CustomPreset[]) => void;
   selectedPresetId?: string | null;
+  /** The try-out's first screen: a headline question and example chips. */
+  trialIntro?: boolean;
+  onExample?: (text: string) => void;
 }
 
 const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
@@ -1223,7 +1257,16 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
   onStartLaunch,
   onPresetsUpdated,
   templatesCollapsed = false,
+  trialIntro = false,
+  onExample,
 }) => {
+  // The try-out's empty box shows a new example every few seconds.
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  useEffect(() => {
+    if (!trialIntro) return;
+    const id = window.setInterval(() => setPlaceholderIndex((i) => (i + 1) % TRY_PLACEHOLDERS.length), 2800);
+    return () => window.clearInterval(id);
+  }, [trialIntro]);
   // Folded (the try-out): one quiet button instead of the whole catalogue,
   // so the description box is the one thing on the page.
   const [templatesOpen, setTemplatesOpen] = useState(!templatesCollapsed);
@@ -1235,9 +1278,18 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
           small, muted label sits above it now - without any heading at
           all, a plain textarea reads as an unlabeled, generic input
           rather than the start of "describe your event". */}
-      <p className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">
-        Describe your calendar event
-      </p>
+      {trialIntro ? (
+        <div className="pt-6 sm:pt-12 space-y-2 text-center sm:text-left aot-rise">
+          <h1 className="text-[34px] sm:text-5xl font-black tracking-tight text-white leading-[1.05] text-balance">What's coming up?</h1>
+          <p className="text-[15px] sm:text-base text-slate-300 leading-relaxed max-w-xl">
+            Tell it in one sentence. You get every step, worked back from the date. Free, no sign-up.
+          </p>
+        </div>
+      ) : (
+        <p className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">
+          Describe your calendar event
+        </p>
+      )}
       <div className="relative z-30 space-y-2">
         <form
           onSubmit={handleFreeformSubmit}
@@ -1260,7 +1312,8 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                 setIsInputFocused(false);
                 onFocusChange?.(false);
               }}
-              placeholder="e.g. Dinner party with 8 friends next Saturday at 7 PM in Brooklyn..."
+              placeholder={trialIntro ? TRY_PLACEHOLDERS[placeholderIndex] : 'e.g. Dinner party with 8 friends next Saturday at 7 PM in Brooklyn...'}
+              aria-label="Describe what's coming up"
               className="w-full bg-transparent border-none outline-none focus:outline-none text-sm sm:text-base py-1 px-1 min-h-[50px] max-h-36 resize-none placeholder:text-slate-400 font-sans"
               rows={2}
               onKeyDown={(e) => {
@@ -1304,6 +1357,20 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             </button>
           </div>
         </form>
+        {trialIntro && onExample && (
+          <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
+            {TRY_EXAMPLES.map((ex) => (
+              <button
+                key={ex.label}
+                type="button"
+                onClick={() => onExample(ex.text)}
+                className="text-[13px] font-semibold text-slate-200 bg-white/10 hover:bg-white/15 border border-white/15 hover:border-[#95BFB5]/60 px-3 py-1.5 rounded-full transition-colors cursor-pointer"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
+        )}
         <AiUseNotice />
       </div>
 

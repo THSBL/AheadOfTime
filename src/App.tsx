@@ -731,6 +731,8 @@ function App() {
   // the real Create New Event chat, plus a card to rate the plan and push
   // it to their calendar (TrialCard). The newest plan is the one tried.
   const isTrial = location.pathname === '/try' && !currentUser;
+  // A plan is on the try-out's screen (before it's saved): the ad may show.
+  const [trialDraftHasPlan, setTrialDraftHasPlan] = useState(false);
   const trialPlan = useMemo(() => {
     if (!isTrial || events.length === 0) return null;
     return [...events].sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''))[0];
@@ -2406,6 +2408,8 @@ function App() {
                 <div className="flex-1">
                   <ChatConsole
                     templatesCollapsed={isTrial}
+                    trialIntro={isTrial}
+                    onDraftPlanChange={setTrialDraftHasPlan}
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     onSaveEvent={handleSaveManualEvent}
@@ -2434,7 +2438,8 @@ function App() {
                   {/* The try-out only, for a visitor without an account or a connected
                       calendar: one ad block below the chat field (public pages
                       only - see AdSlot). */}
-                  {isTrial && !(getStoredAccessToken() && !isTokenExpired()) && <AdSlot place="tryChat" className="mt-4 max-w-3xl mx-auto" />}
+                  {/* Only once a plan is on screen: never during the wait. */}
+                  {isTrial && (trialDraftHasPlan || trialPlan) && !(getStoredAccessToken() && !isTokenExpired()) && <AdSlot place="tryChat" className="mt-4 max-w-3xl mx-auto" />}
                 </div>
               )}
             </div>

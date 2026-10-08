@@ -1136,3 +1136,20 @@ describe('parseNaturalDateRange - day and month typed without a space', () => {
     expect(parseNaturalDateRange('Chapter 4 marathon training', ref)).toBeNull();
   });
 });
+
+describe('parseNaturalDateRange: "in N weeks" and kinds of weekend', () => {
+  const REF = '2026-10-08T09:00:00.000Z'; // a Thursday
+  it('counts "in N days/weeks/months" from today', () => {
+    expect(parseNaturalDateRange('Moving house in 7 weeks', REF)).toMatchObject({ startDate: '2026-11-26', matchedText: 'in 7 weeks' });
+    expect(parseNaturalDateRange('dentist in three days', REF)).toMatchObject({ startDate: '2026-10-11' });
+    expect(parseNaturalDateRange('exam in 2 months', REF)).toMatchObject({ startDate: '2026-12-08' });
+  });
+  it('a weekend event "in N weeks" lands on that weekend', () => {
+    expect(parseNaturalDateRange("My sister's hen weekend in Lisbon for 9 friends in 6 weeks", REF)).toMatchObject({ startDate: '2026-11-21', endDate: '2026-11-22' });
+  });
+  it('"hen weekend" alone is not this weekend; "this weekend" still is', () => {
+    expect(parseNaturalDateRange('Hen weekend in Lisbon', REF)).toBeNull();
+    expect(parseNaturalDateRange('Ski weekend this weekend', REF)).toMatchObject({ startDate: '2026-10-10' });
+    expect(parseNaturalDateRange('Camping this weekend', REF)).toMatchObject({ startDate: '2026-10-10', endDate: '2026-10-11' });
+  });
+});

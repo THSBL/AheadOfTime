@@ -281,8 +281,27 @@ export function parseNaturalDateRange(
     if (/\btoday\b|\btonight\b/i.test(raw)) {
       return { startDate: toISODate(todayMidnight), matchedText: raw.match(/\btoday\b|\btonight\b/i)![0] };
     }
+    // "in 6 weeks", "in three days", "in 2 months": counted from today. A
+    // weekend event ("hen weekend in 6 weeks") lands on that week's
+    // Saturday and Sunday.
+    const NUMBER_WORDS: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    const inMatch = raw.match(/\bin\s+(\d{1,2}|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(day|week|month)s?\b/i);
+    if (inMatch) {
+      const n = /^\d+$/.test(inMatch[1]) ? Number(inMatch[1]) : NUMBER_WORDS[inMatch[1].toLowerCase()] || 1;
+      const unit = inMatch[2].toLowerCase();
+      let start = unit === 'day' ? addDays(todayMidnight, n) : unit === 'week' ? addDays(todayMidnight, n * 7) : new Date(todayMidnight.getFullYear(), todayMidnight.getMonth() + n, todayMidnight.getDate());
+      if (/\bweekend\b/i.test(raw)) {
+        start = addDays(start, (6 - start.getDay() + 7) % 7);
+        return { startDate: toISODate(start), endDate: toISODate(addDays(start, 1)), matchedText: inMatch[0] };
+      }
+      return { startDate: toISODate(start), matchedText: inMatch[0] };
+    }
     const nextWeekendMatch = raw.match(/\bnext\s+weekend\b/i);
-    const thisWeekendMatch = !nextWeekendMatch && raw.match(/\b(?:this\s+)?weekend\b/i);
+    // A kind of weekend ("hen weekend", "ski weekend") is the event, not a date.
+    const KIND_OF_WEEKEND = /\b(hen|stag|bachelor|bachelorette|girls'?|guys'?|lads'?|ladies'?|spa|city|ski|long|family|romantic|wellness|golf|birthday|anniversary|wedding|reunion|friends'?|cottage|festival|camping)\s+weekend\b/i;
+    const thisWeekendMatch = nextWeekendMatch
+      ? null
+      : raw.match(/\bthis\s+weekend\b/i) || (!KIND_OF_WEEKEND.test(raw) ? raw.match(/\bweekend\b/i) : null);
     if (nextWeekendMatch || thisWeekendMatch) {
       const todayDow = todayMidnight.getDay(); // 0=Sun ... 6=Sat
       const daysUntilSaturday = (6 - todayDow + 7) % 7;
