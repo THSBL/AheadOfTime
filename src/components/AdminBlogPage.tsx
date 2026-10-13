@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, Loader2, PenLine, Sparkles } from 'lucide-react';
 import { usePageMeta } from '../utils/usePageMeta';
 import { aiJsonHeaders } from '../services/aiRequest';
+import { AdminAccessProblem, adminErrorFrom } from './adminAccess';
 
 /**
  * /admin/blog - every "T-minus Talks" conversation (server/blogEpisodes.ts)
@@ -45,6 +46,8 @@ export const AdminBlogPage: React.FC = () => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [setup, setSetup] = useState<{ ai: boolean; reviewLinks: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Why the page can't load at all (signed out, not an admin, server down).
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [writing, setWriting] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
   const [link, setLink] = useState('');
@@ -54,9 +57,10 @@ export const AdminBlogPage: React.FC = () => {
       const res = await fetch('/api/cron/blog-admin', { headers: aiJsonHeaders(), cache: 'no-store' });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        setError(res.status === 403 ? 'This account is not an admin.' : res.status === 401 ? 'Please sign in first.' : data?.error || 'Could not load the blog.');
+        setLoadError(adminErrorFrom(res.status, data));
         return;
       }
+      setLoadError(null);
       setError(null);
       setRows(data.episodes);
       setSetup(data.setup);
@@ -124,6 +128,7 @@ export const AdminBlogPage: React.FC = () => {
           </p>
         </div>
 
+        {loadError && <AdminAccessProblem error={loadError} onRetry={load} />}
         {setup && (!setup.ai || !setup.reviewLinks) && (
           <p className="text-sm bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3">
             {!setup.ai ? 'GEMINI_API_KEY is not set, so no posts can be written. ' : ''}
@@ -183,7 +188,7 @@ export const AdminBlogPage: React.FC = () => {
 
         {error && <p className="text-sm font-semibold text-rose-700">{error}</p>}
 
-        {!rows && !error && (
+        {!rows && !error && !loadError && (
           <p className="text-sm text-slate-500 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading…
           </p>

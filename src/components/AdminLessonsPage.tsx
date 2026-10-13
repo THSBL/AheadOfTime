@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, Loader2, RefreshCw, X } from 'lucide-react';
 import { usePageMeta } from '../utils/usePageMeta';
 import { aiJsonHeaders } from '../services/aiRequest';
+import { AdminAccessProblem, adminErrorFrom } from './adminAccess';
 
 /**
  * /admin/lessons - plan lessons (server/planLessons.ts, server/lessonsStore.ts):
@@ -154,6 +155,7 @@ export const AdminLessonsPage: React.FC = () => {
   const navigate = useNavigate();
   usePageMeta('Plan lessons - Admin - Ahead Of Time', 'Admin-only review of plan lessons.');
   const [data, setData] = useState<{ lessons: Lesson[]; lastRun: { week: string; signals: number; proposed: number } | null; ai: boolean; categories: string[] } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -163,9 +165,10 @@ export const AdminLessonsPage: React.FC = () => {
       const res = await fetch('/api/cron/lessons-admin', { headers: aiJsonHeaders(), cache: 'no-store' });
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.ok) {
-        setError(res.status === 403 ? 'This account is not an admin.' : res.status === 401 ? 'Please sign in first.' : body?.error || 'Could not load.');
+        setLoadError(adminErrorFrom(res.status, body));
         return;
       }
+      setLoadError(null);
       setError(null);
       setData(body);
     } catch (e: any) {
@@ -216,6 +219,7 @@ export const AdminLessonsPage: React.FC = () => {
           </p>
         </div>
 
+        {loadError && <AdminAccessProblem error={loadError} onRetry={load} />}
         <section className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-500">
             {data?.lastRun ? `Last look: ${data.lastRun.week}, ${data.lastRun.signals} signals, ${data.lastRun.proposed} proposed.` : 'No proposals yet: the first look runs with the next daily job.'}
@@ -227,7 +231,7 @@ export const AdminLessonsPage: React.FC = () => {
         </section>
 
         {error && <p className="text-sm font-semibold text-rose-700">{error}</p>}
-        {!data && !error && (
+        {!data && !error && !loadError && (
           <p className="text-sm text-slate-500 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading…
           </p>

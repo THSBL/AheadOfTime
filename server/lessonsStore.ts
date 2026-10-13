@@ -348,7 +348,9 @@ export async function handleLessonsAdmin(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   const verified = await verifyRequestUser(req);
   if (!verified) return res.status(401).json({ ok: false, error: 'Sign in first.' });
-  if (!isAdminEmail(verified.email)) return res.status(403).json({ ok: false, error: 'This account is not an admin.' });
+  if (!isAdminEmail(verified.email)) // Says which address the server sees (it's the person's own), so a
+  // wrong account or a missing ADMIN_EMAILS entry is obvious.
+  return res.status(403).json({ ok: false, error: 'not_admin', email: verified.email });
   try {
     await ensureSchema();
     if (req.method === 'POST') {
