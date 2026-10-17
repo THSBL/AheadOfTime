@@ -451,7 +451,7 @@ describe('generateHeuristicMilestones', () => {
     const milestones = generateHeuristicMilestones(
       { category: 'travel_trip', title: 'Trip to Paris', context: {} },
       'evt-test-posttrip',
-      '2026-10-15',
+      '2030-10-15',
       '19:00'
     );
     const postTrip = milestones.find((m) => m.tMinusLabel === 'Day +1');
@@ -460,14 +460,14 @@ describe('generateHeuristicMilestones', () => {
     expect(postTrip!.category).toBe('logistics');
     // Dated after the event's own start date, not before it like every
     // other milestone in this list.
-    expect(new Date(postTrip!.calculatedDate).getTime()).toBeGreaterThan(new Date('2026-10-15').getTime());
+    expect(new Date(postTrip!.calculatedDate).getTime()).toBeGreaterThan(new Date('2030-10-15').getTime());
   });
 
   it('gives the post-trip follow-up business-appropriate wording for a business trip', () => {
     const milestones = generateHeuristicMilestones(
       { category: 'travel_trip', title: 'Business trip to Chicago for client meetings', context: { isBusinessTrip: true } },
       'evt-test-postbiz',
-      '2026-10-15',
+      '2030-10-15',
       '19:00'
     );
     const postTrip = milestones.find((m) => m.tMinusLabel === 'Day +1');

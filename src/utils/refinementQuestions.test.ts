@@ -7,6 +7,7 @@ import {
   describePlanningProfile,
   sanitizePlanningProfile,
   isAwayFromHomeEvent,
+  buildWhereAndTimeQuestions,
   buildTripRefinementQuestions,
   detectTravelDocumentNeeds,
   buildAmbiguousDateQuestion,
@@ -201,5 +202,26 @@ describe('"when" is always asked when no date is given', () => {
   it('a picked ISO range is read back as the event dates', () => {
     const brief = composeConversationBrief({ originalMessage: 'divetrip to egypt', answers: [{ question: 'When do you go, and when are you back?', answer: '2026-11-12 to 2026-11-19' }] });
     expect(buildWhenQuestion(brief, REF)).toBeNull();
+  });
+});
+
+describe('trips typed in lowercase, and a month without days', () => {
+  const REF = '2026-10-17T09:00:00.000Z';
+  const ibiza = 'Going to ibiza in august next year with group of 7 girls';
+
+  it('a trip is a trip whatever the capitals: no "where is it" or "time of day"', () => {
+    expect(isAwayFromHomeEvent(ibiza)).toBe(true);
+    expect(buildWhereAndTimeQuestions(ibiza)).toEqual([]);
+  });
+
+  it('"going to" an everyday place is not a trip', () => {
+    for (const m of ['Going to the gym on Friday', 'going to a party at 8pm', 'Going to dinner with Sam', 'I am going to be late']) {
+      expect(isAwayFromHomeEvent(m)).toBe(false);
+    }
+  });
+
+  it('only a month: asks which days, with date pickers', () => {
+    expect(buildWhenQuestion(ibiza, REF)).toMatchObject({ id: 'when', kind: 'dateRange', question: 'Which days in August 2027? When do you go, and when are you back?' });
+    expect(buildWhenQuestion('Mum’s 60th birthday dinner on 14 November', REF)).toBeNull();
   });
 });
