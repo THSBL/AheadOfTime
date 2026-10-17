@@ -1572,7 +1572,8 @@ export function processWithDeterministicRules(params: {
     const finalMappedMilestones = finalizeMilestonePlan(mappedMilestones, { title: macro.title, rawText: params.message })
       .map((m) => ({ ...m, tier: prepLevel.level, generatedFromContextVersion: tripPlanningContext.version }));
 
-    const focusText = `I built the full prep plan for "${macro.title}" (${macro.start_date} to ${macro.end_date || macro.start_date}).`;
+    const readableDay = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const focusText = `Here's your plan, worked back from ${readableDay(macro.start_date)}.`;
     const additionText = tripDecomposition.conversational_response || `Covers the overall trip logistics plus the specific prep for what you mentioned.`;
     const replyText = `FOCUS: ${focusText}\nADDITION: ${additionText}`;
 

@@ -1,5 +1,5 @@
 ﻿import { AI_SETTING_EVENT, getCachedAiPlanningEnabled } from '../services/aiSettings';
-import { AckBubble, PlanPreview, UpdatingBubble, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
+import { AckBubble, PlanCard, PlanPreview, UpdatingBubble, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
@@ -44,8 +44,7 @@ import {
   PRESET_KIDS_HOBBIES,
   PromptPreset
 } from '../data/samplePresets';
-import { ThinkingModule } from './ThinkingModule';
-import { formatDisplayDate, getEventTopicLabel } from '../utils/tminusRules';
+import { formatDisplayDate } from '../utils/tminusRules';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
@@ -152,7 +151,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const categorizedPresets = getCategorizedPresets(onboardingProfile);
 
   const [inputText, setInputText] = useState('');
-  const [lastSubmittedPrompt, setLastSubmittedPrompt] = useState('');
+  // What a template run is about (title, dates), for the plan card while it's made.
+  const [presetFacts, setPresetFacts] = useState<MessageFacts | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -676,7 +676,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     }
 
     const fullMessage = parts.join('. ');
-    setLastSubmittedPrompt(eventTitle || whoInput || 'New Event');
+    setPresetFacts({
+      ...readMessageFacts(eventTitle || whoInput || 'New plan', currentReferenceDate),
+      title: eventTitle || whoInput || 'New plan',
+      startDate: dateInput,
+      ...(selectedPreset.id === 'trip' && tripReturnDate > dateInput ? { endDate: tripReturnDate } : {}),
+    });
 
     // Reset preset step state
     setPresetStep('initial');
@@ -876,61 +881,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                   {/* Summary of the plan so far - nothing is saved until
                       "Create event" is tapped. */}
                   {isLatestPlanReply && draftEvent && (
-                    <div className="ml-9 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs aot-rise">
-                      {/* The type label only when there is one: "Calendar Event" above a title read like the title itself. */}
-                      {getEventTopicLabel(draftEvent.category, draftEvent.context) !== 'Calendar Event' && (
-                        <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
-                          {getEventTopicLabel(draftEvent.category, draftEvent.context)}
-                        </span>
-                      )}
-                      <h4 className="text-sm font-black text-slate-900 leading-snug">{draftEvent.title}</h4>
-                      <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
-                        <Calendar className="w-3 h-3 shrink-0" />
-                        {formatDisplayDate(draftEvent.eventDate)}
-                        {draftEvent.endDate && draftEvent.endDate !== draftEvent.eventDate ? ` – ${formatDisplayDate(draftEvent.endDate)}` : ''}
-                      </p>
-                      {/* Each step with its first ideas (the sub-steps: "Reserve at
-                          Lilia or Llama Inn") - examples of what the assistant
-                          helps with, not a fixed list. */}
-                      <div className="space-y-2 pt-2 border-t border-emerald-200/70">
-                        {(draftEvent.milestones || []).map((m, stepIdx) => {
-                          const ideas = (m.deliverables || []).map((d) => (d?.title || '').trim()).filter(Boolean).slice(0, 2);
-                          return (
-                            // Steps fill in one after another.
-                            <div key={m.id} className="text-[11px] aot-rise" style={{ animationDelay: `${Math.min(stepIdx, 12) * 70}ms` }}>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-slate-800 font-semibold truncate">{m.title}</span>
-                                <span className="text-slate-400 font-mono shrink-0">{formatDisplayDate(m.calculatedDate)}</span>
-                              </div>
-                              {ideas.length > 0 && (
-                                <ul className="mt-0.5 space-y-0.5">
-                                  {ideas.map((idea) => (
-                                    <li key={idea} className="text-slate-500 leading-snug pl-3 relative before:content-['›'] before:absolute before:left-0.5 before:text-emerald-600">
-                                      {idea}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {(draftEvent.milestones || []).some((m) => (m.deliverables || []).length > 0) && (
-                        <p className="text-[11px] text-emerald-800/80 italic">Ideas to get you started - ask me to swap, add or look into any of them.</p>
-                      )}
-                      <div className="flex items-center justify-between gap-2 pt-1.5">
-                        <span className="text-[11px] text-slate-500">Anything to add? Type it below.</span>
-                        <button
-                          type="button"
-                          onClick={handleCreateDraftEvent}
-                          disabled={isDraftLoading}
-                          className="shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Looks good, create event</span>
-                        </button>
-                      </div>
-                    </div>
+                    <PlanCard event={draftEvent} referenceDateIso={currentReferenceDate} onCreate={handleCreateDraftEvent} busy={isDraftLoading} />
                   )}
 
                   {/* The instant reply under the first message: what we read
@@ -1177,10 +1128,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         </div>
       )}
 
-      {/* Interactive AI Thinking Module during Event Generation */}
+      {/* A template being planned: the same reassurance and growing plan card as a typed message. */}
       {draftConversation.length === 0 && isLoading && (
-        <div className="py-6 px-1 animate-in fade-in zoom-in-95 duration-300">
-          <ThinkingModule promptText={lastSubmittedPrompt} />
+        <div className="py-6 px-1">
+          <PlanPreview facts={presetFacts} referenceDateIso={currentReferenceDate} />
         </div>
       )}
 
@@ -1260,13 +1211,12 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
   trialIntro = false,
   onExample,
 }) => {
-  // The try-out's empty box shows a new example every few seconds.
+  // The empty box shows a new example every few seconds.
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   useEffect(() => {
-    if (!trialIntro) return;
     const id = window.setInterval(() => setPlaceholderIndex((i) => (i + 1) % TRY_PLACEHOLDERS.length), 2800);
     return () => window.clearInterval(id);
-  }, [trialIntro]);
+  }, []);
   // Folded (the try-out): one quiet button instead of the whole catalogue,
   // so the description box is the one thing on the page.
   const [templatesOpen, setTemplatesOpen] = useState(!templatesCollapsed);
@@ -1278,18 +1228,15 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
           small, muted label sits above it now - without any heading at
           all, a plain textarea reads as an unlabeled, generic input
           rather than the start of "describe your event". */}
-      {trialIntro ? (
-        <div className="pt-6 sm:pt-12 space-y-2 text-center sm:text-left aot-rise">
-          <h1 className="text-[34px] sm:text-5xl font-black tracking-tight text-white leading-[1.05] text-balance">What's coming up?</h1>
-          <p className="text-[15px] sm:text-base text-slate-300 leading-relaxed max-w-xl">
-            Tell it in one sentence. You get every step, worked back from the date. Free, no sign-up.
-          </p>
-        </div>
-      ) : (
-        <p className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">
-          Describe your calendar event
+      {/* The same start for everyone, signed in or trying it out. */}
+      <div className="pt-6 sm:pt-12 space-y-2 text-center sm:text-left aot-rise">
+        <h1 className="text-[34px] sm:text-5xl font-black tracking-tight text-white leading-[1.05] text-balance">What's coming up?</h1>
+        <p className="text-[15px] sm:text-base text-slate-300 leading-relaxed max-w-xl">
+          {trialIntro
+            ? 'Tell it in one sentence. You get every step, worked back from the date. Free, no sign-up.'
+            : 'Tell it in one sentence. You get every step, worked back from the date.'}
         </p>
-      )}
+      </div>
       <div className="relative z-30 space-y-2">
         <form
           onSubmit={handleFreeformSubmit}
@@ -1312,7 +1259,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
                 setIsInputFocused(false);
                 onFocusChange?.(false);
               }}
-              placeholder={trialIntro ? TRY_PLACEHOLDERS[placeholderIndex] : 'e.g. Dinner party with 8 friends next Saturday at 7 PM in Brooklyn...'}
+              placeholder={TRY_PLACEHOLDERS[placeholderIndex]}
               aria-label="Describe what's coming up"
               className="w-full bg-transparent border-none outline-none focus:outline-none text-sm sm:text-base py-1 px-1 min-h-[50px] max-h-36 resize-none placeholder:text-slate-400 font-sans"
               rows={2}
@@ -1357,7 +1304,7 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
             </button>
           </div>
         </form>
-        {trialIntro && onExample && (
+        {onExample && (
           <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
             {TRY_EXAMPLES.map((ex) => (
               <button

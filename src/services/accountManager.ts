@@ -142,6 +142,15 @@ export function adoptTrialPlan(userId: string): string | null {
 
 const TRIAL_ADOPTED_KEY = 'aot_trial_adopted';
 
+/** The try-out plan that just joined the account, without using it up. */
+export function peekAdoptedTrialPlanId(): string | null {
+  try {
+    return sessionStorage.getItem(TRIAL_ADOPTED_KEY);
+  } catch {
+    return null;
+  }
+}
+
 /** The try-out plan that just joined the account, once (to open it after sign-in). */
 export function takeAdoptedTrialPlanId(): string | null {
   try {

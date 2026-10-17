@@ -1,20 +1,19 @@
 import { PlanningUserProfile, RefinementQuestion } from "../types.js";
 import { parseNaturalDateRange } from "./tminusRules.js";
+import { findPlace, travelPlace } from "./place.js";
 
 export const MAX_REFINEMENT_QUESTIONS = 5;
 
 // Anything that takes the user away from home for a while - the cases where
 // a pet or kids left at home need a plan of their own.
 const AWAY_FROM_HOME = /\b(trip|travel|travell?ing|vacation|holiday|getaway|dive|diving|divetrip|scuba|ski|skiing|hike|hiking|trek|camping|festival|cruise|abroad|flight|fly|flying|hotel|conference|retreat|honeymoon|backpack\w*|road ?trip|city ?trip|weekend away|visit(ing)? (my |our )?(family|parents|friends) in)\b/i;
-// "going to Ibiza" - also typed in lowercase ("going to ibiza"), but not
-// "going to the gym", "going to be late" or "going to a party".
-const GOING_TO_PLACE = /\b(go|going|fly|flying|travel\w*|trip|heading|off|drive|driving) to (?!(?:the|a|an|my|our|your|his|her|their|be|bed|work|school|class|church|sleep|see|meet|have|do|get|make|plan|buy|book|pick|visit|help|eat|cook|host|throw|watch|play|start|try|need|dinner|lunch|breakfast|brunch|party|gym|store|shop|shops|doctor|dentist|hospital|office|town|it|this|that|bring|take|celebrate|organi[sz]e|move|stay)\b)[\p{L}][\p{L}'-]{2,}/iu;
 const MENTIONS_PET = /\b(pet|pets|dog|dogs|puppy|cat|cats|kitten|pet ?sitter|dog ?sitter|kennel|cattery)\b/i;
 const MENTIONS_KIDS = /\b(kid|kids|child|children|son|daughter|baby|babysitter|childcare|nanny|grandparents)\b/i;
 const RELATIVE_DATE = /\b(today|tonight|tomorrow|this (week|weekend|month)|next (week|weekend|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (days?|weeks?|months?)|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 
 export function isAwayFromHomeEvent(text: string): boolean {
-  return AWAY_FROM_HOME.test(text) || GOING_TO_PLACE.test(text);
+  // "going to ibiza" in any case, never "going to the gym": src/utils/place.ts.
+  return AWAY_FROM_HOME.test(text) || travelPlace(text) !== null;
 }
 
 /**
@@ -45,7 +44,6 @@ export function buildProfileRefinementQuestions(message: string, profile?: Plann
   return questions;
 }
 
-const NAMED_PLACE = /\b(to|in) [A-Z][a-z]+/;
 const ABROAD = /\b(abroad|overseas|international|flight|fly|flying)\b/i;
 const MENTIONS_DOCUMENTS = /\b(visa|passport|esta|entry (permit|authori[sz]ation))\b/i;
 
@@ -57,7 +55,7 @@ const MENTIONS_DOCUMENTS = /\b(visa|passport|esta|entry (permit|authori[sz]ation
  */
 export function buildTripRefinementQuestions(message: string): RefinementQuestion[] {
   if (!message?.trim() || !isAwayFromHomeEvent(message) || MENTIONS_DOCUMENTS.test(message)) return [];
-  if (!NAMED_PLACE.test(message) && !ABROAD.test(message)) return [];
+  if (!findPlace(message) && !ABROAD.test(message)) return [];
   return [{
     id: 'travel_documents',
     question: 'Travel documents: anything to arrange?',

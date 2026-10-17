@@ -223,6 +223,12 @@ html.aot-returning [data-prerendered] {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
+/* A runway dot landing on its day. */
+.aot-pop { transform: translate(-50%, -50%); animation: aot-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+@keyframes aot-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .aot-shimmer, .aot-rise { animation: none; }
+  .aot-shimmer, .aot-rise, .aot-pop { animation: none; }
 }

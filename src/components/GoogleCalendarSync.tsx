@@ -140,10 +140,12 @@ export const GoogleCalendarSync: React.FC<GoogleCalendarSyncProps> = ({
       </select>
     );
 
-  // Determine active event to push
-  const activeEvent = selectedEventId
-    ? events.find((e) => e.id === selectedEventId) || events[0]
-    : events[0];
+  // The plan this window was opened for stays the one it syncs, even when
+  // the app's selection changes underneath it (signing in again from here).
+  // Never silently another plan.
+  const [openedForId] = useState<string | undefined>(selectedEventId);
+  const targetId = openedForId || selectedEventId;
+  const activeEvent = targetId ? events.find((e) => e.id === targetId) || null : events[0];
 
   const prepTasks = activeEvent?.milestones || [];
   const taskCount = prepTasks.length;

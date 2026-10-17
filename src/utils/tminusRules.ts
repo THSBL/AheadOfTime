@@ -14,6 +14,7 @@ import {
   DeliverableType
 } from '../types.js';
 import { inferTaskTimingLocally } from './timingAI.js';
+import { findPlace, tidyPlaceName } from './place.js';
 
 /**
  * Automatically detects an event category from its title, summary, or description
@@ -206,23 +207,7 @@ export function getEventTopicLabel(category?: string, context?: any): string {
  * Formats destination names cleanly (e.g. 'brooklyn ny' -> 'Brooklyn, NY')
  */
 export function formatDestinationName(dest: string): string {
-  if (!dest) return 'Destination';
-  let formatted = dest.trim();
-  // Handle US state codes like 'brooklyn ny' -> 'Brooklyn, NY'
-  if (/\bny\b/i.test(formatted)) {
-    formatted = formatted.replace(/\bny\b/i, 'NY');
-    if (!formatted.includes(',')) {
-      formatted = formatted.replace(/\s+NY\b/, ', NY');
-    }
-  } else if (/\b(ca|tx|fl|il|pa|oh|ga|nc|mi|nj|va|wa|az|ma|tn|in|mo|md|wi|co|mn|sc|al|la|ky|or|ok|ct|ut|ia|nv|ar|ms|ks|nm|ne|id|wv|hi|nh|me|ri|mt|de|sd|nd|ak|dc)\b/i.test(formatted)) {
-    const stateMatch = formatted.match(/\b(ca|tx|fl|il|pa|oh|ga|nc|mi|nj|va|wa|az|ma|tn|in|mo|md|wi|co|mn|sc|al|la|ky|or|ok|ct|ut|ia|nv|ar|ms|ks|nm|ne|id|wv|hi|nh|me|ri|mt|de|sd|nd|ak|dc)\b/i);
-    if (stateMatch && !formatted.includes(',')) {
-      const code = stateMatch[1].toUpperCase();
-      formatted = formatted.replace(new RegExp(`\\s+${stateMatch[1]}\\b`, 'i'), `, ${code}`);
-    }
-  }
-  // Title-case words
-  return formatted.replace(/\b([a-z])/g, (_, l) => l.toUpperCase());
+  return tidyPlaceName(dest) || 'Destination';
 }
 
 /**
@@ -528,8 +513,7 @@ export function getCleanEventTitle(title?: string, category?: string, context?: 
   // Conversational sentence transformation (e.g. "going to brooklyn NY from 15 to 21 oktober for business trip")
   if (/^(going to|flying to|traveling to|trip to)\s+/i.test(cleaned)) {
     const isBusiness = /business|work/i.test(cleaned);
-    const destMatch = cleaned.match(/(?:going to|flying to|traveling to|trip to)\s+([a-zA-Z\s,'-]+?)(?:\s+(?:from|for|on|with|\d)|$)/i);
-    const dest = destMatch ? formatDestinationName(destMatch[1].trim()) : '';
+    const dest = findPlace(cleaned) || '';
     if (isBusiness) {
       return dest ? `Business Trip to ${dest}` : 'Business Trip';
     }
@@ -2427,31 +2411,9 @@ export function decomposeComplexTripIntent(
     macroTitle = 'Vacation & Holiday Getaway';
   }
 
-  // Check destination. The terminator alternation also stops before a bare
-  // month name ("...Highlands Oct 14-18") - without it, "Oct" gets swallowed
-  // into the destination capture, the trailing digits break the [a-zA-Z\s]
-  // class, and the whole match fails, leaving the generic "Group Trip
-  // Horizon" sentinel as the title.
-  // Not case-insensitive overall - the leading [A-Z] must stay case-sensitive
-  // so common lowercase words don't get mistaken for a destination, so both
-  // cases of each month abbreviation are listed explicitly instead.
-  const monthStopWords =
-    'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
-  const destMatch = message.match(
-    // "in/at/during/this/next/around/early/mid/late" also end the place:
-    // "to Portugal in July 2027" is Portugal, not "Portugal in".
-    new RegExp(`(?:to|in)\\s+([A-Z][a-zA-Z ]{2,20}?)(?:\\s+(?:from|with|for|on|in|at|during|this|next|around|early|mid|late|and|,|\\.|\\d|(?:${monthStopWords})[a-zA-Z]*\\b)|[ \\t]*[,.!?]|[ \\t]*\\n|$)`)
-  );
-  // A lowercase place right after a trip word ("trip to mallorca") is
-  // still a destination - only there, so ordinary lowercase words elsewhere
-  // aren't mistaken for one.
-  const NOT_A_PLACE = /^(the|a|an|my|our|his|her|their|see|visit|meet|go|get|do|be|work|school|town|bed|stay|come)$/i;
-  const lowercaseDest = destMatch ? null : message.match(/\b(?:trip|travel(?:ling|ing)?|holiday|vacation|getaway|flight|flying|fly|going|heading|drive|driving)\s+to\s+([a-z][a-z-]{2,20})\b/i);
-  const destination = destMatch
-    ? destMatch[1].trim()
-    : lowercaseDest && !NOT_A_PLACE.test(lowercaseDest[1])
-      ? lowercaseDest[1].charAt(0).toUpperCase() + lowercaseDest[1].slice(1)
-      : undefined;
+  // The place, from the shared finder (src/utils/place.ts): "going to ibiza
+  // in august" is Ibiza, never August.
+  const destination = findPlace(message) || undefined;
   if (destination) {
     // No specific archetype matched (stag/hen/conference/vacation) - use a
     // plain, user-facing title instead of exposing the internal sentinel.

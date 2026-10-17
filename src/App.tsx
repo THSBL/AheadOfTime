@@ -97,7 +97,7 @@ import {
   saveUserEvents,
   loadUserMessages,
   saveUserMessages,
-  logoutAndClearAccountSession, takeAdoptedTrialPlanId } from './services/accountManager';
+  logoutAndClearAccountSession, takeAdoptedTrialPlanId, peekAdoptedTrialPlanId } from './services/accountManager';
 import { UserProfileProvider, useUserProfile } from './contexts/UserProfileContext';
 import { aiJsonHeaders, readAiRefusal } from './services/aiRequest';
 
@@ -215,6 +215,12 @@ function App() {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+  const currentUserIdRef = useRef(currentUser?.id || null);
+  // A try-out plan the sign-in just opened (so the email landing doesn't send it elsewhere).
+  const openedTrialPlanRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentUserIdRef.current = currentUser?.id || null;
+  }, [currentUser?.id]);
 
   // Ids the user explicitly deleted this session. Deleting an event only
   // ever filtered local React state - it never told the server (Telegram
@@ -317,6 +323,8 @@ function App() {
   }, [messages, currentUser?.id, isInitializing]);
 
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const location = useLocation();
   const params = useParams<{ id?: string }>();
 
@@ -468,8 +476,12 @@ function App() {
   useEffect(() => {
     const handleAccountSwitched = (e: any) => {
       const nextUser: AuthUser | null = e.detail?.user || null;
+      // Signing in again as the same person (the Sync window asks for a
+      // fresh Google token) is not a switch: the open plan stays open.
+      // Clearing it here made the plan view fall back to the first plan.
+      const sameUser = Boolean(nextUser?.id && nextUser.id === currentUserIdRef.current);
       setCurrentUser(nextUser);
-      
+
       const freshEvents = nextUser?.id ? loadUserEvents(nextUser.id) : [];
       const freshMessages = loadUserMessages(nextUser?.id, nextUser?.name);
 
@@ -477,8 +489,21 @@ function App() {
       setMessages(freshMessages);
       // onboardingProfile itself is refreshed by UserProfileContext's own
       // aot_account_switched listener - no need to duplicate that here.
-      setSelectedEventId(null);
-      setSelectedBulkEventIds([]);
+      // A plan made on the try-out page that just joined the account opens
+      // itself (signing in from "put this plan in your calendar").
+      const adopted = nextUser?.id ? peekAdoptedTrialPlanId() : null;
+      if (adopted && freshEvents.some((ev) => ev.id === adopted)) {
+        takeAdoptedTrialPlanId();
+        openedTrialPlanRef.current = adopted;
+        navigateRef.current(`/events/${encodeURIComponent(adopted)}`, { replace: true });
+        setSelectedEventId(adopted);
+        setActiveTab('tasks');
+        setFocusMode('adjust-event');
+        setMobileDashboardView('detail');
+      } else {
+        setSelectedEventId((sel) => (sameUser && sel && freshEvents.some((ev) => ev.id === sel) ? sel : null));
+      }
+      if (!sameUser) setSelectedBulkEventIds([]);
     };
 
     window.addEventListener('aot_account_switched', handleAccountSwitched as EventListener);
@@ -767,7 +792,9 @@ function App() {
       setHasCompletedOnboarding(true);
       setCurrentView('dashboard');
       setSyncToast({ id: Date.now(), title: 'Signed in', message: `Signed in as ${userEmail}.` });
-      const trialPlanId = takeAdoptedTrialPlanId();
+      // The account-switch listener above already opened a try-out plan.
+      const trialPlanId = takeAdoptedTrialPlanId() || openedTrialPlanRef.current;
+      openedTrialPlanRef.current = null;
       if (trialPlanId) {
         setSelectedEventId(trialPlanId);
         navigate(`/events/${encodeURIComponent(trialPlanId)}`, { replace: true });
@@ -2407,7 +2434,7 @@ function App() {
               ) : (
                 <div className="flex-1">
                   <ChatConsole
-                    templatesCollapsed={isTrial}
+                    templatesCollapsed
                     trialIntro={isTrial}
                     onDraftPlanChange={setTrialDraftHasPlan}
                     messages={messages}

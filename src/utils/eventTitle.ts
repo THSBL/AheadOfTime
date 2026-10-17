@@ -10,6 +10,8 @@
  * "Vacation & Holiday Getaway") is never used.
  */
 
+import { cleanPlaceName, findPlaceMatch } from './place.js';
+
 /** Everything from "need to / have to / must ..." on is a task, not the event. */
 const TASK_CLAUSE = /\s*(?:,|;|\s-\s|\band\b|\bbut\b|\bso\b)?\s*(?:(?:we|i|you)\s+)?(?:still\s+|also\s+)?(?:need(?:s)?(?:\s+to)?|have to|has to|must|should|gotta|got to|want to|would like to|don'?t forget to|remember to)\b.*$/i;
 /** "Need to arrange a weekend in Paris" -> "a weekend in Paris". */
@@ -105,8 +107,6 @@ function saysMonthOnly(message: string): boolean {
 const LEADING_FILLER =
   /^(?:(?:hey|hi|hello|please|so|ok|okay)[,!]?\s+)*(?:can you\s+|could you\s+|help me\s+|i want you to\s+)?(?:please\s+)?(?:plan|prepare|organi[sz]e|schedule|book|add|create|make|set up|remind me (?:of|about|to))?\s*(?:for\s+)?(?:i\s+(?:have|got|need to|want to|am going to|'m going to|will)|i'm|i am|we\s+(?:have|are|need to|will)|we're|there(?:'s| is)|my|our|a|an|the)?\s*/i;
 
-/** A capitalised place after "in"/"to": "Portugal", "New York", "Antwerp". */
-const PLACE = /\b(?:in|to)\s+((?:[A-Z][\p{L}'-]*)(?:\s+(?:[A-Z][\p{L}'-]*|de|la|le|am|upon|aan|den))*)/gu;
 
 /**
  * The "What" and "Where" in the user's own words, from the first sentence
@@ -125,13 +125,12 @@ export function extractWhatWhere(message: string | null | undefined): { what: st
   for (const re of WHEN_PATTERNS) text = text.replace(re, ' ');
   text = text.replace(/\s+/g, ' ').trim();
 
-  // Where: the last "in/to <Place>"; it leaves the What ("Family trip").
+  // Where: the shared place finder (src/utils/place.ts); it leaves the What ("Family trip").
   let where: string | null = null;
-  const places = [...text.matchAll(PLACE)];
-  const last = places[places.length - 1];
-  if (last && last.index !== undefined) {
-    where = last[1].trim();
-    text = `${text.slice(0, last.index)} ${text.slice(last.index + last[0].length)}`.replace(/\s+/g, ' ').trim();
+  const found = findPlaceMatch(text);
+  if (found) {
+    where = found.place;
+    text = `${text.slice(0, found.index)} ${text.slice(found.index + found.length)}`.replace(/\s+/g, ' ').trim();
   }
 
   text = text.replace(LEADING_FILLER, '').trim();
@@ -175,7 +174,10 @@ function whenLabel(dateIso?: string | null, endDateIso?: string | null, referenc
   const e0 = new Date(`${endDateIso.slice(0, 10)}T12:00:00`);
   if (isNaN(e0.getTime())) return start;
   const dm = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  return s0.getMonth() === e0.getMonth() && s0.getFullYear() === e0.getFullYear() ? `${s0.getDate()}–${dm(e0)}` : `${dm(s0)}–${dm(e0)}`;
+  // The year only when it isn't this one: "12–18 Aug 2027".
+  const refYear = referenceIso ? new Date(referenceIso).getFullYear() : new Date().getFullYear();
+  const year = e0.getFullYear() !== refYear ? ` ${e0.getFullYear()}` : '';
+  return (s0.getMonth() === e0.getMonth() && s0.getFullYear() === e0.getFullYear() ? `${s0.getDate()}–${dm(e0)}` : `${dm(s0)}–${dm(e0)}`) + year;
 }
 
 /** Where – What – When. The place moves out of the What ("Trip to Lisbon" -> "Lisbon – Trip"). */
@@ -232,7 +234,11 @@ export function newEventTitle(params: {
   if (/\b\d{1,2}\s+[A-Z][a-z]{2}\b/.test(what)) return what;
   const templatePlace = [params.modelTitle, params.fallbackWhat].map((t) => splitParenthetical(t || '').place).find(Boolean);
   const where = cleanPlace(params.location) || fromMessage.where || cleanPlace(templatePlace);
-  return composeEventTitle(what, params.eventDate, where, params.endDate, params.referenceIso, saysMonthOnly(params.message || ''));
+  // Only a month when no exact day was given anywhere: a range, or a day
+  // picked in the questions ("2027-08-12 to 2027-08-18"), is shown as days.
+  const isRange = Boolean(params.endDate && params.eventDate && params.endDate.slice(0, 10) !== params.eventDate.slice(0, 10));
+  const monthOnly = !isRange && !/\b\d{4}-\d{2}-\d{2}\b/.test(params.message || '') && saysMonthOnly(params.message || '');
+  return composeEventTitle(what, params.eventDate, where, params.endDate, params.referenceIso, monthOnly);
 }
 
 /**
@@ -254,12 +260,7 @@ export function detectRename(message: string | null | undefined): string | null 
   return null;
 }
 
-/** "Portugal in" / "brooklyn ny" -> a tidy place name. */
-function cleanPlace(place: string | null | undefined): string | null {
-  const p = String(place || '').replace(/\s+(?:in|at|on|for|from|with|to|and)$/i, '').trim();
-  if (!p) return null;
-  return p.replace(/\b([a-z])/g, (_, l) => l.toUpperCase());
-}
+const cleanPlace = cleanPlaceName;
 
 const DATE_PART = new RegExp(`^(?:\\d|${MONTHS}\\b|${WEEKDAYS}\\b)`, 'i');
 

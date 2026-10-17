@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Check, Sparkles } from 'lucide-react';
 import { detectEventCategory, parseNaturalDateRange, formatDisplayDate } from '../utils/tminusRules';
-import type { EventCategory } from '../types';
+import type { CalendarEvent, EventCategory } from '../types';
 import { isAwayFromHomeEvent } from '../utils/refinementQuestions';
+import { findPlaceMatch } from '../utils/place';
 
 /**
  * What the chat shows while the AI works (ChatConsole's creation thread):
@@ -26,7 +27,6 @@ export interface MessageFacts {
 }
 
 const PEOPLE = /\b(?:(?:for|with)\s+)?(?:(?:a\s+)?(?:group|party|bunch)\s+of\s+)?(\d{1,3})\s+(people|persons|friends|guests|kids|children|colleagues|adults|girls|boys|guys|ladies|lads|women|men)\b/i;
-const PLAIN_WORDS = /^(the|a|an|my|our|your|their|his|her|be|see|visit|stay|town|work|school|bed)$/i;
 const MONTH_PHRASE = /\b(?:in|this|next|during)\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:next|this)\s+year|\s+\d{4})?\b/i;
 const NUMBER_WORDS: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 const RELATIVE = /\bin\s+(\d{1,2}|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(day|week|month)s?\b/i;
@@ -83,8 +83,9 @@ export function readMessageFacts(text: string, referenceDateIso: string, extraTe
     .replace(/\s{2,}/g, ' ')
     .trim();
   const trip = isAwayFromHomeEvent(clean);
-  // A trip's place, typed in lowercase: "going to ibiza" -> "Going to Ibiza".
-  if (trip) title = title.replace(/\b(to|in)\s+([a-z][a-z'-]{2,})\b/g, (m, w, word) => (PLAIN_WORDS.test(word) ? m : `${w} ${word.charAt(0).toUpperCase()}${word.slice(1)}`));
+  // The place as a name, however it was typed: "going to ibiza" -> "Going to Ibiza".
+  const place = findPlaceMatch(title);
+  if (place) title = `${title.slice(0, place.index + place.length - place.raw.length)}${place.place}${title.slice(place.index + place.length)}`;
   if (title.length > 48) title = `${title.slice(0, 48).replace(/\s+\S*$/, '')}…`;
   return {
     title: title ? title.charAt(0).toUpperCase() + title.slice(1) : 'Your plan',
@@ -230,6 +231,71 @@ function monthStarts(from: string, to: string): string[] {
   return out;
 }
 
+/**
+ * The plan's runway: today on the left, the day itself on the right, a dot
+ * on the day of each step. One look for the plan being made, the plan in
+ * the chat and the plan page.
+ */
+export interface RunwayDot {
+  iso: string;
+  state: 'done' | 'late' | 'todo';
+  label?: string;
+}
+
+export const Runway: React.FC<{
+  startIso: string;
+  endIso: string;
+  /** How much of the line is filled, 0-100. */
+  fill?: number;
+  /** Week marks (or month marks further out). */
+  ticks?: boolean;
+  dots?: RunwayDot[];
+  /** A "Today" marker inside the line, when it doesn't start today. */
+  todayIso?: string;
+  leftLabel?: string;
+  rightLabel: string;
+  dark?: boolean;
+}> = ({ startIso, endIso, fill = 0, ticks = false, dots = [], todayIso, leftLabel = 'Today', rightLabel }) => {
+  const start = dayMs(startIso);
+  const span = Math.max(1, (dayMs(endIso) - start) / DAY);
+  const at = (iso: string) => Math.min(1, Math.max(0, (dayMs(iso) - start) / DAY / span));
+  const weeks = Math.floor(span / 7);
+  const marks = !ticks
+    ? []
+    : weeks <= 16
+      ? Array.from({ length: weeks }, (_, w) => ((w + 1) * 7) / span)
+      : monthStarts(startIso, endIso).map((iso) => at(iso));
+  const today = todayIso && todayIso.slice(0, 10) > startIso.slice(0, 10) && todayIso.slice(0, 10) < endIso.slice(0, 10) ? at(todayIso) : null;
+  return (
+    <div className="relative h-9 mx-1.5" aria-hidden="true">
+      <div className="absolute inset-x-0 top-2.5 h-1 rounded-full bg-slate-200" />
+      <div className="absolute left-0 top-2.5 h-1 rounded-full bg-[#95BFB5] transition-[width] duration-700 ease-out" style={{ width: `${Math.min(100, Math.max(0, fill))}%` }} />
+      {marks.map((x, i) => (
+        <div key={i} className="absolute top-1.5 w-px h-3 bg-slate-300" style={{ left: `${x * 100}%` }} />
+      ))}
+      {today !== null && <div className="absolute top-0.5 w-0.5 h-5 rounded-full bg-[#182A42]" style={{ left: `${today * 100}%` }} title="Today" />}
+      {dots.map((d, i) => (
+        <span
+          key={`${d.iso}-${i}`}
+          title={d.label}
+          className={`aot-pop absolute top-3 w-2.5 h-2.5 rounded-full border-2 ${
+            d.state === 'done' ? 'bg-[#95BFB5] border-[#95BFB5]' : d.state === 'late' ? 'bg-rose-500 border-white' : 'bg-white border-[#182A42]'
+          }`}
+          style={{ left: `${at(d.iso) * 100}%`, animationDelay: `${Math.min(i, 14) * 60}ms` }}
+        />
+      ))}
+      <div className="absolute -right-1.5 top-1 w-4 h-4 rounded-full bg-[#182A42] border-[3px] border-white ring-1 ring-slate-300" />
+      <span className="absolute left-0 top-5 text-[10px] font-mono text-slate-400">{leftLabel}</span>
+      {today !== null && today > 0.12 && today < 0.75 && (
+        <span className="absolute top-5 -translate-x-1/2 text-[10px] font-mono font-bold text-[#182A42]" style={{ left: `${today * 100}%` }}>
+          Today
+        </span>
+      )}
+      <span className="absolute right-0 top-5 text-[10px] font-mono font-bold text-[#182A42]">{rightLabel}</span>
+    </div>
+  );
+};
+
 export const PlanPreview: React.FC<{ facts: MessageFacts | null; referenceDateIso: string }> = ({ facts, referenceDateIso }) => {
   const line = useCycle(statusLines(facts), 3600);
   // Seconds since the plan was asked for: the card grows with it.
@@ -270,22 +336,7 @@ export const PlanPreview: React.FC<{ facts: MessageFacts | null; referenceDateIs
             <p className="text-[11px] text-slate-500">{facts.relative.charAt(0).toUpperCase() + facts.relative.slice(1)}</p>
           ) : null}
         </div>
-        {span > 0 && (
-          <div className="relative h-9 mx-1" aria-hidden="true">
-            <div className="absolute inset-x-0 top-2.5 h-1 rounded-full bg-slate-200" />
-            <div className="absolute left-0 top-2.5 h-1 rounded-full bg-[#95BFB5] transition-[width] duration-300 ease-linear" style={{ width: `${fill}%` }} />
-            {/* Week marks for the next few months; month marks further out. */}
-            {(weeks <= 16
-              ? Array.from({ length: weeks }, (_, w) => ((w + 1) * 7) / span)
-              : monthStarts(today, end!).map((iso) => (dayMs(iso) - dayMs(today)) / DAY / span)
-            ).map((x, i) => (
-              <div key={i} className="absolute top-1.5 w-px h-3 bg-slate-300" style={{ left: `${x * 100}%` }} />
-            ))}
-            <div className="absolute -right-1 top-1 w-4 h-4 rounded-full bg-[#182A42] border-[3px] border-white ring-1 ring-slate-300" />
-            <span className="absolute left-0 top-5 text-[10px] font-mono text-slate-400">Today</span>
-            <span className="absolute right-0 top-5 text-[10px] font-mono font-bold text-[#182A42]">{facts?.startDate ? shortDate(facts.startDate) : facts?.relative}</span>
-          </div>
-        )}
+        {span > 0 && end && <Runway startIso={today} endIso={end} fill={fill} ticks rightLabel={facts?.startDate ? shortDate(facts.startDate) : facts?.relative || ''} />}
         <p className="text-xs font-bold text-slate-500 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#95BFB5] animate-pulse shrink-0" />
           <span key={line} className="aot-rise">{line}</span>
@@ -312,6 +363,90 @@ export const PlanPreview: React.FC<{ facts: MessageFacts | null; referenceDateIs
         {elapsed > 14 && <p className="text-[11px] text-slate-400 aot-rise">Still on it. Plans with more to arrange take a little longer.</p>}
       </div>
     </>
+  );
+};
+
+
+/** "N weeks to go" / "N days to go" / "Today". */
+export function timeToGo(fromIso: string, toIso: string): string {
+  const days = Math.round((dayMs(toIso) - dayMs(fromIso)) / DAY);
+  if (days <= 0) return days === 0 ? 'Today' : '';
+  if (days < 21) return `${days} day${days === 1 ? '' : 's'} to go`;
+  if (days < 120) return `${Math.round(days / 7)} weeks to go`;
+  return `${Math.round(days / 30.4)} months to go`;
+}
+
+/** The runway for a plan's steps: from today (or its first step, if earlier) to the day. */
+export function planRunway(event: Pick<CalendarEvent, 'eventDate' | 'milestones'>, todayIso: string) {
+  const steps = (event.milestones || []).filter((m) => m.calculatedDate && m.isActive !== false && m.status !== 'skipped');
+  const first = steps.map((m) => m.calculatedDate.slice(0, 10)).sort()[0];
+  const today = todayIso.slice(0, 10);
+  let start = first && first < today ? first : today;
+  // Steps far off (a trip next summer): the runway starts a week before the
+  // first one, so the dots spread out instead of piling up at the end.
+  const end = event.eventDate.slice(0, 10);
+  if (first && first > today && dayMs(first) - dayMs(today) > 0.5 * (dayMs(end) - dayMs(today))) {
+    start = new Date(dayMs(first) - 7 * DAY).toISOString().slice(0, 10);
+  }
+  const dots: RunwayDot[] = steps
+    .filter((m) => m.calculatedDate.slice(0, 10) <= event.eventDate.slice(0, 10))
+    .map((m) => ({
+      iso: m.calculatedDate,
+      state: m.status === 'completed' ? 'done' : m.calculatedDate.slice(0, 10) < today ? 'late' : 'todo',
+      label: m.title,
+    }));
+  return { start, dots, todayIso: start < today ? today : undefined, startsToday: start === today };
+}
+
+/**
+ * The plan in the chat, once it's made: the growing card settled. Title and
+ * dates, the runway with a dot per step, then each step with its day.
+ * Nothing is saved until "Create this plan".
+ */
+export const PlanCard: React.FC<{ event: CalendarEvent; referenceDateIso: string; onCreate: () => void; busy?: boolean }> = ({ event, referenceDateIso, onCreate, busy }) => {
+  const today = referenceDateIso.slice(0, 10);
+  const end = event.endDate && event.endDate !== event.eventDate ? event.endDate : undefined;
+  const { start, dots, todayIso, startsToday } = planRunway(event, referenceDateIso);
+  const steps = [...(event.milestones || [])].filter((m) => m.isActive !== false).sort((a, b) => (a.calculatedDate || '').localeCompare(b.calculatedDate || ''));
+  // The line fills on arrival: the plan is complete.
+  const [fill, setFill] = useState(0);
+  useEffect(() => {
+    const id = window.setTimeout(() => setFill(100), 60);
+    return () => window.clearTimeout(id);
+  }, []);
+  const toGo = timeToGo(today, event.eventDate);
+  return (
+    <div className="ml-9 bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs aot-rise">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Your plan</p>
+        <h4 className="text-sm sm:text-base font-black text-slate-900 leading-snug">{event.title}</h4>
+        <p className="text-[11px] text-slate-500">
+          {compactRange(event.eventDate, end)}
+          {toGo ? ` · ${toGo}` : ''}
+        </p>
+      </div>
+      {event.eventDate > start && <Runway startIso={start} endIso={event.eventDate} fill={fill} dots={dots} todayIso={todayIso} leftLabel={startsToday ? 'Today' : shortDate(start)} rightLabel={shortDate(event.eventDate)} />}
+      <ol className="space-y-2">
+        {steps.map((m, i) => (
+          <li key={m.id} className="grid grid-cols-[3.25rem_1fr] gap-2.5 items-baseline aot-rise" style={{ animationDelay: `${150 + Math.min(i, 12) * 70}ms` }}>
+            <span className="text-[10px] font-mono font-bold text-slate-400 whitespace-nowrap">{m.calculatedDate ? shortDate(m.calculatedDate) : ''}</span>
+            <span className="text-xs font-semibold text-slate-800 leading-snug">{m.title}</span>
+          </li>
+        ))}
+      </ol>
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+        <span className="text-[11px] text-slate-500 pt-2">Anything to change? Type it below.</span>
+        <button
+          type="button"
+          onClick={onCreate}
+          disabled={busy}
+          className="mt-2 shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Check className="w-3.5 h-3.5" />
+          <span>Create this plan</span>
+        </button>
+      </div>
+    </div>
   );
 };
 

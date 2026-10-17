@@ -42,6 +42,9 @@ import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
+import { Runway, compactRange, planRunway, timeToGo } from './chatPreview';
+
+const formatShortDay = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 import { getStoredAccessToken } from '../services/googleAuth';
 import { deleteSingleMilestoneFromGoogleCalendar } from '../services/googleCalendar';
 import { aiJsonHeaders, readAiRefusal } from '../services/aiRequest';
@@ -866,12 +869,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     // A pending booking can be switched to the explore / decide / check
     // rhythm (or back) from its details.
     const canStage = ms.status === 'pending' && isDecisionMilestone(ms);
-    const isExpandable = hasDeliverables || hasDescription || canStage;
+    const hasDetails = hasDeliverables || hasDescription || canStage;
+    // Every row opens: on phones that is where edit and delete live, so the
+    // closed list stays clean.
+    const isExpandable = true;
     // Overdue tasks start open: their personalised sub-tasks are what
     // needs doing now. Other sections start closed.
-    const isExpanded = tone === 'overdue' ? !collapsedOverdueIds.has(ms.id) : expandedMilestoneIds.has(ms.id);
+    const isExpanded = tone === 'overdue' && hasDetails ? !collapsedOverdueIds.has(ms.id) : expandedMilestoneIds.has(ms.id);
     const toggleExpanded = () => {
-      if (tone !== 'overdue') return toggleMilestoneExpanded(ms.id);
+      if (tone !== 'overdue' || !hasDetails) return toggleMilestoneExpanded(ms.id);
       setCollapsedOverdueIds((prev) => {
         const next = new Set(prev);
         if (next.has(ms.id)) next.delete(ms.id);
@@ -966,7 +972,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
           {/* Makes it visible there is more behind a row: the sub-task
               count plus a clear chevron, instead of a faint arrow only. */}
-          {isExpandable && (
+          {hasDetails && (
             <span
               className={`flex items-center gap-1 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition-colors ${
                 isExpanded ? 'text-slate-500' : 'text-slate-600 bg-slate-100 group-hover:bg-slate-200/80'
@@ -981,7 +987,7 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           {/* Edit/delete stay inline with the date/title row, at every
               breakpoint, so unfolding sub-tasks below never pushes them
               anywhere else or adds a second row just for them. */}
-          <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+          <div className="hidden sm:flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1007,6 +1013,16 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
         {isExpanded && (
           <div className="px-2.5 pb-2 pl-9 space-y-1.5 -mt-0.5">
+            {/* Phones: edit and delete, once the row is open. */}
+            <div className="sm:hidden flex items-center gap-3 text-[11px] font-bold">
+              <span className="text-slate-400 font-mono">{formatDisplayDate(ms.calculatedDate)}</span>
+              <button type="button" onClick={(e) => { e.stopPropagation(); setEditingMilestone(ms); }} className="text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer">
+                <Edit3 className="w-3 h-3" /> Edit
+              </button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteTask(ms.id); }} className="text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer">
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            </div>
             {hasDescription && (
               <p className="text-[11px] text-slate-500 leading-relaxed">{ms.description}</p>
             )}
@@ -1218,9 +1234,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
           <div className="flex items-center gap-1.5 min-w-0">
             {renderEventActions()}
-            <span className="text-[11px] font-mono font-bold text-slate-700 bg-sky-50 border border-sky-200/90 px-2 py-0.5 rounded-lg shrink-0">
-              {completedCount}/{totalCount}
-            </span>
           </div>
         </div>
       )}
@@ -1248,47 +1261,27 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
-              <div className="flex items-center gap-1 font-semibold text-slate-800">
-                <Calendar className="w-3.5 h-3.5 text-sky-700 shrink-0" />
-                <span>
-                  {activeEvent.endDate || activeEvent.macroEvent?.end_date
-                    ? `${formatDisplayDate(activeEvent.eventDate)} – ${formatDisplayDate(activeEvent.endDate || activeEvent.macroEvent?.end_date || '')}`
-                    : formatDisplayDate(activeEvent.eventDate)
-                  }
+            {/* One quiet line: when, where, whether it's in the calendar. */}
+            <p className="flex items-center gap-x-2 gap-y-0.5 flex-wrap text-xs text-slate-500">
+              <span className="font-semibold text-slate-700">
+                {compactRange(activeEvent.eventDate, activeEvent.endDate || activeEvent.macroEvent?.end_date || undefined)}
+                {activeEvent.eventTime && !(activeEvent.endDate && activeEvent.endDate !== activeEvent.eventDate) ? ` · ${activeEvent.eventTime}` : ''}
+              </span>
+              {activeEvent.location && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="truncate max-w-[160px] sm:max-w-none">{activeEvent.location}</span>
                 </span>
-              </div>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 shrink-0">
-                <SyncStatusIcon synced={isPlanPushed(activeEvent)} tone="light" size={16} />
+              )}
+              <span className="flex items-center gap-1 text-[11px] font-semibold shrink-0">
+                <SyncStatusIcon synced={isPlanPushed(activeEvent)} tone="light" size={15} />
                 {isPlanPushed(activeEvent)
                   ? 'Synced'
                   : newTasksPendingSync(activeEvent) > 0
-                    ? `${newTasksPendingSync(activeEvent)} new ${newTasksPendingSync(activeEvent) === 1 ? 'task' : 'tasks'} pending sync`
+                    ? `${newTasksPendingSync(activeEvent)} new pending sync`
                     : 'Pending sync'}
               </span>
-              {activeEvent.eventTime && (
-                <div className="flex items-center gap-1 font-mono text-slate-500 text-[11px]">
-                  <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span>{activeEvent.eventTime}</span>
-                </div>
-              )}
-              {activeEvent.location && (
-                <div className="flex items-center gap-1 text-slate-500 text-[11px] truncate max-w-[150px] sm:max-w-none">
-                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span className="truncate">{activeEvent.location}</span>
-                </div>
-              )}
-              {countdown.isOverdue ? (
-                <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-300 shadow-2xs flex items-center gap-1 shrink-0">
-                  <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
-                  <span>{countdown.label}</span>
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200 shadow-2xs shrink-0">
-                  {countdown.label}
-                </span>
-              )}
-            </div>
+            </p>
           </div>
 
           {/* Action Buttons: Compact row with More menu (in the sticky
@@ -1296,51 +1289,44 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           <div className={onBackToList ? 'hidden lg:block' : ''}>{renderEventActions()}</div>
         </div>
 
-        {/* Progress: percentage as its own prominent number (not just
-            buried in "N of M"), a full-width bar, then completion count and
-            the plan-level switcher sharing one caption row - previously the
-            switcher sat on its own line below with an info icon + Change
-            link, competing for attention right under the bar instead of
-            reading as this row's own secondary detail. */}
-        {/* Mobile (sticky bar shows the N/M count): one quiet line - a thin
-            bar plus the plan-level switcher. */}
-        {onBackToList && (
-          <div className="lg:hidden flex items-center gap-3">
-            <div className="flex-1 h-1 bg-sky-100 rounded-full overflow-hidden" aria-hidden="true">
-              <div
-                className="h-full bg-slate-900 rounded-full transition-all duration-300"
-                style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
-              />
+        {/* The runway: today to the day, a dot per step (mint done, red
+            late, open to do), filled up to today. Then one caption line. */}
+        {(() => {
+          const runway = planRunway(activeEvent, currentReferenceDate);
+          const showRunway = activeEvent.eventDate.slice(0, 10) > runway.start;
+          const span = Math.max(1, Date.parse(`${activeEvent.eventDate.slice(0, 10)}T12:00:00Z`) - Date.parse(`${runway.start}T12:00:00Z`));
+          const passed = runway.todayIso ? ((Date.parse(`${runway.todayIso.slice(0, 10)}T12:00:00Z`) - Date.parse(`${runway.start}T12:00:00Z`)) / span) * 100 : 0;
+          return (
+            <div className="space-y-1">
+              {showRunway && (
+                <Runway
+                  startIso={runway.start}
+                  endIso={activeEvent.eventDate}
+                  fill={passed}
+                  dots={runway.dots}
+                  todayIso={runway.todayIso}
+                  leftLabel={runway.startsToday ? 'Today' : formatShortDay(runway.start)}
+                  rightLabel={formatShortDay(activeEvent.eventDate)}
+                />
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  <span className="font-bold text-slate-800">{completedCount} of {totalCount}</span> done
+                  {countdown.isOverdue ? (
+                    <span className="text-rose-700 font-bold"> · {countdown.label}</span>
+                  ) : timeToGo(currentReferenceDate, activeEvent.eventDate) ? (
+                    <span> · {timeToGo(currentReferenceDate, activeEvent.eventDate)}</span>
+                  ) : null}
+                </span>
+                <PreparationLevelSwitcher
+                  level={activeEvent.preparationLevel || 'balanced'}
+                  onChangeLevel={handleChangePreparationLevel}
+                  isBusy={isPreparationLevelBusy}
+                />
+              </div>
             </div>
-            <PreparationLevelSwitcher
-              level={activeEvent.preparationLevel || 'balanced'}
-              onChangeLevel={handleChangePreparationLevel}
-              isBusy={isPreparationLevelBusy}
-            />
-          </div>
-        )}
-        <div className={`space-y-1 pt-0.5 ${onBackToList ? 'hidden lg:block' : ''}`}>
-          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span className="uppercase tracking-wider">Preparation</span>
-            <span className="font-mono text-slate-900 font-bold text-sm">
-              {totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%
-            </span>
-          </div>
-          <div className="w-full h-1.5 bg-sky-100 rounded-full overflow-hidden border border-sky-200/40">
-            <div
-              className="h-full bg-slate-900 rounded-full transition-all duration-300 shadow-2xs"
-              style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 pt-0.5">
-            <span className="text-[11px] font-mono text-slate-500 font-medium">{completedCount} of {totalCount} completed</span>
-            <PreparationLevelSwitcher
-              level={activeEvent.preparationLevel || 'balanced'}
-              onChangeLevel={handleChangePreparationLevel}
-              isBusy={isPreparationLevelBusy}
-            />
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}
@@ -1807,45 +1793,17 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
           </>
         )}
 
-        {/* Event Date Summary Box - stacked and left-aligned on mobile
-            (a long title plus two right-aligned date lines had nowhere to
-            go on a narrow screen and ended up misaligned/wrapping badly);
-            side-by-side with right-aligned dates from sm: up. */}
-        <div className={`mt-4 p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 text-xs sm:text-sm shadow-xs ${
-          countdown.isOverdue
-            ? 'bg-rose-50/70 border-rose-300 text-rose-950'
-            : 'bg-white border-sky-200/80 text-slate-700'
-        }`}>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <div className={`w-3 h-3 rounded-full shadow-2xs shrink-0 ${countdown.isOverdue ? 'bg-rose-600 ring-2 ring-rose-200' : 'bg-[#182A42]'}`} />
-            <div>
-              <span className="font-bold text-slate-900">{getCleanEventTitle(activeEvent.title, activeEvent.category, activeEvent.context)}</span>
-              {activeEvent.eventTime && <span className="text-slate-500 text-xs ml-2">({activeEvent.eventTime})</span>}
-              {countdown.isOverdue && (
-                <span className="ml-2 font-mono font-bold text-rose-700 text-xs bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-300 inline-flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
-                  <span>{countdown.label}</span>
-                </span>
-              )}
-            </div>
+        {/* The day itself: where the runway ends. */}
+        <div className={`mt-4 px-4 py-3 rounded-2xl flex items-center gap-3 ${countdown.isOverdue ? 'bg-rose-50 border border-rose-200' : 'bg-[#182A42] text-white'}`}>
+          <div className={`w-3.5 h-3.5 rounded-full shrink-0 border-[3px] ${countdown.isOverdue ? 'bg-rose-600 border-rose-200' : 'bg-[#95BFB5] border-white/80'}`} />
+          <div className="min-w-0 flex-1">
+            <p className={`text-[10px] font-black uppercase tracking-wider ${countdown.isOverdue ? 'text-rose-700' : 'text-[#95BFB5]'}`}>The day itself</p>
+            <p className={`text-sm font-bold truncate ${countdown.isOverdue ? 'text-rose-950' : 'text-white'}`}>
+              {compactRange(activeEvent.eventDate, activeEvent.endDate || activeEvent.macroEvent?.end_date || undefined)}
+              {activeEvent.eventTime && !(activeEvent.endDate && activeEvent.endDate !== activeEvent.eventDate) ? ` · ${activeEvent.eventTime}` : ''}
+            </p>
           </div>
-          <div className="text-left sm:text-right pl-5 sm:pl-0">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mr-1.5">Event start date</span>
-              <span className={`font-mono font-bold ${countdown.isOverdue ? 'text-rose-700' : 'text-slate-900'}`}>
-                {formatDisplayDate(activeEvent.eventDate)}
-              </span>
-            </div>
-            {(activeEvent.endDate || activeEvent.macroEvent?.end_date) &&
-              (activeEvent.endDate || activeEvent.macroEvent?.end_date) !== activeEvent.eventDate && (
-              <div className="mt-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mr-1.5">Event end date</span>
-                <span className="font-mono font-bold text-slate-900">
-                  {formatDisplayDate(activeEvent.endDate || activeEvent.macroEvent?.end_date || '')}
-                </span>
-              </div>
-            )}
-          </div>
+          <span className={`text-[11px] font-mono font-bold shrink-0 ${countdown.isOverdue ? 'text-rose-700' : 'text-white/80'}`}>{countdown.label}</span>
         </div>
       </div>
 
