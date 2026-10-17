@@ -75,3 +75,16 @@ describe('a month-only message whose days were picked afterwards', () => {
     expect(title).toMatch(/^Ibiza – Trip.* – 12–18 Aug 2027$/);
   });
 });
+
+describe('activity ideas fit the trip', () => {
+  it('a group of friends gets trip ideas, not a stag do', () => {
+    const plan = decomposeComplexTripIntent('Going to ibiza from 12 to 18 august 2027 with group of 7 girls', '2026-10-17T10:00:00Z');
+    const options = (plan?.milestones || []).flatMap((m) => m.refinementOptions || []);
+    expect(options.join(' ')).not.toMatch(/karting|paintball|axe/i);
+    expect(plan?.conversational_response || '').not.toMatch(/paintball|axe/i);
+  });
+  it('a stag do keeps its ideas', () => {
+    const plan = decomposeComplexTripIntent('Stag weekend in Prague 12-14 March 2027 with 10 lads', '2026-10-17T10:00:00Z');
+    expect((plan?.milestones || []).flatMap((m) => m.refinementOptions || []).join(' ')).toMatch(/karting/i);
+  });
+});

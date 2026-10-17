@@ -40,9 +40,26 @@ import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStar
 import { CatchUpCard } from './CatchUpCard';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
-import { RefineDeliverableModal } from './RefineDeliverableModal';
 import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
 import { Runway, compactRange, planRunway, timeToGo } from './chatPreview';
+
+/** A step's title without a choice added to it ("… – Boat trip"). */
+const baseTitle = (title: string, choices: string[]) => {
+  const hit = choices.find((o) => title.endsWith(` – ${o}`));
+  return hit ? title.slice(0, -(` – ${hit}`).length) : title;
+};
+/** The person's own note on a step, kept at the end of its description. */
+const NOTE_MARK = 'Note: ';
+const noteOf = (description?: string) => {
+  const i = (description || '').lastIndexOf(NOTE_MARK);
+  return i >= 0 ? (description || '').slice(i + NOTE_MARK.length).trim() : '';
+};
+const withNote = (description: string | undefined, note: string) => {
+  const d = description || '';
+  const i = d.lastIndexOf(NOTE_MARK);
+  const base = (i >= 0 ? d.slice(0, i) : d).replace(/[\s·]+$/, '');
+  return note ? (base ? `${base} · ${NOTE_MARK}${note}` : `${NOTE_MARK}${note}`) : base;
+};
 
 const formatShortDay = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 import { getStoredAccessToken } from '../services/googleAuth';
@@ -239,7 +256,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       return next;
     });
   };
-  const [refiningDeliverable, setRefiningDeliverable] = useState<TMinusMilestone | null>(null);
 
   const activeEvent = selectedEventId 
     ? (events.find((e) => e.id === selectedEventId) || events[0] || null) 
@@ -718,6 +734,23 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     document.body.removeChild(link);
   };
 
+  // One update carrying the step and its open-question entry together: two
+  // separate calls each closed over the same activeEvent and the second
+  // reverted the first.
+  const saveMilestone = (updated: TMinusMilestone) => {
+    if (!activeEvent) return;
+    if (onUpdateEvent) {
+      const milestones = activeEvent.milestones.map((m) => (m.id === updated.id ? updated : m));
+      const outstandingGaps =
+        updated.needsRefinement === false && activeEvent.outstandingGaps?.some((g) => g.key === updated.id)
+          ? activeEvent.outstandingGaps.filter((g) => g.key !== updated.id)
+          : activeEvent.outstandingGaps;
+      onUpdateEvent({ ...activeEvent, milestones, outstandingGaps });
+    } else if (onUpdateMilestone) {
+      onUpdateMilestone(activeEvent.id, updated);
+    }
+  };
+
   const handleSaveEditedMilestone = (updated: TMinusMilestone) => {
     if (activeEvent && onUpdateMilestone) {
       onUpdateMilestone(activeEvent.id, updated);
@@ -869,7 +902,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
     // A pending booking can be switched to the explore / decide / check
     // rhythm (or back) from its details.
     const canStage = ms.status === 'pending' && isDecisionMilestone(ms);
-    const hasDetails = hasDeliverables || hasDescription || canStage;
+    // Real choices for this step (a kind of stay, an activity): picked
+    // right here in the opened row. No choices, no button.
+    const choices = !isCompleted && !isSkipped ? (ms.refinementOptions || []).filter((o) => typeof o === 'string' && o.trim()) : [];
+    const chosen = choices.find((o) => ms.title.endsWith(` – ${o}`)) || null;
+    const awaitingChoice = choices.length > 0 && !chosen && ms.needsRefinement !== false;
+    const hasDetails = hasDeliverables || hasDescription || canStage || choices.length > 0;
     // Every row opens: on phones that is where edit and delete live, so the
     // closed list stays clean.
     const isExpandable = true;
@@ -938,18 +976,18 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
               {ms.title}
             </span>
             <div className="flex items-center gap-2 mt-0.5 sm:mt-0 shrink-0 empty:hidden">
-              {!isCompleted && !isSkipped && (ms.needsRefinement || (ms.refinementOptions && ms.refinementOptions.length > 0)) && (
+              {awaitingChoice && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setRefiningDeliverable(ms);
+                    if (!isExpanded) toggleExpanded();
                   }}
-                  className="text-[10px] font-bold text-amber-800 hover:text-amber-950 flex items-center gap-0.5 transition-all cursor-pointer shrink-0"
-                  title="Refine specifics for this task"
+                  className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 hover:border-emerald-400 rounded-full px-1.5 py-px flex items-center gap-0.5 transition-all cursor-pointer shrink-0"
+                  title="Pick one of the options for this step"
                 >
                   <Sparkles className="w-2.5 h-2.5" />
-                  <span>Refine</span>
+                  <span>Choose</span>
                 </button>
               )}
               {!isCompleted && !isSkipped && (
@@ -1023,8 +1061,45 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </div>
-            {hasDescription && (
-              <p className="text-[11px] text-slate-500 leading-relaxed">{ms.description}</p>
+            {hasDescription && (choices.length === 0 || withNote(ms.description, '')) && (
+              // With choices, their own note shows in the box below, not twice.
+              <p className="text-[11px] text-slate-500 leading-relaxed">{choices.length > 0 ? withNote(ms.description, '') : ms.description}</p>
+            )}
+            {choices.length > 0 && (
+              <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">{chosen ? 'Your choice' : 'Choose one'}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {choices.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => saveMilestone({ ...ms, title: chosen === opt ? baseTitle(ms.title, choices) : `${baseTitle(ms.title, choices)} – ${opt}`, needsRefinement: chosen === opt })}
+                      aria-pressed={chosen === opt}
+                      className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
+                        chosen === opt ? 'bg-[#182A42] text-white border-[#182A42]' : 'bg-white text-slate-700 border-slate-200 hover:border-[#95BFB5]'
+                      }`}
+                    >
+                      {chosen === opt && <Check className="w-3 h-3 inline -mt-0.5 mr-1" />}
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  key={`${ms.id}-${noteOf(ms.description)}`}
+                  type="text"
+                  defaultValue={noteOf(ms.description)}
+                  placeholder="Add a note: venue, time or link"
+                  maxLength={200}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  }}
+                  onBlur={(e) => {
+                    const note = e.target.value.trim();
+                    if (note !== noteOf(ms.description)) saveMilestone({ ...ms, description: withNote(ms.description, note) });
+                  }}
+                  className="w-full max-w-sm text-[11px] px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-slate-400"
+                />
+              </div>
             )}
             {hasDeliverables && (
               <div className="space-y-1">
@@ -1833,36 +1908,6 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
             />
           </div>
         </div>
-      )}
-
-      {/* Refine Deliverable Modal - milestone-level only. The deliverable-
-          level "Decide" button/popup (architecture reset Phase 8) was
-          removed - it duplicated the unified Open Decisions panel above
-          with a worse, often irrelevant options list, per live feedback. */}
-      {refiningDeliverable && activeEvent && (
-        <RefineDeliverableModal
-          isOpen={Boolean(refiningDeliverable)}
-          onClose={() => setRefiningDeliverable(null)}
-          milestone={refiningDeliverable}
-          event={activeEvent}
-          onSaveMilestone={(updated) => {
-            // A single onUpdateEvent call carrying both the milestone patch
-            // and the outstandingGaps patch together, rather than two
-            // separate calls each closing over the same pre-update
-            // `activeEvent` - two separate calls raced, with the second
-            // silently reverting the first's milestone change.
-            if (onUpdateEvent) {
-              const milestones = activeEvent.milestones.map((m) => (m.id === updated.id ? updated : m));
-              const outstandingGaps = activeEvent.outstandingGaps?.some((g) => g.key === updated.id)
-                ? activeEvent.outstandingGaps.filter((g) => g.key !== updated.id)
-                : activeEvent.outstandingGaps;
-              onUpdateEvent({ ...activeEvent, milestones, outstandingGaps });
-            } else if (onUpdateMilestone) {
-              onUpdateMilestone(activeEvent.id, updated);
-            }
-            setRefiningDeliverable(null);
-          }}
-        />
       )}
 
     </div>

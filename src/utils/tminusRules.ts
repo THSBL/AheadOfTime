@@ -1195,24 +1195,18 @@ export function generateHeuristicMilestones(
     // Context-Aware Activity Deliverables
     if (context.activitySightseeing !== false && context.activitySightseeing !== 'false') {
       if (isStagOrGroupParty) {
+        // Ideas that fit the party: a stag do, a hen do or any other group.
+        const partyIdeas = tripActivityIdeas(`${event.title || ''} ${context.theme || ''} ${event.macroEvent?.archetype || ''}`);
         addMilestone(
           'T-21d',
           -21 * 24 * 60,
-          'Shortlist & book group activity (e.g. Karting / Brewery / Boat / Paintball)',
+          `Shortlist & book group activity (e.g. ${partyIdeas.examples})`,
           'booking',
           'Lock in group activity slot, waivers, and deposit with provider',
           undefined,
           'deliverable',
           true,
-          [
-            'Go-Karting Grand Prix',
-            'Paintball / Laser Combat',
-            'Private Craft Brewery Tour & VIP Tasting',
-            'Private Boat / Yacht Cruise',
-            'Axe Throwing & Arcade Bar',
-            'Escape Room Tournament',
-            'VIP Nightclub Table'
-          ],
+          partyIdeas.options,
           ['organiser', 'co_organiser'],
           'activity'
         );
@@ -2294,6 +2288,71 @@ export function formatMessagingSummary(event: CalendarEvent): string {
  * Hierarchical Context Decomposition Engine for complex queries and multi-track milestones.
  * Decomposes multi-day trips and nested micro-events into structured parent/child models.
  */
+/**
+ * Activity ideas for a trip's "Day 2 activity" step, by kind of trip. Used
+ * as the choices on that step and in the plan's reply when the AI planner
+ * isn't available.
+ */
+export function tripActivityIdeas(archetype: string): {
+  options: string[];
+  examples: string;
+  tailored: { name: string; vibe: string; note: string }[];
+} {
+  if (/stag|bachelor\b/i.test(archetype)) {
+    return {
+      options: ['Go-karting', 'Paintball', 'Brewery tour & tasting', 'Boat trip', 'Axe throwing', 'Escape room', 'Nightclub table'],
+      examples: 'karting, brewery, boat, paintball',
+      tailored: [
+        { name: 'Paintball & quad biking', vibe: 'Adrenaline', note: 'weekend slots go about 3 weeks ahead' },
+        { name: 'Brewery tour & tasting', vibe: 'Social', note: 'relaxed, with a local guide' },
+        { name: 'Escape room & axe throwing', vibe: 'Indoor competition', note: 'weatherproof' },
+      ],
+    };
+  }
+  if (/hen|bachelorette/i.test(archetype)) {
+    return {
+      options: ['Spa afternoon', 'Cocktail masterclass', 'Boat party', 'Dance class', 'Bottomless brunch', 'Beach club day beds'],
+      examples: 'spa, boat party, cocktail class',
+      tailored: [
+        { name: 'Boat party or sunset cruise', vibe: 'Showstopper', note: 'private boats book out early in summer' },
+        { name: 'Cocktail masterclass', vibe: 'Social', note: 'works for any group size' },
+        { name: 'Spa afternoon', vibe: 'Slow day', note: 'treatment slots for a group need booking ahead' },
+      ],
+    };
+  }
+  if (/family/i.test(archetype)) {
+    return {
+      options: ['Beach day', 'Boat trip', 'Theme or water park', 'Guided tour', 'Cooking class'],
+      examples: 'boat trip, water park, guided tour',
+      tailored: [
+        { name: 'Boat trip', vibe: 'Day out', note: 'family slots fill in high season' },
+        { name: 'Theme or water park', vibe: 'For the kids', note: 'online tickets are cheaper' },
+        { name: 'Guided tour', vibe: 'Easy going', note: 'pick one with short walks' },
+      ],
+    };
+  }
+  if (/conference|summit/i.test(archetype)) {
+    return {
+      options: ['Team dinner', 'City walking tour', 'Client drinks'],
+      examples: 'team dinner, client drinks',
+      tailored: [
+        { name: 'Team dinner', vibe: 'Together', note: 'book a table near the venue' },
+        { name: 'City walking tour', vibe: 'Light', note: 'fits between sessions' },
+        { name: 'Client drinks', vibe: 'Business', note: 'reserve a quiet spot' },
+      ],
+    };
+  }
+  return {
+    options: ['Boat trip', 'Beach club', 'Food tour', 'Guided day trip', 'Old town or museum tour', 'Sunset dinner'],
+    examples: 'boat trip, beach club, food tour',
+    tailored: [
+      { name: 'Boat trip', vibe: 'Showstopper', note: 'popular days book out weeks ahead' },
+      { name: 'Food tour', vibe: 'Social', note: 'small groups, book ahead' },
+      { name: 'Guided day trip', vibe: 'Explore', note: 'see more of the area in a day' },
+    ],
+  };
+}
+
 export function decomposeComplexTripIntent(
   message: string,
   referenceDateISO: string = new Date().toISOString(),
@@ -2555,15 +2614,10 @@ export function decomposeComplexTripIntent(
   const milestones: StructuredMilestone[] = [];
 
   const activityTitle = subEvents[0]?.title || 'Day 2 activity';
-  const activityRefinementOptions = [
-    'Go-Karting Grand Prix',
-    'Paintball / Laser Combat',
-    'Private Craft Brewery Tour & VIP Tasting',
-    'Private Boat / Yacht Cruise',
-    'Axe Throwing & Arcade Bar',
-    'Escape Room Tournament',
-    'VIP Nightclub Table'
-  ];
+  // Activity ideas that fit this kind of trip: go-karting is for a stag do,
+  // not for every group or family.
+  const activityIdeas = tripActivityIdeas(archetype);
+  const activityRefinementOptions = activityIdeas.options;
 
   // Solo / couple / family trip: no wider group to coordinate, so skip
   // headcount collection, shared-fund logistics, and RSVP chasing entirely
@@ -2747,7 +2801,7 @@ export function decomposeComplexTripIntent(
       refinementOptions: activityRefinementOptions,
       deliverableType: 'activity',
       applicableRoles: ['organiser', 'co_organiser'],
-      description: 'Reserve prime weekend slot (Karting, Brewery, Boat, Paintball) and lock in deposit.',
+      description: `Reserve a good slot (${activityIdeas.examples}) and lock in the deposit.`,
     });
 
     milestones.push({
@@ -2824,7 +2878,7 @@ export function decomposeComplexTripIntent(
       refinementOptions: activityRefinementOptions,
       deliverableType: 'activity',
       applicableRoles: ['organiser', 'co_organiser'],
-      description: 'Prime group slots (Karting, Brewery, Boat, Paintball) sell out 3 weeks ahead.',
+      description: `Good group slots (${activityIdeas.examples}) sell out about 3 weeks ahead.`,
     });
 
     milestones.push({
@@ -2891,21 +2945,15 @@ export function decomposeComplexTripIntent(
   // Sort milestones chronologically (earliest action first)
   milestones.sort((a, b) => b.t_minus_days - a.t_minus_days);
 
-  const tailored_options = [
-    'Outdoor Paintball & Quad Biking (High adrenaline; peak weekend slots require 3-week reservation)',
-    'Private Craft Brewery Tour & VIP Tasting (Relaxed & social; includes local guide and tasting flights)',
-    'Escape Room Challenge & Axe Throwing Tournament (Indoor & weatherproof; competitive group bracket)',
-  ];
+  const tailored_options = activityIdeas.tailored.map((t) => `${t.name} (${t.note})`);
 
   const roleLabel = role === 'guest' ? 'Guest / Attendee' : role === 'co_organiser' ? 'Co-Organiser' : 'Lead Organiser';
 
   const conversational_response = `I've decomposed your request into a hierarchical multi-track plan for **${roleLabel}**:\n\n` +
     `• **Macro Trip Horizon:** ${macroTitle} from ${startDateStr} to ${endDateStr} (${role === 'guest' ? 'guest attendance & personal bookings' : 'operational travel, lodging & shared funds'}).\n` +
     `• **Track B Micro Specifics:** ${role === 'guest' ? 'Dress code coordination & personal gear.' : 'Advance reservation runway for group activity.'}\n\n` +
-    `To nail down the Day 2 activity, here are 3 tailored concepts suited for group trips:\n` +
-    `1. *Outdoor Paintball & Quad Biking* (Adrenaline)\n` +
-    `2. *Private Brewery Tour & Tasting* (Social)\n` +
-    `3. *Escape Room & Axe Throwing* (Indoor competition)\n\n` +
+    `To nail down the Day 2 activity, here are 3 ideas:\n` +
+    activityIdeas.tailored.map((t, i) => `${i + 1}. *${t.name}* (${t.vibe})`).join('\n') + '\n\n' +
     `Which direction fits your group best, or do you have another activity in mind?`;
 
   return {
