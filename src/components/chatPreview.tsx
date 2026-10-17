@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, Sparkles } from 'lucide-react';
 import { detectEventCategory, parseNaturalDateRange, formatDisplayDate } from '../utils/tminusRules';
 import type { CalendarEvent, EventCategory } from '../types';
 import { isAwayFromHomeEvent } from '../utils/refinementQuestions';
@@ -398,9 +398,21 @@ export function planRunway(event: Pick<CalendarEvent, 'eventDate' | 'milestones'
   return { start, dots, todayIso: start < today ? today : undefined, startsToday: start === today };
 }
 
+const IDEAS_KEY = 'aot_plan_ideas';
+
+/** Whether the plan card shows each step's ideas: on unless this person hid them. */
+function readShowIdeas(): boolean {
+  try {
+    return localStorage.getItem(IDEAS_KEY) !== 'hidden';
+  } catch {
+    return true;
+  }
+}
+
 /**
  * The plan in the chat, once it's made: the growing card settled. Title and
- * dates, the runway with a dot per step, then each step with its day.
+ * dates, the runway with a dot per step, then each step with its day and,
+ * unless hidden, its first ideas ("Compare villa rentals in Santa Eulària").
  * Nothing is saved until "Create this plan".
  */
 export const PlanCard: React.FC<{ event: CalendarEvent; referenceDateIso: string; onCreate: () => void; busy?: boolean }> = ({ event, referenceDateIso, onCreate, busy }) => {
@@ -415,10 +427,37 @@ export const PlanCard: React.FC<{ event: CalendarEvent; referenceDateIso: string
     return () => window.clearTimeout(id);
   }, []);
   const toGo = timeToGo(today, event.eventDate);
+  const ideasFor = (m: (typeof steps)[number]) => (m.deliverables || []).map((d) => (d?.title || '').trim()).filter(Boolean).slice(0, 2);
+  const hasIdeas = steps.some((m) => ideasFor(m).length > 0);
+  // Show or hide the ideas under each step; remembered on this device.
+  const [showIdeas, setShowIdeas] = useState(readShowIdeas);
+  const toggleIdeas = () => {
+    setShowIdeas((v) => {
+      try {
+        localStorage.setItem(IDEAS_KEY, v ? 'hidden' : 'shown');
+      } catch {
+        // storage blocked: the choice lasts for this card only
+      }
+      return !v;
+    });
+  };
   return (
     <div className="ml-9 bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs aot-rise">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Your plan</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Your plan</p>
+          {hasIdeas && (
+            <button
+              type="button"
+              onClick={toggleIdeas}
+              aria-expanded={showIdeas}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+            >
+              {showIdeas ? 'Hide prep details' : 'Show prep details'}
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showIdeas ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </div>
         <h4 className="text-sm sm:text-base font-black text-slate-900 leading-snug">{event.title}</h4>
         <p className="text-[11px] text-slate-500">
           {compactRange(event.eventDate, end)}
@@ -430,10 +469,22 @@ export const PlanCard: React.FC<{ event: CalendarEvent; referenceDateIso: string
         {steps.map((m, i) => (
           <li key={m.id} className="grid grid-cols-[3.25rem_1fr] gap-2.5 items-baseline aot-rise" style={{ animationDelay: `${150 + Math.min(i, 12) * 70}ms` }}>
             <span className="text-[10px] font-mono font-bold text-slate-400 whitespace-nowrap">{m.calculatedDate ? shortDate(m.calculatedDate) : ''}</span>
-            <span className="text-xs font-semibold text-slate-800 leading-snug">{m.title}</span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-800 leading-snug">{m.title}</p>
+              {showIdeas && ideasFor(m).length > 0 && (
+                <ul className="mt-0.5 space-y-0.5 aot-rise">
+                  {ideasFor(m).map((idea) => (
+                    <li key={idea} className="text-[11px] text-slate-500 leading-snug pl-3 relative before:content-['›'] before:absolute before:left-0.5 before:text-emerald-600">
+                      {idea}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </li>
         ))}
       </ol>
+      {showIdeas && hasIdeas && <p className="text-[11px] text-emerald-800/80 italic">Ideas to get you started: ask me to swap, add or look into any of them.</p>}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
         <span className="text-[11px] text-slate-500 pt-2">Anything to change? Type it below.</span>
         <button
