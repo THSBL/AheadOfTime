@@ -194,31 +194,6 @@ const RescheduleMenu: React.FC<{ onReschedule: (target: 'tomorrow' | 'next_week'
   );
 };
 
-const MilestoneListRow: React.FC<{ item: UpcomingMilestoneItem; onSelectEvent: (eventId: string) => void; overdue?: boolean }> = ({
-  item,
-  onSelectEvent,
-  overdue,
-}) => (
-  <button
-    type="button"
-    onClick={() => onSelectEvent(item.eventId)}
-    className="w-full text-left flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/80 transition-all cursor-pointer"
-  >
-    <div className="min-w-0 flex-1">
-      <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{item.title}</p>
-      <p className="text-[11px] text-slate-400 truncate">{item.eventTitle}</p>
-      <ThemeTag theme={item.theme} />
-    </div>
-    <span
-      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
-        overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
-      }`}
-    >
-      {item.dueLabel}
-    </span>
-  </button>
-);
-
 /**
  * Compacts tminusRules.ts's overdue phrasing ("Overdue by 4 days") down to
  * "4d" for the flat milestone rows, where the full title and event name
@@ -236,12 +211,6 @@ function formatCompactOverdueLabel(label: string): string {
     .replace(/\s*mins?\b/, 'm');
 }
 
-/**
- * A single milestone row with a complete-checkbox, used where every task
- * must stay individually visible and in full detail rather than folded
- * into a topic - Overdue and This week, the "what should I focus on right
- * now" zone.
- */
 const FlatMilestoneRow: React.FC<{
   item: UpcomingMilestoneItem;
   onSelectEvent: (eventId: string) => void;
@@ -313,156 +282,17 @@ const FlatMilestoneRow: React.FC<{
 };
 
 /**
- * Renders one MilestoneCluster: a lone item is normally just a plain row,
- * while a real cluster (2+ items sharing a theme, e.g. four separate "send
- * invitations" tasks) becomes an expandable "Calls and confirmations (4)"
- * card - the "batch similar tasks together" view, now built into every
- * section that lists milestones instead of being a separate, easy-to-miss
- * one. forceTopicView overrides the lone-item case (see WeekBucketCard):
- * far-out weeks always fold every task into a named topic, even a topic of
- * one, so a week that's still 6 months away doesn't read as a denser wall
- * of individual tasks than the near-term weeks right above it.
- */
-const MilestoneClusterCard: React.FC<{
-  cluster: MilestoneCluster;
-  isOpen: boolean;
-  onToggleOpen: () => void;
-  onSelectEvent: (eventId: string) => void;
-  onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
-  overdue?: boolean;
-  forceTopicView?: boolean;
-}> = ({ cluster, isOpen, onToggleOpen, onSelectEvent, onToggleMilestoneStatus, overdue, forceTopicView }) => {
-  if (cluster.items.length === 1 && !forceTopicView) {
-    return <MilestoneListRow item={cluster.items[0]} onSelectEvent={onSelectEvent} overdue={overdue} />;
-  }
-
-  const Icon = THEME_ICONS[cluster.theme];
-  // cluster.label is the theme label for a real (2+ item) cluster already,
-  // but a solo entry's label is that one item's own title (see
-  // clusterMilestoneItemsByTheme) - reading THEME_LABELS directly here
-  // instead makes both cases show an actual topic name in the header, not
-  // the task's own title standing in for one.
-  const topicLabel = THEME_LABELS[cluster.theme];
-
-  return (
-    <div className="rounded-xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggleOpen}
-        className="w-full text-left p-3 hover:bg-slate-50/80 transition-all flex items-center gap-3 cursor-pointer"
-      >
-        <Icon className="w-4 h-4 text-slate-500 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm font-bold text-slate-900">{topicLabel}</p>
-          <p className="text-[11px] text-slate-500 truncate">{cluster.items.length} item{cluster.items.length === 1 ? '' : 's'}</p>
-        </div>
-        <span
-          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-            overdue ? 'text-rose-800 bg-rose-100 border-rose-200' : 'text-slate-700 bg-slate-100 border-slate-200'
-          }`}
-        >
-          {cluster.items.length}
-        </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <div className="border-t border-slate-100 divide-y divide-slate-100">
-          {cluster.items.map((item) => (
-            <ClusterMilestoneRow
-              key={item.milestoneId}
-              item={item}
-              onSelectEvent={onSelectEvent}
-              onToggleMilestoneStatus={onToggleMilestoneStatus}
-              overdue={overdue}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * One task inside an expanded topic cluster - split out from
- * MilestoneClusterCard so it can hold its own "just checked" animation
- * state per item (a fill-then-remove beat, same as FlatMilestoneRow's),
- * instead of the checkbox instantly vanishing the row the moment it's
- * clicked with no visible confirmation.
- */
-const ClusterMilestoneRow: React.FC<{
-  item: UpcomingMilestoneItem;
-  onSelectEvent: (eventId: string) => void;
-  onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
-  overdue?: boolean;
-}> = ({ item, onSelectEvent, onToggleMilestoneStatus, overdue }) => {
-  const [isChecking, setIsChecking] = useState(false);
-
-  const handleCheck = () => {
-    if (isChecking) return;
-    setIsChecking(true);
-    celebrateTask();
-    window.setTimeout(() => {
-      onToggleMilestoneStatus(item.eventId, item.milestoneId);
-    }, 500);
-  };
-
-  return (
-    <div className={`flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50/60 transition-opacity duration-300 ${isChecking ? 'opacity-50' : ''}`}>
-      <button
-        type="button"
-        onClick={handleCheck}
-        disabled={isChecking}
-        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all duration-200 ${
-          isChecking
-            ? 'bg-emerald-500 border-emerald-500 text-white scale-125 cursor-default'
-            : 'border-slate-300 hover:border-[#182A42] text-transparent hover:text-slate-400 cursor-pointer'
-        }`}
-        title="Mark as complete"
-      >
-        <Check className="w-2.5 h-2.5 stroke-[3]" />
-      </button>
-      <button type="button" onClick={() => onSelectEvent(item.eventId)} className="min-w-0 flex-1 text-left cursor-pointer">
-        <p className="text-xs font-semibold text-slate-800 truncate">{item.title}</p>
-        <p className="text-[10px] text-slate-400 truncate">{item.eventTitle}</p>
-      </button>
-      <span
-        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-          overdue ? 'text-rose-800 bg-rose-100' : 'text-slate-500 bg-slate-100'
-        }`}
-      >
-        {overdue ? formatCompactOverdueLabel(item.dueLabel) : item.dueLabel}
-      </span>
-    </div>
-  );
-};
-
-/**
  * One week of the "Looking ahead" preview, collapsed by default to just its
- * label and item count - opening it reveals the theme-clustered cards
- * (which each open further to individual tasks). Three levels of fold in
- * total: week -> topic -> task, so the calmer, further-out weeks stay out
- * of the way until the user actually wants to look.
+ * label and item count - opening it shows that week's tasks as the same
+ * rows as This week: the task, its event, when it's due.
  */
 const WeekBucketCard: React.FC<{
   bucket: WeeklyMilestoneBucket;
   isOpen: boolean;
   onToggleOpen: () => void;
-  expandedClusterKey: string | null;
-  onToggleCluster: (key: string) => void;
   onSelectEvent: (eventId: string) => void;
   onToggleMilestoneStatus: (eventId: string, milestoneId: string) => void;
-}> = ({ bucket, isOpen, onToggleOpen, expandedClusterKey, onToggleCluster, onSelectEvent, onToggleMilestoneStatus }) => {
-  // bucket.key is "week-N" (see computeWeeklyMilestonePreview) - week 0 is
-  // "This week" and never reaches here (MyWeekAhead filters it into its own
-  // section), so N>=3 here means the bucket is showing "In 4 weeks" or
-  // later: more than 3 weeks out. Beyond that horizon, force every task
-  // into a named topic (even a topic of one) rather than a flat row, so a
-  // week 6 months away doesn't read as MORE granular/denser than the
-  // weeks right above it - the opposite of how "further out" should feel.
-  const weekIndex = Number(bucket.key.slice('week-'.length));
-  const isFarFuture = Number.isFinite(weekIndex) && weekIndex >= 3;
-
+}> = ({ bucket, isOpen, onToggleOpen, onSelectEvent, onToggleMilestoneStatus }) => {
   return (
   <div className="rounded-xl bg-white/[0.04] border border-white/10 overflow-hidden">
     <button type="button" onClick={onToggleOpen} aria-expanded={isOpen} className="w-full text-left px-3.5 py-2.5 hover:bg-white/[0.05] transition-all flex items-center gap-3 cursor-pointer">
@@ -476,30 +306,17 @@ const WeekBucketCard: React.FC<{
       <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
     </button>
 
+    {/* Opened: the same white rows as This week - task, its event (smaller)
+        and when it's due - so every task is readable at a glance. */}
     {isOpen && (
-      <div className="border-t border-white/10 p-2 space-y-2">
-        {bucket.clusters.map((cluster) => (
-          <MilestoneClusterCard
-            // A real (2+ item) cluster's identity is its theme, full stop -
-            // keying on cluster.items[0].milestoneId as well (the previous
-            // key) meant completing whichever task happened to be first in
-            // the array changed the key on every render, which made React
-            // unmount and remount the entire cluster card instead of just
-            // re-rendering it with one fewer item - from the user's side,
-            // checking off one task inside an open topic made the WHOLE
-            // topic flicker away and rebuild itself collapsed. A solo
-            // (1-item) entry has no such "membership" to destabilize the
-            // key, but multiple 'other'-theme solo entries can coexist, so
-            // it still needs the item's own id to stay unique among them.
-            key={cluster.items.length > 1 ? `theme-${cluster.theme}` : `solo-${cluster.items[0].milestoneId}`}
-            cluster={cluster}
-            isOpen={expandedClusterKey === `${bucket.key}-${cluster.theme}`}
-            onToggleOpen={() => onToggleCluster(`${bucket.key}-${cluster.theme}`)}
-            onSelectEvent={onSelectEvent}
-            onToggleMilestoneStatus={onToggleMilestoneStatus}
-            forceTopicView={isFarFuture}
-          />
-        ))}
+      <div className="border-t border-white/10 p-2">
+        <div className="bg-white rounded-lg divide-y divide-slate-100 overflow-hidden">
+          {[...bucket.items]
+            .sort((x, y) => x.diffDays - y.diffDays)
+            .map((item) => (
+              <FlatMilestoneRow key={item.milestoneId} item={item} onSelectEvent={onSelectEvent} onToggleMilestoneStatus={onToggleMilestoneStatus} />
+            ))}
+        </div>
       </div>
     )}
   </div>
@@ -515,7 +332,6 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
   onOpenScanAgenda,
   onUpdateMilestone,
 }) => {
-  const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(null);
   const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
   // What the page shows (past events and duplicate trip tasks left out);
   // updates always go to the real event data in `liveEvents`.
@@ -735,8 +551,6 @@ export const MyWeekAhead: React.FC<MyWeekAheadProps> = ({
                 bucket={bucket}
                 isOpen={expandedWeekKey === bucket.key}
                 onToggleOpen={() => setExpandedWeekKey(expandedWeekKey === bucket.key ? null : bucket.key)}
-                expandedClusterKey={expandedClusterKey}
-                onToggleCluster={(key) => setExpandedClusterKey(expandedClusterKey === key ? null : key)}
                 onSelectEvent={onSelectEvent}
                 onToggleMilestoneStatus={onToggleMilestoneStatus}
               />
