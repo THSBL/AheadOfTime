@@ -415,7 +415,76 @@ function readShowIdeas(): boolean {
  * unless hidden, its first ideas ("Compare villa rentals in Santa Eulària").
  * Nothing is saved until "Create this plan".
  */
-export const PlanCard: React.FC<{ event: CalendarEvent; referenceDateIso: string; onCreate: () => void; busy?: boolean }> = ({ event, referenceDateIso, onCreate, busy }) => {
+/** The one question about bookings: which get time to explore (and share) options first. */
+export interface StagingAsk {
+  question: string;
+  group: boolean;
+  options: { key: string; label: string }[];
+  onApply: (keys: string[]) => void;
+}
+
+const StagingQuestion: React.FC<{ ask: StagingAsk }> = ({ ask }) => {
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setPicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return (
+    <div className="rounded-xl bg-[#F2F7F5] border border-[#95BFB5]/60 p-3 space-y-2 aot-rise">
+      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Extra breathing room?</p>
+      <p className="text-xs font-bold text-slate-800 leading-snug">{ask.question}</p>
+      <p className="text-[11px] text-slate-500 leading-snug">
+        {ask.group
+          ? 'Those get an "explore & share options" step first, so everyone can weigh in before you book.'
+          : 'Those get an "explore options" step first, so you are not deciding in a rush.'}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {ask.options.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            aria-pressed={picks.has(o.key)}
+            onClick={() => toggle(o.key)}
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
+              picks.has(o.key) ? 'bg-[#182A42] text-white border-[#182A42]' : 'bg-white text-slate-700 border-slate-200 hover:border-[#95BFB5]'
+            }`}
+          >
+            {picks.has(o.key) && <Check className="w-3 h-3 inline -mt-0.5 mr-1" />}
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 pt-0.5">
+        {picks.size > 0 && (
+          <button
+            type="button"
+            onClick={() => ask.onApply([...picks])}
+            className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#182A42] text-white hover:bg-slate-800 cursor-pointer"
+          >
+            Add the steps for {picks.size === 1 ? 'this one' : `these ${picks.size}`}
+          </button>
+        )}
+        <button type="button" onClick={() => ask.onApply([])} className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline cursor-pointer">
+          No, keep it simple
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export const PlanCard: React.FC<{
+  event: CalendarEvent;
+  referenceDateIso: string;
+  onCreate: () => void;
+  busy?: boolean;
+  /** Asked before the plan is created; the card updates when it's answered. */
+  staging?: StagingAsk | null;
+  /** What the answer did ("Explore steps added for Flights & lodging"). */
+  stagingDone?: string | null;
+}> = ({ event, referenceDateIso, onCreate, busy, staging, stagingDone }) => {
   const today = referenceDateIso.slice(0, 10);
   const end = event.endDate && event.endDate !== event.eventDate ? event.endDate : undefined;
   const { start, dots, todayIso, startsToday } = planRunway(event, referenceDateIso);
@@ -485,6 +554,13 @@ export const PlanCard: React.FC<{ event: CalendarEvent; referenceDateIso: string
         ))}
       </ol>
       {showIdeas && hasIdeas && <p className="text-[11px] text-emerald-800/80 italic">Ideas to get you started: ask me to swap, add or look into any of them.</p>}
+      {staging && <StagingQuestion ask={staging} />}
+      {!staging && stagingDone && (
+        <p className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5 aot-rise">
+          <Check className="w-3.5 h-3.5 shrink-0" />
+          {stagingDone}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
         <span className="text-[11px] text-slate-500 pt-2">Anything to change? Type it below.</span>
         <button

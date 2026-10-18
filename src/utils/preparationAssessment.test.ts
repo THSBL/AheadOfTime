@@ -150,7 +150,10 @@ describe('deriveOutstandingGaps (architecture reset Phase 8)', () => {
       ms('a'),
       ms('b', { needsRefinement: true, title: 'Decide: home dinner or restaurant reservation', refinementOptions: ['Home dinner', 'Restaurant reservation'] }),
     ];
-    const gaps = deriveOutstandingGaps(milestones, noRoleGapInput);
+    const all = deriveOutstandingGaps(milestones, noRoleGapInput);
+    // A booking with open choices is also offered extra breathing room.
+    expect(all.map((g) => g.key)).toContain('staging');
+    const gaps = all.filter((g) => g.key !== 'staging');
     expect(gaps).toHaveLength(1);
     expect(gaps[0]).toMatchObject({
       key: 'b',

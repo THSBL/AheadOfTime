@@ -194,8 +194,9 @@ export function stageableBookings(event: Pick<CalendarEvent, 'title' | 'location
   const keepCase = `${event.title || ''} ${event.location || ''} ${event.context?.destination || ''}`;
   const seen = new Set<string>();
   return milestones
-    // A booking that is still an open choice is asked about on its own first.
-    .filter((m) => m.isActive !== false && isDecisionMilestone(m) && !m.needsRefinement)
+    // A booking with open choices (hotel or apartment?) counts too: the
+    // explore step is where those choices get compared.
+    .filter((m) => m.isActive !== false && isDecisionMilestone(m))
     .sort((a, b) => a.calculatedDate.localeCompare(b.calculatedDate))
     .flatMap((m) => {
       const key = stagingKey(m);

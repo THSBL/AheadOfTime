@@ -1,5 +1,5 @@
 ﻿import { AI_SETTING_EVENT, getCachedAiPlanningEnabled } from '../services/aiSettings';
-import { AckBubble, PlanCard, PlanPreview, UpdatingBubble, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
+import { AckBubble, PlanCard, PlanPreview, UpdatingBubble, type StagingAsk, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
@@ -45,6 +45,8 @@ import {
   PromptPreset
 } from '../data/samplePresets';
 import { formatDisplayDate } from '../utils/tminusRules';
+import { STAGING_GAP_KEY } from '../utils/preparationAssessment';
+import { applyStaging, type StageMode } from '../utils/decisionRunUps';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
 import { LaunchPresetModal } from './LaunchPresetModal';
@@ -297,8 +299,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     if (draftConversation.length > 0) scrollDraftToLatest();
   }, [draftConversation, isDraftLoading, refinementQuestions]);
 
+  // What the staging answer in the chat did, shown under the plan.
+  const [stagingDone, setStagingDone] = useState<string | null>(null);
   const resetDraftConversation = () => {
     setDraftConversation([]);
+    setStagingDone(null);
     setDraftEvent(null);
     setDraftReplyInput('');
     setIsDraftLoading(false);
@@ -488,6 +493,41 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       requestDraftPlan({ ...draftBrief, additions: [...(draftBrief.additions || []), trimmed] });
     }
   };
+
+  // The staging question (which bookings get time to explore and share
+  // options first), asked under the plan before it is created. Same
+  // question, keys and rules as on the plan page (preparationAssessment.ts,
+  // decisionRunUps.ts); answered here, it's gone from the plan's suggestions.
+  const stagingGap = draftEvent && !draftEvent.context?.stagingAnswered
+    ? (draftEvent.outstandingGaps || []).find((g) => g.key === STAGING_GAP_KEY && g.multiSelect && g.options && g.optionKeys)
+    : undefined;
+  const draftStagingAsk: StagingAsk | null = stagingGap && draftEvent
+    ? {
+        question: stagingGap.question,
+        group: /together with the group/i.test(stagingGap.question),
+        options: (stagingGap.options || [])
+          .map((label, i) => ({ key: stagingGap.optionKeys?.[i] || '', label }))
+          .filter((o) => o.key !== ''),
+        onApply: (keys) => {
+          const mode: StageMode = /together with the group/i.test(stagingGap.question) ? 'group' : 'headroom';
+          const withChoice: CalendarEvent = {
+            ...draftEvent,
+            context: { ...(draftEvent.context || {}), stagedBookings: Object.fromEntries(keys.map((k) => [k, mode])), stagingAnswered: true },
+          };
+          setDraftEvent({
+            ...withChoice,
+            milestones: applyStaging(withChoice, draftEvent.milestones || [], currentReferenceDate),
+            outstandingGaps: (draftEvent.outstandingGaps || []).filter((g) => g.key !== STAGING_GAP_KEY),
+          });
+          const labels = (stagingGap.options || []).filter((_, i) => keys.includes(stagingGap.optionKeys?.[i] || ''));
+          setStagingDone(
+            labels.length > 0
+              ? `Added ${mode === 'group' ? 'explore & share' : 'explore'} steps for ${labels.join(', ')}.`
+              : 'Kept simple: one step per booking.'
+          );
+        },
+      }
+    : null;
 
   const handleCreateDraftEvent = () => {
     if (!draftEvent || !onSaveEvent || isDraftLoading) return;
@@ -881,7 +921,14 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                   {/* Summary of the plan so far - nothing is saved until
                       "Create event" is tapped. */}
                   {isLatestPlanReply && draftEvent && (
-                    <PlanCard event={draftEvent} referenceDateIso={currentReferenceDate} onCreate={handleCreateDraftEvent} busy={isDraftLoading} />
+                    <PlanCard
+                      event={draftEvent}
+                      referenceDateIso={currentReferenceDate}
+                      onCreate={handleCreateDraftEvent}
+                      busy={isDraftLoading}
+                      staging={draftStagingAsk}
+                      stagingDone={stagingDone}
+                    />
                   )}
 
                   {/* The instant reply under the first message: what we read
