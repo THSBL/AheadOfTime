@@ -39,6 +39,8 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
 
 /** One writing run is about 50 seconds; a whole conversation takes a few. */
 const MAX_RUNS = 8;
+/** The shortest question worth retelling: a title or a sentence (same as the server's cleanSource). */
+const MIN_QUESTION = 30;
 
 export const AdminBlogPage: React.FC = () => {
   const navigate = useNavigate();
@@ -46,6 +48,8 @@ export const AdminBlogPage: React.FC = () => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [setup, setSetup] = useState<{ ai: boolean; reviewLinks: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which button the error belongs to: shown right under it.
+  const [errorAt, setErrorAt] = useState<'question' | 'guest'>('guest');
   // Why the page can't load at all (signed out, not an admin, server down).
   const [loadError, setLoadError] = useState<string | null>(null);
   const [writing, setWriting] = useState<string | null>(null);
@@ -74,6 +78,24 @@ export const AdminBlogPage: React.FC = () => {
   }, [load]);
 
   const drafting = rows?.find((r) => r.status === 'drafting');
+
+  // Why writing can't start, said out loud instead of a greyed-out button.
+  const blockedReason = (fromQuestion: boolean): string | null => {
+    if (loadError) return 'This page could not load your admin access - see the message above.';
+    if (!setup) return 'Still loading - try again in a second.';
+    if (!setup.ai) return 'GEMINI_API_KEY is not set in Vercel, so no posts can be written.';
+    if (fromQuestion && question.trim().length < MIN_QUESTION) return `Paste the question first: at least ${MIN_QUESTION} characters (a title or a sentence).`;
+    return null;
+  };
+  const start = (fromQuestion: boolean) => {
+    const reason = blockedReason(fromQuestion);
+    setErrorAt(fromQuestion ? 'question' : 'guest');
+    if (reason) {
+      setError(reason);
+      return;
+    }
+    void write(fromQuestion ? { question, link } : undefined);
+  };
 
   // Runs until the post is ready for review (or something stops it). With
   // a question, the first run starts a post about it; later runs carry on.
@@ -146,12 +168,18 @@ export const AdminBlogPage: React.FC = () => {
           </div>
           <textarea
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              if (error && e.target.value.trim().length >= MIN_QUESTION) setError(null);
+            }}
             rows={5}
             maxLength={6000}
             placeholder="Paste the question here (title and text)"
             className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#182A42]/30"
           />
+          {question.trim().length > 0 && question.trim().length < MIN_QUESTION && (
+            <p className="text-xs text-slate-500">A little more, please: at least {MIN_QUESTION} characters ({question.trim().length} now).</p>
+          )}
           <input
             value={link}
             onChange={(e) => setLink(e.target.value)}
@@ -160,12 +188,13 @@ export const AdminBlogPage: React.FC = () => {
           />
           <button
             type="button"
-            onClick={() => write({ question, link })}
-            disabled={Boolean(writing) || !setup?.ai || question.trim().length < 60}
+            onClick={() => start(true)}
+            disabled={Boolean(writing)}
             className="px-4 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-sm font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-default"
           >
             {writing ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenLine className="w-4 h-4" />} Write a post about this
           </button>
+          {error && errorAt === 'question' && <p className="text-sm font-semibold text-rose-700">{error}</p>}
         </section>
 
         <section className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
@@ -177,8 +206,8 @@ export const AdminBlogPage: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => write()}
-            disabled={Boolean(writing) || !setup?.ai}
+            onClick={() => start(false)}
+            disabled={Boolean(writing)}
             className="px-4 py-2.5 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-sm font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-default"
           >
             {writing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -186,7 +215,7 @@ export const AdminBlogPage: React.FC = () => {
           </button>
         </section>
 
-        {error && <p className="text-sm font-semibold text-rose-700">{error}</p>}
+        {error && errorAt === 'guest' && <p className="text-sm font-semibold text-rose-700">{error}</p>}
 
         {!rows && !error && !loadError && (
           <p className="text-sm text-slate-500 flex items-center gap-2">

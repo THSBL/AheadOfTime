@@ -986,7 +986,8 @@ export function cleanSource(text: unknown, url: unknown): { text: string; url: s
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, 6000);
-  if (clean.length < 60) return null;
+  // A title or a sentence is enough to retell (src/components/AdminBlogPage.tsx MIN_QUESTION).
+  if (clean.length < 30) return null;
   const link = typeof url === 'string' && /^https?:\/\/[^\s<>"']{3,490}$/i.test(url.trim()) ? url.trim() : null;
   return { text: clean, url: link };
 }
@@ -1002,7 +1003,7 @@ export async function handleBlogAdmin(req: any, res: any, deadline: number) {
   try {
     if (req.method === 'POST') {
       const source = cleanSource(req.body?.question, req.body?.link);
-      if (req.body?.question !== undefined && !source) return res.status(400).json({ ok: false, error: 'Paste the question itself (at least a couple of sentences).' });
+      if (req.body?.question !== undefined && !source) return res.status(400).json({ ok: false, error: 'Paste the question itself (at least a title or a sentence).' });
       const run = await runBlogEpisode({ appUrl, deadline, startNew: req.body?.startNew === true, ...(source ? { source } : {}) });
       return res.status(200).json({ ok: true, run });
     }
