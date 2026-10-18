@@ -471,7 +471,7 @@ export const RecurringUserLanding: React.FC = () => {
             content={stripeOne.copy}
             secondaryContent={stripeOne.secondary}
             contentClassName={stripeOneStyle.text}
-            ariaLabel={`This week: ${stripeOne.copy}${stripeOne.secondary ? `, ${stripeOne.secondary}` : ''}. Go to My Week Ahead.`}
+            ariaLabel={`This week: ${stripeOne.copy}${stripeOne.secondary ? `, ${stripeOne.secondary}` : ''}. Go to Week Ahead.`}
           />
 
           <StripeButton
@@ -495,7 +495,7 @@ export const RecurringUserLanding: React.FC = () => {
             eyebrowClassName="text-[#447463]"
             content={stripeTwoCopy}
             contentClassName="text-slate-800"
-            ariaLabel={`Next 30 days: ${stripeTwoCopy}. Go to Timeline & Tasks.`}
+            ariaLabel={`Next 30 days: ${stripeTwoCopy}. Go to Plans.`}
           />
 
           <StripeButton

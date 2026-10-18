@@ -1962,6 +1962,9 @@ function App() {
   // the sidebar's own buttons instead routed to /events/new, opening the
   // separate, much more basic EventCreationWizard modal. One canonical
   // "New Event" experience now, not two competing ones.
+  const tabClass = (on: boolean) =>
+    `py-2.5 text-sm font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-40 ${on ? 'text-white shadow-[inset_0_-2px_0_#95BFB5]' : 'text-slate-400 hover:text-white'}`;
+
   const handleOpenNewEventFlow = () => {
     setSelectedEventId(null);
     setActiveTab('chat');
@@ -2184,66 +2187,51 @@ function App() {
                 column happens to be showing, so switching tabs is possible
                 from the Active Events list too. */}
             {/* Not on the try-out: a guest has one thing to do here. */}
-            <div className={`lg:col-span-12 flex items-center justify-between shrink-0 ${isTrial ? 'hidden' : ''}`}>
-              <div className="flex items-center gap-1.5 p-1 bg-white/95 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
+            {/* One quiet line of words on the navy, the open one underlined in
+                mint - not three white blocks competing with the page. Fades
+                back while the New plan box is being typed in. */}
+            <div className={`lg:col-span-12 flex items-center justify-between gap-3 shrink-0 border-b border-white/10 transition-opacity duration-300 ${isTrial ? 'hidden' : ''} ${activeTab === 'chat' && isWizardInputFocused ? 'opacity-30' : ''}`}>
+              <nav aria-label="Sections" className="flex items-center gap-5 sm:gap-7">
                 <button
                   type="button"
+                  aria-current={activeTab === 'feed' ? 'page' : undefined}
                   onClick={() => {
                     setActiveTab('feed');
                     setMobileDashboardView('detail');
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                    activeTab === 'feed'
-                      ? 'bg-[#182A42] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                  }`}
+                  className={tabClass(activeTab === 'feed')}
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>My Week Ahead</span>
+                  Week Ahead
                 </button>
-
                 <button
                   type="button"
+                  aria-current={activeTab === 'tasks' ? 'page' : undefined}
                   onClick={() => {
                     if (sortedEvents.length > 0) {
                       setActiveTab('tasks');
                       setFocusMode('adjust-event');
-                      // Active Events is the starting point for a detailed
-                      // timeline, not a destination of its own - jump
-                      // straight back into whatever event was already
-                      // selected, otherwise show the picker to choose one.
+                      // Plans is the starting point for a detailed timeline,
+                      // not a destination of its own - jump straight back
+                      // into whatever plan was already selected, otherwise
+                      // show the picker to choose one.
                       setMobileDashboardView(selectedEventId ? 'detail' : 'list');
                     }
                   }}
                   disabled={sortedEvents.length === 0}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 active:scale-95 ${
-                    activeTab === 'tasks'
-                      ? 'bg-[#182A42] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                  }`}
+                  className={tabClass(activeTab === 'tasks')}
                 >
-                  <ListChecks className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Timeline &amp; Tasks</span>
-                  {sortedEvents.length > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 text-slate-700 font-bold rounded-full font-mono">
-                      {sortedEvents.length}
-                    </span>
-                  )}
+                  Plans
+                  {sortedEvents.length > 0 && <span className="ml-1.5 font-medium text-slate-500">{sortedEvents.length}</span>}
                 </button>
-
                 <button
                   type="button"
+                  aria-current={activeTab === 'chat' ? 'page' : undefined}
                   onClick={handleOpenNewEventFlow}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                    activeTab === 'chat'
-                      ? 'bg-[#182A42] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                  }`}
+                  className={tabClass(activeTab === 'chat')}
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-sky-700" />
-                  <span>Create New Event</span>
+                  New plan
                 </button>
-              </div>
+              </nav>
 
               {/* Quick actions for manual modal */}
               <div className="flex items-center gap-2">

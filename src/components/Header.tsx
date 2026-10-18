@@ -456,7 +456,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="hidden lg:inline max-w-[130px] truncate font-medium text-slate-700">
                     {currentUser.email}
                   </span>
-                  <span className="lg:hidden font-medium text-slate-700">
+                  <span className="hidden sm:inline lg:hidden font-medium text-slate-700">
                     {currentUser.name ? currentUser.name.split(' ')[0] : 'Account'}
                   </span>
                   <ChevronDown className={`w-3 h-3 text-slate-500 transition-transform ${isAccountDropdownOpen ? 'rotate-180' : ''}`} />

@@ -1,5 +1,5 @@
 ﻿import { AI_SETTING_EVENT, getCachedAiPlanningEnabled } from '../services/aiSettings';
-import { AckBubble, PlanCard, PlanPreview, UpdatingBubble, type StagingAsk, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
+import { AckBubble, PlanCard, PlanPreview, UpdatingBubble, compactRange, type StagingAsk, readMessageFacts, TRY_EXAMPLES, TRY_PLACEHOLDERS, type MessageFacts } from './chatPreview';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Loader2,
   ChevronDown,
+  ArrowRight,
 } from 'lucide-react';
 import { AgentMessage, CalendarEvent, UserEventRole, CustomPreset, OnboardingProfile, PlanningUserProfile, RefinementQuestion } from '../types';
 import { composeConversationBrief, ConversationBriefInput } from '../utils/refinementQuestions';
@@ -46,6 +47,7 @@ import {
 } from '../data/samplePresets';
 import { formatDisplayDate } from '../utils/tminusRules';
 import { STAGING_GAP_KEY } from '../utils/preparationAssessment';
+import { findPlace } from '../utils/place';
 import { applyStaging, type StageMode } from '../utils/decisionRunUps';
 import { loadCustomPresets } from '../utils/templateEngine';
 import { MySavedPresetsView } from './MySavedPresetsView';
@@ -112,12 +114,10 @@ const AiUseNotice: React.FC = () => {
     return () => window.removeEventListener(AI_SETTING_EVENT, onChange);
   }, []);
   return (
-    <p className="mt-2 px-1 text-[11px] leading-snug text-slate-400">
-      {enabled
-        ? 'To give you the best plan, what you type here is processed by AI (Google Gemini).'
-        : 'AI planning is off - plans use built-in templates, so details you add are used less.'}{' '}
-      <a href="/settings/credentials?setup=ai" className="font-semibold text-sky-300 hover:text-sky-200 underline underline-offset-2">
-        {enabled ? 'AI settings' : 'Turn AI on'}
+    <p className="px-1 text-[11px] leading-snug text-slate-500">
+      {enabled ? 'What you type is planned with AI (Google Gemini).' : 'AI planning is off: plans use built-in templates.'}{' '}
+      <a href="/settings/credentials?setup=ai" className="font-semibold text-slate-400 hover:text-white underline underline-offset-2">
+        {enabled ? 'Settings' : 'Turn AI on'}
       </a>
     </p>
   );
@@ -1267,119 +1267,144 @@ const InitialPresetsAndFreeform: React.FC<InitialPresetsAndFreeformProps> = ({
   // Folded (the try-out): one quiet button instead of the whole catalogue,
   // so the description box is the one thing on the page.
   const [templatesOpen, setTemplatesOpen] = useState(!templatesCollapsed);
+  // Typing: the box is what matters, the rest fades back.
+  const typing = isInputFocused && inputText.trim().length > 0;
+  const liveTags = React.useMemo(() => {
+    if (inputText.trim().length < 8) return [];
+    const facts = readMessageFacts(inputText, new Date().toISOString());
+    const place = findPlace(inputText);
+    return [
+      place,
+      facts.startDate ? compactRange(facts.startDate, facts.endDate) : facts.relative ? facts.relative.charAt(0).toUpperCase() + facts.relative.slice(1) : null,
+      facts.people,
+    ].filter((t): t is string => Boolean(t));
+  }, [inputText]);
   return (
-    <div className="space-y-6">
-      {/* Freeform input - moved above the preset catalogue: it's the
-          fastest path for anyone who already knows what they want to
-          type, so it shouldn't be buried below a full grid of presets. A
-          small, muted label sits above it now - without any heading at
-          all, a plain textarea reads as an unlabeled, generic input
-          rather than the start of "describe your event". */}
-      {/* The same start for everyone, signed in or trying it out. */}
-      <div className="pt-6 sm:pt-12 space-y-2 text-center sm:text-left aot-rise">
-        <h1 className="text-[34px] sm:text-5xl font-black tracking-tight text-white leading-[1.05] text-balance">What's coming up?</h1>
-        <p className="text-[15px] sm:text-base text-slate-300 leading-relaxed max-w-xl">
-          {trialIntro
-            ? 'Tell it in one sentence. You get every step, worked back from the date. Free, no sign-up.'
-            : 'Tell it in one sentence. You get every step, worked back from the date.'}
-        </p>
+    <div className="space-y-5">
+      {/* One bright thing on the page: the box. The headline is small, the
+          examples and the template link are a quiet sentence, the AI note
+          one small line; while typing, the rest fades back. The same start
+          for everyone, signed in or trying it out. */}
+      <div className={`pt-10 sm:pt-16 aot-rise transition-opacity duration-300 ${typing ? 'opacity-40' : ''}`}>
+        <h1 className="text-[28px] sm:text-4xl font-black tracking-tight text-white leading-[1.1]">What's coming up?</h1>
       </div>
-      <div className="relative z-30 space-y-2">
+      <div className="relative z-30 space-y-3">
         <form
           onSubmit={handleFreeformSubmit}
-          className={`relative isolate z-30 flex items-end gap-2 p-3 sm:p-4 rounded-2xl sm:rounded-3xl transition-all duration-300 ${
+          className={`relative isolate z-30 flex flex-col gap-3 px-4 pt-4 pb-3 rounded-[22px] bg-white transition-shadow duration-300 ${
             isInputFocused
-              ? 'bg-white border-2 border-slate-400 ring-4 ring-slate-100 shadow-md'
-              : 'bg-white border border-slate-200/90 shadow-sm'
+              ? 'shadow-[0_0_0_4px_#95BFB5,0_24px_60px_rgba(0,0,0,0.45)]'
+              : 'shadow-[0_0_0_4px_rgba(149,191,181,0.28),0_18px_40px_rgba(0,0,0,0.35)]'
           }`}
         >
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onFocus={() => {
-                setIsInputFocused(true);
-                onFocusChange?.(true);
-              }}
-              onBlur={() => {
-                setIsInputFocused(false);
-                onFocusChange?.(false);
-              }}
-              placeholder={TRY_PLACEHOLDERS[placeholderIndex]}
-              aria-label="Describe what's coming up"
-              className="w-full bg-transparent border-none outline-none focus:outline-none text-sm sm:text-base py-1 px-1 min-h-[50px] max-h-36 resize-none placeholder:text-slate-400 font-sans"
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleFreeformSubmit(e);
-                }
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 pb-0.5">
-            {/* The voice memo button recorded audio and then submitted a
-                hardcoded demo sentence, planning an event the user never
-                described (and asked for microphone access for nothing).
-                Hidden until real transcription exists. */}
-            {VOICE_INPUT_ENABLED && !inputText && (
+          <textarea
+            ref={textareaRef}
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onFocus={() => {
+              setIsInputFocused(true);
+              onFocusChange?.(true);
+            }}
+            onBlur={() => {
+              setIsInputFocused(false);
+              onFocusChange?.(false);
+            }}
+            placeholder={TRY_PLACEHOLDERS[placeholderIndex]}
+            aria-label="Describe what's coming up"
+            className="w-full bg-transparent border-none outline-none focus:outline-none text-base sm:text-lg font-medium text-[#182A42] leading-snug min-h-[78px] max-h-40 resize-none placeholder:text-slate-400 placeholder:font-normal font-sans"
+            rows={3}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleFreeformSubmit(e);
+              }
+            }}
+          />
+          {/* What the app reads while they type: place, when, who. */}
+          {liveTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" aria-live="polite">
+              {liveTags.map((t) => (
+                <span key={t} className="text-xs font-bold text-emerald-800 bg-emerald-50 rounded-full px-2.5 py-0.5">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-slate-500">
+              {inputText.trim() ? 'Enter to plan' : trialIntro ? 'Every step, worked back from the date. Free.' : 'Every step, worked back from the date'}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {/* The voice memo button recorded audio and then submitted a
+                  hardcoded demo sentence, planning an event the user never
+                  described (and asked for microphone access for nothing).
+                  Hidden until real transcription exists. */}
+              {VOICE_INPUT_ENABLED && !inputText && (
+                <button
+                  type="button"
+                  onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
+                  className={`w-11 h-11 flex items-center justify-center rounded-[14px] transition-all cursor-pointer ${
+                    isRecording ? 'bg-[#182A42] text-white animate-pulse' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-900 bg-slate-50'
+                  }`}
+                  title="Voice Memo Recording"
+                >
+                  {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
               <button
-                type="button"
-                onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
-                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
-                  isRecording ? 'bg-[#182A42] text-white animate-pulse' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-900 bg-slate-50'
+                type="submit"
+                disabled={!inputText.trim() || isLoading}
+                aria-label="Make my plan"
+                className={`w-11 h-11 flex items-center justify-center rounded-[14px] transition-all ${
+                  inputText.trim()
+                    ? 'bg-[#182A42] text-[#95BFB5] shadow-md shadow-slate-900/20 active:scale-95 hover:bg-slate-800 cursor-pointer'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                 }`}
-                title="Voice Memo Recording"
               >
-                {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                <ArrowRight className="w-[18px] h-[18px] stroke-[2.4]" />
               </button>
-            )}
-
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isLoading}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
-                inputText.trim()
-                  ? 'bg-[#182A42] text-white shadow-md shadow-slate-900/20 active:scale-95 hover:bg-slate-800'
-                  : 'bg-slate-100 text-slate-400 opacity-50 cursor-not-allowed'
-              }`}
-              title="Send Event"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            </div>
           </div>
         </form>
-        {onExample && (
-          <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
-            {TRY_EXAMPLES.map((ex) => (
+        {/* Examples as a sentence, the template link right below them. */}
+        <div className={`px-1 space-y-1.5 text-sm text-slate-400 leading-relaxed transition-opacity duration-300 ${typing ? 'opacity-40' : ''}`}>
+          {onExample && (
+            <p>
+              Try{' '}
+              {TRY_EXAMPLES.map((ex, i) => (
+                <React.Fragment key={ex.label}>
+                  <button
+                    type="button"
+                    onClick={() => onExample(ex.text)}
+                    className="text-slate-200 hover:text-white underline decoration-dotted decoration-slate-500 underline-offset-4 cursor-pointer"
+                  >
+                    {ex.label.charAt(0).toLowerCase() + ex.label.slice(1)}
+                  </button>
+                  {i < TRY_EXAMPLES.length - 2 ? ', ' : i === TRY_EXAMPLES.length - 2 ? ' or ' : ''}
+                </React.Fragment>
+              ))}
+            </p>
+          )}
+          {!templatesOpen && (
+            <p>
+              or{' '}
               <button
-                key={ex.label}
                 type="button"
-                onClick={() => onExample(ex.text)}
-                className="text-[13px] font-semibold text-slate-200 bg-white/10 hover:bg-white/15 border border-white/15 hover:border-[#95BFB5]/60 px-3 py-1.5 rounded-full transition-colors cursor-pointer"
+                onClick={() => setTemplatesOpen(true)}
+                aria-expanded={false}
+                className="text-slate-200 hover:text-white underline decoration-dotted decoration-slate-500 underline-offset-4 cursor-pointer"
               >
-                {ex.label}
+                start from a template
               </button>
-            ))}
-          </div>
-        )}
-        <AiUseNotice />
+            </p>
+          )}
+        </div>
+        <div className={`transition-opacity duration-300 ${typing ? 'opacity-40' : ''}`}>
+          <AiUseNotice />
+        </div>
       </div>
 
-      {!templatesOpen ? (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => setTemplatesOpen(true)}
-            aria-expanded={false}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-bold text-slate-200 cursor-pointer"
-          >
-            Or start from a template <ChevronDown className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ) : (
+      {templatesOpen && (
       <>
       {/* Divider - sits between the freeform input above and the preset
           catalogue below. */}
