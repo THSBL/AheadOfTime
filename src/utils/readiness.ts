@@ -393,7 +393,9 @@ export function computeSimpleAheadStatus(
       if (countdown.isOverdue) {
         overdueCount += 1;
         maxOverdueDays = Math.max(maxOverdueDays, Math.abs(countdown.diffDays));
-      } else if (countdown.diffDays <= withinDays) {
+      } else if (countdown.diffDays < withinDays) {
+        // Days 0-6: exactly what My Week Ahead lists under "This week"
+        // (computeWeeklyMilestonePreview's week 0); day 7 is next week.
         dueSoonCount += 1;
       }
     }

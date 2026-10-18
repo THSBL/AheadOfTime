@@ -531,3 +531,14 @@ describe('late-from-start: tasks the built-in planner moved to the day it planne
     expect(_isLateFromStart({ ...moved, calculatedDate: '2026-09-27' }, event)).toBe(false);
   });
 });
+
+describe('the header and the "This week" list count the same days', () => {
+  it('a task exactly 7 days out is next week in both', () => {
+    const event = makeEvent([makeMilestone({ id: 'day7', calculatedDate: '2026-09-17', status: 'pending' })]);
+    const status = computeSimpleAheadStatus([event], REF_DATE_ISO);
+    const weeks = computeWeeklyMilestonePreview([event], REF_DATE_ISO, { weeks: 4 });
+    expect(weeks.find((w) => w.key === 'week-0')).toBeUndefined();
+    expect(status.dueSoonCount).toBe(0);
+    expect(status.level).not.toBe('almost_ahead');
+  });
+});
