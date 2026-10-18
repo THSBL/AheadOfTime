@@ -6,8 +6,10 @@ import { verifyRequestUser } from './requestAuth.js';
 import { isAdminEmail } from './googleAuthVerify.js';
 import { askRefinementQuestions, processWithGemini, applyExtensiveRunUps, generateContentFast } from './agentProcessor.js';
 import { composeConversationBrief } from '../src/utils/refinementQuestions.js';
+import { parseNaturalDateRange } from '../src/utils/tminusRules.js';
 import { snapshotFromEvent, sharePlan, sharedPlanUrl, type SharedPlanSnapshot } from './sharedPlans.js';
-import { datePhrase, exampleForWeek } from './weeklyContent.js';
+import { datePhrase, exampleForWeek, spell } from './weeklyContent.js';
+import { fixedDateOccasion } from '../src/utils/occasions.js';
 import { isEmailConfigured, sendEmail } from './emailService.js';
 import { TelegramService } from './telegramService.js';
 import { drawPersona, personaLine, personaProfile, recentGuestOf, type Persona } from './blogPersonas.js';
@@ -68,6 +70,8 @@ export interface EpisodeState {
   source?: { text: string; url: string | null };
   /** That question retold in our own words, as the person to plan for. */
   retold?: { situation: string; persona: Persona };
+  /** The owner's correction from the review page ("Halloween is 31 Oct"): the post is rewritten with it. */
+  correction?: string;
 }
 
 export interface LeadTime {
@@ -239,7 +243,22 @@ export interface EpisodeDeps {
 /** Worst-case time a step may take (its model timeouts): it only starts when that much is left. */
 const STEP_MS = { retell: 20_000, request: 20_000, clarify: 16_000, answers: 20_000, plan: 40_000, share: 3_000, turn: 20_000, edit: 30_000 };
 
-const when = (p: Persona, now: Date) => datePhrase(p.scenario.weeksOut, p.scenario.nights, now);
+/**
+ * The guest's date: their occasion's own day when it has one (Halloween is
+ * on 31 October, whatever the retelling guessed), else a Saturday that many
+ * weeks out. An owner's correction with a date wins over both.
+ */
+const when = (p: Persona, now: Date, correction?: string) => {
+  const fixed = parseNaturalDateRange(correction || '', now.toISOString());
+  if (correction && fixed?.startDate) {
+    const start = new Date(`${fixed.startDate}T12:00:00Z`);
+    if (fixed.endDate && fixed.endDate !== fixed.startDate) return `from ${start.getUTCDate()} ${start.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })} to ${spell(new Date(`${fixed.endDate}T12:00:00Z`))}`;
+    return `on ${spell(start)}`;
+  }
+  const occasion = fixedDateOccasion(`${p.scenario.event} ${p.story || ''}`, now.toISOString());
+  if (occasion) return `on ${spell(new Date(`${occasion.date}T12:00:00Z`))}`;
+  return datePhrase(p.scenario.weeksOut, p.scenario.nights, now);
+};
 
 function guestBrief(p: Persona, now: Date): string {
   const life = p.story
@@ -325,10 +344,10 @@ export async function advanceEpisode(drawn: Persona, state: EpisodeState, episod
   // 1. The guest's request, as they'd type it.
   if (!s.request) {
     if (!fits(STEP_MS.request)) return { state: s, post: null };
-    const date = when(persona, deps.now);
+    const date = when(persona, deps.now, s.correction);
     const text = await deps.llm({
       system: guestBrief(persona, deps.now),
-      prompt: `You're opening a planning app's chat box to get ready for what's coming up. Write exactly what you type: one or two sentences, how you'd really type it (casual, no greeting). Include the date written exactly as "${date}". Mention one detail of your situation that matters for the planning. Don't mention any website or forum.`,
+      prompt: `You're opening a planning app's chat box to get ready for what's coming up. Write exactly what you type: one or two sentences, how you'd really type it (casual, no greeting). Include the date written exactly as "${date}". Mention one detail of your situation that matters for the planning. Don't mention any website or forum.${s.correction ? `\nThe editor corrected an earlier version; follow it: "${s.correction}"` : ''}`,
     });
     let request = cleanTurn(text, persona).slice(0, 400);
     if (!request.includes(date.replace(/^(on|from) /, ''))) request = `${request.replace(/[.\s]+$/, '')} - ${date}.`;
@@ -399,7 +418,7 @@ export async function advanceEpisode(drawn: Persona, state: EpisodeState, episod
     system: `You write short, useful posts for the Ahead Of Time blog, for people facing the same kind of thing. Plain, warm, concrete English; no filler, no marketing words, no exclamation marks. Never add a claim, number or feature that isn't in the material below. The whole post (title to limitation) stays under 300 words.`,
     prompt: `${question ? `A reader question, retold with details changed: ${s.retold?.situation}` : `The guest: ${personaLine(persona)} (${persona.householdDetail}), a fictional AI persona. Host: ${HOST.name}.`}
 Coming up: ${persona.scenario.event}.
-
+${s.correction ? `\nThe owner's correction to an earlier version (follow it): "${s.correction}"\n` : ''}
 ${appExchange(s)}
 
 The plan the app made:
@@ -809,7 +828,10 @@ function reviewBar(ep: Episode, token: string, reviewer: Reviewer | null): strin
 <textarea id="note" name="note" rows="4" maxlength="800">${esc(ep.ownerNote || '')}</textarea>
 <div class="row"><label>Your name <span>(shown as "Reviewed by")</span><input name="reviewer_name" maxlength="60" value="${esc(reviewer?.name || '')}"></label>
 <label>One line about you<input name="reviewer_bio" maxlength="140" value="${esc(reviewer?.bio || '')}" placeholder="Founder of Ahead Of Time"></label></div>
-<div class="actions">${actions}</div></form>${reply}${notes}</div>`;
+<div class="actions">${actions}</div>
+${ep.status === 'published' ? '' : `<label for="correction">Something wrong? <span>(e.g. "Halloween is on 31 October - the party is Sat 31 Oct". The plan and post are made again with this; takes a few minutes.)</span></label>
+<textarea id="correction" name="correction" rows="2" maxlength="400">${esc(ep.state.correction || '')}</textarea>
+<div class="actions">${action('redo', 'Rewrite with this correction', 'quiet')}</div>`}</form>${reply}${notes}</div>`;
 }
 
 export function renderIndexPage(posts: Episode[], appUrl: string): string {
@@ -873,6 +895,17 @@ async function setStatus(id: number, action: string, body: any = {}): Promise<Ep
     await query(`UPDATE blog_episodes SET status = 'skipped', updated_at = now() WHERE id = $1`, [id]);
   } else if (action === 'unpublish' && ep.status === 'published') {
     await query(`UPDATE blog_episodes SET status = 'review', updated_at = now() WHERE id = $1`, [id]);
+  } else if (action === 'redo' && ep.status !== 'published') {
+    // Rewrite from the guest's request on, with the owner's correction; the
+    // reader question and its retelling stay. Note and name are kept.
+    const correction = typeof body.correction === 'string' ? body.correction.replace(/\s+/g, ' ').trim().slice(0, 400) : '';
+    if (!correction) return ep;
+    const { note, reviewer } = cleanOwnerInput(body);
+    const state: EpisodeState = { transcript: [], ...(ep.state.source ? { source: ep.state.source } : {}), ...(ep.state.retold ? { retold: ep.state.retold } : {}), correction };
+    await query(
+      `UPDATE blog_episodes SET state = $2::jsonb, post = NULL, status = 'drafting', errors = 0, last_error = NULL, delivered_at = NULL, owner_note = $3, reviewer = $4::jsonb, updated_at = now() WHERE id = $1`,
+      [id, JSON.stringify(state), note, reviewer ? JSON.stringify(reviewer) : null]
+    );
   }
   return getEpisode(id);
 }
@@ -914,7 +947,7 @@ export async function handleBlog(req: any, res: any) {
         ep = await setStatus(id, action, body);
         res.statusCode = 303;
         res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('Location', action === 'publish' && ep?.status === 'published' && ep.slug ? `/blog/${ep.slug}` : `/blog/review?k=${encodeURIComponent(String(token))}`);
+        res.setHeader('Location', action === 'publish' && ep?.status === 'published' && ep.slug ? `/blog/${ep.slug}` : action === 'redo' && ep?.status === 'drafting' ? '/admin/blog?continue=1' : `/blog/review?k=${encodeURIComponent(String(token))}`);
         return res.end();
       }
       if (!ep) {

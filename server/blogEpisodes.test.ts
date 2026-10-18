@@ -375,3 +375,21 @@ describe('drawPersona', () => {
     }
   });
 });
+
+describe('the guest date follows the occasion and the owner correction', () => {
+  const halloween: Persona = { ...persona, scenario: { key: 'reader-question', event: 'a Halloween pumpkin carving gathering for 10 kids', weeksOut: 4 } };
+
+  it('Halloween is planned for 31 October, not "4 weeks out"', async () => {
+    const { state } = await advanceEpisode(halloween, { transcript: [] }, 'w', fakeDeps());
+    expect(state.request).toContain('31 October 2026');
+  });
+
+  it("an owner's correction with a date wins, and reaches the editor", async () => {
+    const prompts: string[] = [];
+    const base = fakeDeps();
+    const deps = fakeDeps({ llm: async (req) => (prompts.push(req.prompt), base.llm(req)) });
+    const { state } = await advanceEpisode(halloween, { transcript: [], correction: 'The party is on Saturday 24 October' }, 'w', deps);
+    expect(state.request).toContain('24 October 2026');
+    expect(prompts.some((p) => p.includes("owner's correction") && p.includes('24 October'))).toBe(true);
+  });
+});

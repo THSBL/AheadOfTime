@@ -77,6 +77,10 @@ export const AdminBlogPage: React.FC = () => {
     load();
   }, [load]);
 
+  // Back from "Rewrite with this correction" on the review page: carry on
+  // writing straight away (once the list shows the rewrite waiting).
+  const [autoContinue, setAutoContinue] = useState(() => new URLSearchParams(window.location.search).get('continue') === '1');
+
   const drafting = rows?.find((r) => r.status === 'drafting');
 
   // Why writing can't start, said out loud instead of a greyed-out button.
@@ -87,6 +91,14 @@ export const AdminBlogPage: React.FC = () => {
     if (fromQuestion && question.trim().length < MIN_QUESTION) return `Paste the question first: at least ${MIN_QUESTION} characters (a title or a sentence).`;
     return null;
   };
+  useEffect(() => {
+    if (!autoContinue || !rows || !setup?.ai || writing) return;
+    setAutoContinue(false);
+    window.history.replaceState(null, '', '/admin/blog');
+    if (rows.some((r) => r.status === 'drafting')) void write();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoContinue, rows, setup]);
+
   const start = (fromQuestion: boolean) => {
     const reason = blockedReason(fromQuestion);
     setErrorAt(fromQuestion ? 'question' : 'guest');

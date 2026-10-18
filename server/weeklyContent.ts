@@ -41,7 +41,7 @@ export const WEEKLY_EXAMPLES: Example[] = [
 ];
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const spell = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+export const spell = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 
 /**
  * "on 14 November 2026" or "from 28 November to 3 December 2026": a

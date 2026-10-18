@@ -15,6 +15,7 @@ import {
 } from '../types.js';
 import { inferTaskTimingLocally } from './timingAI.js';
 import { findPlace, tidyPlaceName } from './place.js';
+import { fixedDateOccasion } from './occasions.js';
 
 /**
  * Automatically detects an event category from its title, summary, or description
@@ -498,7 +499,11 @@ export function parseNaturalDateRange(
     return { startDate: s.toISOString().substring(0, 10), matchedText: matchD2[0] };
   }
 
-  return parseRelative();
+  const relative = parseRelative();
+  if (relative) return relative;
+  // A fixed-date occasion with no other date given: "Halloween party" is on 31 October.
+  const occasion = fixedDateOccasion(raw, referenceDateISO);
+  return occasion ? { startDate: occasion.date, matchedText: occasion.matchedText } : null;
 }
 
 /**
