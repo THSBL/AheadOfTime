@@ -531,7 +531,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
 
   const handleCreateDraftEvent = () => {
     if (!draftEvent || !onSaveEvent || isDraftLoading) return;
-    onSaveEvent(draftEvent);
+    // The plan page offers booking help once, now that the chat is done.
+    onSaveEvent({ ...draftEvent, context: { ...(draftEvent.context || {}), bookingHelp: 'offer' } });
     resetDraftConversation();
   };
 

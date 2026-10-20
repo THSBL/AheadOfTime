@@ -463,6 +463,11 @@ export interface OnboardingProfile {
   // Location / home base for travel distance & drive buffer estimation
   homeZipOrLocation?: string;
 
+  // Where they live (ISO code, e.g. "NL") and fly from: picks the booking
+  // help's shops and flight searches. Asked after a plan when not known.
+  country?: string;
+  homeAirport?: string;
+
   // Feeds the pet-sitter/pet-care prep milestones in tminusRules.ts
   // (travel_trip category) so trips get "Book pet sitter" style tasks
   // without the user having to mention a pet by name every time.

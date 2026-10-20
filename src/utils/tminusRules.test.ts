@@ -489,18 +489,20 @@ describe('generateHeuristicMilestones', () => {
     expect(postTrip!.calculatedDate.slice(0, 10)).toBe('2026-10-23');
   });
 
+  // A deadline that stays in the future: once it has passed, post-event
+  // tasks are dropped (past events keep only their T+ tasks) and this broke.
   it('adds a post-launch review milestone dated after the deadline for project_deadline events', () => {
     const milestones = generateHeuristicMilestones(
       { category: 'project_deadline', context: {} },
       'evt-test-launch',
-      '2026-10-15',
+      '2030-10-15',
       '19:00'
     );
     const postLaunch = milestones.find((m) => m.tMinusLabel === 'Day +3');
     expect(postLaunch).toBeDefined();
     expect(postLaunch!.title).toMatch(/review|retro/i);
     expect(postLaunch!.category).toBe('review');
-    expect(new Date(postLaunch!.calculatedDate).getTime()).toBeGreaterThan(new Date('2026-10-15').getTime());
+    expect(new Date(postLaunch!.calculatedDate).getTime()).toBeGreaterThan(new Date('2030-10-15').getTime());
   });
 });
 

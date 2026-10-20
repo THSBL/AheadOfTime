@@ -41,6 +41,7 @@ import { CatchUpCard } from './CatchUpCard';
 import { EditMilestoneModal } from './EditMilestoneModal';
 import { GoogleCalendarSync } from './GoogleCalendarSync';
 import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
+import { BookingHelp } from './BookingHelp';
 import { Runway, compactRange, planRunway, timeToGo } from './chatPreview';
 
 /** A step's title without a choice added to it ("… – Boat trip"). */
@@ -1406,6 +1407,15 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
 
       {/* Main Prep Tasks List (Review, Edit, Delete, Adjust Date) */}
       <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 bg-sky-50/20 w-full">
+        {/* Booking help, once, right after the plan was made in the chat. */}
+        {activeEvent.context?.bookingHelp === 'offer' && onUpdateEvent && (
+          <BookingHelp
+            key={activeEvent.id}
+            event={activeEvent}
+            onDone={() => onUpdateEvent({ ...activeEvent, context: { ...(activeEvent.context || {}), bookingHelp: 'done' } })}
+          />
+        )}
+
         {/* Freeform correction box: spotted something wrong or missing?
             Type it instead of hand-editing each task - this goes through
             the same conversational engine and quality guardrails as chat

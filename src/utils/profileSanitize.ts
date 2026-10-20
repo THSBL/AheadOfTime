@@ -22,6 +22,8 @@ export function sanitizeOnboardingProfile(raw: unknown): OnboardingProfile | nul
     family_structure: pick(r.family_structure, FAMILY_STRUCTURES),
     calendar_type: pick(r.calendar_type, CALENDAR_SCOPES),
     homeZipOrLocation: typeof r.homeZipOrLocation === 'string' ? r.homeZipOrLocation.trim().slice(0, 120) : undefined,
+    country: typeof r.country === 'string' && /^[A-Z]{2}$/.test(r.country) ? r.country : undefined,
+    homeAirport: typeof r.homeAirport === 'string' && r.homeAirport.trim() ? r.homeAirport.replace(/[<>"]/g, '').trim().slice(0, 60) : undefined,
     hasPet: typeof r.hasPet === 'boolean' ? r.hasPet : undefined,
     primaryCalendar: pick(r.primaryCalendar, PRIMARY_CALENDARS),
     familyStatus: pick(r.familyStatus, FAMILY_STATUSES),
