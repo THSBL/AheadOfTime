@@ -25,7 +25,7 @@
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "lucide-react": "^0.546.0",
+    "lucide-react": "^1.48.0",
     "mammoth": "^1.12.3",
     "motion": "^12.23.24",
     "papaparse": "^5.7.0",
