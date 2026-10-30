@@ -196,12 +196,12 @@ export async function setTaskDoneFromFeed(userId: string, milestoneId: string, d
 
 // ---- ICS ------------------------------------------------------------------
 
-function icsEscape(text: string): string {
+export function icsEscape(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 }
 
 /** Lines longer than 75 octets are folded (RFC 5545 3.1). */
-function fold(line: string): string {
+export function fold(line: string): string {
   const bytes = Buffer.from(line, 'utf8');
   if (bytes.length <= 75) return line;
   const parts: string[] = [];

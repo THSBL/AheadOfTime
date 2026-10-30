@@ -241,6 +241,8 @@ export interface CalendarEvent {
   refinedAt?: string;
   googleEventId?: string;
   googleEventLink?: string;
+  /** A trip's return, its own event in Google Calendar (planLink.ts fixedMoments). */
+  googleReturnEventId?: string;
   syncedToGoogleAt?: string;
   googleMilestoneCount?: number;
   macroEvent?: MacroEventData;

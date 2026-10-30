@@ -44,6 +44,10 @@ import { CalendarSetupPage } from './components/CalendarSetupPage';
 import { TrialCard } from './components/TrialCard';
 import { AdSlot } from './components/AdSlot';
 import { SharedPlanPage } from './components/SharedPlanPage';
+import { PushPlanSheet } from './components/PushPlanSheet';
+import { SharePlanDialog } from './components/SharePlanDialog';
+import { takePendingPush } from './services/pushPlan';
+import { refreshPlanLinkIfChanged } from './services/planLink';
 import { FeedbackPage } from './components/FeedbackPage';
 import { AdminFeedbackPage } from './components/AdminFeedbackPage';
 import { AdminBlogPage } from './components/AdminBlogPage';
@@ -1144,6 +1148,9 @@ function App() {
   const [isGoogleCalendarModalOpen, setIsGoogleCalendarModalOpen] = useState(false);
   // Events the Active Events push bar opened the push window with (null = the usual single/batch choice).
   const [pushPreselectIds, setPushPreselectIds] = useState<string[] | null>(null);
+  // One plan's "Add to your calendar" (PushPlanSheet) or "Share" window,
+  // opened from the chat's plan card or the try-out.
+  const [planSheet, setPlanSheet] = useState<{ kind: 'push' | 'share'; eventId: string } | null>(null);
   // "Sync now" from the update: open the sync window with every plan that
   // still has something to add, once the plans are loaded.
   useEffect(() => {
@@ -1152,6 +1159,12 @@ function App() {
     const pending = events.filter((e) => !isPlanPushed(e) && !isEventOver(e, currentReferenceDate)).map((e) => e.id);
     sp.delete('sync');
     navigate({ pathname: location.pathname, search: sp.toString() ? `?${sp}` : '' }, { replace: true });
+    // Signed in from a plan's "Add to your calendar": back to that window, for that plan.
+    const pendingPush = takePendingPush();
+    if (pendingPush && events.some((e) => e.id === pendingPush)) {
+      setPlanSheet({ kind: 'push', eventId: pendingPush });
+      return;
+    }
     if (pending.length === 0) return;
     setPushPreselectIds(pending);
     setIsGoogleCalendarModalOpen(true);
@@ -1957,6 +1970,13 @@ function App() {
     setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
   };
 
+  // A plan link (shared page, calendar feeds, chat picture) follows the
+  // plan: shortly after a plan changes, its link is brought up to date.
+  useEffect(() => {
+    const t = window.setTimeout(() => events.forEach((e) => void refreshPlanLinkIfChanged(e)), 2500);
+    return () => window.clearTimeout(t);
+  }, [events]);
+
   // Every "New Event" entry point (Header, sidebar, the tab itself) lands
   // on the same rich chat/presets creation flow - previously Header's and
   // the sidebar's own buttons instead routed to /events/new, opening the
@@ -2171,6 +2191,8 @@ function App() {
                   setMobileDashboardView('detail');
                   window.setTimeout(() => window.dispatchEvent(new Event('aot_open_plan_correction')), 50);
                 }}
+                onPush={() => trialPlan && setPlanSheet({ kind: 'push', eventId: trialPlan.id })}
+                onShare={() => trialPlan && setPlanSheet({ kind: 'share', eventId: trialPlan.id })}
               />
             </div>
           )}
@@ -2428,6 +2450,14 @@ function App() {
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     onSaveEvent={handleSaveManualEvent}
+                    onAddDraftToCalendar={(draft) => {
+                      handleSaveManualEvent(draft);
+                      setPlanSheet({ kind: 'push', eventId: draft.id });
+                    }}
+                    onShareDraft={(draft) => {
+                      handleSaveManualEvent(draft);
+                      setPlanSheet({ kind: 'share', eventId: draft.id });
+                    }}
                     onIntakeOptionSelect={handleIntakeOptionSelect}
                     onBatchIntakeSubmit={handleBatchIntakeSubmit}
                     onSelectVariable={handleSelectVariable}
@@ -2563,6 +2593,22 @@ function App() {
           eventTitle={targetEventForMilestone.title}
         />
       )}
+
+      {/* One plan: add to a calendar, or share */}
+      {planSheet && (() => {
+        const sheetEvent = events.find((e) => e.id === planSheet.eventId);
+        if (!sheetEvent) return null;
+        return planSheet.kind === 'push' ? (
+          <PushPlanSheet
+            event={sheetEvent}
+            onUpdateEvent={handleUpdateEvent}
+            onClose={() => setPlanSheet(null)}
+            onShare={() => setPlanSheet({ kind: 'share', eventId: sheetEvent.id })}
+          />
+        ) : (
+          <SharePlanDialog event={sheetEvent} onClose={() => setPlanSheet(null)} />
+        );
+      })()}
 
       {/* Google Calendar Sync Modal */}
       {isGoogleCalendarModalOpen && (
@@ -2833,6 +2879,8 @@ export default function AppWithRouter() {
           <Route path="/try" element={<App />} />
           {/* A plan someone shared: read-only, public. */}
           <Route path="/p/:token" element={<SharedPlanPage />} />
+          {/* The same page when the server couldn't add the link preview tags (server/sharedPlans.ts). */}
+          <Route path="/shared/:token" element={<SharedPlanPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/faq" element={<FaqPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />

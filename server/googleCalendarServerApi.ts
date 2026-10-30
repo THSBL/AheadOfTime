@@ -7,6 +7,7 @@ import {
   type MilestoneSyncFormat,
 } from '../src/services/googleCalendar.js';
 import type { CalendarEvent } from '../src/types.js';
+import { cleanReminderPrefs } from '../src/utils/planLink.js';
 
 /**
  * "Push to Cal" and "Scan agenda" run on the server with the refresh token
@@ -78,8 +79,14 @@ export async function handleCalendarPush(userId: string, method: string, body: a
 
   const timeZone = isValidTimeZone(body?.timeZone) ? body.timeZone : 'Europe/Amsterdam';
   const milestoneFormat = MILESTONE_FORMATS.includes(body?.milestoneFormat) ? body.milestoneFormat : 'tasks_only';
+  // Timed reminders: the user's hour and length (cleanReminderPrefs keeps them sane).
+  const reminders = cleanReminderPrefs({ style: 'events', time: body?.reminderTime, minutes: body?.reminderMinutes });
   try {
-    const result = await syncEventToGoogleCalendar(accessToken, event, timeZone, { milestoneFormat });
+    const result = await syncEventToGoogleCalendar(accessToken, event, timeZone, {
+      milestoneFormat,
+      reminderTime: reminders.time,
+      reminderMinutes: reminders.minutes,
+    });
     return { status: 200, body: { ok: true, result } };
   } catch (err: any) {
     // A grant Google no longer honours behaves like no grant at all, so the

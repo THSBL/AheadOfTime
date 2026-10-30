@@ -50,12 +50,13 @@ async function readResponse<T>(res: Response): Promise<T> {
 export async function pushEventViaServer(
   event: CalendarEvent,
   timeZone: string,
-  milestoneFormat: MilestoneSyncFormat
+  milestoneFormat: MilestoneSyncFormat,
+  reminder?: { time: string; minutes: number }
 ): Promise<SyncResult> {
   const res = await fetch('/api/auth/google/calendar-push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ event, timeZone, milestoneFormat }),
+    body: JSON.stringify({ event, timeZone, milestoneFormat, reminderTime: reminder?.time, reminderMinutes: reminder?.minutes }),
     cache: 'no-store',
   });
   const data = await readResponse<{ result: SyncResult }>(res);

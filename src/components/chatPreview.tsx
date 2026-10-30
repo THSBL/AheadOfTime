@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, ChevronDown, Sparkles } from 'lucide-react';
+import { CalendarPlus, Check, ChevronDown, Share2, Sparkles } from 'lucide-react';
 import { detectEventCategory, parseNaturalDateRange, formatDisplayDate } from '../utils/tminusRules';
 import type { CalendarEvent, EventCategory } from '../types';
 import { isAwayFromHomeEvent } from '../utils/refinementQuestions';
@@ -479,12 +479,16 @@ export const PlanCard: React.FC<{
   event: CalendarEvent;
   referenceDateIso: string;
   onCreate: () => void;
+  /** "Add to calendar": the plan is saved and its push window opens (PushPlanSheet). */
+  onAddToCalendar?: () => void;
+  /** "Share": the plan is saved and its share window opens (SharePlanDialog). */
+  onShare?: () => void;
   busy?: boolean;
   /** Asked before the plan is created; the card updates when it's answered. */
   staging?: StagingAsk | null;
   /** What the answer did ("Explore steps added for Flights & lodging"). */
   stagingDone?: string | null;
-}> = ({ event, referenceDateIso, onCreate, busy, staging, stagingDone }) => {
+}> = ({ event, referenceDateIso, onCreate, onAddToCalendar, onShare, busy, staging, stagingDone }) => {
   const today = referenceDateIso.slice(0, 10);
   const end = event.endDate && event.endDate !== event.eventDate ? event.endDate : undefined;
   const { start, dots, todayIso, startsToday } = planRunway(event, referenceDateIso);
@@ -561,18 +565,55 @@ export const PlanCard: React.FC<{
           {stagingDone}
         </p>
       )}
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
-        <span className="text-[11px] text-slate-500 pt-2">Anything to change? Type it below.</span>
-        <button
-          type="button"
-          onClick={onCreate}
-          disabled={busy}
-          className="mt-2 shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Check className="w-3.5 h-3.5" />
-          <span>Create this plan</span>
-        </button>
-      </div>
+      {onAddToCalendar && onShare ? (
+        <div className="space-y-1.5 pt-3 border-t border-slate-100">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onAddToCalendar}
+              disabled={busy}
+              className="min-h-11 rounded-xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] text-[13px] font-black flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CalendarPlus className="w-4 h-4" />
+              <span>Add to calendar</span>
+            </button>
+            <button
+              type="button"
+              onClick={onShare}
+              disabled={busy}
+              className="min-h-11 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white text-[13px] font-extrabold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Share</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-600 text-center">Only this plan. No account needed to share.</p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-slate-500">Anything to change? Type it below.</span>
+            <button
+              type="button"
+              onClick={onCreate}
+              disabled={busy}
+              className="shrink-0 text-[11px] font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 cursor-pointer disabled:opacity-50"
+            >
+              Just save it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+          <span className="text-[11px] text-slate-500 pt-2">Anything to change? Type it below.</span>
+          <button
+            type="button"
+            onClick={onCreate}
+            disabled={busy}
+            className="mt-2 shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#182A42] hover:bg-slate-800 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>Create this plan</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

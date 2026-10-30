@@ -79,7 +79,11 @@ interface ChatConsoleProps {
   messages: AgentMessage[];
   onSendMessage: (text: string, isVoiceMemo?: boolean, audioBlob?: Blob) => void;
   onSaveEvent?: (event: CalendarEvent) => void;
-  onIntakeOptionSelect: (eventId: string, questionId: string, paramKey: string, optionValue: string) => void;
+  /** The plan card's "Add to calendar": saves the plan and opens its push window. */
+  onAddDraftToCalendar?: (event: CalendarEvent) => void;
+  /** The plan card's "Share": saves the plan and opens its share window. */
+  onShareDraft?: (event: CalendarEvent) => void;
+  onIntakeOptionSelect:(eventId: string, questionId: string, paramKey: string, optionValue: string) => void;
   onBatchIntakeSubmit?: (eventId: string, answers: Record<string, { paramKey: string, value: string, label: string }>) => void;
   onSelectVariable?: (eventId: string, key: string, value: any, label: string) => void;
   onToggleMilestoneStatus?: (eventId: string, milestoneId: string) => void;
@@ -130,6 +134,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   messages,
   onSendMessage,
   onSaveEvent,
+  onAddDraftToCalendar,
+  onShareDraft,
   onIntakeOptionSelect,
   onBatchIntakeSubmit,
   onSelectVariable,
@@ -535,6 +541,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     resetDraftConversation();
   };
 
+  // "Add to calendar" / "Share": the plan is saved, then its own window opens.
+  const handleDraftAction = (action?: (event: CalendarEvent) => void) => {
+    if (!draftEvent || !action || isDraftLoading) return;
+    action(draftEvent);
+    resetDraftConversation();
+  };
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const whoInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -925,6 +938,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                       event={draftEvent}
                       referenceDateIso={currentReferenceDate}
                       onCreate={handleCreateDraftEvent}
+                      onAddToCalendar={onAddDraftToCalendar ? () => handleDraftAction(onAddDraftToCalendar) : undefined}
+                      onShare={onShareDraft ? () => handleDraftAction(onShareDraft) : undefined}
                       busy={isDraftLoading}
                       staging={draftStagingAsk}
                       stagingDone={stagingDone}

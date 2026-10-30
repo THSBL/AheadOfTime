@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, MessageSquareText, Sparkles } from 'lucide-react';
+import { CalendarCheck, MessageSquareText, Share2, Sparkles } from 'lucide-react';
 import type { CalendarEvent } from '../types';
 import { saveTrialPlan } from '../services/accountManager';
 import { openSignIn } from './SignInModal';
@@ -29,9 +29,13 @@ interface TrialCardProps {
   plan: CalendarEvent | null;
   /** Back to the chat to say what should change. */
   onAdjust: () => void;
+  /** "Add to my calendar": the plan's own push window (PushPlanSheet). */
+  onPush?: () => void;
+  /** "Share": the plan's share window, no account needed. */
+  onShare?: () => void;
 }
 
-export const TrialCard: React.FC<TrialCardProps> = ({ plan, onAdjust }) => {
+export const TrialCard: React.FC<TrialCardProps> = ({ plan, onAdjust, onPush, onShare }) => {
   const navigate = useNavigate();
   const [rating, setRating] = useState<Rating | null>(null);
   const [choosingCalendar, setChoosingCalendar] = useState(false);
@@ -113,7 +117,35 @@ export const TrialCard: React.FC<TrialCardProps> = ({ plan, onAdjust }) => {
           </div>
         )}
 
-        {happy && !choosingCalendar && (
+        {happy && onPush && (
+          <div className="pt-1 space-y-1.5">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  trackButtonClick('Add to my calendar', 'trial');
+                  onPush();
+                }}
+                className="py-3 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] font-black text-sm shadow-sm inline-flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <CalendarCheck className="w-4 h-4" /> Add to calendar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  trackButtonClick('Share', 'trial');
+                  onShare?.();
+                }}
+                className="py-3 rounded-2xl bg-[#182A42] hover:bg-slate-800 text-white font-extrabold text-sm shadow-sm inline-flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Share2 className="w-4 h-4" /> Share
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 text-center">Only this plan. No account needed to share.</p>
+          </div>
+        )}
+
+        {happy && !onPush && !choosingCalendar && (
           <div className="pt-1 space-y-1.5">
             <button
               type="button"

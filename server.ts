@@ -1457,6 +1457,14 @@ app.get("/blog-sitemap.xml", (req: Request, res: Response) => {
 });
 // Twin of api/auth/google/index.ts action=shared-plan.
 app.all("/api/plan/shared", (req: Request, res: Response) => handleSharedPlans(req, res));
+app.get("/api/plan/feed/:token", (req: Request, res: Response) => {
+  req.query = { ...req.query, feed: req.params.token };
+  return handleSharedPlans(req, res);
+});
+app.get("/api/plan/image/:token", (req: Request, res: Response) => {
+  req.query = { ...req.query, image: req.params.token };
+  return handleSharedPlans(req, res);
+});
 // Twin of api/auth/google/index.ts action=delete-account.
 app.all("/api/auth/account", (req: Request, res: Response) => handleAccountDeletion(req, res));
 
@@ -1646,9 +1654,20 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: "spa",
     });
+    // A shared plan's page, with its link preview tags (twin of the /p/:token rewrite).
+    app.get("/p/:token", (req: Request, res: Response) => {
+      req.query = { ...req.query, page: req.params.token };
+      return handleSharedPlans(req, res, {
+        loadShell: async () => vite.transformIndexHtml(req.originalUrl, fs.readFileSync(path.join(process.cwd(), "index.html"), "utf8")),
+      });
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    app.get("/p/:token", (req: Request, res: Response) => {
+      req.query = { ...req.query, page: req.params.token };
+      return handleSharedPlans(req, res, { loadShell: async () => fs.readFileSync(path.join(distPath, "app.html"), "utf8") });
+    });
     app.use(express.static(distPath));
     app.get("*", (_req: Request, res: Response) => {
       // App routes get the empty shell (app.html, written by

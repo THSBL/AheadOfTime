@@ -477,7 +477,7 @@ describe('generateHeuristicMilestones', () => {
 
   it('dates the post-trip follow-up off the return/end date, not the departure date, for multi-day trips', () => {
     const milestones = generateHeuristicMilestones(
-      { category: 'travel_trip', title: 'Trip to Paris', endDate: '2026-10-22', context: {} },
+      { category: 'travel_trip', title: 'Trip to Paris', endDate: '2026-10-22', context: { referenceDate: REF_DATE_ISO } },
       'evt-test-posttrip-enddate',
       '2026-10-15',
       '19:00'
@@ -491,7 +491,7 @@ describe('generateHeuristicMilestones', () => {
 
   it('adds a post-launch review milestone dated after the deadline for project_deadline events', () => {
     const milestones = generateHeuristicMilestones(
-      { category: 'project_deadline', context: {} },
+      { category: 'project_deadline', context: { referenceDate: REF_DATE_ISO } },
       'evt-test-launch',
       '2026-10-15',
       '19:00'

@@ -39,7 +39,7 @@ import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStart, isPastEventTask, spreadCatchUpDates } from '../utils/readiness';
 import { CatchUpCard } from './CatchUpCard';
 import { EditMilestoneModal } from './EditMilestoneModal';
-import { GoogleCalendarSync } from './GoogleCalendarSync';
+import { PushPlanSheet } from './PushPlanSheet';
 import { PreparationLevelSwitcher } from './PreparationLevelSwitcher';
 import { Runway, compactRange, planRunway, timeToGo } from './chatPreview';
 
@@ -1896,18 +1896,17 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
         />
       )}
 
-      {/* Push to Google Calendar Modal */}
+      {/* Add this plan to a calendar (only this plan) */}
       {isPushModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto">
-            <GoogleCalendarSync
-              events={events}
-              selectedEventId={activeEvent.id}
-              onUpdateEvent={onUpdateEvent}
-              onClose={() => setIsPushModalOpen(false)}
-            />
-          </div>
-        </div>
+        <PushPlanSheet
+          event={activeEvent}
+          onUpdateEvent={onUpdateEvent}
+          onClose={() => setIsPushModalOpen(false)}
+          onShare={() => {
+            setIsPushModalOpen(false);
+            setIsShareOpen(true);
+          }}
+        />
       )}
 
     </div>

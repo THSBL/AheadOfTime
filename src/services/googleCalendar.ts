@@ -1,6 +1,7 @@
 import { CalendarEvent, TMinusMilestone } from '../types.js';
 import { createGoogleTask, deleteGoogleTask, fetchGoogleTasks, updateGoogleTaskStatus, GoogleTaskItem } from './googleTasks.js';
 import { extractDateOnly, formatStartEndDateTime, formatMilestoneCalendarTitle } from '../utils/googleSyncFormat.js';
+import { fixedMoments } from '../utils/planLink.js';
 // Re-exported so existing importers of these helpers keep working; the implementations
 // live in utils/googleSyncFormat.ts so the server's background push can share them.
 export { extractDateOnly, formatStartEndDateTime, formatMilestoneCalendarTitle };
@@ -247,6 +248,9 @@ export interface SyncOptions {
   milestoneFormat?: MilestoneSyncFormat;
   createCalendarBlocksForMilestones?: boolean;
   taskListId?: string;
+  /** 'timed' reminders: start (HH:mm) and length, the user's choice (PushPlanSheet). */
+  reminderTime?: string;
+  reminderMinutes?: number;
 }
 
 const MILESTONE_SYNC_FORMAT_KEY = 'aot_milestone_sync_format';
@@ -281,7 +285,9 @@ export function buildMilestoneCalendarPayload(
   eventTitle: string,
   dateOnly: string,
   timeZone: string,
-  isTimed: boolean = false
+  isTimed: boolean = false,
+  reminderTime: string = '09:00',
+  reminderMinutes: number = 30
 ) {
   const cleanTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
   const isOverdue = milestone.status === 'pending' && new Date(`${dateOnly}T23:59:59`) < new Date();
@@ -303,18 +309,19 @@ export function buildMilestoneCalendarPayload(
 
   const description = `Checklist for ${eventTitle}:\n${checklistItems}\n\n--\nPlanned with Ahead Of Time`;
   const nextDay = getNextDayDate(dateOnly);
-  const timedData = isTimed ? formatStartEndDateTime(dateOnly, '09:00', 30) : null;
+  const timedData = isTimed ? formatStartEndDateTime(dateOnly, reminderTime, reminderMinutes) : null;
 
   return {
     summary,
     description,
     start: isTimed ? { dateTime: timedData?.startDateTime, timeZone } : { date: dateOnly },
     end: isTimed ? { dateTime: timedData?.endDateTime, timeZone } : { date: nextDay },
-    transparency: 'transparent',
+    // A timed reminder is time the user set aside: it shows as busy.
+    transparency: isTimed ? 'opaque' : 'transparent',
     reminders: {
       useDefault: false,
       overrides: [
-        { method: 'popup' as const, minutes: 540 },
+        { method: 'popup' as const, minutes: isTimed ? 10 : 540 },
       ],
     },
     // Lets a milestone event be identified reliably (e.g. by
@@ -361,7 +368,8 @@ export async function pushSingleMilestoneToGoogleCalendar(
   const taskNotes = `Checklist for ${eventTitle}:\n${taskChecklist}\n\n--\nPlanned with Ahead Of Time`;
 
   const isOverdue = milestone.status === 'pending' && new Date(`${dateOnly}T23:59:59`) < new Date();
-  try {
+  // Timed reminders replace the task: the user chose events, not tasks.
+  if (options?.milestoneFormat !== 'timed') try {
     const taskRes = await createGoogleTask(accessToken, {
       title: formatMilestoneCalendarTitle(milestone.title, eventTitle, dateOnly, {
         isOverdue,
@@ -384,7 +392,9 @@ export async function pushSingleMilestoneToGoogleCalendar(
       eventTitle,
       dateOnly,
       timeZone,
-      isTimed
+      isTimed,
+      options?.reminderTime,
+      options?.reminderMinutes
     );
 
     try {
@@ -433,17 +443,19 @@ export async function syncEventToGoogleCalendar(
 
   const createCalBlocks = options?.createCalendarBlocksForMilestones || options?.milestoneFormat === 'all_day' || options?.milestoneFormat === 'timed';
 
-  // 1. Create or verify Main Event on the Primary Calendar
+  // 1. Create or verify Main Event on the Primary Calendar. The plan's
+  // fixed moments are events (a trip: its departure here, its return below).
   const eventDateOnly = extractDateOnly(event.eventDate);
   const timeStr = event.eventTime || '19:00';
   const { startDateTime, endDateTime } = formatStartEndDateTime(eventDateOnly, timeStr, 120);
+  const moments = fixedMoments(event);
 
   if (event.googleEventId && !event.googleEventId.startsWith('local_')) {
     result.mainEventId = event.googleEventId;
     result.mainEventLink = event.googleEventLink;
   } else {
     const mainEventBody = {
-      summary: `🎯 ${event.title}`,
+      summary: `🎯 ${moments[0]?.title || event.title}`,
       description: `Target Event organized with Ahead Of Time.\nCategory: ${event.category}\n\nPreparation Countdown:\n${
         event.milestones?.filter((m) => m.isActive !== false).map((m) => `• ${m.tMinusLabel} (Due ${extractDateOnly(m.calculatedDate)}): ${m.title}`).join('\n') || 'None'
       }`,
@@ -491,6 +503,37 @@ export async function syncEventToGoogleCalendar(
     }
   }
 
+  // A trip's return is an event of its own.
+  const returnMoment = moments.find((m) => m.key === 'return');
+  let returnEventId = event.googleReturnEventId;
+  if (returnMoment && !returnEventId) {
+    const timed = returnMoment.time ? formatStartEndDateTime(returnMoment.date, returnMoment.time, 60) : null;
+    try {
+      const resReturn = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary: `🎯 ${returnMoment.title}`,
+          description: 'Planned with Ahead Of Time',
+          location: event.location || '',
+          start: timed ? { dateTime: timed.startDateTime, timeZone } : { date: returnMoment.date },
+          end: timed ? { dateTime: timed.endDateTime, timeZone } : { date: getNextDayDate(returnMoment.date) },
+          reminders: { useDefault: false, overrides: [{ method: 'popup' as const, minutes: 1440 }] },
+        }),
+      });
+      if (resReturn.ok) {
+        returnEventId = (await resReturn.json()).id;
+        result.totalSynced += 1;
+        result.newItemsCount += 1;
+      }
+    } catch (err) {
+      console.error('Error creating the return event on Google Calendar:', err);
+    }
+  }
+
+  // Events instead of tasks: the user chose timed reminders, so no Google Tasks.
+  const useTasks = options?.milestoneFormat !== 'timed';
+
   // 2. Create All T-Minus Milestones as Google Tasks (and optionally calendar blocks)
   const updatedMilestones: TMinusMilestone[] = [];
 
@@ -507,9 +550,9 @@ export async function syncEventToGoogleCalendar(
       // Skip milestones already pushed in a previous sync - re-pushing
       // everything on every sync duplicated the whole task list each time
       // a single new milestone was added, instead of only adding the new one.
-      if (msTaskId) {
+      if (msTaskId || (!useTasks && msCalId)) {
         result.totalSynced += 1;
-      } else {
+      } else if (useTasks) {
       const cleanMsTitle = milestone.title.replace(/^AheadOfTime:\s*/i, '').trim();
       let taskChecklist = '';
       if (milestone.deliverables && milestone.deliverables.length > 0) {
@@ -557,7 +600,9 @@ export async function syncEventToGoogleCalendar(
             event.title,
             msDateOnly,
             timeZone,
-            isTimed
+            isTimed,
+            options?.reminderTime,
+            options?.reminderMinutes
           );
 
           const resMs = await fetch(
@@ -595,6 +640,7 @@ export async function syncEventToGoogleCalendar(
     ...event,
     googleEventId: result.mainEventId || event.googleEventId,
     googleEventLink: result.mainEventLink || event.googleEventLink,
+    ...(returnEventId ? { googleReturnEventId: returnEventId } : {}),
     syncedToGoogleAt: new Date().toISOString(),
     googleMilestoneCount: updatedMilestones.length,
     milestones: updatedMilestones.length > 0 ? updatedMilestones : event.milestones,
@@ -626,6 +672,15 @@ export async function deleteEventFromGoogleCalendar(
       deletedCalendarEvents++;
     } catch (e) {
       console.warn('Could not delete main event by direct ID:', e);
+      failures++;
+    }
+  }
+  if (shouldDeleteMain && event.googleReturnEventId) {
+    try {
+      await deleteGoogleCalendarEvent(accessToken, event.googleReturnEventId);
+      deletedCalendarEvents++;
+    } catch (e) {
+      console.warn('Could not delete the return event by direct ID:', e);
       failures++;
     }
   }

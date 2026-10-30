@@ -102,6 +102,18 @@
       "destination": "/api/auth/google?action=shared-plan"
     },
     {
+      "source": "/api/plan/feed/:token",
+      "destination": "/api/auth/google?action=shared-plan&feed=:token"
+    },
+    {
+      "source": "/api/plan/image/:token",
+      "destination": "/api/auth/google?action=shared-plan&image=:token"
+    },
+    {
+      "source": "/p/:token",
+      "destination": "/api/auth/google?action=shared-plan&page=:token"
+    },
+    {
       "source": "/blog",
       "destination": "/api/auth/google?action=blog"
     },
