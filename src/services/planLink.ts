@@ -105,7 +105,8 @@ export function stepsForPeople(event: CalendarEvent, settings: Pick<PlanLinkSett
   const everyone = new Set(settings.everyone);
   return activeSteps(event)
     .filter((m) => settings.audience === 'all' || everyone.has(m.id))
-    .map((m) => ({ id: m.id, title: m.title, date: m.calculatedDate.slice(0, 10), done: m.status === 'completed' }));
+    // Guests do their own part: the owner's ticks aren't theirs (server/sharedPlans.ts publicView).
+    .map((m) => ({ id: m.id, title: m.title, date: m.calculatedDate.slice(0, 10), done: settings.audience === 'all' && m.status === 'completed' }));
 }
 
 const today = () => new Date().toISOString().slice(0, 10);

@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, CheckCircle2, Copy, Info, Loader2, Share2, X } from 'lucide-react';
 import type { CalendarEvent } from '../types';
-import { activeSteps, fixedMoments, shortDay, webcalUrl, type ReminderPrefs } from '../utils/planLink';
+import { activeSteps, fixedMoments, outlookSubscribeLink, shortDay, webcalUrl, type ReminderPrefs } from '../utils/planLink';
 import { getReminderPrefs, pushPlanToGoogle, setPendingPush, setReminderPrefs } from '../services/pushPlan';
+import { describePlanSync, planSyncPending, planSyncStatus } from '../utils/googleSyncPlan';
 import { savePlanFeed } from '../services/planLink';
 import { isAuthErrorMessage, clearGoogleSession } from '../services/googleAuth';
 import { ReminderStyleCards } from './ReminderStyleCards';
+import { FollowHelp } from './FollowHelp';
 import { openSignIn } from './SignInModal';
 import { trackEvent } from '../services/analytics';
 import { getCurrentUser } from '../services/accountManager';
@@ -58,7 +60,7 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
   const [prefs, setPrefs] = useState<ReminderPrefs>(getReminderPrefs);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<null | { app: CalendarApp; link?: string }>(null);
+  const [done, setDone] = useState<null | { app: CalendarApp; link?: string; added?: number; updated?: number; removed?: number; wasUpdate?: boolean }>(null);
   const [feedUrl, setFeedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -100,6 +102,13 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
     prefs.style === 'tasks'
       ? `${plural(steps.length, 'task', 'tasks')} + ${plural(moments.length, 'event', 'events')}`
       : plural(steps.length + moments.length, 'event', 'events');
+  // Already in Google: this is an update - say what changes, not the whole plan again.
+  const syncStatus = planSyncStatus(
+    event,
+    prefs.style === 'events' ? { format: 'timed', time: prefs.time, minutes: prefs.minutes } : { format: 'tasks_only' }
+  );
+  const isUpdate = syncStatus.pushedBefore && !syncStatus.eventMissing;
+  const changeCount = planSyncPending(syncStatus);
 
   const pushGoogle = async () => {
     if (!isSignedIn) {
@@ -114,8 +123,15 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
       const result = await pushPlanToGoogle(event, prefs);
       if (result.updatedEvent) onUpdateEvent?.(result.updatedEvent);
       if (result.error && !result.updatedEvent?.googleEventId) throw new Error(result.error);
-      trackEvent('plan_pushed', { app: 'google', style: prefs.style });
-      setDone({ app: 'google', link: result.mainEventLink });
+      trackEvent(isUpdate ? 'plan_sync_updated' : 'plan_pushed', { app: 'google', style: prefs.style });
+      setDone({
+        app: 'google',
+        link: result.mainEventLink,
+        added: result.newItemsCount,
+        updated: result.updatedItemsCount || 0,
+        removed: result.removedItemsCount || 0,
+        wasUpdate: isUpdate,
+      });
     } catch (err: any) {
       if (isAuthErrorMessage(err)) {
         clearGoogleSession();
@@ -157,7 +173,7 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
     if (app === 'apple') {
       window.location.href = webcalUrl(url);
     } else if (app === 'outlook') {
-      const outlook = `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(url)}&name=${encodeURIComponent(event.title)}`;
+      const outlook = outlookSubscribeLink(url, event.title);
       if (outlookWindow) outlookWindow.location.href = outlook;
       else window.open(outlook, '_blank');
     }
@@ -193,7 +209,9 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
         className="relative w-full sm:max-w-md max-h-[92vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 text-slate-800 space-y-4"
       >
         <div className="flex items-center justify-between">
-          <h2 id="push-plan-title" className="text-lg font-black text-[#182A42]">{done ? 'In your calendar' : 'Add to your calendar'}</h2>
+          <h2 id="push-plan-title" className="text-lg font-black text-[#182A42]">
+            {done ? (done.wasUpdate ? 'Calendar updated' : 'In your calendar') : isUpdate && app === 'google' ? 'Update your calendar' : 'Add to your calendar'}
+          </h2>
           <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 -mr-2 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 cursor-pointer">
             <X className="w-5 h-5" />
           </button>
@@ -206,7 +224,20 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
               <p className="text-sm text-slate-700">
                 <b>{event.title}</b>, and only that.
               </p>
-              {done.app === 'google' ? (
+              {done.app === 'google' && done.wasUpdate ? (
+                <ul className="text-sm space-y-1.5">
+                  {[
+                    done.added ? `${done.added} added` : '',
+                    done.updated ? `${done.updated} updated with the new details` : '',
+                    done.removed ? `${done.removed} no longer in the plan, removed` : '',
+                  ]
+                    .filter(Boolean)
+                    .map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  {!done.added && !done.updated && !done.removed && <li>Everything was already up to date.</li>}
+                </ul>
+              ) : done.app === 'google' ? (
                 <ul className="text-sm space-y-1.5">
                   <li>
                     <b>{prefs.style === 'tasks' ? plural(steps.length, 'task', 'tasks') : plural(steps.length, 'reminder', 'reminders')}</b>{' '}
@@ -217,10 +248,13 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
                   </li>
                 </ul>
               ) : (
-                <p className="text-sm text-slate-700">Your calendar app takes it from here: say yes when it asks to subscribe.</p>
+                <>
+                  <p className="text-sm text-slate-700">Your calendar app takes it from here: say yes when it asks to subscribe.</p>
+                  {(done.app === 'apple' || done.app === 'outlook') && <FollowHelp app={done.app} title={event.title} />}
+                </>
               )}
               <p className="text-xs text-slate-500">
-                {done.app === 'google' ? 'Change the plan here and press Sync again to update your calendar.' : 'Change the plan here and your calendar follows by itself.'}
+                {done.app === 'google' ? 'Change the plan again later? Press Update & sync plan and your calendar follows.' : 'Change the plan here and your calendar follows by itself.'}
               </p>
               {done.app === 'google' && (
                 <a href={done.link || 'https://calendar.google.com'} target="_blank" rel="noreferrer" className="flex items-center justify-center min-h-11 rounded-xl border border-[#182A42] text-[#182A42] text-sm font-extrabold">
@@ -276,18 +310,32 @@ export const PushPlanSheet: React.FC<PushPlanSheetProps> = ({ event, onClose, on
 
             {app === 'google' ? (
               <div className="space-y-2 pt-1">
-                <p className="text-xs text-slate-700 text-center">
-                  <b>{summary}</b> in your main Google Calendar
-                </p>
+                {isUpdate ? (
+                  <p className="text-xs text-slate-700 text-center">
+                    {changeCount > 0 || syncStatus.legacyCleanup ? (
+                      <>
+                        Since your last sync: <b>{describePlanSync(syncStatus)}</b>
+                      </>
+                    ) : (
+                      <>Your calendar has this plan. Sync again to refresh every step.</>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-700 text-center">
+                    <b>{summary}</b> in your main Google Calendar
+                  </p>
+                )}
                 <button
                   type="button"
                   disabled={busy || steps.length + moments.length === 0}
                   onClick={pushGoogle}
                   className="w-full min-h-12 rounded-2xl bg-aot-sage hover:bg-aot-sage-hover text-[#182A42] text-sm font-black inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
-                  {busy && <Loader2 className="w-4 h-4 animate-spin" />} {isSignedIn ? 'Add to Google Calendar' : 'Continue with Google'}
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />} {!isSignedIn ? 'Continue with Google' : isUpdate ? 'Update & sync plan' : 'Add to Google Calendar'}
                 </button>
-                <p className="text-[11px] text-slate-500 text-center">Only this plan is added. Your plan comes with you when you sign in.</p>
+                <p className="text-[11px] text-slate-500 text-center">
+                  {isUpdate ? 'Changed steps are updated in place; steps you removed come out of your calendar.' : 'Only this plan is added. Your plan comes with you when you sign in.'}
+                </p>
               </div>
             ) : (
               <div className="space-y-3 pt-1">

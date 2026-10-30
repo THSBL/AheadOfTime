@@ -1,23 +1,22 @@
-import type { CalendarEvent, TMinusMilestone } from '../types';
+import type { CalendarEvent } from '../types';
 import { fixedMoments } from './planLink';
+import { describePlanSync, planSyncPending, planSyncStatus } from './googleSyncPlan';
 
 /**
- * Whether an event's plan is in the user's Google Calendar: the event
- * itself (pushed by the app, or imported from the calendar by Scan agenda),
- * a trip's return, and every shown task. Same rules as
- * syncEventToGoogleCalendar, which skips what already has a Google id - so
- * this is exactly what a push would still add.
+ * Whether an event's plan is in the user's Google Calendar and up to date:
+ * the event itself (pushed by the app, or imported from the calendar by
+ * Scan agenda), a trip's return, and every shown step - none missing, none
+ * changed since the last sync, none removed from the plan but still in
+ * Google (googleSyncPlan.ts). Same rules as syncEventToGoogleCalendar, so
+ * this is exactly what a sync would still do.
  */
 export function isEventInCalendar(event: CalendarEvent): boolean {
   return Boolean(event.googleEventId && !event.googleEventId.startsWith('local_'));
 }
 
-/** A task is in Google as a Google Task, or as a calendar reminder when the user chose events. */
-const isTaskInGoogle = (m: TMinusMilestone) => Boolean(m.googleTaskId || m.googleCalendarEventId);
-
-/** Shown tasks not in Google yet. */
+/** Shown steps not in Google yet. */
 export function unpushedTaskCount(event: CalendarEvent): number {
-  return (event.milestones || []).filter((m) => m.isActive !== false && !isTaskInGoogle(m)).length;
+  return planSyncStatus(event).toAdd;
 }
 
 /** A trip pushed before its return became an event of its own. */
@@ -25,31 +24,38 @@ function returnPending(event: CalendarEvent): boolean {
   return isEventInCalendar(event) && !event.googleReturnEventId && fixedMoments(event).some((m) => m.key === 'return');
 }
 
-/** Items a push would add: the event if it isn't there, a trip's return, plus its unpushed tasks. */
+/** Items a sync would add, update or remove. */
 export function pendingPushItems(event: CalendarEvent): number {
-  return (isEventInCalendar(event) ? 0 : 1) + (returnPending(event) ? 1 : 0) + unpushedTaskCount(event);
+  return planSyncPending(planSyncStatus(event)) + (returnPending(event) ? 1 : 0);
 }
 
 export function isPlanPushed(event: CalendarEvent): boolean {
   return pendingPushItems(event) === 0;
 }
 
-/** "6 tasks + the event", "2 tasks · event already in calendar", "In calendar". */
+/** "6 tasks + the event", "2 tasks · event already in calendar", "1 new · 2 changed", "In calendar". */
 export function describePendingPush(event: CalendarEvent): string {
-  const tasks = unpushedTaskCount(event);
-  const taskText = `${tasks} ${tasks === 1 ? 'task' : 'tasks'}`;
-  if (!isEventInCalendar(event)) return tasks > 0 ? `${taskText} + the event` : 'the event';
-  if (returnPending(event)) return tasks > 0 ? `${taskText} + the return` : 'the return';
-  return tasks > 0 ? `${taskText} · event already in calendar` : 'In calendar';
+  const s = planSyncStatus(event);
+  const taskText = `${s.toAdd} ${s.toAdd === 1 ? 'task' : 'tasks'}`;
+  if (s.eventMissing) return s.toAdd > 0 ? `${taskText} + the event` : 'the event';
+  if (returnPending(event)) return s.toAdd > 0 ? `${taskText} + the return` : 'the return';
+  if (s.toUpdate || s.toRemove || s.eventChanged) return describePlanSync(s);
+  return s.toAdd > 0 ? `${taskText} · event already in calendar` : 'In calendar';
 }
 
 /**
- * Tasks added after the plan was synced: the plan has tasks in Google
- * already, and these ones aren't. 0 when the plan was never synced (then
- * the whole plan is simply "pending sync").
+ * Changes since the plan was synced: steps added, changed or removed, or
+ * the event's own details. 0 when the plan was never synced (then the
+ * whole plan is simply "pending sync").
  */
+export function changesPendingSync(event: CalendarEvent): number {
+  const s = planSyncStatus(event);
+  if (!s.pushedBefore || s.eventMissing) return 0;
+  return s.toAdd + s.toUpdate + s.toRemove + (s.eventChanged ? 1 : 0) + (returnPending(event) ? 1 : 0);
+}
+
+/** Steps added after the plan was synced. */
 export function newTasksPendingSync(event: CalendarEvent): number {
-  const shown = (event.milestones || []).filter((m) => m.isActive !== false);
-  if (!shown.some(isTaskInGoogle)) return 0;
-  return shown.filter((m) => !isTaskInGoogle(m)).length;
+  const s = planSyncStatus(event);
+  return s.pushedBefore && !s.eventMissing ? s.toAdd : 0;
 }

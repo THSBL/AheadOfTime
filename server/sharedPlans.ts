@@ -151,10 +151,15 @@ export function snapshotFromEvent(event: any, settings?: Pick<ShareSettings, 'au
   };
 }
 
-/** What the public page and the guests' feed show: guests see only the steps marked for everyone. */
+/**
+ * What the public page and the guests' feed show. Guests see only the steps
+ * marked for everyone, and never as done: each guest does their own part,
+ * so the owner ticking "Buy your gift" off doesn't tick it off for them.
+ * A co-organiser sees the whole plan as it stands.
+ */
 export function publicView(snapshot: SharedPlanSnapshot): SharedPlanSnapshot {
   if (snapshot.audience !== 'guests') return snapshot;
-  return { ...snapshot, steps: snapshot.steps.filter((s) => s.everyone) };
+  return { ...snapshot, steps: snapshot.steps.filter((s) => s.everyone).map((s) => ({ ...s, done: false })) };
 }
 
 export function cleanSettings(raw: any, previous?: ShareSettings | null): ShareSettings {

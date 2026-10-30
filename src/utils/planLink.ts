@@ -185,3 +185,10 @@ export function outlookAddLink(item: CalendarItem): string {
 
 /** webcal:// for a subscription link, so a phone opens its calendar app. */
 export const webcalUrl = (httpsUrl: string) => httpsUrl.replace(/^https?:\/\//i, 'webcal://');
+
+/** Google Calendar's "Add calendar" page for a subscription (it then follows the feed). */
+export const googleSubscribeLink = (feedUrl: string) => `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl(feedUrl))}`;
+
+/** Outlook on the web's "add calendar from the internet" for a subscription. */
+export const outlookSubscribeLink = (feedUrl: string, name: string) =>
+  `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(feedUrl)}&name=${encodeURIComponent(name)}`;

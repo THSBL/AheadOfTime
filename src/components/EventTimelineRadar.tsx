@@ -34,7 +34,7 @@ import { CalendarEvent, TMinusMilestone, IntakeQuestion, PreparationLevel } from
 import { formatDisplayDate, getCountdownStatus, generateICSContent, formatMessagingSummary, getCleanEventTitle, calculateOffsetDate, preserveCompletedMilestones, finalizeMilestonePlan } from '../utils/tminusRules';
 import { generateDeterministicMilestones } from '../utils/deterministicMilestoneGenerator';
 import { SyncStatusIcon } from './SyncStatusIcon';
-import { isPlanPushed, newTasksPendingSync } from '../utils/pushStatus';
+import { changesPendingSync, describePendingPush, isPlanPushed, newTasksPendingSync } from '../utils/pushStatus';
 import { applyPreparationLevelChange } from '../utils/preparationLevelActions';
 import { computeOverdueMilestones, computeWeeklyMilestonePreview, isLateFromStart, isPastEventTask, spreadCatchUpDates } from '../utils/readiness';
 import { CatchUpCard } from './CatchUpCard';
@@ -1183,9 +1183,12 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
       >
         <Calendar className="w-3.5 h-3.5 text-white shrink-0" />
         <span>
-          {activeEvent && newTasksPendingSync(activeEvent) > 0
-            ? `Sync ${newTasksPendingSync(activeEvent)} new ${newTasksPendingSync(activeEvent) === 1 ? 'task' : 'tasks'}`
-            : 'Sync to Calendar'}
+          {/* In Google already: changes are an update, not a new push. */}
+          {activeEvent && changesPendingSync(activeEvent) > 0
+            ? 'Update & sync plan'
+            : activeEvent && isPlanPushed(activeEvent)
+              ? 'In your calendar'
+              : 'Sync to Calendar'}
         </span>
       </button>
 
@@ -1352,8 +1355,8 @@ export const EventTimelineRadar: React.FC<EventTimelineRadarProps> = ({
                 <SyncStatusIcon synced={isPlanPushed(activeEvent)} tone="light" size={15} />
                 {isPlanPushed(activeEvent)
                   ? 'Synced'
-                  : newTasksPendingSync(activeEvent) > 0
-                    ? `${newTasksPendingSync(activeEvent)} new pending sync`
+                  : changesPendingSync(activeEvent) > 0
+                    ? `Changed since sync: ${describePendingPush(activeEvent)}`
                     : 'Pending sync'}
               </span>
             </p>

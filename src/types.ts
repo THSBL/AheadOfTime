@@ -243,6 +243,12 @@ export interface CalendarEvent {
   googleEventLink?: string;
   /** A trip's return, its own event in Google Calendar (planLink.ts fixedMoments). */
   googleReturnEventId?: string;
+  /** Every step this plan put in Google, by step id (googleSyncPlan.ts): survives a correction replacing the steps. */
+  googleSynced?: Record<string, { task?: string; event?: string; hash?: string }>;
+  /** Fingerprint of the event's title, dates, time and place as last sent to Google. */
+  googleEventHash?: string;
+  /** How prep steps were last sent: tasks or timed reminders, at what hour and length. */
+  googleSyncStyle?: { format: string; time?: string; minutes?: number };
   syncedToGoogleAt?: string;
   googleMilestoneCount?: number;
   macroEvent?: MacroEventData;

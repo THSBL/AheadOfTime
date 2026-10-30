@@ -70,6 +70,10 @@ describe('a plan link shared with guests', () => {
     expect(snap.steps.map((s) => [s.id, s.everyone])).toEqual([['m1', false], ['m2', true]]);
     expect(snap.fixed).toEqual([{ key: 'event', title: 'Secret Santa with the family', date: '2026-12-20', time: '18:00' }]);
     expect(publicView(snap).steps.map((s) => s.title)).toEqual(['Wishlists in']);
+    // The owner ticked it off: still open for each guest; a co-organiser sees it done.
+    const ownerDone = { ...snap, steps: snap.steps.map((s) => ({ ...s, done: true })) };
+    expect(publicView(ownerDone).steps.map((s) => s.done)).toEqual([false]);
+    expect(publicView({ ...ownerDone, audience: 'all' }).steps.every((s) => s.done)).toBe(true);
     expect(publicView({ ...snap, audience: 'all' }).steps).toHaveLength(2);
   });
 

@@ -4,12 +4,27 @@ import {
   defaultEveryoneStepIds,
   fixedMoments,
   googleAddLink,
+  googleSubscribeLink,
   nextUpStep,
   outlookAddLink,
+  outlookSubscribeLink,
   shareMessage,
   upcomingSteps,
   webcalUrl,
 } from './planLink';
+
+describe('following a plan (a subscription that updates)', () => {
+  const feed = 'https://aheadoftime.app/api/plan/feed/tok12345.ics';
+  it('Google adds it as a calendar by its webcal address', () => {
+    expect(new URL(googleSubscribeLink(feed)).searchParams.get('cid')).toBe('webcal://aheadoftime.app/api/plan/feed/tok12345.ics');
+  });
+  it('Outlook adds it from the web, named after the plan', () => {
+    const u = new URL(outlookSubscribeLink(feed, 'Secret Santa'));
+    expect(u.pathname).toBe('/calendar/0/addfromweb');
+    expect(u.searchParams.get('url')).toBe(feed);
+    expect(u.searchParams.get('name')).toBe('Secret Santa');
+  });
+});
 
 describe('fixedMoments (what the app puts in as events)', () => {
   it('a trip with a return date has a departure and a return', () => {
